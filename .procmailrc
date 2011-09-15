@@ -1,0 +1,17 @@
+# .procmailrc
+# routes incoming mail to appropriate mailboxes
+PATH=/usr/bin:/usr/local/bin
+MAILDIR=/home/wizard/Mail # all mailboxes are in .mailspool/
+DEFAULT=$HOME/Mail/inbox
+LOGFILE=/dev/null
+SHELL=/bin/sh
+
+# Put mail from DC-Linux mailing list into mailbox dclinux
+:0:
+* ^(From|Cc|To).*shlug
+shlug
+
+# Put mail from DC-Linux mailing list into mailbox dclinux
+:0:
+* ^(From|Cc|To).*shyw13
+shyw13
