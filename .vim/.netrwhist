@@ -1,0 +1,8 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhist_cnt =6
+let g:netrw_dirhist_1='/usr/share/doc/netspeed'
+let g:netrw_dirhist_2='/media/Study/Project/APUE'
+let g:netrw_dirhist_3='/media/Study/Project/APUE/examples'
+let g:netrw_dirhist_4='/media/Study/Project/APUE'
+let g:netrw_dirhist_5='/media/XP/Grub'
+let g:netrw_dirhist_6='/root/.vim/c-support/templates'
