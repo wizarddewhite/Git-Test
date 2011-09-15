@@ -1,0 +1,55 @@
+set sendmail = "/usr/bin/msmtp -v -X /home/wizard/log/msmtp.log"
+#set the display index format
+set index_format="%4C %Z %{%b %d} %-15.15L (%4l) %s"
+#set mail boxs, press "c" than "tab"
+mailboxes Mailbox sent-mail
+#when reply a mail, whether include the original header
+set header=no
+#when type 'q' to quit, whether ask you or not
+#set quit=ask-yes
+#which kind of file could be viewed directly via mailcap?
+auto_view text/html
+#whether move mail from spool to mbox
+#set move=no
+#when display by thread, whether use ascii?
+set sort=threads
+set sort_aux=date
+set ascii_chars=yes
+#when reply, whether include original mail
+set include
+#charachter inserted before reply message
+set indent_str=">"
+#when viewing mail, stop in current mail, not jump to next mail
+set pager_stop
+#when reply mail, go to edit window without interactive
+#set fast_reply
+#after setting flag, like 't','D', move curser to next mail
+set resolve=yes
+#when set alias by 'a', which file to save
+set alias_file=/home/wizard/.mutt/alias
+source /home/wizard/.mutt/alias
+#where to save sent mail
+#set record="~/Mail/=sent-mail-`date +%Y-%m`"
+#set coding set for display
+#set charset="gb2312"
+#char set for sending mail
+#set send_charset="us-ascii:iso-8859-1:gb2312:utf-8"
+#prompt before external program exit
+set wait_key=yes
+#when move mail to another mail box which already exist, append or not
+set noconfirmappend
+#edit mail header or not?
+set edit_headers=yes
+#leave number of lines to show mail list in pager mode
+set pager_index_lines=15
+# the signature
+set signature='echo "Wizard\nHelp you, Help me"|'
+
+# the mail list you subscribed, press 'L' to reply to list
+subscribe shlug@googlegroups.com
+
+my_hdr From: Wizard<wizarddewhite@gmail.com>
+my_hdr Reply-To: Wizard<wizarddewhite@gmail.com>
+
+macro index G "!fetchmail -av"        
+macro pager G "!fetchmail -av"       
