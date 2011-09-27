@@ -1,0 +1,14 @@
+[user]
+	name = Wizard 
+	email = wizarddewhite@gmail.com
+[color]
+	ui = true
+[github]
+	user = wizarddewhite
+	token = d8cf9dd2474cd64711e8bd43050d44bf
+[sendmail]
+	smtpencryption = tls
+	smtppass       = 123
+	smtpserver     = smtp.gmail.com
+	smtpuser       = wizarddewhite
+	smtpserverport = 143
