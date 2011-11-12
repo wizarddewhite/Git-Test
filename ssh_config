@@ -1,0 +1,9 @@
+#this is the .ssh config, should be put ~/.ssh/config
+Protocol 2
+ForwardAgent yes
+# this part is for ssh tunnel.
+# refer to http://blog.csdn.net/richardysteven/article/details/6894545
+Host intermediate.edu
+	User interdude
+	LocalForward localhost:3456 remote.edu.22
+	LocalForward localhost:4567 remote.edu.23
