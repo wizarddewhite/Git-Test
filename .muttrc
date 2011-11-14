@@ -53,3 +53,11 @@ my_hdr Reply-To: Wizard<wizarddewhite@gmail.com>
 
 macro index G "!fetchmail -av"        
 macro pager G "!fetchmail -av"       
+
+#invoke utlview for a url link
+macro pager \cb <pipe-entry>'urlview'<enter>'Follow links with urlview' 
+
+color hdrdefault white black  # headers white on black
+color header brightgreen black ^From:  # sender's name in green
+color quoted cyan black  # quoted text in blue
+color signature red black   # signature in red
