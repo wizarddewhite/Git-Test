@@ -1,3 +1,17 @@
 This is a test for using Git-Hub
 
 I prepare to use github to store some configurations.
+
+bash config
+vim config
+
+fetchmail config
+mutt config
+msmtp config
+procmail config
+
+xchat config
+
+ssh config
+
+git config
