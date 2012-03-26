@@ -1,0 +1,82 @@
+
+1. DEVICE CLASS
+===============================================================
+#define OBJECT_CLASS(class) \
+    ((ObjectClass *)(class))
+#define OBJECT_CLASS_CHECK(class, obj, name) \
+    ((class *)object_class_dynamic_cast_assert(OBJECT_CLASS(obj), (name)))
+#define DEVICE_CLASS(klass) OBJECT_CLASS_CHECK(DeviceClass, (klass), TYPE_DEVICE)
+
+DeviceClass *dc = DEVICE_CLASS(klass);
+   OBJECT_CLASS_CHECK(DeviceClass, kclass, "device")
+   (DeviceClass*)object_class_dynamic_cast_assert((ObjectClass *)kclass, "device")
+   {
+	   ObjectClass *ret = object_class_dynamic_cast(kclass, typename);
+           if (!ret) {
+               fprintf(stderr, "Object %p is not an instance of type %s\n",
+                       class, typename);
+               abort();
+           }
+
+           return ret;
+   }
+
+object_class_dynamic_cast() will return none-NULL if kclass is a child or itself.
+so this means the DEVICE_CLASS() trys to get the TypeImpl named "device";
+and means the klass is a child of it or itself, this functio will return
+klass itself.
+which is defined in qdev.c
+static TypeInfo device_type_info = {
+    .name = TYPE_DEVICE,
+    .parent = TYPE_OBJECT,
+    .instance_size = sizeof(DeviceState),
+    .instance_init = device_initfn,
+    .instance_finalize = device_finalize,
+    .abstract = true,
+    .class_size = sizeof(DeviceClass),
+};
+
+
+So this is a class hirerach
+
+       +------------------+          +----------------------+
+       |                  |          |                      |
+       |   ObjectClass    | <--------|    Object            |
+       |    |-> Type      |          |                      |
+       |                  |          |                      |
+       |                  |          |                      |
+       +------------------+          +---------+------------+
+                 |                             |
+                 |                             |
+                 |                             |
+                 |                             |
+                 v                             v
+       +------------------+          +---------+------------+
+       |                  |          |                      |
+       |   DeviceClass    |  - - -   |   DeviceState        |
+       |                  |          |                      |
+       +---------+--------+          +---------+------------+
+                 |                             |
+                 |                             |
+                 |                             |
+                 v                             v
+       +---------+--------+          +---------+------------+
+       |                  |          |                      |
+       |   PCIDeviceClass |  - - -   |   PCIDevice          |
+       |                  |          |                      |
+       +------------------+          +---------+------------+
+                                               |
+                                               |
+                                               |
+                                               v
+                                     +----------------------+
+                                     |                      |
+                                     |   OHCIPCIState       |
+                                     |                      |
+                                     +----------------------+
+
+2. traverse the qdev tree? 
+===============================================================
+if (qemu_opts_foreach(qemu_find_opts("device"), device_help_func, NULL, 0) != 0)
+device_help_func
+

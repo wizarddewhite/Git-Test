@@ -1,0 +1,126 @@
+1. main flow
+===============================================================
+main()
+	runstate_init(); a map of state change
+	init_clocks(); initialize three clocks
+	               rt_clock
+		       vm_clock
+		       host_clock
+	QLIST_INIT (&vm_change_state_head);   init the state change list
+	os_setup_early_signal_handling();
+		sigaction(SIGPIPE, &act, NULL); ignore the SIGPIPE and mask all signal
+		                                during processing
+	module_call_init(MODULE_INIT_MACHINE)
+		pc_machine_init(); register several machines
+		fsdev_register_config(); add two options
+	machine = find_default_machine();
+	        now machine is pc_machine_v1_0 by default
+	initialize node_mem and node_cpumask array
+	read qemu configuration file
+	cpudef_init(); initialize the cpu definition.
+		x86_cpudef_setup();
+	               on x86, it will call x86_cpudef_setup to
+		       initialize the builtin_x86_defs list.
+		       In this list, it defines the cpu model,
+		       feature, etc
+		       but i am not sure where it effects
+	parse the command line options
+	set_cpu_log_filename()  ; most log item is relatted to TB
+		set_cpu_log();    this is to parse the -d log items
+	trace_backend_init();     initialize the trace backend.
+	                          it feature need to be enabled in config
+	data_dir = os_find_datadir(); locate the bios, firmware location
+	qemu_opts_foreach(qemu_find_opts("device"), default_driver_check, NULL, 0);
+	                          check default driver options.
+				  there is a default_list[] which defines some default driver?
+				  if the corresponding driver is set, the flag is set to 0
+				  means otherwise the qemu will use the default driver
+	qemu_opts_foreach(qemu_find_opts("global"), default_driver_check, NULL, 0);
+	                          the same as previous function
+	add some display device and monitor setting
+	socket_init();            do nothing on linux
+	qemu_opts_foreach(qemu_find_opts("chardev"), chardev_init_func, NULL, 1) ;
+	                         initialize the chardev and add to chardev list
+		chardev_init_func();
+			qemu_chr_new_from_opts();  backend_table[] defines all available
+			                           backend device
+						   this function find corresponding device
+						   and call the open function for this
+						   device
+				ret = backend_table[i].open(opts, &chr);
+				chr->filename = g_strdup(qemu_opt_get(opts, "backend"));
+				QTAILQ_INSERT_TAIL(&chardevs, chr, next);
+				                  insert in the chardev list
+	os_daemonize();
+		signal()...;  set SIG_IGN on SIGTSTP, SIGTTOU, SIGTTIN
+	qemu_create_pidfile(pid_file);  and use lockf() to lock the file
+	ram_size = DEFAULT_RAM_SIZE * 1024 * 1024;
+	               default ram size is 128M
+	configure_accelerator();
+		QemuOptsList *list = qemu_find_opts("machine");
+		p = qemu_opt_get(QTAILQ_FIRST(&list->head), "accel"); get the accerlerator option
+	               in accel_list[] defined three accelerate
+		       method, tcg, xen and kvm.
+		       For kvm, it will call kvm_init.
+		kvm_init();
+			s->fd = qemu_open("/dev/kvm", O_RDWR);
+			s->vmfd = kvm_ioctl(s, KVM_CREATE_VM, 0);
+			kvm_arch_init();
+				kvm_get_supported_msrs();
+				...
+			memory_listener_register(&kvm_memory_listener);
+			s->many_ioeventfds = kvm_check_many_ioeventfds();
+			cpu_interrupt_handler = kvm_handle_interrupt;
+	qemu_init_cpu_loop(); initialize the thread mutex
+		qemu_init_sigbus();
+			action.sa_sigaction = (void (*)(int, siginfo_t*, void*))sigbus_handler;
+			sigaction(SIGBUS, &action, NULL);
+			prctl(); set the memory corruption kill policy
+			         which will send SIGBUS signal in qemu
+		qemu_cond_init(&qemu_cpu_cond);
+		qemu_cond_init(&qemu_pause_cond);
+		qemu_cond_init(&qemu_work_cond);
+		qemu_cond_init(&qemu_io_proceeded_cond);
+		qemu_mutex_init(&qemu_global_mutex);
+		qemu_thread_get_self(&io_thread);  get the thread id,
+		                                   this is the iothread?
+	qemu_init_main_loop();
+		qemu_mutex_lock_iothread();
+			qemu_mutex_lock(&qemu_global_mutex);  this is for kvm_enable()
+		qemu_signal_init(); set signal handler ---> stop here
+		qemu_event_init();
+	init_timer_alarm(); traverse the alarm_timers[]
+	net_init_clients(); initialize the netdev
+	cpu_exec_init_all(); set up the memory for guest
+		memory_map_init(); system_memory and system_io
+		io_mem_init();
+	bdrv_init_with_whitelist(); initialize block device
+	blk_mig_init();
+	default_drive();
+	register_savevm_live();
+	set up numa
+	module_call_init(MODULE_INIT_DEVICE);
+	qdev_machine_init();
+		qdev_get_peripheral_anon();
+		qdev_get_peripheral();
+	machine->init(); = pc_init_pci();
+		pc_init1(get_system_memory(), get_system_io(),
+				ram_size, boot_device, kernel_filename,
+				kernel_cmdline, initrd_filename,
+				cpu_model, 1, 1);
+	cpu_synchronize_all_post_init(); ? who set the first_cpu
+	set_numa_modes();
+	os_setup_signal_handling();
+	qdev_machine_creation_done();
+	rom_load_all(); load the rom
+
+	vm_start(); ok, i think this is the place to start guest
+		cpu_enable_ticks();
+		runstate_set(RUN_STATE_RUNNING);
+		vm_state_notify(1, RUN_STATE_RUNNING);
+		resume_all_vcpus();
+		monitor_protocol_event(QEVENT_RESUME, NULL);
+
+	os_setup_post();
+	resume_all_vcpus();
+	main_loop();

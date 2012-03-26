@@ -1,0 +1,66 @@
+
+1. OHCI related
+===============================================================
+ohci_frame_boundary()
+	ohci_process_lists(); process control and bulk list
+		ohci_service_ed_list();
+			ohci_read_ed();
+			usb_cancel_packet(); if cancelled
+				p->owner->info->cancel_packet(p->owner, p);
+			ohci_service_td(); td has two types <--- here
+				ohci_read_td();
+				get dir;
+				calculate the length;
+				ohci_copy_td();  copy the buffer indicated by the td
+				                 to the ohci->usb_buf;
+				ohci_put_td()
+			ohci_put_ed();
+
+
+ohci irq handling, example
+ohci_sof()
+	ohci_set_interrupt()
+		ohci_intr_update()
+			qemu_set_irq()
+				irq->handler()
+					pci_set_irq
+
+2. call flow of ohci initialization
+===============================================================
+machine->init();
+	ppc_spapr_init();
+		usb_ohci_init_pci(QLIST_FIRST(&spapr->phbs)->host_state.bus, -1);
+			pci_create_simple(bus, devfn, "pci-ohci");
+				pci_create_simple_multifunction(bus, devfn, false, "pci-ohci");
+					pci_create_multifunction() ; first create it
+						dev = qdev_create()
+							qdev_try_create();
+								object_class_by_name();
+									type = type_get_by_name()
+									type_class_init(TypeImpl *ti)
+										ti->class_size=type_class_get_size(ti);
+										ti->class = g_malloc0(ti->class_size)
+										ti->class->type = ti;
+										ti->class_init() = ohci_pci_class_init    <-------
+									return type->class;
+								dev = DEVICE(object_new(name)); name == "pci-ohci"
+									object_new("pci-ohci");
+										object_new_with_type(ti);
+											obj = g_malloc(type->instance_size);
+											object_initialize_with_type(obj, type)
+												type_class_init(type)
+												obj->class = type->class;
+												object_init_with_type(obj, type)
+											object_ref(obj);
+												obj->ref++;
+											return obj;
+									DEVICE == object_dynamic_cast_assert(obj, "device")
+										object_dynamic_cast(obj, "device");
+									qdev_set_parent_bus(dev, bus);
+					qdev_init_nofail();  then initialize it
+						qdev_init();
+							dc->init() = pci_qdev_init(); dc is DeviceClass
+								bus = FROM_QBUS()
+								pcidev = do_pci_register_device();
+								pc->init() = usb_ohci_initfn_pci()                        <-------
+

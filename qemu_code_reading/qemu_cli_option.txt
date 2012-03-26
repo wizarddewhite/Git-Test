@@ -1,0 +1,75 @@
+
+1. Qemu command line option
+===============================================================
+This structure defines valid options for Qemu.
+Will be searched by lookup_opt().
+Every entry represent one option, which defines
+    option name, has arg or not, enum number, architecture info
+    static const QEMUOption qemu_options[] = {
+        { "h", 0, QEMU_OPTION_h, QEMU_ARCH_ALL },
+    #define QEMU_OPTIONS_GENERATE_OPTIONS
+    #include "qemu-options-wrapper.h"
+        { NULL },
+    };
+
+This structure defines those categories of options valid in Qemu.
+This list is manipulated in qemu-config.c
+static QemuOptsList *vm_config_groups[32] = {
+    &qemu_drive_opts,
+    &qemu_chardev_opts,
+    &qemu_device_opts,
+    &qemu_netdev_opts,
+    &qemu_net_opts,
+    &qemu_rtc_opts,
+    &qemu_global_opts,
+    &qemu_mon_opts,
+    &qemu_cpudef_opts,
+    &qemu_trace_opts,
+    &qemu_option_rom_opts,
+    &qemu_machine_opts,
+    &qemu_boot_opts,
+    NULL,
+};
+
+typedef struct QemuOptDesc {
+    const char *name;
+    enum QemuOptType type;
+    const char *help;
+} QemuOptDesc;
+
+struct QemuOptsList {
+    const char *name;
+    const char *implied_opt_name;
+    QTAILQ_HEAD(, QemuOpts) head;     // here is the real opts at run time
+    QemuOptDesc desc[];               // here lists valid opts
+};
+
+We can take a look at qemu_drive_opts for an example.
+
+struct QemuOpt {                      // this is an instance of QemuOptDesc
+    const char   *name;               // name
+    const char   *str;                // raw value
+
+    const QemuOptDesc *desc;
+    union {
+        bool boolean;
+        uint64_t uint;
+    } value;                          // value transformed according to its type
+
+    QemuOpts     *opts;
+    QTAILQ_ENTRY(QemuOpt) next;
+};
+
+struct QemuOpts {
+    char *id;                     // QemuOpts contains the QemuOpt with the same id
+                                  // you can see the command help and qemu_opts_parse()
+                                  // they are based on the id and id is unique for each
+                                  // option
+                                  // and you can see the format of id in id_wellformed()
+                                  // finally, in qemu_opts_do_parse() will fill the
+                                  // QemuOpts->head list.
+    QemuOptsList *list;
+    Location loc;
+    QTAILQ_HEAD(QemuOptHead, QemuOpt) head;
+    QTAILQ_ENTRY(QemuOpts) next;
+};

@@ -1,0 +1,119 @@
+
+
+1. Qemu Memory
+===============================================================
+
+struct AddrRange {
+    Int128 start;
+    Int128 size;
+};
+
+/* Range of memory in the global map.  Addresses are absolute. */
+struct FlatRange {
+    MemoryRegion *mr;
+    target_phys_addr_t offset_in_region;
+    AddrRange addr;
+    uint8_t dirty_log_mask;
+    bool readable;
+    bool readonly;
+};
+
+/* Flattened global view of current active memory hierarchy.  Kept in sorted
+ * order.
+ */
+struct FlatView {
+    FlatRange *ranges;
+    unsigned nr;
+    unsigned nr_allocated;
+};
+
+/* A system address space - I/O, memory, etc. */
+struct AddressSpace {
+    const AddressSpaceOps *ops;
+    MemoryRegion *root;
+    FlatView current_map;
+    int ioeventfd_nb;
+    MemoryRegionIoeventfd *ioeventfds;
+};
+
+static AddressSpace address_space_memory = {
+    .ops = &address_space_ops_memory,
+};
+
+static AddressSpace address_space_io = {
+    .ops = &address_space_ops_io,
+};
+
+struct MemoryRegion {
+    /* All fields are private - violators will be prosecuted */
+    const MemoryRegionOps *ops;
+    void *opaque;
+    MemoryRegion *parent;
+    Int128 size;
+    target_phys_addr_t addr;
+    target_phys_addr_t offset;
+    void (*destructor)(MemoryRegion *mr);
+    ram_addr_t ram_addr;
+    IORange iorange;
+    bool subpage;
+    bool terminates;
+    bool readable;
+    bool ram;
+    bool readonly; /* For RAM regions */
+    bool enabled;
+    bool rom_device;
+    MemoryRegion *alias;
+    target_phys_addr_t alias_offset;
+    unsigned priority;
+    bool may_overlap;
+    QTAILQ_HEAD(subregions, MemoryRegion) subregions;
+    QTAILQ_ENTRY(MemoryRegion) subregions_link;
+    QTAILQ_HEAD(coalesced_ranges, CoalescedMemoryRange) coalesced;
+    const char *name;
+    uint8_t dirty_log_mask;
+    unsigned ioeventfd_nb;
+    MemoryRegionIoeventfd *ioeventfds;
+};
+
+static MemoryRegion *system_memory;
+static MemoryRegion *system_io;
+
+
+typedef struct RAMBlock {
+    struct MemoryRegion *mr;
+    uint8_t *host;
+    ram_addr_t offset;
+    ram_addr_t length;
+    uint32_t flags;
+    char idstr[256];
+    QLIST_ENTRY(RAMBlock) next;
+#if defined(__linux__) && !defined(TARGET_S390X)
+    int fd;
+#endif
+} RAMBlock;
+
+typedef struct RAMList {
+    uint8_t *phys_dirty;
+    QLIST_HEAD(, RAMBlock) blocks;
+} RAMList;
+extern RAMList ram_list;
+
+RAMList ram_list = { .blocks = QLIST_HEAD_INITIALIZER(ram_list.blocks) };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
