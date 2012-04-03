@@ -20,3 +20,7 @@
 	editor = vim
 [merge]
 	tool = vimdiff
+[alias]
+	logview = log --graph --decorate --all
+	co = checkout
+	commit = commit -s
