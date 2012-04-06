@@ -1,0 +1,263 @@
+1. acpi_pci_root_init()
+================================================================================
+acpi_pci_root_init()
+	acpi_hest_init() <-- hardware error table
+	pci_acpi_crs_quirks()
+
+	acpi_bus_register_driver(&acpi_pci_root_driver) 
+                    static struct acpi_driver acpi_pci_root_driver = {
+                    	.name = "pci_root",
+                    	.class = ACPI_PCI_ROOT_CLASS,
+                    	.ids = root_device_ids,
+                    	.ops = {
+                    		.add = acpi_pci_root_add,
+                    		.remove = acpi_pci_root_remove,
+                    		.start = acpi_pci_root_start,
+                    		},
+                    };
+		driver_register(&driver->drv);
+			driver_find(name, bus)
+		bus_add_driver(drv)
+			driver_attach();
+				bus_for_each_dev();
+					__driver_attach(dev, data);
+						driver_match_device();
+						driver_probe_device();
+							really_probe(); == acpi_device_probe();
+
+continue here:
+	acpi_device_probe()
+		acpi_bus_driver_init(acpi_device , acpi_driver);
+			driver->ops.add(device); == acpi_pci_root_add(); <-- this is in the acpi_pci_root_driver;
+
+struct acpi_pci_root {
+	struct list_head node;
+	struct acpi_device * device;
+	struct acpi_pci_id id;
+	struct pci_bus *bus;
+	u16 segment;
+	struct resource secondary;	/* downstream bus range */
+
+	u32 osc_support_set;	/* _OSC state of support bits */
+	u32 osc_control_set;	/* _OSC state of control bits */
+};
+
+acpi_pci_root_add()
+	acpi_evaluate_integer(); get the _SEG, which indidate the domain
+	try_get_root_bridge_busnr(device->handle, res); get the bus number from ACPI namespace
+		acpi_walk_resources(handle, METHOD_NAME__CRS, get_root_bridge_busnr_callback, res);
+		                      ;get the bus number range under root bridge;
+			acpi_rs_get_method_data(); <-- put resource info into buffer
+	    			acpi_ut_evaluate_object(handle, path, ACPI_BTYPE_BUFFER, &obj_desc);
+					status = acpi_ns_evaluate(info);
+				acpi_rs_create_resource_list();
+				acpi_ut_remove_reference();
+			now buffer contains several resources.
+			for each resource, get_root_bridge_busnr_callback will process it
+			while there is only one(I guess) resource which describe 
+			the pci bus range number.
+			get_root_bridge_busnr_callback() is used to assign the context 
+
+	list_add_tail(&root->node, &acpi_pci_roots); acpi_pci_roots is a list of pci roots
+
+	root->bus = pci_acpi_scan_root(root) ; <-- get the root bus of this root bridge
+		bus = pci_find_bus(domain, busnum); <-- start from 0:0, find doman:busnum
+			pci_find_next_bus() ;<- 
+				search from pci_root_buses(a list), or its' next
+				for each entry first match the domain
+				then match the busnr, also tranverse the children
+		if bus == NULL;
+			bus = pci_create_bus(NULL, busnum, &pci_root_ops, sd); <- pci_root_ops is the operations
+				b = pci_alloc_bus();
+				b->sysdata = sysdata;
+				b->ops = ops; <- this is assigend to pci_root_ops
+				b2 = pci_find_bus(pci_domain_nr(b), bus); 
+				list_add_tail(&b->node, &pci_root_buses); <- why this is under root?
+				dev_set_name(dev, "pci%04x:%02x", pci_domain_nr(b), bus);
+				error = device_register(dev);
+				b->bridge = get_device(dev);
+				if (!parent)
+					set_dev_node(b->bridge, pcibus_to_node(b)); numa node
+				b->number = b->secondary = bus;
+				b->resource[0] = &ioport_resource;
+				b->resource[1] = &iomem_resource;
+			get_current_resources(device, busnum, domain, bus); allocate resource for this device
+				acpi_walk_resources(); <- get res number
+				acpi_walk_resources(); <- get res detail from namespace
+				add_resources(&info)
+					insert_resource_conflict();Insert a resource into the resource tree
+					if no conflict, add this in the bus res list
+					pci_bus_add_resource(); add this info in bus structure
+			bus->subordinate = pci_scan_child_bus(bus); <- pass in the root bus, get the max child
+				/* Go find them, Rover! */
+				for (devfn = 0; devfn < 0x100; devfn += 8); scan each dev/slot
+					pci_scan_slot(bus, devfn);
+						pci_scan_single_device(bus, devfn);
+							pci_get_slot()<- get the corresponding dev, or
+							pci_scan_device(bus, devfn); <- scan the bus, assign the devfn number
+								dev->bus = bus;
+								dev->devfn = devfn;
+								pci_setup_device(dev);
+									dev->slot = slot; <- associate the slot
+									dev->class = class;
+									dev->cfg_size = pci_cfg_space_size(dev);
+									base on dev->hdr_type process 
+									for normal device
+										pci_read_irq(dev);
+										pci_read_bases(dev, 6, PCI_ROM_ADDRESS); retrieve 6 BAR and ROM
+											__pci_read_base(dev, pci_bar_unknown, res, reg);
+												fetch the bar and their res start/stop
+										pci_read_config_word(SUBSYSTEM_VENDOR_ID);
+										pci_read_config_word(SUBSYSTEM_ID);
+							pci_device_add(dev, bus); Add the device to our list of discovered devices
+								                  And then we will iterate on this list to scan
+										  the bridge
+								pci_init_capabilities(dev); Initialize various capabilities
+									pci_msi_init_pci_dev(dev);
+									pci_allocate-cap_save_buffers(dev);
+									pci_pm_init(dev); Power Management
+									platform_pci_wakeup_init(dev);
+									pci_vpd_pci22_init(dev); Vital Product Data
+									pci_enable_ari(dev);
+									pci_iov_init(dev);
+										pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV)
+										sriov_init(dev, pos);
+											pci_read_config_word(dev, pos + PCI_SRIOV_CTRL, &ctrl);
+											pci_read_config_word(dev, pos + PCI_SRIOV_TOTAL_VF, &total);
+											list_for_each_entry(pdev, &dev->bus->devices, bus_list); ? confused
+												if (pdev->is_physfn)
+													goto found;
+											pci_write_config_word(dev, pos + PCI_SRIOV_CTRL, ctrl);
+											pci_write_config_word(dev, pos + PCI_SRIOV_NUM_VF, total);
+											pci_read_config_word(dev, pos + PCI_SRIOV_VF_OFFSET, &offset);
+											pci_read_config_word(dev, pos + PCI_SRIOV_VF_STRIDE, &stride);
+											pci_read_config_dword(dev, pos + PCI_SRIOV_SUP_PGSIZE, &pgsz);
+											read 6 SRIOV_BAR;
+										pci_enable_acs(dev); ACS P2P upstream forwarding
+					pci_iov_bus_range(bus);
+						for each virtual device under the bus
+					pci_scan_bridge(bus, dev, max, pass); it has two passes get the max child
+							bus is the current bus
+							dev is one device under this bus
+							max is the current larget bus number
+							pass indicate the round
+						pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
+						get the bus number
+					primary = buses & 0xFF;
+					secondary = (buses >> 8) & 0xFF;
+					subordinate = (buses >> 16) & 0xFF;
+					
+					pass 0
+					child = pci_find_bus(pci_domain_nr(bus), secondary);
+					if child == NULL
+						create a child
+						pci_add_new_bus(bus, dev, secondary);
+							pci_alloc_child_bus(parent, dev, busnr);
+							list_add_tail(&child->node, &parent->children);
+					cmax = pci_scan_child_bus(child);
+
+					pass 1, i think
+					child = pci_add_new_bus(bus, dev, ++max);
+
+				return max;
+
+
+
+
+2. pci arch init on x86
+================================================================================
+start_kernel
+	rest_init();
+		kernel_thread(kernel_init);
+			do_basic_setup();
+				do_initcalls();
+pci_arch_init <--- just on x86?
+	pci_direct_probe(); return 1
+		request_region(0xCF8, 8, "PCI conf1");
+		pci_check_type1();
+			raw_pci_ops = &pci_direct_conf1; <-- assign the raw_pci_ops
+	pci_mmcfg_early_init();  <-- this works for mmcfg pci system
+		__pci_mmcfg_init();
+			pci_mmcfg_check_hostbridge();
+				pci_mmcfg_probes[i].probe();
+					pci_mmconfig_add();  <--- add to the *pci_mmcfg_list*
+				pci_mmcfg_check_end_bus_number();
+			if pci_mmcfg_check_hostbridge failed
+			acpi_sfi_table_parse(ACPI_SIG_MCFG, pci_parse_mcfg);
+				acpi_table_parse(ACPI_SIG_MCFG, pci_parse_mcfg); <-- this is a very interesting function
+										; here it trys to access the 
+										PCI Memory Mapped Configuration table
+					acpi_get_table_with_size(); <- walk the acpi_gbl_root_table_list
+								 ; and get the content of the table
+						acpi_tb_verify_table();
+							acpi_os_map_memory(); <--- not clear
+					pci_parse_mcfg(table);  handle the table content
+						free_all_mmcfg();
+						extract the table
+						pci_mmconfig_add();
+	x86_init.pci.arch_init()	
+	pci_pcbios_init()
+		raw_pci_ops = pci_find_bios(); if pcbios exist, *raw_pci_ops* 
+		                              would be pci_bios_access
+	pci_direct_init()
+		set *raw_pci_ops* depends on type
+	dmi_check_pciprobe()
+		dmi_check_system(pciprobe_dmi_table)
+	dmi_check_skip_isa_align()
+		dmi_check_system(can_skip_pciprobe_dmi_table);
+
+
+3. sriov_init how to reserve resource for VF
+================================================================================
+sriov_enable(struct pci_dev *dev, int nr_virfn);
+	virtfn_add()
+		pci_device_add(struct pci_dev *dev, struct pci_bus *bus);
+			pci_init_capabilities(struct pci_dev *dev);
+				pci_iov_init(dev);
+					sriov_init(dev, pos);
+
+4. reassign
+================================================================================
+kernel command line option, pci=assign-busses
+
+in pcibios_setup()
+	pci_probe |= PCI_ASSIGN_ALL_BUSSES;
+	
+Then 
+unsigned int pcibios_assign_all_busses(void)
+{
+	return (pci_probe & PCI_ASSIGN_ALL_BUSSES) ? 1 : 0;
+}
+
+The pcibios_assign_all() will be called pci_scan_bridge(), which means
+1. if the command line option is set, then kernel will reassign the bus numbers 
+   for all the devices. Ignore the BIOS work.
+2. If the command line option is not set, then the kernel will just accept the 
+   BIOS's config for those devices works fine. 
+   Reassign the bus number for those not work fine with the BIOS.
+
+5. resourse realloc
+================================================================================
+kernel command line option, pci=realloc
+
+This will pci_setup() call pci_realloc() to set the pci_realloc_enable to 1.
+
+function pci_assign_unassigned_resources() will try to test this bit. 
+If set will realloc res.
+
+6. where those kernel parameters get processed
+================================================================================
+start_kernel();
+	setup_arch(&command_line);
+		strlcpy(command_line, boot_command_line, COMMAND_LINE_SIZE);
+			parse_early_param();
+				parse_early_options(tmp_cmdline);
+					parse_args("early options", cmdline, NULL, 0, do_early_param); in kernel/params.c
+						ret = parse_one(param, val, params, num, unknown);
+							do_early_param("pci", "xxx");
+								pci_setup();
+									pcibios_setup();
+										pci_probe |= PCI_ASSIGN_ALL_BUSSES;
+									pci_realloc(); 
+										pci_realloc_enable = 1;
+
