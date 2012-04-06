@@ -1,0 +1,24 @@
+Basic Questions:
+1. how pci subsystem enumerate the pci bus at bootup?
+
+2. how to reassign bus number and resources? when bios not work fine
+
+3. Why it need to scan the bridge twice?
+
+4. How the pci_dev structure used by the driver?
+
+5. How to maintain the bus and dev hierarchy? 
+   all bus link to a list or form a tree?
+   all pci_dev linkd to a list or form a tree, how could driver traverse them?
+
+6. How can I print the bus hierarchy in user space?
+   lspci?
+
+PCIe Questions:
+2. How PCIe device support 256 functions per device.
+   And how linux code enumerate it in code? pci_scan_child_bus()
+
+SRIOV Questions:
+1. For SRIOV, how to get the VF and how this VF is used by guest? or host?
+
+
