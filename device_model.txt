@@ -1,0 +1,27 @@
+1. bus_register() drivers/base/bus.c
+================================================================================
+int bus_register(struct bus_type *bus)
+	struct subsys_private *priv;
+	priv->bus = bus;
+	bus->p = priv;
+	priv->subsys.kobj.kset = bus_kset;
+	priv->subsys.kobj.ktype = &bus_ktype;
+	priv->drivers_autoprobe = 1;
+
+	retval = kset_register(&priv->subsys);
+
+	retval = bus_create_file(bus, &bus_attr_uevent);
+
+	priv->devices_kset = kset_create_and_add("devices", NULL,
+						 &priv->subsys.kobj);
+
+	priv->drivers_kset = kset_create_and_add("drivers", NULL,
+						 &priv->subsys.kobj);
+
+	klist_init(&priv->klist_devices, klist_devices_get, klist_devices_put);
+	klist_init(&priv->klist_drivers, NULL, NULL);
+
+	retval = add_probe_files(bus);
+
+	retval = bus_add_attrs(bus);
+
