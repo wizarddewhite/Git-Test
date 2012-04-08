@@ -4,7 +4,7 @@ acpi_pci_root_init()
 	acpi_hest_init() <-- hardware error table
 	pci_acpi_crs_quirks()
 
-	acpi_bus_register_driver(&acpi_pci_root_driver) 
+	acpi_bus_register_driver(&acpi_pci_root_driver); acpi_pci_root_driver is struct acpi_driver
                     static struct acpi_driver acpi_pci_root_driver = {
                     	.name = "pci_root",
                     	.class = ACPI_PCI_ROOT_CLASS,
@@ -15,15 +15,50 @@ acpi_pci_root_init()
                     		.start = acpi_pci_root_start,
                     		},
                     };
-		driver_register(&driver->drv);
-			driver_find(name, bus)
+		driver->drv.name = driver->name;
+		driver->drv.bus  = &acpi_bus_type;
+		driver->drv.owner = driver->owner;
+		driver_register(&driver->drv); this drv is struct device_driver 
+continue:
+		driver_find(name, bus); search by the name
+			if this return non-zero, it means there is already a driver
+			for this bus
 		bus_add_driver(drv)
-			driver_attach();
-				bus_for_each_dev();
+			priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+			klist_init(&priv->klist_devices, NULL, NULL); this list indicate the devices match the driver
+			priv->driver = drv;
+			drv->p = priv;
+			; bus->p->drivers_kset is the drivers kset
+			priv->kobj.kset = bus->p->drivers_kset;
+			error = kobject_init_and_add(&priv->kobj, &driver_ktype, NULL,
+						     "%s", drv->name);
+			driver_attach(drv->bus, NULL, drv, __driver_attach); try to bind driver to devices
+				bus_for_each_dev(drv->bus, NULL, drv, __driver_attach); go through the bus devices list
+					klist_iter_init_node(&bus->p->klist_devices, &i,
+							     (start ? &start->p->knode_bus : NULL));
 					__driver_attach(dev, data);
-						driver_match_device();
+						driver_match_device(drv, dev);
+							 drv->bus->match == acpi_bus_match();
 						driver_probe_device();
-							really_probe(); == acpi_device_probe();
+							really_probe(); 
+								driver_sysfs_add(dev);
+								; dev->bus should be acpi_bus_type
+								if (dev->bus->probe) {
+									ret = dev->bus->probe(dev);== acpi_device_probe();
+									if (ret)
+										goto probe_failed;
+								} else if (drv->probe) {
+									ret = drv->probe(dev);
+									if (ret)
+										goto probe_failed;
+								}
+								driver_bound(dev);
+									klist_add_tail(&dev->p->knode_driver, &dev->driver->p->klist_devices);
+			;add into the klist_drivers
+			klist_add_tail(&priv->knode_bus, &bus->p->klist_drivers);
+			module_add_driver(drv->owner, drv);
+			; create sysfs file for driver
+			error = driver_create_file(drv, &driver_attr_uevent);
 
 continue here:
 	acpi_device_probe()
