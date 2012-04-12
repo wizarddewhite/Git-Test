@@ -17,6 +17,15 @@ acpi_pci_root_init()
                     };
 		driver->drv.name = driver->name;
 		driver->drv.bus  = &acpi_bus_type;
+			struct bus_type acpi_bus_type = {
+				.name		= "acpi",
+				.suspend	= acpi_device_suspend,
+				.resume		= acpi_device_resume,
+				.match		= acpi_bus_match,
+				.probe		= acpi_device_probe,
+				.remove		= acpi_device_remove,
+				.uevent		= acpi_device_uevent,
+			};
 		driver->drv.owner = driver->owner;
 		driver_register(&driver->drv); this drv is struct device_driver 
 continue:
@@ -36,6 +45,7 @@ continue:
 				bus_for_each_dev(drv->bus, NULL, drv, __driver_attach); go through the bus devices list
 					klist_iter_init_node(&bus->p->klist_devices, &i,
 							     (start ? &start->p->knode_bus : NULL));
+					; acpi_scan_init() is called to enumerate the devices on acpi bus
 					__driver_attach(dev, data);
 						driver_match_device(drv, dev);
 							 drv->bus->match == acpi_bus_match();
@@ -78,8 +88,8 @@ struct acpi_pci_root {
 };
 
 acpi_pci_root_add()
-	acpi_evaluate_integer(); get the _SEG, which indidate the domain
-	try_get_root_bridge_busnr(device->handle, res); get the bus number from ACPI namespace
+	acpi_evaluate_integer(struct acpi_device *device); get the _SEG, which indidate the domain
+	try_get_root_bridge_busnr(device->handle, res); get the bus number range from ACPI namespace
 		acpi_walk_resources(handle, METHOD_NAME__CRS, get_root_bridge_busnr_callback, res);
 		                      ;get the bus number range under root bridge;
 			acpi_rs_get_method_data(); <-- put resource info into buffer
@@ -93,6 +103,8 @@ acpi_pci_root_add()
 			the pci bus range number.
 			get_root_bridge_busnr_callback() is used to assign the context 
 
+	root->device = device;
+	device->driver_data = root;
 	list_add_tail(&root->node, &acpi_pci_roots); acpi_pci_roots is a list of pci roots
 
 	root->bus = pci_acpi_scan_root(root) ; <-- get the root bus of this root bridge
@@ -108,17 +120,28 @@ acpi_pci_root_add()
 				b->ops = ops; <- this is assigend to pci_root_ops
 				b2 = pci_find_bus(pci_domain_nr(b), bus); 
 				list_add_tail(&b->node, &pci_root_buses); <- why this is under root?
+				dev->parent = parent; parent = NULL;
 				dev_set_name(dev, "pci%04x:%02x", pci_domain_nr(b), bus);
 				error = device_register(dev);
-				b->bridge = get_device(dev);
+				b->bridge = get_device(dev); <- ? i'm curious
 				if (!parent)
 					set_dev_node(b->bridge, pcibus_to_node(b)); numa node
+				b->dev.class = &pcibus_class;
+				b->dev.parent = b->bridge;
 				b->number = b->secondary = bus;
 				b->resource[0] = &ioport_resource;
 				b->resource[1] = &iomem_resource;
 			get_current_resources(device, busnum, domain, bus); allocate resource for this device
+				info.bus = bus;
 				acpi_walk_resources(); <- get res number
-				acpi_walk_resources(); <- get res detail from namespace
+				acpi_walk_resources(setup_resource); <- get res detail from namespace
+					setup_resource(); setup the res in bus
+						res = &info->res[info->res_num];
+						res->name = info->name;
+						res->flags = flags;
+						res->start = start;
+						res->end = end;
+						res->child = NULL;
 				add_resources(&info)
 					insert_resource_conflict();Insert a resource into the resource tree
 					if no conflict, add this in the bus res list
@@ -130,12 +153,16 @@ acpi_pci_root_add()
 						pci_scan_single_device(bus, devfn);
 							pci_get_slot()<- get the corresponding dev, or
 							pci_scan_device(bus, devfn); <- scan the bus, assign the devfn number
-								dev->bus = bus;
+								dev = alloc_pci_dev(); not we create a new pci_dev
+								dev->bus = bus; pci_dev->bus is the bus which device on
 								dev->devfn = devfn;
 								pci_setup_device(dev);
+									dev->dev.parent = dev->bus->bridge;
+									dev->dev.bus = &pci_bus_type;
 									dev->slot = slot; <- associate the slot
 									dev->class = class;
 									dev->cfg_size = pci_cfg_space_size(dev);
+									dev->current_state = PCI_UNKNOWN;
 									base on dev->hdr_type process 
 									for normal device
 										pci_read_irq(dev);
@@ -147,6 +174,7 @@ acpi_pci_root_add()
 							pci_device_add(dev, bus); Add the device to our list of discovered devices
 								                  And then we will iterate on this list to scan
 										  the bridge
+								pci_dev_get(dev);
 								pci_init_capabilities(dev); Initialize various capabilities
 									pci_msi_init_pci_dev(dev);
 									pci_allocate-cap_save_buffers(dev);
@@ -154,7 +182,7 @@ acpi_pci_root_add()
 									platform_pci_wakeup_init(dev);
 									pci_vpd_pci22_init(dev); Vital Product Data
 									pci_enable_ari(dev);
-									pci_iov_init(dev);
+									pci_iov_init(dev); iov init!
 										pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV)
 										sriov_init(dev, pos);
 											pci_read_config_word(dev, pos + PCI_SRIOV_CTRL, &ctrl);
@@ -178,23 +206,42 @@ acpi_pci_root_add()
 							pass indicate the round
 						pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
 						get the bus number
-					primary = buses & 0xFF;
-					secondary = (buses >> 8) & 0xFF;
-					subordinate = (buses >> 16) & 0xFF;
-					
-					pass 0
-					child = pci_find_bus(pci_domain_nr(bus), secondary);
-					if child == NULL
-						create a child
-						pci_add_new_bus(bus, dev, secondary);
-							pci_alloc_child_bus(parent, dev, busnr);
-							list_add_tail(&child->node, &parent->children);
-					cmax = pci_scan_child_bus(child);
 
-					pass 1, i think
-					child = pci_add_new_bus(bus, dev, ++max);
+						primary = buses & 0xFF;
+						secondary = (buses >> 8) & 0xFF;
+						subordinate = (buses >> 16) & 0xFF;
+						
+						pass 0
+						child = pci_find_bus(pci_domain_nr(bus), secondary);
+						if child == NULL
+							create a child
+							pci_add_new_bus(bus, dev, secondary);
+								pci_alloc_child_bus(parent, bridge, busnr);
+									pci_bus *child = pci_alloc_bus();
+									child->parent = parent;
+									child->ops = parent->ops;
+									child->sysdata = parent->sysdata;
+									child->bus_flags = parent->bus_flags;
+
+									child->number = child->secondary = busnr;
+									child->primary = parent->secondary;
+									child->subordinate = 0xff;
+
+									if (!bridge)
+										return child;
+									child->self = bridge;
+									child->bridge = get_device(&bridge->dev);
+									bridge->subordinate = child; 
+									        if a pci_dev is a bridge, then its subordinate 
+										will not be null and point to its subordinate bus
+								list_add_tail(&child->node, &parent->children);
+						cmax = pci_scan_child_bus(child);
+
+						pass 1, i think
+						child = pci_add_new_bus(bus, dev, ++max);
 
 				return max;
+		return bus;
 
 
 
