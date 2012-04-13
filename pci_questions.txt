@@ -1,9 +1,37 @@
 Basic Questions:
 1. how pci subsystem enumerate the pci bus at bootup?
+   acpi_pci_root_add() will get the root bridge bus number
+   and downstream bus range.
+   then it will call pci_acpi_scan_root() to enumerate the bridge.
 
-2. how to reassign bus number and resources? when bios not work fine
+   pci_acpi_scan_root() will get the resourses from the acpi namespace 
+   and then do a depth first search.
+
+2. how to reassign bus number ? when bios not work fine
+   First pass the kernel command line parameter, pci=assign-busses
+   This will enable the pcibios_assign_all_busses() which enable pci_fixup_parent_subordinate_busnr().
+   The pci_fixup_parent_subordinate_busnr() is used to fix the subordinate number in pass 1 of 
+   pci_scan_bridge().
+
+   pci_fixup_parent_subordinate_busnr() will both overwrite the pci_bus->subordinate and 
+   write the config space of the bridge.
+
+  
+   how to reassign bus resource ? when bios not work fine
+   On x86, get_current_resources() is called to get resouces from ACPI namespace.
+   And register the resource in the linux kernel.
+
+   In the kernel initializatioin process, pcibios_assign_resources() is call which than call
+   pci_assign_unassigned_resources().
 
 3. Why it need to scan the bridge twice?
+   There are two passed for the pci_scan_bridge().
+
+   pass 0 are for those works fine with the BIOS/Firmware.
+   BIOS/Firmware take care of the bus/resource assignment.
+
+   pass 1 are for those couldn't work fine with BIOS/Firmware.
+   kernel will assign bus number for them.
 
 4. How the pci_dev structure used by the driver?
 
@@ -22,3 +50,10 @@ SRIOV Questions:
 1. For SRIOV, how to get the VF and how this VF is used by guest? or host?
 
 
+Some issue want to identify:
+
+1. pci_bus->number and pci_bus->secondary redundant?
+   in pci_alloc_child_bus
+
+2. pci_bus->resource redundant?
+   in pci_alloc_child_bus
