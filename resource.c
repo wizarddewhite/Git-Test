@@ -18,15 +18,9 @@
 
 #include <stdio.h>
 
-typedef unsigned long resource_size_t;
+#include "resource.h"
+#define __re_request_resource __re_request_resource2
 
-struct resource {
-    resource_size_t start;
-    resource_size_t end;
-    const char *name;
-    unsigned long flags;
-    struct resource *parent, *sibling, *child;
-};
 
 struct resource root;
 struct resource res[10];
@@ -194,6 +188,8 @@ static int  __re_request_resource2(struct resource *root,
     return 0;
 }
 
+
+
 static int  remove_old(struct resource *root, struct resource *old)
 {
        struct resource *iter, **p_iter = NULL;
@@ -213,19 +209,112 @@ static int  remove_old(struct resource *root, struct resource *old)
        }
 
        *p_old = old->sibling;
-
 }
 
-#define __re_request_resource __re_request_resource2
+/* Return the conflict entry if you can't request it */
+/* this function just search the child level, not the grand-child level */
+static struct resource * __request_resource(struct resource *root, struct resource *new)
+{
+	resource_size_t start = new->start;
+	resource_size_t end = new->end;
+	struct resource *tmp, **p;
 
-int main()
+	if (end < start)
+		return root;
+	if (start < root->start)
+		return root;
+	if (end > root->end)
+		return root;
+	p = &root->child;
+	for (;;) {
+		tmp = *p;
+		if (!tmp || tmp->start > end) {
+			new->sibling = tmp;
+			*p = new;
+			new->parent = root;
+			return NULL;
+		}
+		p = &tmp->sibling;
+		if (tmp->end < start)
+			continue;
+		return tmp;
+	}
+}
+
+/*
+ * Insert a resource into the resource tree. If successful, return NULL,
+ * otherwise return the conflicting resource (compare to __request_resource())
+ */
+static struct resource * __insert_resource(struct resource *parent, struct resource *new)
+{
+	struct resource *first, *next;
+
+	for (;; parent = first) {
+		first = __request_resource(parent, new);
+		if (!first) /* well no one occupy the space */
+			return first; /* here first is null */
+
+		if (first == parent)
+			return first;
+		if ((first == new))	/* duplicated insertion */
+			return first;
+
+		/* first doesn't contains new */
+		if ((first->start > new->start) || (first->end < new->end))
+			break;
+		/* first equals new */
+		if ((first->start == new->start) && (first->end == new->end))
+			break;
+
+		/* code come to here means the new is exactly contained in first
+		 * then dig into to the "first"
+		 * */
+	}
+
+	for (next = first; ; next = next->sibling) {
+		/* Partial overlap? Bad, and unfixable */
+		if (next->start < new->start || next->end > new->end)
+			return next;
+		if (!next->sibling)
+			break;
+		if (next->sibling->start > new->end)
+			break;
+	}
+
+	new->parent = parent;
+	new->sibling = next->sibling;
+	new->child = first;
+
+	next->sibling = NULL;
+	for (next = first; next; next = next->sibling)
+		next->parent = new;
+
+	if (parent->child == first) {
+		parent->child = new;
+	} else {
+		next = parent->child;
+		while (next->sibling != first)
+			next = next->sibling;
+		next->sibling = new;
+	}
+	return NULL;
+}
+
+struct resource *insert_resource_conflict(struct resource *parent, struct resource *new)
+{
+	struct resource *conflict;
+
+	conflict = __insert_resource(parent, new);
+
+	return conflict;
+}
+
+void realloc_test()
 {
     int index;
 
-    init();
-    dump(&root);
-
     /*test cases for resoures*/
+    dump(&root);
     struct resource new;
     scanf("%d", &index);
     /* 10-50, 90-150, 210-250, 310-450 */
@@ -280,6 +369,40 @@ int main()
     }
 
     dump(&root);
+
+    return;
+}
+
+void relation_test()
+{
+	struct resource res1, res2;
+
+	res1.start = 5;
+	res1.end = 10;
+
+	res2.start = 5;
+	res2.end = 10;
+
+	printf("res the same %d\n", res1_contains_res2(&res1, &res2));
+
+	res2.start = 6;
+	res2.end = 10;
+	printf("res1 contain res2 %d\n", res1_contains_res2(&res1, &res2));
+
+	res2.start = 5;
+	res2.end = 11;
+	printf("res1 contain res2 %d\n", res1_contains_res2(&res1, &res2));
+
+	printf("res contain %d\n", resource_contains(&res1, &res2));
+
+}
+
+int main()
+{
+
+    init();
+
+    relation_test();
 
 
     return 0;
