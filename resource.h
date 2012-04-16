@@ -15,6 +15,12 @@
  *
  * =====================================================================================
  */
+#ifndef __RESOURCE_H__
+#define __RESOURCE_H__
+
+#include <stdio.h>
+
+#define __re_request_resource __re_request_resource2
 
 typedef unsigned long resource_size_t;
 
@@ -66,6 +72,11 @@ static inline int resource_not_overlap(struct resource *res1, struct resource *r
 static inline int resource_overlap(struct resource *res1, struct resource *res2)
 {
 	return !resource_not_overlap(res1, res2);
+	/* !resource_not_overlap(res1, res2)
+	 * = !( (res1->end < res2->start) || (res1->start > res2->end ) )
+	 * = !(res1->end < res2->start) && !(res1->start > res2->end )
+	 * = (res1->end >= res2->start) && (res1->start <= res2->end)
+	 * */
 }
 
 static inline int res1_contains_res2(struct resource *res1, struct resource *res2)
@@ -77,3 +88,12 @@ static inline int resource_contains(struct resource *res1, struct resource *res2
 {
 	return res1_contains_res2(res1, res2) || res1_contains_res2(res2, res1);
 }
+
+void dump(struct resource *root);
+int  __re_request_resource1(struct resource *root,
+                       struct resource *new, struct resource *old);
+int  __re_request_resource2(struct resource *root,
+                       struct resource *new, struct resource *old);
+int  remove_old(struct resource *root, struct resource *old);
+
+#endif //__RESOURCE_H__
