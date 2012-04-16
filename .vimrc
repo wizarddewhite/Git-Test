@@ -18,7 +18,7 @@ set smartindent
 set cindent
 set backspace=2
 set cmdheight=2
-set shiftwidth=8
+"set shiftwidth=4 "this field will affect cindent and >>
 set ts=8
 "set expandtab "expand tabs,by this new line will start with space
 set encoding=prc
@@ -79,8 +79,9 @@ let g:miniBufExplMapCTabSwitchBufs = 1
 """""""""""Cscope Option"""""""""""""""
 nmap <C-\>s :cs find s <C-R>=expand("<cword>")<CR><CR>
 nmap <C-\>g :cs find g <C-R>=expand("<cword>")<CR><CR>
-nmap <C-\>f :cs find c <C-R>=expand("<cword>")<CR><CR>
+nmap <C-\>f :cs find f <C-R>=expand("<cword>")<CR><CR>
 nmap <C-\>d :cs find d <C-R>=expand("<cword>")<CR><CR>
+nmap <C-\>c :cs find c <C-R>=expand("<cword>")<CR><CR>
 "读取cscope的数据库
 if filereadable("cscope.out")
    execute "cs add cscope.out"
