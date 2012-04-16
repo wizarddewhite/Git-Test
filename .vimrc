@@ -18,7 +18,7 @@ set smartindent
 set cindent
 set backspace=2
 set cmdheight=2
-"set shiftwidth=4 "this field will affect cindent and >>
+set shiftwidth=8
 set ts=8
 "set expandtab "expand tabs,by this new line will start with space
 set encoding=prc
