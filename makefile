@@ -9,7 +9,7 @@ $(warning $(MAKECMDGOALS) $(PROGRAM))
 all: resource
 
 resource: resource.c resource_case.c
-	gcc -o resource resource.c resource_case.c
+	gcc -o resource -g resource.c resource_case.c
 
 %: %.c
 	echo test

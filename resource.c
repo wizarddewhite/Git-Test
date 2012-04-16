@@ -50,23 +50,39 @@ void init()
     for(i = 0; i< 3; i++)
     {
         res[i].sibling = &res[i+1];
+	res[i].parent = &root;
+	res[i].child = NULL;
     }
 
     res[3].sibling = NULL;
 
+    res[4].start = 90;
+    res[4].end = 120;
+    res[4].sibling = NULL;
+    res[4].child = NULL;
+    res[4].parent = &res[1];
+
+    res[1].child = &res[4];
+
 }
 
-void dump(struct resource *root)
+void dump(struct resource *root, int level)
 {
-    struct resource **p     = &root->child;
-    struct resource *tmp    = NULL;
+	struct resource *tmp    = NULL;
 
-    while (*p)
-    {
-        tmp = *p;
-        printf("%lu-%lu\n", tmp->start, tmp->end);
-        p = &tmp->sibling;
-    }
+	if (!root)
+		return;
+
+	/* print itself first */
+	printf("%*c%lu-%lu\n",level*3, ' ', root->start, root->end);
+
+	/* depth first */
+	dump(root->child, level+1);
+
+	/* then brothers */
+	dump(root->sibling, level);
+
+	return;
 }
 
 /*
@@ -314,6 +330,6 @@ struct resource *insert_resource_conflict(struct resource *parent, struct resour
 int main()
 {
 	init();
-	realloc_test(&root, res);
+	dump(&root, 0);
 	return 0;
 }

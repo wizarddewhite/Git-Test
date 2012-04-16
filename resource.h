@@ -89,7 +89,7 @@ static inline int resource_contains(struct resource *res1, struct resource *res2
 	return res1_contains_res2(res1, res2) || res1_contains_res2(res2, res1);
 }
 
-void dump(struct resource *root);
+void dump(struct resource *root, int level);
 int  __re_request_resource1(struct resource *root,
                        struct resource *new, struct resource *old);
 int  __re_request_resource2(struct resource *root,

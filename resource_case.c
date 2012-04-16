@@ -24,7 +24,7 @@ void realloc_test(struct resource *root, struct resource *res)
     int index;
 
     /*test cases for resoures*/
-    dump(root);
+    dump(root, 0);
     struct resource new;
     scanf("%d", &index);
     /* 10-50, 90-150, 210-250, 310-450 */
@@ -78,7 +78,7 @@ void realloc_test(struct resource *root, struct resource *res)
             break;
     }
 
-    dump(root);
+    dump(root, 0);
 
     return;
 }
