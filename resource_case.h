@@ -19,6 +19,8 @@
 #ifndef __RESOURCE_CASE_H__
 #define __RESOURCE_CASE_H__
 /* some testing functions */
+
+void init();
 void realloc_test(struct resource *root, struct resource *res);
 void relation_test();
 #endif //__RESOURCE_CASE_H__

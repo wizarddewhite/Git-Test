@@ -71,12 +71,13 @@ static inline int resource_not_overlap(struct resource *res1, struct resource *r
 
 static inline int resource_overlap(struct resource *res1, struct resource *res2)
 {
-	return !resource_not_overlap(res1, res2);
-	/* !resource_not_overlap(res1, res2)
+	/* resource_overlap(res1, res2)
+	 * = !resource_not_overlap(res1, res2)
 	 * = !( (res1->end < res2->start) || (res1->start > res2->end ) )
 	 * = !(res1->end < res2->start) && !(res1->start > res2->end )
 	 * = (res1->end >= res2->start) && (res1->start <= res2->end)
 	 * */
+	return (res1->end >= res2->start) && (res1->start <= res2->end);
 }
 
 static inline int res1_contains_res2(struct resource *res1, struct resource *res2)
@@ -84,9 +85,22 @@ static inline int res1_contains_res2(struct resource *res1, struct resource *res
 	return (res1->start <= res2->start) && (res1->end >= res2->end);
 }
 
+static inline int res1_not_contains_res2(struct resource *res1, struct resource *res2)
+{
+	/* res1_not_contains_res2(res1, res2)
+	 * = !res1_contains_res2(res1, res2)
+	 * = !((res1->start <= res2->start) && (res1->end >= res2->end))
+	 * = !(res1->start <= res2->start) || !(res1->end >= res2->end)
+	 * = (res1->start > res2->start) || (res1->end < res2->end)
+	 * */
+	return (res1->start > res2->start) || (res1->end < res2->end);
+ 
+}
+
 static inline int resource_contains(struct resource *res1, struct resource *res2)
 {
-	return res1_contains_res2(res1, res2) || res1_contains_res2(res2, res1);
+	//return res1_contains_res2(res1, res2) || res1_contains_res2(res2, res1);
+	return ((res1->start - res2->start)*(res2->end - res1->end) >= 0);
 }
 
 void dump(struct resource *root, int level);

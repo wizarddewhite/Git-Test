@@ -22,49 +22,6 @@
 #include "resource_case.h"
 
 
-struct resource root;
-struct resource res[10];
-
-void init()
-{
-    int i;
-
-    root.start = 0;
-    root.end   = 1000;
-
-    res[0].start = 10;
-    res[0].end   = 50;
-    
-    res[1].start = 90;
-    res[1].end   = 150;
-    
-    res[2].start = 210;
-    res[2].end   = 250;
-
-    res[3].start = 310;
-    res[3].end   = 450;
-
-    /*link it*/
-    root.child = &res[0];
-
-    for(i = 0; i< 3; i++)
-    {
-        res[i].sibling = &res[i+1];
-	res[i].parent = &root;
-	res[i].child = NULL;
-    }
-
-    res[3].sibling = NULL;
-
-    res[4].start = 90;
-    res[4].end = 120;
-    res[4].sibling = NULL;
-    res[4].child = NULL;
-    res[4].parent = &res[1];
-
-    res[1].child = &res[4];
-
-}
 
 void dump(struct resource *root, int level)
 {
@@ -326,10 +283,3 @@ struct resource *insert_resource_conflict(struct resource *parent, struct resour
 }
 
 
-
-int main()
-{
-	init();
-	dump(&root, 0);
-	return 0;
-}
