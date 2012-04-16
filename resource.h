@@ -109,5 +109,6 @@ int  __re_request_resource1(struct resource *root,
 int  __re_request_resource2(struct resource *root,
                        struct resource *new, struct resource *old);
 int  remove_old(struct resource *root, struct resource *old);
+struct resource * __insert_resource(struct resource *parent, struct resource *new);
 
 #endif //__RESOURCE_H__

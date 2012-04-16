@@ -62,6 +62,42 @@ void init()
 
 }
 
+void init2()
+{
+    int i;
+
+    root.start = 0;
+    root.end   = 1000;
+
+    res[0].start = 10;
+    res[0].end   = 50;
+    
+    res[1].start = 90;
+    res[1].end   = 150;
+    
+    res[2].start = 210;
+    res[2].end   = 250;
+
+    res[3].start = 310;
+    res[3].end   = 450;
+
+    res[4].start = 90;
+    res[4].end = 120;
+
+    for(i = 0; i< 5; i++)
+    {
+	    __insert_resource(&root, &res[i]);
+    }
+    dump(&root, 0);
+
+    printf("insert a large one which cover several res\n");
+    res[5].start = 90;
+    res[5].end = 260;
+    __insert_resource(&root, &res[5]);
+    dump(&root, 0);
+    
+}
+
 //realloc_test(&root, res);
 void realloc_test(struct resource *root, struct resource *res)
 {
@@ -154,6 +190,6 @@ void relation_test()
 
 int main()
 {
-	relation_test();
+	init2();
 	return 0;
 }

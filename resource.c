@@ -218,7 +218,7 @@ static struct resource * __request_resource(struct resource *root, struct resour
  * Insert a resource into the resource tree. If successful, return NULL,
  * otherwise return the conflicting resource (compare to __request_resource())
  */
-static struct resource * __insert_resource(struct resource *parent, struct resource *new)
+struct resource * __insert_resource(struct resource *parent, struct resource *new)
 {
 	struct resource *first, *next;
 
@@ -244,6 +244,10 @@ static struct resource * __insert_resource(struct resource *parent, struct resou
 		 * */
 	}
 
+	/* code come here with just two cases
+	 * 1. new partially overlap with first
+	 * 2. new contains first and some of his siblings
+	 * */
 	for (next = first; ; next = next->sibling) {
 		/* Partial overlap? Bad, and unfixable */
 		if (next->start < new->start || next->end > new->end)
@@ -253,6 +257,8 @@ static struct resource * __insert_resource(struct resource *parent, struct resou
 		if (next->sibling->start > new->end)
 			break;
 	}
+
+	/* now fisrt-next are covered by new */
 
 	new->parent = parent;
 	new->sibling = next->sibling;
