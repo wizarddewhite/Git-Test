@@ -42,6 +42,12 @@ Basic Questions:
 6. How can I print the bus hierarchy in user space?
    lspci?
 
+
+7. one resouce with its parent equals to null means?
+
+8. pci_dev->subordinate != null
+   means this pci_dev is a bridge
+
 PCIe Questions:
 2. How PCIe device support 256 functions per device.
    And how linux code enumerate it in code? pci_scan_child_bus()
