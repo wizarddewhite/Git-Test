@@ -22,6 +22,10 @@
 
 #define __re_request_resource __re_request_resource2
 
+#define __ALIGN_KERNEL(x, a)		__ALIGN_KERNEL_MASK(x, (typeof(x))(a) - 1)
+#define __ALIGN_KERNEL_MASK(x, mask)	(((x) + (mask)) & ~(mask))
+#define ALIGN(x, a)		__ALIGN_KERNEL((x), (a))
+
 typedef unsigned long resource_size_t;
 
 struct resource {
@@ -30,6 +34,14 @@ struct resource {
     const char *name;
     unsigned long flags;
     struct resource *parent, *sibling, *child;
+};
+
+/* constraints to be met while allocating resources */
+struct resource_constraint {
+	resource_size_t min, max, align;
+	resource_size_t (*alignf)(void *, const struct resource *,
+			resource_size_t, resource_size_t);
+	void *alignf_data;
 };
 
 /* three kinds relation ship between two resources 
@@ -118,4 +130,19 @@ struct resource *insert_resource_conflict(struct resource *parent, struct resour
 void release_child_resources(struct resource *r);
 int release_resource(struct resource *old);
 
+int allocate_resource(struct resource *root, struct resource *new,
+		      resource_size_t size, resource_size_t min,
+		      resource_size_t max, resource_size_t align,
+		      resource_size_t (*alignf)(void *,
+						const struct resource *,
+						resource_size_t,
+						resource_size_t),
+		      void *alignf_data);
+resource_size_t simple_align_resource(void *data,
+					     const struct resource *avail,
+					     resource_size_t size,
+					     resource_size_t align);
+int find_resource(struct resource *root, struct resource *new,
+			resource_size_t size,
+			struct resource_constraint  *constraint);
 #endif //__RESOURCE_H__

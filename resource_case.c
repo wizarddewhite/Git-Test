@@ -88,9 +88,9 @@ void init2()
     {
 	    insert_resource_conflict(&root, &res[i]);
     }
-    dump(&root, 0);
+    //dump(&root, 0);
 
-    printf("insert a large one which cover several res\n");
+    //printf("insert a large one which cover several res\n");
     res[5].start = 90;
     res[5].end = 260;
     insert_resource_conflict(&root, &res[5]);
@@ -199,8 +199,43 @@ void release_test()
 	dump(&root, 0);
 }
 
+void allocate_resource_test()
+{
+	struct resource_constraint constraint;
+	int ret;
+
+	init2();
+
+	constraint.min = root.start;
+	constraint.max = root.end;
+	constraint.align = 4;
+	constraint.alignf = simple_align_resource;
+	constraint.alignf_data = NULL;
+
+	/* allocate 40 first */
+	ret = find_resource(&root, &res[6], 40, &constraint);
+
+	if (ret == 0)
+		printf("We find a size %d free slot at %lu-%lu\n",
+			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
+	else
+		printf("We don't find a free slot for size 40\n");
+
+	/* allocate 90 first */
+	constraint.max = 400;
+	ret = find_resource(&root, &res[6], 90, &constraint);
+
+	if (ret == 0)
+		printf("We find a size %d free slot at %lu-%lu\n",
+			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
+	else
+		printf("We don't find a free slot for size 90\n");
+
+	return;
+}
+
 int main()
 {
-	release_test();
+	allocate_resource_test();
 	return 0;
 }
