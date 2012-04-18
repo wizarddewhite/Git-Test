@@ -103,12 +103,19 @@ static inline int resource_contains(struct resource *res1, struct resource *res2
 	return ((res1->start - res2->start)*(res2->end - res1->end) >= 0);
 }
 
+static inline resource_size_t resource_size(const struct resource *res)
+{
+	return res->end - res->start + 1;
+}
+
 void dump(struct resource *root, int level);
 int  __re_request_resource1(struct resource *root,
                        struct resource *new, struct resource *old);
 int  __re_request_resource2(struct resource *root,
                        struct resource *new, struct resource *old);
 int  remove_old(struct resource *root, struct resource *old);
-struct resource * __insert_resource(struct resource *parent, struct resource *new);
+struct resource *insert_resource_conflict(struct resource *parent, struct resource *new);
+void release_child_resources(struct resource *r);
+int release_resource(struct resource *old);
 
 #endif //__RESOURCE_H__

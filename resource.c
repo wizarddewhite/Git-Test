@@ -21,8 +21,6 @@
 #include "resource.h"
 #include "resource_case.h"
 
-
-
 void dump(struct resource *root, int level)
 {
 	struct resource *tmp    = NULL;
@@ -218,7 +216,7 @@ static struct resource * __request_resource(struct resource *root, struct resour
  * Insert a resource into the resource tree. If successful, return NULL,
  * otherwise return the conflicting resource (compare to __request_resource())
  */
-struct resource * __insert_resource(struct resource *parent, struct resource *new)
+static struct resource * __insert_resource(struct resource *parent, struct resource *new)
 {
 	struct resource *first, *next;
 
@@ -246,7 +244,7 @@ struct resource * __insert_resource(struct resource *parent, struct resource *ne
 
 	/* code come here with just two cases
 	 * 1. new partially overlap with first
-	 * 2. new contains first and some of his siblings
+	 * 2. new contains first or contains first and some of his siblings
 	 * */
 	for (next = first; ; next = next->sibling) {
 		/* Partial overlap? Bad, and unfixable */
@@ -288,4 +286,62 @@ struct resource *insert_resource_conflict(struct resource *parent, struct resour
 	return conflict;
 }
 
+static void __release_child_resources(struct resource *r)
+{
+	struct resource *tmp, *p;
+	resource_size_t size;
 
+	p = r->child;
+	r->child = NULL;
+	while (p) {
+		tmp = p;
+		p = p->sibling;
+
+		tmp->parent = NULL;
+		tmp->sibling = NULL;
+		__release_child_resources(tmp);
+
+		//printf("release child resource %pR\n", tmp);
+		/* need to restore size, and keep flags */
+		size = resource_size(tmp);
+		tmp->start = 0;
+		tmp->end = size - 1;
+	}
+}
+
+void release_child_resources(struct resource *r)
+{
+	__release_child_resources(r);
+}
+
+static int __release_resource(struct resource *old)
+{
+	struct resource *tmp, **p;
+
+	p = &old->parent->child;
+	for (;;) {
+		tmp = *p;
+		if (!tmp)
+			break;
+		if (tmp == old) {
+			*p = tmp->sibling;
+			old->parent = NULL;
+			return 0;
+		}
+		p = &tmp->sibling;
+	}
+	return -1;
+}
+
+/* This function just release the old itself
+ * need to call release_child_resources to release
+ * the children*/
+int release_resource(struct resource *old)
+{
+	int retval;
+
+	//write_lock(&resource_lock);
+	retval = __release_resource(old);
+	//write_unlock(&resource_lock);
+	return retval;
+}

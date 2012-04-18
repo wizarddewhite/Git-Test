@@ -86,14 +86,14 @@ void init2()
 
     for(i = 0; i< 5; i++)
     {
-	    __insert_resource(&root, &res[i]);
+	    insert_resource_conflict(&root, &res[i]);
     }
     dump(&root, 0);
 
     printf("insert a large one which cover several res\n");
     res[5].start = 90;
     res[5].end = 260;
-    __insert_resource(&root, &res[5]);
+    insert_resource_conflict(&root, &res[5]);
     dump(&root, 0);
     
 }
@@ -188,8 +188,19 @@ void relation_test()
 
 }
 
-int main()
+void release_test()
 {
 	init2();
+
+	printf("release one important child\n");
+	release_child_resources(&res[5]);
+	release_resource(&res[5]);
+
+	dump(&root, 0);
+}
+
+int main()
+{
+	release_test();
 	return 0;
 }
