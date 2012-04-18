@@ -23,3 +23,9 @@ awk '$1 ~ /J/' inventory-shipped
 awk '{if ($1 ~ /J/) print}' inventory-shipped
 # don't match string one filed
 awk '$1 !~ /J/' inventory-shipped
+
+#====================================================
+# Regex
+#====================================================
+# change the recode seperator to '/'
+awk 'BEGIN {RS = "/"}; {print $0}' BBS-list
