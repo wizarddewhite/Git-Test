@@ -145,4 +145,5 @@ resource_size_t simple_align_resource(void *data,
 int find_resource(struct resource *root, struct resource *new,
 			resource_size_t size,
 			struct resource_constraint  *constraint);
+struct resource *request_resource_conflict(struct resource *root, struct resource *new);
 #endif //__RESOURCE_H__

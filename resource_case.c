@@ -216,14 +216,18 @@ void allocate_resource_test()
 	ret = find_resource(&root, &res[6], 40, &constraint);
 
 	if (ret == 0)
+	{
 		printf("We find a size %d free slot at %lu-%lu\n",
 			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
+		request_resource_conflict(&root, &res[6]);
+		dump(&root, 0);
+	}
 	else
 		printf("We don't find a free slot for size 40\n");
 
 	/* allocate 90 first */
 	constraint.max = 400;
-	ret = find_resource(&root, &res[6], 90, &constraint);
+	ret = find_resource(&root, &res[7], 90, &constraint);
 
 	if (ret == 0)
 		printf("We find a size %d free slot at %lu-%lu\n",

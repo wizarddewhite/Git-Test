@@ -305,6 +305,16 @@ static struct resource * __request_resource(struct resource *root, struct resour
 	}
 }
 
+struct resource *request_resource_conflict(struct resource *root, struct resource *new)
+{
+	struct resource *conflict;
+
+	//write_lock(&resource_lock);
+	conflict = __request_resource(root, new);
+	//write_unlock(&resource_lock);
+	return conflict;
+}
+
 /*
  * Insert a resource into the resource tree. If successful, return NULL,
  * otherwise return the conflicting resource (compare to __request_resource())
