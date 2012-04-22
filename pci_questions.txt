@@ -42,11 +42,14 @@ Basic Questions:
 6. How can I print the bus hierarchy in user space?
    lspci?
 
-
 7. one resouce with its parent equals to null means?
+   this resource is not registered in the system?
 
 8. pci_dev->subordinate != null
    means this pci_dev is a bridge
+
+9. why pci_try_num in pci_assign_unassigned_resources()
+   is max_depth + 1;
 
 PCIe Questions:
 2. How PCIe device support 256 functions per device.

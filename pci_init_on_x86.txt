@@ -167,6 +167,7 @@ acpi_pci_root_add()
 									for normal device
 										pci_read_irq(dev);
 										pci_read_bases(dev, 6, PCI_ROM_ADDRESS); retrieve 6 BAR and ROM
+											res = &dev->resource[pos];
 											__pci_read_base(dev, pci_bar_unknown, res, reg);
 												fetch the bar and their res start/stop
 										pci_read_config_word(SUBSYSTEM_VENDOR_ID);
@@ -204,6 +205,7 @@ acpi_pci_root_add()
 							dev is one device under this bus
 							max is the current larget bus number
 							pass indicate the round
+						pci_bus *child;
 						pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
 						get the bus number
 
@@ -231,6 +233,10 @@ acpi_pci_root_add()
 										return child;
 									child->self = bridge;
 									child->bridge = get_device(&bridge->dev);
+									for (i = 0; i < PCI_BRIDGE_RESOURCE_NUM; i++) {
+										child->resource[i] = &bridge->resource[PCI_BRIDGE_RESOURCES+i];
+										child->resource[i]->name = child->name;
+									}
 									bridge->subordinate = child; 
 									        if a pci_dev is a bridge, then its subordinate 
 										will not be null and point to its subordinate bus
@@ -311,7 +317,7 @@ unsigned int pcibios_assign_all_busses(void)
 	return (pci_probe & PCI_ASSIGN_ALL_BUSSES) ? 1 : 0;
 }
 
-The pcibios_assign_all() will be called pci_scan_bridge(), which means
+The pcibios_assign_all_busses() will be called pci_scan_bridge(), which means
 1. if the command line option is set, then kernel will reassign the bus numbers 
    for all the devices. Ignore the BIOS work.
 2. If the command line option is not set, then the kernel will just accept the 
@@ -326,6 +332,143 @@ This will pci_setup() call pci_realloc() to set the pci_realloc_enable to 1.
 
 function pci_assign_unassigned_resources() will try to test this bit. 
 If set will realloc res.
+pci_assign_unassigned_resources();
+	int max_depth = pci_get_max_depth();
+	pci_try_num = max_depth + 1;
+	/* Depth first, calculate sizes and alignments of all
+	   subordinate buses. */
+	; for each bus linked to pci_root_buses
+	; traverse each domain
+	list_for_each_entry(bus, &pci_root_buses, node)
+	{
+		__pci_bus_size_bridges(bus, &add_list);
+			; go through the child bridge first
+
+			; then check our bus
+			pci_bridge_check_ranges(bus);
+			if (bus->self->is_hotplug_bridge) {
+				additional_io_size  = pci_hotplug_io_size;
+				additional_mem_size = pci_hotplug_mem_size;
+			}
+			pbus_size_io(bus, 0, additional_io_size, add_head);
+				struct resource *b_res = find_free_bus_resource(bus, IORESOURCE_IO);
+					; return no parent resource
+					if (r && (r->flags & type_mask) == type && !r->parent)
+						return r;
+				summarize the all io resource size of device under this bus, no parent
+				size = sum of res less than 1k.
+				size1 = sum of res more than 1k.
+				calculate_iosize(size, 0, size1, resource_size(b_res), 4096);
+					size = ALIGN(size+size1, 4096);
+					return size;
+				still confused with the algorithm
+				not understand how much size added to the list
+			pbus_size_mem(bus, prefmask, prefmask, 0, additional_mem_size, add_head)
+				go through each device under this bus
+				calculate the size of resources with out parent
+				calculate_memsize(size, 0, 0, resource_size(b_res), min_align);
+					size = max(size, min_size, old_size);
+					size = ALIGN(size+size1, min_align); here size1==0
+					return size;
+				not understand how much size added to the list
+	}
+	/* Depth last, allocate resources and update the hardware. */
+	list_for_each_entry(bus, &pci_root_buses, node) ; do the real work
+	{
+		__pci_bus_assign_resources(bus, &add_list, &head);
+			pbus_assign_resources_sorted(bus, add_head, fail_head);
+				for each device attached on this bus call
+				__dev_sort_resources(dev, &head); form an ordered list of all the
+					                          res of devices
+					pdev_sort_resources(dev, head); sort res by alignment
+						add the dev->res who has no parent, to the *head*
+						int alignment order
+				__assign_resources_sorted(&head, add_head, fail_head);
+					/* Satisfy the must-have resource requests */
+					assign_requested_resources_sorted(head, fail_head); 
+					; allocate res here
+						pci_assign_resource(list->dev, idx);
+							go through the parent and call
+							__pci_assign_resource(bus, dev, resno); magic one
+								pci_bus_alloc_resource();
+								or
+								request_resource_confict(root, res);
+
+								pci_update_resource(dev, resno);
+					/* Try to satisfy any additional nice-to-have resource
+						requests */
+					adjust_resources_sorted(add_head, head);
+
+			then call this function for each subordinate bus
+			could this miss some bus?
+	}
+	BUG_ON(add_list.next);
+	tried_times++;
+
+	/* don't realloc if asked to do so */
+	if (!pci_realloc_enabled()) {
+		free_list(resource_list_x, &head);
+		goto enable_and_dump;
+	}
+
+	failed_type = 0; get the types of res
+	for (list = head.next; list;) {
+		failed_type |= list->flags;
+		list = list->next;
+	}
+
+	/*
+	 * Try to release leaf bridge's resources that doesn't fit resource of
+	 * child device under that bridge
+	 */
+	; for each bus need to adjust, it will release 
+	for (list = head.next; list;) 
+	{
+		bus = list->dev->bus;
+		pci_bus_release_bridge_resources(bus, list->flags & type_mask,
+						  rel_type);
+			;
+			if rel_type == whole_subtree, will call itself on each bridge
+			on this bus
+			;
+			pci_bridge_release_resources(bus, type); release the bridge res
+				release_child_resources(r);
+				release_resource(r);
+				r->flags = 0; clean it means disable
+				__pci_setup_bridge(bus, type);
+					pci_setup_bridge_io(bus);
+					pci_setup_bridge_mmio(bus);
+					pci_setup_bridge_mmio_pref(bus);
+					pci_write_config_word(bridge, PCI_BRIDGE_CONTROL, bus->bridge_ctl);
+		list = list->next;
+	}
+
+	/* restore size and flags */
+	for (list = head.next; list;) {
+		struct resource *res = list->res;
+
+		res->start = list->start;
+		res->end = list->end;
+		res->flags = list->flags;
+		if (list->dev->subordinate)
+			res->flags = 0;
+
+		list = list->next;
+	}
+	free_list(resource_list_x, &head);
+
+enable_and_dump:
+	/* Depth last, update the hardware. */
+	list_for_each_entry(bus, &pci_root_buses, node)
+		pci_enable_bridges(bus);
+			pci_enable_device(dev);
+			pci_set_master(dev); bridge will be the master of this bus
+
+	/* dump the resource on buses */
+	list_for_each_entry(bus, &pci_root_buses, node)
+		pci_bus_dump_resources(bus);
+		{
+		}
 
 6. where those kernel parameters get processed
 ================================================================================
@@ -343,3 +486,6 @@ start_kernel();
 									pci_realloc(); 
 										pci_realloc_enable = 1;
 
+
+	 
+        
