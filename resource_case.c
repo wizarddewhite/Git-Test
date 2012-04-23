@@ -245,8 +245,23 @@ void allocate_resource_test()
 	return;
 }
 
+void adjust_resource_test()
+{
+	insert_resource_test();
+
+	adjust_resource(&res[5], res[5].start, 200);
+	printf("expand res[5] \n");
+	dump(&root, 0);
+
+	adjust_resource(&res[5], res[5].start, 180);
+	printf("shrink res[5] \n");
+	dump(&root, 0);
+
+	return;
+}
+
 int main()
 {
-	allocate_resource_test();
+	adjust_resource_test();
 	return 0;
 }

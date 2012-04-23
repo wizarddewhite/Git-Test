@@ -146,4 +146,5 @@ int find_resource(struct resource *root, struct resource *new,
 			resource_size_t size,
 			struct resource_constraint  *constraint);
 struct resource *request_resource_conflict(struct resource *root, struct resource *new);
+int adjust_resource(struct resource *res, resource_size_t start, resource_size_t size);
 #endif //__RESOURCE_H__
