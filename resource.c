@@ -214,6 +214,8 @@ static void resource_clip(struct resource *res, resource_size_t min,
  * tmp point to the raw free space find in resource tree
  * avail point to the available space after alignment
  * alloc is the final resource calculated and assigned to new
+ *
+ * actually it has lot similarity with adjust_resource()
  * */
 static int __find_resource(struct resource *root, struct resource *old,
 			 struct resource *new,
@@ -493,6 +495,8 @@ int reallocate_resource(struct resource *root, struct resource *old,
 		//BUG_ON(conflict);
 	}
 out:
+	printf("reallocate_resource: __find_resource get new res of %lu-%lu\n ",
+		new.start, new.end);
 	//write_unlock(&resource_lock);
 	return err;
 }

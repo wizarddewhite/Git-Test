@@ -206,7 +206,7 @@ void release_test()
 	dump(&root, 0);
 }
 
-void allocate_resource_test()
+void find_resource_test()
 {
 	struct resource_constraint constraint;
 	int ret;
@@ -215,7 +215,7 @@ void allocate_resource_test()
 
 	constraint.min = root.start;
 	constraint.max = root.end;
-	constraint.align = 4;
+	constraint.align = 1; // no alignment
 	constraint.alignf = simple_align_resource;
 	constraint.alignf_data = NULL;
 
@@ -226,14 +226,14 @@ void allocate_resource_test()
 	{
 		printf("We find a size %d free slot at %lu-%lu\n",
 			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
-		request_resource_conflict(&root, &res[6]);
+		//request_resource_conflict(&root, &res[6]);
 		dump(&root, 0);
 	}
 	else
 		printf("We don't find a free slot for size 40\n");
 
 	/* allocate 90 first */
-	constraint.max = 400;
+	constraint.max = 400; // but just look for it between 0-400
 	ret = find_resource(&root, &res[7], 90, &constraint);
 
 	if (ret == 0)
@@ -247,21 +247,66 @@ void allocate_resource_test()
 
 void adjust_resource_test()
 {
-	insert_resource_test();
+	init2();
 
-	adjust_resource(&res[5], res[5].start, 200);
-	printf("expand res[5] \n");
+	adjust_resource(&res[1], 51, 60);
+	printf("move res[1] \n");
 	dump(&root, 0);
 
-	adjust_resource(&res[5], res[5].start, 180);
-	printf("shrink res[5] \n");
+	adjust_resource(&res[1], res[1].start, 100);
+	printf("expand res[1] \n");
 	dump(&root, 0);
+
+	return;
+}
+
+/* some difference between the reallocate and adjust? 
+ * the small difference between these two case
+ * 1. since start address is 0, so __find_resouce() will get 
+ *    51-140, which will conflict with its child
+ * 2. then adjust the start from 70, then __find_resouce() will 
+ *    get 70-159, this contains the child
+ * */
+void reallocate_resource_test()
+{
+	struct resource_constraint constraint;
+	int ret;
+
+	init2();
+
+	constraint.min = 0;
+	constraint.max = 250;
+	constraint.align = 1; // no alignment
+	constraint.alignf = simple_align_resource;
+	constraint.alignf_data = NULL;
+
+	/* expand the res? */
+	ret = reallocate_resource(&root, &res[1], 90, &constraint);
+
+	if (ret)
+		printf("resource not allocated\n");
+	else {
+		printf("resource reallocated\n");
+		dump(&root, 0);
+	}
+
+	constraint.min = 70;
+	/* expand the res? */
+	ret = reallocate_resource(&root, &res[1], 90, &constraint);
+
+	if (ret)
+		printf("resource not allocated\n");
+	else {
+		printf("resource reallocated\n");
+		dump(&root, 0);
+	}
 
 	return;
 }
 
 int main()
 {
+	//reallocate_resource_test();
 	adjust_resource_test();
 	return 0;
 }
