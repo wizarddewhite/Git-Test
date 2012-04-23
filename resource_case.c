@@ -88,14 +88,21 @@ void init2()
     {
 	    insert_resource_conflict(&root, &res[i]);
     }
-    //dump(&root, 0);
-
-    //printf("insert a large one which cover several res\n");
-    res[5].start = 90;
-    res[5].end = 260;
-    insert_resource_conflict(&root, &res[5]);
+    printf("initial version of resource list\n");
     dump(&root, 0);
+
     
+}
+
+void insert_resource_test()
+{
+	init2();
+	printf("insert a large one which cover several res\n");
+	res[5].start = 90;
+	res[5].end = 260;
+	insert_resource_conflict(&root, &res[5]);
+	dump(&root, 0);
+	return;
 }
 
 //realloc_test(&root, res);
