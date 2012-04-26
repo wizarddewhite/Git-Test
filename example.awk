@@ -20,12 +20,17 @@ awk 'NR % 2 == 0' data
 awk '/foo/ {print }' BBS-list
 # match string for one field
 awk '$1 ~ /J/' inventory-shipped
+# different effect of the two commands below
+awk ' BEGIN {OFS = ":"} { print $0 }' inventory-shipped
+awk ' BEGIN {OFS = ":"} {$1=$1; print $0 }' inventory-shipped
 awk '{if ($1 ~ /J/) print}' inventory-shipped
 # don't match string one filed
 awk '$1 !~ /J/' inventory-shipped
 
 #====================================================
-# Regex
+# Reading Input File
 #====================================================
 # change the recode seperator to '/'
 awk 'BEGIN {RS = "/"}; {print $0}' BBS-list
+# NF is the number of fields in the current record
+awk '/foo/ { print $1, NF }' BBS-list
