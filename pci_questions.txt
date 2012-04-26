@@ -52,12 +52,58 @@ Basic Questions:
    is max_depth + 1;
 
 PCIe Questions:
-2. How PCIe device support 256 functions per device.
+1. How PCIe device support 256 functions per device.
    And how linux code enumerate it in code? pci_scan_child_bus()
+	
+   What is ARI and Routing ID?
 
-SRIOV Questions:
+2. What is the pci_bus structure when ARI device is there
+
+
+
+             +-----------+-------------------+------------------+
+             |           |Upstream Port      |                  | pci_dev.subordinate = Bus#1?
+             |           +--------+----------+                  |
+             |                    |                             |
+             |                    |                             |
+             |                    |   Bus#1                     |
+             |      --------------+--------------------         |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |                                                  |
+             |     +------+                  +--------+         |
+             |     |      |                  |DownStream|         |
+             +-----+--+---+------------------+---+----+---------+
+                      |                          |
+                      |                          |
+                +-----+-------+           +------+--------+
+                |ARI Device 1 |           | ARI Device 2  |
+                |             |           |               |
+                +-------------+           +---------------+
+
+Since ARI Device could have 256 Functions, then after enumerate Device1, how could it 
+enumerate Device2?
+Will introduce another bus below Upstream Port?
+
+
+
+
+                                                                
+SRIOV Questions:                                                
 1. For SRIOV, how to get the VF and how this VF is used by guest? or host?
 
+2. what is VF stride
+
+3. The same as the #2 in PCIe question, 
+   How to represent the device if VF is enabled for a SRIOV device.
+   How could many pci_bus related to this pci_dev?
 
 Some issue want to identify:
 
