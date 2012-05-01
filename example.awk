@@ -34,3 +34,7 @@ awk '$1 !~ /J/' inventory-shipped
 awk 'BEGIN {RS = "/"}; {print $0}' BBS-list
 # NF is the number of fields in the current record
 awk '/foo/ { print $1, NF }' BBS-list
+# change the content of a Field
+awk '{ $2 = $2 - 10; print $0 }' inventory-shipped
+# OFS: output field separator
+echo a b c d | awk '{ OFS = ":"; $2 = ""; print $0; print NF }'
