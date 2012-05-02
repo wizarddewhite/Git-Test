@@ -105,6 +105,14 @@ SRIOV Questions:
    How to represent the device if VF is enabled for a SRIOV device.
    How could many pci_bus related to this pci_dev?
 
+4. Does VF has its own configuration space?
+   Yes, and the meaning of some bits is not the same as PCIe.
+
+5. The BAR size in the SRIOV Extended Capabilities is the total
+   size of all NumVFs VF?
+
+6. All the memory resource needed by VFs is reflected in the PF BAR?
+
 Some issue want to identify:
 
 1. pci_bus->number and pci_bus->secondary redundant?
