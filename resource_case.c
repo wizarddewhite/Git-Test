@@ -81,8 +81,8 @@ void init2()
     res[3].start = 310;
     res[3].end   = 450;
 
-    res[4].start = 90;
-    res[4].end = 120;
+    res[4].start = 105;
+    res[4].end = 140;
 
     for(i = 0; i< 5; i++)
     {
@@ -325,6 +325,47 @@ void reallocate_resource_test()
 	}
 
 	return;
+}
+
+void find_res_top_free_test()
+{
+	struct resource_constraint constraint;
+	int ret;
+
+	init2();
+
+	/* actually the biggest free space under res[1] is 15 */
+	printf("free size %d\n",(int)__find_res_top_free_size(&res[1]));
+
+	/* find biggest size, by calling find_resource() */
+	constraint.min = res[1].start;
+	constraint.max = res[1].end;
+	constraint.align = 1; // no alignment
+	constraint.alignf = simple_align_resource;
+	constraint.alignf_data = NULL;
+	res[8].parent = NULL;
+	int size = resource_size(&res[1]);
+
+	while(size > 0)
+	{
+		ret = find_resource(&res[1], &res[8], size, &constraint);
+
+		if (!ret)
+			break;
+
+		size -= 1;
+	}
+
+	if (ret == 0)
+	{
+		printf("We find a size %d free slot at %lu-%lu\n",
+			(int)resource_size(&res[8]), (long)res[8].start, (long)res[8].end);
+
+		dump(&root, 0);
+	}
+	else
+		printf("No free space?\n");
+
 }
 
 int main()

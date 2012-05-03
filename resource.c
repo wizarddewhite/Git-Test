@@ -17,6 +17,8 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "resource.h"
 #include "resource_case.h"
@@ -598,3 +600,31 @@ int adjust_resource(struct resource *res, resource_size_t start, resource_size_t
 	//write_unlock(&resource_lock);
 	return result;
 }
+
+resource_size_t __find_res_top_free_size(struct resource *res)
+{
+	resource_size_t n_size;
+	struct resource tmp_res;
+
+	/*
+	 *   find out number below res->end, that we can use at first
+	 *	res->start can not be used.
+	 */
+	n_size = resource_size(res) - 1;
+	memset(&tmp_res, 0, sizeof(struct resource));
+	while (n_size > 0) {
+		int ret;
+
+		ret = allocate_resource(res, &tmp_res, n_size,
+			res->end - n_size + 1, res->end,
+			1, NULL, NULL/*  , false*/);
+		if (ret == 0) {
+			__release_resource(&tmp_res);
+			break;
+		}
+		n_size--;
+	}
+
+	return n_size;
+}
+
