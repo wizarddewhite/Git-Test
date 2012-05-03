@@ -368,8 +368,19 @@ void find_res_top_free_test()
 
 }
 
+void resource_extend_parents_top_test()
+{
+	init2();
+
+	__resource_extend_parents_top(&res[4], 50, &root);
+	dump(&root, 0);
+	__resource_extend_parents_top(&res[4], 50, &root);
+	dump(&root, 0);
+}
+
 int main()
 {
-	find_resource_test();
+	resource_extend_parents_top_test();
+
 	return 0;
 }

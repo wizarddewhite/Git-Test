@@ -601,6 +601,87 @@ int adjust_resource(struct resource *res, resource_size_t start, resource_size_t
 	return result;
 }
 
+#if 0
+int probe_resource(struct resource *b_res,
+			 /*  struct device *dev,*/ struct resource *busn_res,
+			 resource_size_t needed_size, struct resource **p,
+			 int skip_nr, int limit, char *name)
+{
+	int ret = -1;
+	resource_size_t n_size;
+	struct resource *parent_res = NULL;
+	resource_size_t tmp = b_res->end + 1;
+
+again:
+	/*
+	 * find biggest range in b_res that we can use in the middle
+	 *  and we can not use some spots from start of b_res.
+	 */
+	n_size = resource_size(b_res);
+	if (n_size > skip_nr)
+		n_size -= skip_nr;
+	else
+		n_size = 0;
+
+	memset(busn_res, 0, sizeof(struct resource));
+	//dev_printk(KERN_DEBUG, dev, "find free %s in res: %pR\n", name, b_res);
+	while (n_size >= needed_size) {
+		ret = allocate_resource(b_res, busn_res, n_size,
+				b_res->start + skip_nr, b_res->end,
+				1, NULL, NULL);
+		if (!ret)
+			return ret;
+		n_size--;
+	}
+
+	/* try extend the top of parent bus, find free under top at first */
+	//write_lock(&resource_lock);
+	n_size = __find_res_top_free_size(b_res);
+	//dev_printk(KERN_DEBUG, dev, "found free %s %ld in res: %pR top\n",
+	//		name, (unsigned long)n_size, b_res);
+
+	/* can not extend cross local boundary */
+	if ((limit - b_res->end) < (needed_size - n_size))
+		goto reduce_needed_size;
+
+	/* find extended range */
+	memset(busn_res, 0, sizeof(struct resource));
+	parent_res = b_res;
+	while (parent_res) {
+		ret = __allocate_resource(parent_res, busn_res,
+			 needed_size - n_size,
+			 tmp, tmp + needed_size - n_size - 1,
+			 1, NULL, NULL, false);
+		if (!ret) {
+			/* save parent_res, we need it as stopper later */
+			*p = parent_res;
+
+			/* prepare busn_res for return */
+			__release_resource(busn_res);
+			busn_res->start -= n_size;
+
+			/* extend parent bus top*/
+			__resource_extend_parents_top(b_res,
+					 needed_size - n_size, parent_res);
+			__request_resource(b_res, busn_res);
+
+			//write_unlock(&resource_lock);
+			return ret;
+		}
+		parent_res = parent_res->parent;
+	}
+
+reduce_needed_size:
+	//write_unlock(&resource_lock);
+	/* ret must not be 0 here */
+	needed_size--;
+	if (needed_size)
+		goto again;
+
+	return ret;
+}
+#endif
+
 resource_size_t __find_res_top_free_size(struct resource *res)
 {
 	resource_size_t n_size;
@@ -626,5 +707,27 @@ resource_size_t __find_res_top_free_size(struct resource *res)
 	}
 
 	return n_size;
+}
+
+void __resource_update_parents_top(struct resource *b_res,
+		 long size, struct resource *parent_res)
+{
+	struct resource *res = b_res;
+
+	if (!size)
+		return;
+
+	while (res) {
+		if (res == parent_res)
+			break;
+		res->end += size;
+		res = res->parent;
+	}
+}
+
+void __resource_extend_parents_top(struct resource *b_res,
+		 long size, struct resource *parent_res)
+{
+	__resource_update_parents_top(b_res, size, parent_res);
 }
 

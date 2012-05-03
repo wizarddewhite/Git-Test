@@ -148,4 +148,8 @@ int find_resource(struct resource *root, struct resource *new,
 struct resource *request_resource_conflict(struct resource *root, struct resource *new);
 int adjust_resource(struct resource *res, resource_size_t start, resource_size_t size);
 resource_size_t __find_res_top_free_size(struct resource *res);
+void __resource_update_parents_top(struct resource *b_res,
+		 long size, struct resource *parent_res);
+void __resource_extend_parents_top(struct resource *b_res,
+		 long size, struct resource *parent_res);
 #endif //__RESOURCE_H__
