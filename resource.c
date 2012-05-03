@@ -208,7 +208,7 @@ static void resource_clip(struct resource *res, resource_size_t min,
  * alignment constraints
  */
 /* I think it doesn't search the tree, but just the first level
- * of the tree.
+ * of the *root*.
  * Otherwise it doesn't register in the tree.
  *
  * tmp point to the raw free space find in resource tree
