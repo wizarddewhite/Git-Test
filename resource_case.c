@@ -242,6 +242,29 @@ void find_resource_test()
 	else
 		printf("We don't find a free slot for size 90\n");
 
+	/* find biggest size */
+	constraint.max = root.end; // but just look for it between 0-400
+	int size = resource_size(&root);
+	while(size > 0)
+	{
+		ret = find_resource(&root, &res[8], size, &constraint);
+
+		if (!ret)
+			break;
+
+		size -= 1;
+	}
+
+	if (ret == 0)
+	{
+		printf("We find a size %d free slot at %lu-%lu\n",
+			(int)resource_size(&res[8]), (long)res[8].start, (long)res[8].end);
+
+		dump(&root, 0);
+	}
+	else
+		printf("No free space?\n");
+
 	return;
 }
 
@@ -306,7 +329,6 @@ void reallocate_resource_test()
 
 int main()
 {
-	//reallocate_resource_test();
-	adjust_resource_test();
+	find_resource_test();
 	return 0;
 }
