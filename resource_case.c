@@ -379,9 +379,17 @@ void resource_extend_parents_top_test()
 	dump(&root, 0);
 }
 
+void allocate_resource_test()
+{
+	struct resource res1;
+	init2();
+
+	allocate_resource(&res[1], &res1, 15, res[1].start, res[1].end,
+			1, NULL, NULL);
+}
+
 int main()
 {
-	resource_extend_parents_top_test();
-
+	allocate_resource_test();
 	return 0;
 }
