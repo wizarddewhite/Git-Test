@@ -3,7 +3,7 @@ PROGRAM := $(basename $(SOURCES))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
 CFLAGS = -g
 
-$(warning $(MAKECMDGOALS) $(PROGRAM))
+#$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean
 all: resource
