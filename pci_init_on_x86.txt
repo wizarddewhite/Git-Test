@@ -341,6 +341,9 @@ pci_assign_unassigned_resources();
 	; traverse each domain
 	list_for_each_entry(bus, &pci_root_buses, node)
 	{
+		; calculate the resource must needed and the 
+		; additional resouces. 
+		; add them in add_list;
 		__pci_bus_size_bridges(bus, &add_list);
 			; go through the child bridge first
 
@@ -379,7 +382,7 @@ pci_assign_unassigned_resources();
 			pbus_assign_resources_sorted(bus, add_head, fail_head);
 				for each device attached on this bus call
 				__dev_sort_resources(dev, &head); form an ordered list of all the
-					                          res of devices
+					                          res of devices under one bus
 					pdev_sort_resources(dev, head); sort res by alignment
 						add the dev->res who has no parent, to the *head*
 						int alignment order
@@ -389,15 +392,24 @@ pci_assign_unassigned_resources();
 					; allocate res here
 						pci_assign_resource(list->dev, idx);
 							go through the parent and call
-							__pci_assign_resource(bus, dev, resno); magic one
-								pci_bus_alloc_resource();
-								or
+							__pci_assign_resource(bus, dev, resno); 
+							; this function really do the allocation 
+							; of the resource
+								pci_bus_alloc_resource(bus, res, size, align, min
+										IORESOURCE_PREFETCH, pcibios_align_resource, dev);
+								; allocate a resource from a parent bus
+								allocate_resource();
+								or call this one directly
 								request_resource_confict(root, res);
 
 								pci_update_resource(dev, resno);
 					/* Try to satisfy any additional nice-to-have resource
 						requests */
 					adjust_resources_sorted(add_head, head);
+						call
+						pci_assign_resource(list->dev, idx);
+						or
+						adjust_resource(res, res->start);
 
 			then call this function for each subordinate bus
 			could this miss some bus?
@@ -488,4 +500,17 @@ start_kernel();
 
 
 	 
-        
+7. pcibios_allocate_resources()        
+================================================================================
+pcibios_allocate_resources()
+	go throught all the devices under pci_bus_type
+	for each pci_dev, go throught pci_dev.resource[]
+		request_resource_confict()
+
+8. relationship between acpi_pci_root_init(), pcibios_allocate_resources(), pci_assign_unassigned_resources()
+================================================================================
+These three functions will be called in the following sequence.
+
+acpi_pci_root_init();                      scan the bridge, form the bus hierachy
+pcibios_allocate_resources();              allocate the res on the bus
+pci_assign_unassigned_resources();         reallocate those missed by BIOS

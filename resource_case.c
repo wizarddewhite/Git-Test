@@ -368,6 +368,7 @@ void find_res_top_free_test()
 
 }
 
+/* this is not very well, since the function will break the tree structure */
 void resource_extend_parents_top_test()
 {
 	init2();
