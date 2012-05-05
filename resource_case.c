@@ -381,11 +381,29 @@ void resource_extend_parents_top_test()
 
 void allocate_resource_test()
 {
-	struct resource res1;
+	struct resource res1, res2;
 	init2();
 
-	allocate_resource(&res[1], &res1, 15, res[1].start, res[1].end,
+	res1.parent = NULL;
+	res1.sibling = NULL;
+	res1.child = NULL;
+	allocate_resource(&res[1], &res1, 10, res[1].start, res[1].end,
 			1, NULL, NULL);
+	dump(&root, 0);
+
+	res2.parent = NULL;
+	res2.sibling = NULL;
+	res2.child = NULL;
+//	works
+//	allocate_resource(&res[1], &res2, 10, res[1].start, res[1].end,
+//			1, NULL, NULL);
+
+// couldn't allocate resource since the boundary issue
+	allocate_resource(&res[1], &res2, 10, res[0].start, res[0].end,
+			1, NULL, NULL);
+
+	dump(&root, 0);
+
 }
 
 int main()
