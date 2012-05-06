@@ -97,9 +97,22 @@ void init2()
 void insert_resource_test()
 {
 	init2();
+	struct resource res1;
+	res[6].start = 115;
+	res[6].end = 140;
+	res[6].parent = NULL;
+	res[6].sibling = NULL;
+	res[6].child = NULL;
+
+	printf("insert a res to tree\n");
+	insert_resource_conflict(&root, &res[6]);
+	dump(&root, 0);
+
 	printf("insert a large one which cover several res\n");
 	res[5].start = 90;
 	res[5].end = 260;
+	res[5].parent = NULL;
+	res[5].sibling = NULL;
 	insert_resource_conflict(&root, &res[5]);
 	dump(&root, 0);
 	return;
@@ -406,8 +419,24 @@ void allocate_resource_test()
 
 }
 
+void extend_res_test()
+{
+	insert_resource_test();
+
+	/* extend res[4]=(105,140) first */
+	printf("extend res[4] %d(%d-%d)\n",
+		(int)resource_size(&res[4]), (int)res[4].start, (int)res[4].end);
+	extend_res(&res[4], 20);
+	dump(&root, 0);
+
+	printf("extend res[4] %d(%d-%d)\n",
+		(int)resource_size(&res[4]), (int)res[4].start, (int)res[4].end);
+	extend_res(&res[4], 20);
+	dump(&root, 0);
+}
+
 int main()
 {
-	allocate_resource_test();
+	extend_res_test();
 	return 0;
 }

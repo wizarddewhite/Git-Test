@@ -152,4 +152,5 @@ void __resource_update_parents_top(struct resource *b_res,
 		 long size, struct resource *parent_res);
 void __resource_extend_parents_top(struct resource *b_res,
 		 long size, struct resource *parent_res);
+int extend_res(struct resource *res, resource_size_t size);
 #endif //__RESOURCE_H__

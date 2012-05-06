@@ -54,6 +54,58 @@ resource_size_t simple_align_resource(void *data,
 	return avail->start;
 }
 
+int extend_res(struct resource *res, resource_size_t size)
+{
+	struct resource *tmp;
+	resource_size_t begin;
+	int ret;
+
+again:
+	/* first try to extend on its own */
+	if (!res->parent)
+		return -1; // no parent or root, no place to extend
+
+	tmp = res->parent->child;
+	if (tmp != res)
+	{
+		for (tmp = res->parent->child; tmp; tmp = tmp->sibling)
+			if (tmp->sibling == res)
+				break;
+		begin = tmp->end + 1;
+	}
+	else
+		begin = res->parent->start;
+
+	for ( ; begin < res->start; begin++)
+	{
+		ret = adjust_resource(res, begin, resource_size(res) + size);
+		if (ret == 0)
+			return 0;
+	}
+
+	/* oops, res couldn't extedn itself in his parent level
+	 * try to extend res->parent if res is the first or last
+	 * child                             ^_^
+	 * */
+	if (res->parent->child == res || res->sibling == NULL)
+	{
+		/* maybe the res->parent doesn't need to extend so much */
+		if (extend_res(res->parent, size))
+		{
+			/* failed to extend parent */
+			return -1;
+		}
+		else
+		{
+			/* my parent get enough space try again */
+			goto again;
+		}
+
+	}
+
+	return -1;
+}
+
 /*
  * relocate the old resource, to the new position. Return error and do nothing
  * if the new location conflicts with any other resource.
