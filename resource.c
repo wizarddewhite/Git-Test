@@ -54,6 +54,10 @@ resource_size_t simple_align_resource(void *data,
 	return avail->start;
 }
 
+/* this function will try to extend res, 
+ * if no enough free space on current level
+ * it will try to extend its parent
+ */
 int extend_res(struct resource *res, resource_size_t size)
 {
 	struct resource *tmp;
