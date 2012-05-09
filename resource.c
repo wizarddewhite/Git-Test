@@ -787,3 +787,51 @@ void __resource_extend_parents_top(struct resource *b_res,
 	__resource_update_parents_top(b_res, size, parent_res);
 }
 
+/* this function will go deep in the resource tree to allocate a resource */
+struct resource * __request_region(struct resource *parent,
+				   resource_size_t start, resource_size_t n,
+				   const char *name, int flags)
+{
+	//DECLARE_WAITQUEUE(wait, current);
+	struct resource *res = malloc(sizeof(*res));
+	memset(res, sizeof(*res), 0);
+
+	if (!res)
+		return NULL;
+
+	res->name = name;
+	res->start = start;
+	res->end = start + n - 1;
+	res->flags = IORESOURCE_BUSY;
+	res->flags |= flags;
+
+	//write_lock(&resource_lock);
+
+	for (;;) {
+		struct resource *conflict;
+
+		conflict = __request_resource(parent, res);
+		if (!conflict)
+			break;
+		if (conflict != parent) {
+			parent = conflict;
+			if (!(conflict->flags & IORESOURCE_BUSY))
+				continue;
+		}
+		if (conflict->flags & flags & IORESOURCE_MUXED) {
+			//add_wait_queue(&muxed_resource_wait, &wait);
+			//write_unlock(&resource_lock);
+			//set_current_state(TASK_UNINTERRUPTIBLE);
+			//schedule();
+			//remove_wait_queue(&muxed_resource_wait, &wait);
+			//write_lock(&resource_lock);
+			continue;
+		}
+		/* Uhhuh, that didn't work out.. */
+		free(res);
+		res = NULL;
+		break;
+	}
+	//write_unlock(&resource_lock);
+	return res;
+}

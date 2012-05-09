@@ -26,6 +26,9 @@
 #define __ALIGN_KERNEL_MASK(x, mask)	(((x) + (mask)) & ~(mask))
 #define ALIGN(x, a)		__ALIGN_KERNEL((x), (a))
 
+#define IORESOURCE_BUSY 	0x80000000
+#define IORESOURCE_MUXED	0x00400000
+
 typedef unsigned long resource_size_t;
 
 struct resource {
@@ -153,4 +156,7 @@ void __resource_update_parents_top(struct resource *b_res,
 void __resource_extend_parents_top(struct resource *b_res,
 		 long size, struct resource *parent_res);
 int extend_res(struct resource *res, resource_size_t size);
+struct resource * __request_region(struct resource *parent,
+				   resource_size_t start, resource_size_t n,
+				   const char *name, int flags);
 #endif //__RESOURCE_H__

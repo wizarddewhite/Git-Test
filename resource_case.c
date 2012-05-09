@@ -435,8 +435,17 @@ void extend_res_test()
 	dump(&root, 0);
 }
 
+void request_region_test()
+{
+	init2();
+
+	/* this will allocate [105,114] deep in the tree */
+	__request_region(&root, 105, 10, "test", 0);
+	dump(&root, 0);
+}
+
 int main()
 {
-	extend_res_test();
+	request_region_test();
 	return 0;
 }
