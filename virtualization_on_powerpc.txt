@@ -1,0 +1,7 @@
+1.
+===============================================================================
+powernv    <=======>  OPAL   <=======> KVM
+pseries    <=======>  PAPR   <=======> pHyp/PowerVM
+
+KVM will provide PAPR
+on PowerVM, the hypervisor & virtualization is provided by Firmware
