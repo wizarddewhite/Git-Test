@@ -79,10 +79,10 @@ PCIe Questions:
              |                                                  |
              |                                                  |
              |     +------+                  +--------+         |
-             |     |      |                  |DownStream|         |
+             |     |      |                  |DownStream|       |
              +-----+--+---+------------------+---+----+---------+
                       |                          |
-                      |                          |
+                      | Bus#2                    |Bus#3
                 +-----+-------+           +------+--------+
                 |ARI Device 1 |           | ARI Device 2  |
                 |             |           |               |
@@ -93,9 +93,6 @@ enumerate Device2?
 Will introduce another bus below Upstream Port?
 
 
-
-
-                                                                
 SRIOV Questions:                                                
 1. For SRIOV, how to get the VF and how this VF is used by guest? or host?
 
@@ -112,6 +109,7 @@ SRIOV Questions:
    size of all NumVFs VF?
 
 6. All the memory resource needed by VFs is reflected in the PF BAR?
+   And when this amount of resource are required ?
 
 Some issue want to identify:
 

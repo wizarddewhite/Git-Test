@@ -295,14 +295,55 @@ pci_arch_init <--- just on x86?
 		dmi_check_system(can_skip_pciprobe_dmi_table);
 
 
-3. sriov_init how to reserve resource for VF
+3. sriov_init how to reserve resource for VF and how sriov is initialized
 ================================================================================
-sriov_enable(struct pci_dev *dev, int nr_virfn);
-	virtfn_add()
-		pci_device_add(struct pci_dev *dev, struct pci_bus *bus);
-			pci_init_capabilities(struct pci_dev *dev);
-				pci_iov_init(dev);
-					sriov_init(dev, pos);
+There are different path to call pci_iov_init()
+*pci_enable_sriov() called in driver probe function
+pci_enable_sriov();
+	sriov_enable(struct pci_dev *dev, int nr_virfn); here dev is a phy func
+		get initial vf number
+		verify the bus number of vf
+		pci_enable_resources(dev, bars)
+		enabe VF by writing 1 to PCI_SRIOV_CTRL_VFE;
+		for each VF call, 
+		virtfn_add()
+			virtfn = alloc_pci_dev()
+			virtfn->bus = virtfn_add_bus(dev->bus, virtfn_bus(dev, id))
+				child = pci_find_bus();
+				pci_add_new_bus(bus, busnr);
+				pci_bus_add_child(child);
+			pci_setup_device(virtfn);
+				setup the bar
+			pci_device_add(struct pci_dev *dev, struct pci_bus *bus);
+				pci_init_capabilities(struct pci_dev *dev);
+					pci_iov_init(dev); does VF has this EXT_CAP?
+			virtfn->physfn = pci_dev_get(dev); point to his PF
+			virtfn->is_virtfn = 1;
+			pci_bus_add_device(virtfn);
+
+*when scan the slot in pci_scan_child_bus()
+pci_scan_child_bus();
+	pci_scan_slot();
+		pci_scan_single_device();
+			pci_device_add();
+				pci_init_capabilities(dev);
+					pci_iov_init();
+	pci_iov_bus_range(bus);
+
+pci_iov_init()
+	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
+	sriov_init(dev, pos); this dev is a PF
+		disable the VF first.
+		get TotalVFs, total = TotalVFs
+
+		get the VF_OFFSET, offset = VF_OFFSET
+		get the VF_STRIDE, stride = VF_STRIDE
+		get supported page size, pgsz
+		set page size
+
+		initialize those IOV resource
+		initialize the pci_sriov structure
+
 
 4. reassign
 ================================================================================
@@ -510,7 +551,51 @@ pcibios_allocate_resources()
 8. relationship between acpi_pci_root_init(), pcibios_allocate_resources(), pci_assign_unassigned_resources()
 ================================================================================
 These three functions will be called in the following sequence.
+They are called at boot up to initialize the pci subsystem.
+They are the major functions.
 
-acpi_pci_root_init();                      scan the bridge, form the bus hierachy
-pcibios_allocate_resources();              allocate the res on the bus
-pci_assign_unassigned_resources();         reallocate those missed by BIOS
+acpi_pci_root_init();                         scan the bridge, form the bus hierachy
+pci_subsys_init()
+	pcibios_resource_survey()
+		pcibios_allocate_resources(); allocate the res on the parent bus
+pci_assign_unassigned_resources();            reallocate those missed by BIOS
+
+9. how pci driver find his pci_dev
+================================================================================
+static struct pci_driver enic_driver = {
+	.name = DRV_NAME,
+	.id_table = enic_id_table,
+	.probe = enic_probe,
+	.remove = __devexit_p(enic_remove),
+};
+
+pci_register_driver(&enic_driver)
+	__pci_register_driver(drv, owner, mod_name)
+		drv->driver.name = drv->name;
+		drv->driver.bus = &pci_bus_type;
+		drv->driver.owner = owner;
+		drv->driver.mod_name = mod_name;
+
+		driver_register(drv->driver)
+			other = driver_find(driver->name, driver->bus); search the drivers_kset of bus
+			bus_add_driver(drv);
+				driver_attach(drv);
+					bus_for_each_dev(drv->bus, NULL, drv, __driver_attach);
+						walk through the bus->p->klist_devices and call __driver_attach
+						__driver_attach(dev, drv);
+							driver_match_device(drv, dev);
+								pci_bus_match(dev, drv);
+									match the id
+							driver_probe_device(drv, dev);
+								really_probe(dev, drv);
+									dev->driver = drv;
+									pci_device_probe(dev);
+										__pci_device_probe(drv, pci_dev);
+											...
+											drv->probe(dev, id);
+											enic_probe(dev, id);
+												pci_enable_device_mem();
+												pci_request_regions(); register those resource to tree.
+
+
+		pci_create_newid_files(drv);
