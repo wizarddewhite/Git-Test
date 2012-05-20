@@ -11,7 +11,7 @@ function mystrtonum(str,        ret, chars, n, i, k, c)
 
             ret = ret * 8 + k
         }
-    } else if (str ~ /^0[xX][[:xdigit:]]+/) {
+    } else if (str ~ /^0[xX][0-9a-fA-F]+/) {
         # hexadecimal
         str = substr(str, 3)    # lop off leading 0x
         n = length(str)
