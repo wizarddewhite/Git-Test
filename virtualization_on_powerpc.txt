@@ -25,6 +25,7 @@ pseries    <=======>  PAPR   <=======> pHyp/PowerVM
 KVM will provide PAPR
 Guest on PowerKVM can use RTAS and hypercall to talk with platform
 OPAL provide OPAL Run Time for linux kernal as a counter part of RTAS.
+In Qemu, we implement some VIO, like vscsi and vlan.
 
 
           +--------------------------------+--------------------------------+
