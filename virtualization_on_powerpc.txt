@@ -3,5 +3,51 @@
 powernv    <=======>  OPAL   <=======> KVM
 pseries    <=======>  PAPR   <=======> pHyp/PowerVM
 
+         +-----------------------------------------------------------------+
+         |                                                                 |
+         |  +--------------------+                                         |
+         |  |                    |                                         |
+         |  |                    |                                         |
+         |  | Guest1             |                                         |
+         |  |                    |                                         |
+         |  |                    |                                         |
+         |  |                    |                                         |
+         |  |      +------+-PAPR-|                     +------+            |
+         |  |      | SLOF | RTAS |                     | QEMU |            |
+         +--+-PAPR-+------+------+---------------------+------+------------+
+         |                     Host Linux kernel                           |
+         +-----------------------------------------------------------------+
+         |                        OPAL                                     |
+         +-----------------------------------------------------------------+
+         |                        Hardware                                 |
+         +-----------------------------------------------------------------+
+
 KVM will provide PAPR
+Guest on PowerKVM can use RTAS and hypercall to talk with platform
+OPAL provide OPAL Run Time for linux kernal as a counter part of RTAS.
+
+
+          +--------------------------------+--------------------------------+
+          |                                |                                |
+          |                                |                                |
+          |                                |                                |
+          |    Guest1                      |   Guest2                       |
+          |                                |                                |
+          |                                |                                |
+          |                                |                                |
+          |                  +-PAPR-+------+                  +-PAPR-+------+
+          |                  | RTAS |  OF  |                  | RTAS |  OF  |
+          +-----PAPR---------+------+------+----PAPR----------+------+------+
+          |                              pHyp                               |
+          +-----------------------------------------------------------------+
+          |                            Hardware                             |
+          +-----------------------------------------------------------------+
+
+
 on PowerVM, the hypervisor & virtualization is provided by Firmware
+Guest talk with platform via 1. RTAS and 2. hypercall.
+pHyp may/may not contain the driver of hardware devices.
+VIO server run in a hidden partition, usually AIX based.
+And the VIO server has the real HW driver.
+
+
