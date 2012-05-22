@@ -14,3 +14,6 @@ BEGIN {
     if (No_command_assign)
         disable_assigns(ARGC, ARGV)
 }
+
+# usage
+# awk -v No_command_assign=1 -f noassign.awk -f yourprog.awk *
