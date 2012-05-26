@@ -36,5 +36,28 @@ awk 'BEGIN {RS = "/"}; {print $0}' BBS-list
 awk '/foo/ { print $1, NF }' BBS-list
 # change the content of a Field
 awk '{ $2 = $2 - 10; print $0 }' inventory-shipped
+
+#====================================================
+# print example
+#====================================================
+# see the difference between the two lines below
+awk '{ print $1, $2 }' inventory-shipped
+awk '{ print $1 $2 }' inventory-shipped
 # OFS: output field separator
 echo a b c d | awk '{ OFS = ":"; $2 = ""; print $0; print NF }'
+# ORS: output recode separator
+awk 'BEGIN { OFS = ";"; ORS = "\n\n" } {print $1, $2}' BBS-list
+
+# printf format
+awk '{ printf "%-10s %s\n", $1, $2 }' BBS-list
+awk 'BEGIN {print "Name       Number";
+	print "----       -------"}
+     { printf "%-10s %s\n", $1, $2 }' BBS-list
+awk 'BEGIN { format = "%-10s %s\n"
+                  printf format, "Name", "Number"
+                  printf format, "----", "------" }
+          { printf format, $1, $2 }' BBS-list
+
+# print redirect
+awk '{ print $2 > "phone-list"; print $1 > "name-list" }' BBS-list
+awk '{ print $1 > "names.unsorted"; command = "sort -r > names.sorted"; print $1 | command }' BBS-list
