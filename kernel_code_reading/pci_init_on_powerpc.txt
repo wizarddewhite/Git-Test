@@ -71,3 +71,24 @@ head_64.S
 6. device tree parse
 ===============================================================================
 prom_init.c
+	prom_init_client_services();
+	prom_find_mmu();
+	prom_init_stdout();
+	of_platform = prom_find_machine_type(); may return PLATFORM_PSERIES or PLATFORM_OPAL
+	prom_check_initrd();
+	early_cmdline_parse();
+	prom_init_mem();
+	prom_find_boot_cpu();
+	prom_check_displays();
+	prom_initialize_tce_table(); this is done only on PLATFORM_PSERIES
+	prom_instantiate_rtas(); not on PLATFORM_OPAL
+	; on PPC_POWERNV
+	prom_instantiate_opal(); and some other stuff
+
+	flatten_device_tree();
+		build header
+		build strings
+		build structure
+
+	hdr = RELOC(dt_header_start);
+	__start(hdr, kbase, 0, 0, 0, 0, 0); call kernel again
