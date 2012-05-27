@@ -1,0 +1,73 @@
+1. initialize on powerpc at bootup
+===============================================================================
+pcibios_init(); this is a init call
+	pcibios_scan_phb(); create the bus tree
+	pcibios_resource_survey()
+
+2. pcibios_scan_phb()
+===============================================================================
+pcibios_scan_phb()
+	pcibios_setup_phb_io_space();
+		pcibios_map_phb_io_space()
+	pcibios_setup_phb_resources();
+	bus = pci_create_root_bus(hose->parent, hose->first_busno,
+			          hose->ops, hose, &resources)
+
+3. pcibios_resource_survey()
+===============================================================================
+pcibios_resource_survey()
+	ppc_md.pcibios_fixup();
+	pnv_pci_ioda_fixup();
+
+
+4. pnv_pci_init_ioda1_phb()
+===============================================================================
+start_kernel()
+	setup_arch()
+		pnv_setup_arch()
+			pnv_pci_init();
+				pnv_pci_init_ioda_hub(np);		
+					pnv_pci_init_ioda1_phb();
+
+pnv_pci_init_ioda1_phb();
+	phb->hose->ops = &pnv_pci_ops;
+	phb->bdfn_to_pe = pnv_ioda_bdfn_to_pe; setup RID -> PE mapping function
+	phb->dma_dev_setup = pnv_pci_ioda_dma_dev_setup; setup TCEs
+	pnv_pci_init_ioda_msis(phb); setup msi
+
+	ppc_md.pcibios_fixup_phb = pnv_pci_ioda_fixup_phb;
+	ppc_md.pcibios_fixup = pnv_pci_ioda_fixup;
+	ppc_md.pcibios_enable_device_hook = pnv_pci_enable_device_hook;
+	pci_add_flags(PCI_REASSIGN_ALL_RSRC);
+
+	/* Reset IODA tables to a clean state */
+	rc = opal_pci_reset(phb_id, OPAL_PCI_IODA_TABLE_RESET, OPAL_ASSERT_RESET);
+	opal_pci_set_pe(phb_id, 0, 0, 7, 1, 1 , OPAL_MAP_PE);
+
+5. machine type
+===============================================================================
+define_machine(powernv) {
+	.name			= "PowerNV",
+	.probe			= pnv_probe,
+	.init_early		= pnv_init_early,
+	.setup_arch		= pnv_setup_arch,
+	.init_IRQ		= pnv_init_IRQ,
+	.show_cpuinfo		= pnv_show_cpuinfo,
+	.progress		= pnv_progress,
+	.power_save             = power7_idle,
+	.calibrate_decr		= generic_calibrate_decr,
+#ifdef CONFIG_KEXEC
+	.kexec_cpu_down		= pnv_kexec_cpu_down,
+#endif
+};
+
+And this structure is stored in struct machdep_calls ppc_md;
+And when boot up, this machdep_calls is copied in probe_machine();
+
+head_64.S
+	early_setup
+		probe_machine()
+
+6. device tree parse
+===============================================================================
+prom_init.c

@@ -5,9 +5,11 @@ CFLAGS = -g
 
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
-.PHONY: all clean
+.PHONY: all clean cscope
 all: resource
 
+# this program emulate the kernel/resource.c to 
+# get more understanding on this structrure
 resource: resource.c resource_case.c
 	gcc -o resource -g resource.c resource_case.c
 
@@ -27,3 +29,9 @@ endif
 clean:
 	rm -f $(PROGRAM)
 	rm -f $(DEPENDENCY)
+	rm -f cscope.*
+	rm -f tags
+
+cscope:
+	cscope -Rbkq
+	ctags -R
