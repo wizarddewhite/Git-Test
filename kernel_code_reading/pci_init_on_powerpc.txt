@@ -92,3 +92,18 @@ prom_init.c
 
 	hdr = RELOC(dt_header_start);
 	__start(hdr, kbase, 0, 0, 0, 0, 0); call kernel again
+
+second round of __start()
+	__start_initialization_multiplatform()
+		enable_64b_mode
+		relative_toc
+		__mmu_off
+		__after_prom_start
+			...
+			start_here_multiplatform();
+				early_setup(); setup_64.c
+					early_init_devtree();
+					probe_machine();
+				start_here_common
+					setup_system
+					start_kernel
