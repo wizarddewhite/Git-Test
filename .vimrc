@@ -61,7 +61,7 @@ let Tlist_Show_One_File = 1
 let Tlist_Exit_OnlyWindow = 1
 let Tlist_File_Fold_Auto_Close = 1
 let Tlist_WinWidth = 20
-let Tlist_Use_Right_Window = 1
+"let Tlist_Use_Right_Window = 1
 map <silent> <F9> :TlistToggle<cr>
 
 
@@ -197,3 +197,6 @@ let g:LookupFile_LookupFunc = 'LookupFile_IgnoreCaseFunc'
 
 
 vmap sb "zdi<b><C-R>z</b><ESC>
+
+" configuration for txtbrowser.vim
+au BufEnter *.txt setlocal ft=txt
