@@ -1,3 +1,5 @@
+1. start_kernel
+===============================================================================
 start_kernel()
 	lockdep_init()
 	smp_setup_processor_id()
@@ -96,4 +98,58 @@ start_kernel()
 	acpi_early_init()
 	sfi_init_late()
 	ftrace_init()
-	rest_init()
+	rest_init(); process 0
+		rcu_scheduler_starting();
+		kernel_thread(kernel_init, NULL, CLONE_FS | CLONE_SIGHAND); process 1
+		numa_default_policy();
+		pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES); process 2
+		rcu_read_lock();
+		kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
+		rcu_read_unlock();
+		complete(&kthreadd_done);
+
+		init_idle_bootup_task(current);
+		schedule_preempt_disabled();
+		cpu_idle();
+
+
+2. kernel_init()
+===============================================================================
+kernel_init()
+	wait_for_completion(&kthreadd_done)
+	set_mems_allowed(node_states[N_HIGH_MEMORY])
+	set_cpus_allowed_ptr(current, cpu_all_mask)
+	cad_pid = task_pid(current);
+	smp_prepare_cpus(setup_max_cpus)
+	dp_pre_smp_initcalls();
+	lockup_detector_init()
+	smp_init()
+	sched_init_smp()
+	do_basic_setup()
+
+	init_post()
+		async_synchronize_full()
+		free_initmem()
+		mark_rodata_ro()
+		system_state = SYSTEM_RUNNING;
+		numa_default_policy();
+
+		current->signal->flags |= SIGNAL_UNKILLABLE;
+
+		if (ramdisk_execute_command) {
+			run_init_process(ramdisk_execute_command)
+			printk(KERN_WARNING "Failed to execute");
+		}
+
+		if (execute_command) {
+			run_init_process(execute_command);
+			printk(KERN_WARNING "Failed to execute");
+		}
+
+		run_init_process("/sbin/init");
+		run_init_process("/etc/init");
+		run_init_process("/bin/init");
+		run_init_process("/bin/sh");
+
+		panic("No init found. Try passing init= option to kernel."
+			"See Linux Documentation/init.txt for guidance");
