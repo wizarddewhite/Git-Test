@@ -1,10 +1,17 @@
+0. pci initialization related code on powernv
+===============================================================================
+pnv_pci_init();    called in start_kernel()->setup_arch()
+pcibios_init();    called in start_kernel()->res_init()->kernel_init()->
+                             do_basic_setup()->do_initcalls()
+
+
 1. initialize on powerpc at bootup
 ===============================================================================
-pcibios_init(); this is a init call
+pcibios_init(); this is a init call, subsys_initcall(pcibios_init)
 	pcibios_scan_phb(); create the bus tree
 	pcibios_resource_survey()
 
-2. pcibios_scan_phb()
+1.1. pcibios_scan_phb()
 ===============================================================================
 pcibios_scan_phb()
 	pcibios_setup_phb_io_space();
@@ -13,38 +20,130 @@ pcibios_scan_phb()
 	bus = pci_create_root_bus(hose->parent, hose->first_busno,
 			          hose->ops, hose, &resources)
 
-3. pcibios_resource_survey()
+1.2. pcibios_resource_survey()
 ===============================================================================
 pcibios_resource_survey()
 	ppc_md.pcibios_fixup();
 	pnv_pci_ioda_fixup();
 
 
-4. pnv_pci_init_ioda1_phb()
+2. pnv_pci_init()
 ===============================================================================
 start_kernel()
-	setup_arch()
+	setup_arch(); arch/powerpc/kernel/setup_64.c
+		ppc_md.setup_arch(); ppc_md is setup in probe_machine, 
+		                   ; see "machine type initialization"
 		pnv_setup_arch()
 			pnv_pci_init();
-				pnv_pci_init_ioda_hub(np);		
-					pnv_pci_init_ioda1_phb();
 
+pnv_pci_init()
+	pci_add_flags(PCI_CAN_SKIP_ISA_ALIGN)
+	for_each_compatible_node(np, NULL, "ibm,ioda-hub") {
+		pnv_pci_init_ioda_hub(np); go throught the device tree and init ioda-hub
+		found_ioda = 1;
+	}
+	/* Look for p5ioc2 IO-Hubs */
+	if (!found_ioda)
+		for_each_compatible_node(np, NULL, "ibm,p5ioc2")
+			pnv_pci_init_p5ioc2_hub(np);
+	
+	/* Setup the linkage between OF nodes and PHBs */
+	pci_devs_phb_init()
+
+	/* Configure IOMMU DMA hooks */
+	ppc_md.pci_dma_dev_setup = pnv_pci_dma_dev_setup;
+	ppc_md.tce_build = pnv_tce_build;
+	ppc_md.tce_free = pnv_tce_free;
+	ppc_md.pci_probe_mode = pnv_pci_probe_mode;
+	set_pci_dma_ops(&dma_iommu_ops);
+
+	/* Configure MSIs */
+	ppc_md.msi_check_device = pnv_msi_check_device;
+	ppc_md.setup_msi_irqs = pnv_setup_msi_irqs;
+	ppc_md.teardown_msi_irqs = pnv_teardown_msi_irqs;
+
+2.1 pnv_pci_init_ioda_hub
+===============================================================================
+pnv_pci_init_ioda_hub(); go through each phb under ioda-hub
+	/* Count child PHBs */
+	for_each_child_of_node(np, phbn) {
+		/* Look for IODA1 PHBs */
+		if (of_device_is_compatible(phbn, "ibm,ioda-phb"))
+			pnv_pci_init_ioda1_phb(phbn);
+	}
+
+2.1.1 pnv_pci_init_ioda1_phb()
+===============================================================================
 pnv_pci_init_ioda1_phb();
+	prop64 = of_get_property(np, "ibm,opal-phbid", NULL)
+	phb_id = be64_to_cpup(prop64);
+	phb = alloc_bootmem(sizeof(struct pnv_phb));
+	if (phb) {
+		memset(phb, 0, sizeof(struct pnv_phb));
+		phb->hose = hose = pcibios_alloc_controller(np); will add to hose_list
+	}
+
+	hose->first_busno = 0;
+	hose->last_busno = 0xff;
+	hose->private_data = phb;
+	phb->opal_id = phb_id;
+	phb->type = PNV_PHB_IODA1;
+
+	pci_process_bridge_OF_ranges(phb->hose, np, primary);
+	phb->regs = of_iomap(np, 0);
+
+	phb->ioda.total_pe = 128;
+	; calculate the m32_segsize
+	phb->ioda.m32_size = resource_size(&hose->mem_resources[0]);
+	phb->ioda.m32_size += 0x10000;
+	phb->ioda.m32_segsize = phb->ioda.m32_size / phb->ioda.total_pe;
+
+	; calculate the io_segsize
+	phb->ioda.io_size = hose->pci_io_size;
+	phb->ioda.io_segsize = phb->ioda.io_size / phb->ioda.total_pe;
+	phb->ioda.io_pci_base = 0;
+
+	; allocate aux data & array
+	; for pe_alloc, m32_segmap, io_segmap, pe_array
+	INIT_LIST_HEAD(&phb->ioda.pe_list)
+
+	; Calculate how many 32-bit TCE segment we have
+	phb->ioda.tce32_count = phb->ioda.m32_pci_base >> 28; 2^26=256M
+
+	/* Clear unusable m64 */
+	; just have one m64 resource?
+	hose->mem_resources[1].flags = 0;
+	hose->mem_resources[1].start = 0;
+	hose->mem_resources[1].end = 0;
+	hose->mem_resources[2].flags = 0;
+	hose->mem_resources[2].start = 0;
+	hose->mem_resources[2].end = 0;
+
 	phb->hose->ops = &pnv_pci_ops;
+
+	/* Setup RID -> PE mapping function */
 	phb->bdfn_to_pe = pnv_ioda_bdfn_to_pe; setup RID -> PE mapping function
-	phb->dma_dev_setup = pnv_pci_ioda_dma_dev_setup; setup TCEs
+
+	; setup TCEs
+	phb->dma_dev_setup = pnv_pci_ioda_dma_dev_setup; 
+	; setup msi support
 	pnv_pci_init_ioda_msis(phb); setup msi
 
 	ppc_md.pcibios_fixup_phb = pnv_pci_ioda_fixup_phb;
 	ppc_md.pcibios_fixup = pnv_pci_ioda_fixup;
 	ppc_md.pcibios_enable_device_hook = pnv_pci_enable_device_hook;
-	pci_add_flags(PCI_REASSIGN_ALL_RSRC);
+	pci_add_flags(PCI_REASSIGN_ALL_RSRC); when the flag is used?
 
 	/* Reset IODA tables to a clean state */
 	rc = opal_pci_reset(phb_id, OPAL_PCI_IODA_TABLE_RESET, OPAL_ASSERT_RESET);
 	opal_pci_set_pe(phb_id, 0, 0, 7, 1, 1 , OPAL_MAP_PE);
 
-5. machine type
+2.1.1.1 pci_process_bridge_OF_ranges()
+===============================================================================
+this function read in the device tree property and 
+allocate resource in hose->mem_resources or hose->io_resource
+
+3. machine type initialization
 ===============================================================================
 define_machine(powernv) {
 	.name			= "PowerNV",
@@ -67,8 +166,13 @@ And when boot up, this machdep_calls is copied in probe_machine();
 head_64.S
 	early_setup
 		probe_machine()
+			go throught the __machine_desc_start and __machine_desc_end
+			machine type is defined by define_machine, and stored in 
+			this area by vmlinux.lds.S
 
-6. device tree parse
+			ppc_md.probe(); if match return 1
+
+4. device tree parse in prom_init()
 ===============================================================================
 prom_init.c
 	prom_init_client_services();
