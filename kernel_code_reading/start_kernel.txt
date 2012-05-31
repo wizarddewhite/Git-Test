@@ -99,21 +99,26 @@ start_kernel()
 	sfi_init_late()
 	ftrace_init()
 	rest_init(); process 0
-		rcu_scheduler_starting();
-		kernel_thread(kernel_init, NULL, CLONE_FS | CLONE_SIGHAND); process 1
-		numa_default_policy();
-		pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES); process 2
-		rcu_read_lock();
-		kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
-		rcu_read_unlock();
-		complete(&kthreadd_done);
 
-		init_idle_bootup_task(current);
-		schedule_preempt_disabled();
-		cpu_idle();
+2. res_init()  last part of process 0
+===============================================================================
+this is the last part of process 0
+after fork two thread, it call cpu_idle()
+res_init()
+	rcu_scheduler_starting();
+	kernel_thread(kernel_init, NULL, CLONE_FS | CLONE_SIGHAND); process 1
+	numa_default_policy();
+	pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES); process 2
+	rcu_read_lock();
+	kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
+	rcu_read_unlock();
+	complete(&kthreadd_done);
 
+	init_idle_bootup_task(current);
+	schedule_preempt_disabled();
+	cpu_idle();
 
-2. kernel_init()
+2.1 kernel_init()
 ===============================================================================
 kernel_init()
 	wait_for_completion(&kthreadd_done)
@@ -128,28 +133,73 @@ kernel_init()
 	do_basic_setup()
 
 	init_post()
-		async_synchronize_full()
-		free_initmem()
-		mark_rodata_ro()
-		system_state = SYSTEM_RUNNING;
-		numa_default_policy();
 
-		current->signal->flags |= SIGNAL_UNKILLABLE;
+2.1.1 init_post()  start process 1
+===============================================================================
+this thread is responsible for start process 1
+at last it create a user space process 1
+init_post()
+	async_synchronize_full()
+	free_initmem()
+	mark_rodata_ro()
+	system_state = SYSTEM_RUNNING;
+	numa_default_policy();
 
-		if (ramdisk_execute_command) {
-			run_init_process(ramdisk_execute_command)
-			printk(KERN_WARNING "Failed to execute");
-		}
+	current->signal->flags |= SIGNAL_UNKILLABLE;
 
-		if (execute_command) {
-			run_init_process(execute_command);
-			printk(KERN_WARNING "Failed to execute");
-		}
+	if (ramdisk_execute_command) {
+		run_init_process(ramdisk_execute_command)
+		printk(KERN_WARNING "Failed to execute");
+	}
 
-		run_init_process("/sbin/init");
-		run_init_process("/etc/init");
-		run_init_process("/bin/init");
-		run_init_process("/bin/sh");
+	if (execute_command) {
+		run_init_process(execute_command);
+		printk(KERN_WARNING "Failed to execute");
+	}
 
-		panic("No init found. Try passing init= option to kernel."
-			"See Linux Documentation/init.txt for guidance");
+	run_init_process("/sbin/init");
+	run_init_process("/etc/init");
+	run_init_process("/bin/init");
+	run_init_process("/bin/sh");
+
+	panic("No init found. Try passing init= option to kernel."
+		"See Linux Documentation/init.txt for guidance");
+
+2.1.2 do_basic_setup()
+===============================================================================
+do_basic_setup()
+	cpuset_init_smp()
+	usermodehelper_init()
+	shmem_init()
+	driver_init()
+	init_irq_proc()
+	do_ctos()
+	usermodehelper_enable()
+	do_initcalls()
+
+2.1.2.1 do_initcalls()
+===============================================================================
+go throught the initcall_levels table, call init call for different part
+do_initcalls()
+	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++)
+		do_initcall_level(level);
+
+do_initcall_levle()
+	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
+		do_one_initcall(*fn);
+			fn() ; call the function here
+
+the inicall_levels is a static arrary of address
+static initcall_t *initcall_levels[] __initdata = {
+	__initcall0_start,
+	__initcall1_start,
+	__initcall2_start,
+	__initcall3_start,
+	__initcall4_start,
+	__initcall5_start,
+	__initcall6_start,
+	__initcall7_start,
+	__initcall_end,
+};
+
+Take a look at INIT_CALLS macro.
