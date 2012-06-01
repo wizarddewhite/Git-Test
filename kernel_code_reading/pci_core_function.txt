@@ -1,0 +1,44 @@
+1. pci_create_root_bus()
+===============================================================================
+pci_create_root_bus(struct device *parent, int bus,
+		struct pci_ops *ops, void *sysdata, struct list_head *resources)
+	struct pci_host_bridge *host_bridge;
+	host_bridge = kzalloc(sizeof(*host_bridge), GFP_KERNEL);
+
+	struct pci_bus *b;
+	b = pci_alloc_bus();
+
+	struct device *dev;
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+
+	b->sysdata = sysdata;
+	b->ops = ops;
+
+	b2 = pci_find_bus(pci_domain_nr(b), bus);
+	if (b2) goto err_out;
+
+	dev->parent = parent;
+	dev->release = pci_release_bus_bridge_dev;
+	dev_set_name(dev, "pci%04x:%02x", pci_domain_nr(b), bus);
+	error = device_register(dev);
+
+	b->bridge = get_device(dev);
+	device_enable_async_suspend(b->bridge);
+	pci_set_bus_of_node(b);
+
+	b->dev.class = &pcibus_class;
+	b->dev.parent = b->bridge;
+	dev_set_name(&b->dev, "%04x:%02x", pci_domain_nr(b), bus);
+	error = device_register(&b->dev);
+	pci_create_legacy_files(b);
+	b->number = b->secondary = bus;
+
+	host_bridge->bus = b;
+	INIT_LIST_HEAD(&host_bridge->windows);
+
+	/* Add initial resources to the bus */
+	; add the resource in *resources* list to bus->resources list
+	pci_bus_add_resource()
+
+	list_add_tail(&host_bridge->list, &pci_host_bridges);
+	list_add_tail(&b->node, &pci_root_buses);
