@@ -41,4 +41,35 @@ pci_create_root_bus(struct device *parent, int bus,
 	pci_bus_add_resource()
 
 	list_add_tail(&host_bridge->list, &pci_host_bridges);
-	list_add_tail(&b->node, &pci_root_buses);
+        list_add_tail(&b->node, &pci_root_buses);
+                                                
+                                                
+                                                
+                                                            
+       host_bridge(struct pci_host_bridge)      
+       +-------------------+                   
+       | windows           |                              +->parent(first parameter of 
+       +-------------------+                              |         pci_create_root_bus)
+       |bus(struct pci_bus)|                              |
+       +-------------------+                              +---------------------+
+        |                                                                       |
+        |                                                                       |
+        |                                                 dev(struct device)    |
+        |                                           +---->+----------------+    |
+        |                                           |     |   parent       |----+
+        |    pci_root_bus(struct pci_bus)           |     +----------------+          
+        +--->+-------------------------------+      |     |                | 
+             |dev(struct device)             |      |     |                |
+             |   class = pcibus_class        |      |     +----------------+
+             |   parent      ----------------|---+  |
+             |                               |   |  |
+             +-------------------------------+<--+  |
+             |bridge(struct device)          |      |
+             |                               |------+
+             |                               |
+             +-------------------------------+
+             |number = bus                   |
+             +-------------------------------+  
+             |secondary = bus                |  
+             +-------------------------------+  
+                Figure 1.1 relationship between pci_root_bus/host_bridge
