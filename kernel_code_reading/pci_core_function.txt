@@ -78,8 +78,84 @@ pci_create_root_bus(struct device *parent, int bus,
 
 2. pci_scan_child_bus()
 ===============================================================================
-pci_scan_child_bus()
+pci_scan_child_bus(struct pci_bus *bus)
+	max = bus->secondary
 
+	/* Go find them, Rover! */
+	for (devfn = 0; devfn < 0x100; devfn += 8)
+		pci_scan_slot(bus, devfn);
+
+	/* Reserve buses for SR-IOV capability. */
+	max += pci_iov_bus_range(bus);
+
+	if (!bus->is_added) {
+		dev_dbg(&bus->dev, "fixups for bus\n");
+		pcibios_fixup_bus(bus);
+		if (pci_is_root_bus(bus))
+			bus->is_added = 1;
+	}
+
+	for (pass=0; pass < 2; pass++)
+		list_for_each_entry(dev, &bus->devices, bus_list) {
+			if (dev->hdr_type == PCI_HEADER_TYPE_BRIDGE ||
+			    dev->hdr_type == PCI_HEADER_TYPE_CARDBUS)
+				max = pci_scan_bridge(bus, dev, max, pass);
+		}
+
+	return max;
+
+2.1 pci_is_root_bus()
+===============================================================================
+pci_is_root_bus(struct pci_bus *pbus)
+	return !(pbus->parent);
+
+the bus is a root bus when it doesn't have parent.
+
+2.1 pci_scan_slot()
+===============================================================================
+pci_scan_slot(struct pci_bus *bus, int devfn)
+	if (only_one_child(bus) && (devfn > 0))
+		return 0; /* Already scanned the entire slot */
+
+	dev = pci_scan_single_device(bus, devfn);
+	if (!dev->is_added)
+		nr++;
+
+	; calculate devfn based on different scheme and call
+	pci_scan_single_device(), nr++ if needed
+
+	/* only one slot has pcie device */
+	if (bus->self && nr)
+		pcie_aspm_init_link_state(bus->self);
+
+	return nr; return the newly find pci device
+
+2.2 pci_scan_single_device()
+===============================================================================
+pci_scan_single_device(struct pci_bus *bus, int devfn)
+	struct pci_dev *dev;
+
+	dev = pci_scan_device(bus, devfn);
+
+	pci_device_add(dev, bus);
+
+2.2.1 pci_scan_device(bus, devfn)
+===============================================================================
+pci_scan_device(struct pci_bus *bus, int devfn)
+	struct pci_dev *dev;
+
+	dev = alloc_pci_dev();
+
+	dev->bus = bus;
+	dev->devfn = devfn;
+	dev->vendor = l & 0xffff;
+	dev->device = (l >> 16) & 0xffff;
+
+	pci_setup_device(dev);
+
+2.2.1.1 pci_setup_device()
+===============================================================================
+pci_setup_device(struct pci_bus *bus, int devfn)
 
 0. Figures, internal representation of pci subsystem
 ===============================================================================
