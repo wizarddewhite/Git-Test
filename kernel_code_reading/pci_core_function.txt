@@ -76,7 +76,7 @@ pci_create_root_bus(struct device *parent, int bus,
                 Figure 1.1 relationship between pci_root_bus/host_bridge
 
 
-2. pci_scan_child_bus()
+2. pci_scan_child_bus(), give the a pci bus, create the sub pci tree
 ===============================================================================
 pci_scan_child_bus(struct pci_bus *bus)
 	max = bus->secondary
@@ -104,14 +104,14 @@ pci_scan_child_bus(struct pci_bus *bus)
 
 	return max;
 
-2.1 pci_is_root_bus()
+2.2 pci_is_root_bus()
 ===============================================================================
 pci_is_root_bus(struct pci_bus *pbus)
 	return !(pbus->parent);
 
 the bus is a root bus when it doesn't have parent.
 
-2.1 pci_scan_slot()
+2.3 pci_scan_slot()
 ===============================================================================
 pci_scan_slot(struct pci_bus *bus, int devfn)
 	if (only_one_child(bus) && (devfn > 0))
@@ -121,16 +121,16 @@ pci_scan_slot(struct pci_bus *bus, int devfn)
 	if (!dev->is_added)
 		nr++;
 
-	; calculate devfn based on different scheme and call
-	pci_scan_single_device(), nr++ if needed
+	; calculate fn based on different scheme and call
+	pci_scan_single_device(bus, devfn + fn), nr++ if needed
 
 	/* only one slot has pcie device */
 	if (bus->self && nr)
 		pcie_aspm_init_link_state(bus->self);
 
-	return nr; return the newly find pci device
+	return nr; return the number of newly find pci device
 
-2.2 pci_scan_single_device()
+2.4 pci_scan_single_device()
 ===============================================================================
 pci_scan_single_device(struct pci_bus *bus, int devfn)
 	struct pci_dev *dev;
@@ -139,7 +139,7 @@ pci_scan_single_device(struct pci_bus *bus, int devfn)
 
 	pci_device_add(dev, bus);
 
-2.2.1 pci_scan_device(bus, devfn)
+2.4.1 pci_scan_device()
 ===============================================================================
 pci_scan_device(struct pci_bus *bus, int devfn)
 	struct pci_dev *dev;
@@ -153,31 +153,387 @@ pci_scan_device(struct pci_bus *bus, int devfn)
 
 	pci_setup_device(dev);
 
-2.2.1.1 pci_setup_device()
+2.4.1.1 pci_setup_device(), setup the newly found pci_dev
 ===============================================================================
-pci_setup_device(struct pci_bus *bus, int devfn)
+; set the type, parent, and resource
+pci_setup_device(struct pci_dev *dev )
+	; get header type, 00h device, 01h bridge, 02h Card Bus
+	if (pci_read_config_byte(dev, PCI_HEADER_TYPE, &hdr_type))
+
+	dev->sysdata = dev->bus->sysdata;
+	dev->dev.parent = dev->bus->bridge;
+	dev->dev.bus = &pci_bus_type;
+	dev->hdr_type = hdr_type & 0x7f;
+
+	dev_set_name(&dev->dev, "%04x:%02x:%02x.%d", pci_domain_nr(dev->bus),
+		     dev->bus->number, PCI_SLOT(dev->devfn),
+		     PCI_FUNC(dev->devfn));
+
+	; early fixups
+	pci_fixup_device(pci_fixup_early, dev);
+
+	switch(dev->hdr_typ) { ; three types
+	case PCI_HEADER_TYPE_NORMAL:
+		pci_read_irq(dev);
+		pci_read_bases(dev, 6, PCI_ROM_ADDRESS);
+		pci_read_config_word(dev, PCI_SUBSYSTEM_VENDOR_ID, &dev->subsystem_vendor);
+		pci_read_config_word(dev, PCI_SUBSYSTEM_ID, &dev->subsystem_device);
+	case PCI_HEADER_TYPE_BRIDGE:
+		pci_read_irq(dev);
+		dev->transparent = ((dev->class & 0xff) == 1);
+		pci_read_bases(dev, 2, PCI_ROM_ADDRESS1);
+		set_pcie_hotplug_bridge(dev);
+		pos = pci_find_capability(dev, PCI_CAP_ID_SSVID);
+		if (pos) {
+			pci_read_config_word(dev, pos + PCI_SSVID_VENDOR_ID, &dev->subsystem_vendor);
+			pci_read_config_word(dev, pos + PCI_SSVID_DEVICE_ID, &dev->subsystem_device);
+		}
+	case PCI_HEADER_TYPE_CARDBUS:
+		pci_read_irq(dev);
+		pci_read_bases(dev, 1, 0);
+		pci_read_config_word(dev, PCI_CB_SUBSYSTEM_VENDOR_ID, &dev->subsystem_vendor);
+		pci_read_config_word(dev, PCI_CB_SUBSYSTEM_ID, &dev->subsystem_device);
+	}
+
+	return 0;
+
+
+
+               struct pci_dev
+               +------------------------------------+
+               |dev(struct device)                  |
+               |   bus (attached to which bus)      |
+               |       bridge                       |<----+
+               |   devfn (device/function number)   |     |
+               |   vendor (vendor ID)               |     |
+               |   device (device ID)               |     |
+               |   parent           ----------------|-----+
+               |   bus = &pci_bus_type              |
+               |                                    |
+               |                                    |
+               |                                    |
+               |                                    |
+               |                                    |
+               +------------------------------------+
+
+               Figure 2.1 Newly added pci_dev structure
+
+
+2.4.1.1.1 pci_read_bases(), setup pci_dev->resource from BAR 
+===============================================================================
+pci_read_bases(struct pci_dev *dev, unsigned int howmany, int rom)
+	; howmany/rom is determined by the pci_dev type
+	for (pos = 0; pos < howmany; pos++) {
+		struct resource *res = &dev->resource[pos];
+		reg = PCI_BASE_ADDRESS_0 + (pos << 2);
+		pos += __pci_read_base(dev, pci_bar_unknown, res, reg);
+	}
+
+	if (rom) {
+		struct resource *res = &dev->resource[PCI_ROM_RESOURCE];
+		dev->rom_base_reg = rom;
+		res->flags = IORESOURCE_MEM | IORESOURCE_PREFETCH |
+				IORESOURCE_READONLY | IORESOURCE_CACHEABLE |
+				IORESOURCE_SIZEALIGN;
+		__pci_read_base(dev, pci_bar_mem32, res, rom);
+	}
+
+2.4.2 pci_device_add()
+===============================================================================
+pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
+	device_initialize(&dev->dev);
+	dev->dev.release = pci_release_dev;
+	pci_dev_get(dev);
+
+	pci_init_capabilities(dev);
+
+	; add to the bus->devices list
+	list_add_tail(&dev->bus_list, &bus->devices);
+
+2.4.2.1 pci_init_capabilities()
+===============================================================================
+pci_init_capabilities(struct pci_dev *dev)
+	/* MSI/MSI-X list */
+	pci_msi_init_pci_dev(dev);
+
+	/* Buffers for saving PCIe and PCI-X capabilities */
+	pci_allocate_cap_save_buffers(dev);
+
+	/* Power Management */
+	pci_pm_init(dev);
+	platform_pci_wakeup_init(dev);
+
+	/* Vital Product Data */
+	pci_vpd_pci22_init(dev);
+
+	/* Alternative Routing-ID Forwarding */
+	pci_enable_ari(dev);
+
+	/* Single Root I/O Virtualization */
+	pci_iov_init(dev);
+
+	/* Enable ACS P2P upstream forwarding */
+	pci_enable_acs(dev);
+
+2.5 pci_scan_bridge()
+===============================================================================
+pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
+ ; bus is the bus where the dev attached to 
+ ; dev is a pci_dev whose type is brige or cardbus
+ ; max is the max bus number we have met
+ ; pass indidate the pass index
+ * We need to process bridges in two passes -- first we scan those
+ * already configured by the BIOS and after we are done with all of
+ * them, we proceed to assigning numbers to the remaining buses in
+ * order to avoid overlaps between old and new bus numbers.
+
+ 	; for both bridge and cardbus, 0x18-0x1a is the bus number
+	; retrieve the bus number from bridge which is set 
+	; by firmware
+	pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
+	primary = buses & 0xFF;
+	secondary = (buses >> 8) & 0xFF;
+	subordinate = (buses >> 16) & 0xFF;
+
+	; check the bus number
+	; 1. primary should equals to bus->number
+	; 2. secondary bus number should bigger than primary
+	if (!pass &&
+	    (primary != bus->number || secondary <= bus->number)) {
+		dev_dbg(&dev->dev, "bus configuration invalid, reconfiguring\n");
+		broken = 1;
+	}
+
+	; disable MasterAbortMode, to do the real work
+	pci_write_config_word(dev, PCI_BRIDGE_CONTROL,
+			      bctl & ~PCI_BRIDGE_CTL_MASTER_ABORT);
+
+
+	; pass 0, 
+	; the normal case
+		child = pci_find_bus(pci_domain_nr(bus), secondary);
+		if (!child) {
+			child = pci_add_new_bus(bus, dev, secondary);
+			if (!child)
+				goto out;
+			child->primary = primary;
+			child->subordinate = subordinate;
+			child->bridge_ctl = bctl;
+		}
+
+		cmax = pci_scan_child_bus(child);
+		if (cmax > max)
+			max = cmax;
+		if (child->subordinate > max)
+			max = child->subordinate;
+	
+	; pass 1
+	; handle the bridge which is not configured well by firmware
+		/* Clear errors */
+		pci_write_config_word(dev, PCI_STATUS, 0xffff);
+
+		; prevent assigning a bus number that already
+		; exist
+		child = pci_find_bus(pci_domain_nr(bus), max+1);
+		if (!child) {
+			child = pci_add_new_bus(bus, dev, ++max);
+			if (!child)
+				goto out;
+		}
+		buses = (buses & 0xff000000)
+		      | ((unsigned int)(child->primary)     <<  0)
+		      | ((unsigned int)(child->secondary)   <<  8)
+		      | ((unsigned int)(child->subordinate) << 16);
+
+		; write the device
+		pci_write_config_dword(dev, PCI_PRIMARY_BUS, buses);
+
+		pci_fixup_parent_subordinate_busnr(child, max);
+		/* Now we can scan all subordinate buses... */
+		max = pci_scan_child_bus(child);
+		/*
+		 * now fix it up again since we have found
+		 * the real value of max.
+		 */
+		pci_fixup_parent_subordinate_busnr(child, max);
+
+		child->subordnate = max;
+		pci_write_config_byte(dev, PCI_SUBORDINATE_BUS， max);
+	return max;
+
+2.5.1 pci_add_new_bus()
+===============================================================================
+pci_add_new_bus(struct pci_bus *parent, struct pci_dev *dev, int busnr)
+	struct pci_bus *child;
+
+	child = pci_alloc_child_bus(parent, dev, busnr);
+	if (child) {
+		down_write(&pci_bus_sem);
+		list_add_tail(&child->node, &parent->children);
+		up_write(&pci_bus_sem);
+	}
+	return child;
+
+2.5.1 pci_alloc_child_bus()
+===============================================================================
+pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
+	child = pci_alloc_bus()
+
+	child->parent = parent;
+	child->ops = parent->ops;
+	child->sysdata = parent->sysdata;
+
+	child->dev.class = &pcibus_class;
+	dev_set_name(&child->dev, ...);
+
+	child->number = child->secondary = busnr;
+	child->primary = parent->secondary;
+	child->subordinate = 0xff;
+
+	if (!bridge)
+		return child;
+
+	child->self = bridge;
+	child->bridge = get_device(&bridge->dev);
+	pci_set_bus_of_node(child);
+	pci_set_bus_speed(child);
+
+	for (i = 0; i < PCI_BRIDGE_RESOURCE_NUM; i++) {
+		child->resource[i] = &bridge->resource[PCI_BRIDGE_RESOURCES+i];
+		child->resource[i]->name = child->name;
+	}
+	
+	; a bridge pci_dev has its subordinate
+	bridge->subordinate = child;
+
+	return child;
+
+             -------+-------------  Bus 00(pci_bus) <-------------------+
+                    |                 +---secondary(00) <---------------|------+
+           +--------+--------+                                          |      |
+           |     00:02.0     |                                          |      |
+           | PCIe-PCI bridge |<--------------------------------------------+   |
+           | (pci_dev)       |                                          |  |   |
+           |     dev         |<----------------------------------------------+ |
+           +--------+--------+                                          |  | | |
+                    |                                +----------------+ |  | | |
+                    |                                |parent          |-+  | | |
+         +---------------------+    Bus 02(pci_bus)  +----------------+    | | |
+         |                     |                     |self            |----+ | |
+         |                     |                     +----------------+      | |
+         |                     |                     |bridge          |------+ |
+    +----v----+           +----v----+                +----------------+        |
+    | 02:00.0 |           | 02:01.0 |                |primary         |--------+
+    |(pci_dev)|           |(pci_dev)|                +----------------+
+    +---------+           +---------+
+
+                     Figure 2.2 relationship between pci_bus and its parent
+                     (this is an example, the number could be different)
+
+3. __pci_read_base() read the BAR in config space, set to pci_dev->resource[]
+===============================================================================
+__pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
+		struct resource *res, unsigned int pos)
+	; pos is pointed to the BAR position in PCI config space
+	; below is to retrieve the BAR address and size
+	pci_read_config_dword(dev, pos, &l);
+	pci_write_config_dword(dev, pos, l | mask);
+	pci_read_config_dword(dev, pos, &sz);
+	pci_write_config_dword(dev, pos, l);
+
+	; l is the base address
+	; sz is the size
+
+	struct pci_bus_region region;
+
+	region.start = l;
+	region.end = l +sz;
+
+	pcibios_bus_to_resource(dev, res, &region);
+
+3.1 pcibios_bus_to_resource(), calculate CPU address of BAR, set to pci_dev->resource
+===============================================================================
+pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
+		strutct pci_bus_region *region)
+	struct pci_host_bridge *bridge = pci_host_bridge(dev);
+	struct pci_host_bridge_window *window;
+	struct pci_bus_region bus_region;
+	resource_size_t offset = 0;
+
+	; go throught the bridge window list
+	; find the offset
+	list_for_each_entry(window, &bridge->windows, list) {
+		if (resource_type(res) != resource_type(window->res))
+			continue;
+
+		bus_region.start = window->res->start - window->offset;
+		bus_region.end = window->res->end - window->offset;
+
+		if (region_contains(&bus_region, region)) {
+			offset = window->offset;
+			break;
+		}
+	}
+
+	; set the real CPU address to pci_dev->resource
+	res->start = region->start + offset;
+	res->end = region->end + offset;
+
+4. pci_find_bus()
+===============================================================================
+pci_find_bus(int domain, int busnr)
+	while ((bus = pci_find_next_bus(bus)) != NULL)  {
+		if (pci_domain_nr(bus) != domain)
+			continue;
+		tmp_bus = pci_do_find_bus(bus, busnr);
+		if (tmp_bus)
+			return tmp_bus;
+	}
+	return NULL;
+
+4.1 pci_find_next_bus()
+===============================================================================
+pci_find_next_bus(struct pci_bus *from)
+	n = from ? from->node.next : pci_root_buses.next;
+	if (n != &pci_root_buses)
+		b = pci_bus_b(n);
+	return b;
+
+4.2 pci_do_find_bus()
+===============================================================================
+pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
+	if(bus->number == busnr)
+		return bus;
+
+	list_for_each(tmp, &bus->children) {
+		child = pci_do_find_bus(pci_bus_b(tmp), busnr);
+		if(child)
+			return child;
+	}
+	return NULL;
 
 0. Figures, internal representation of pci subsystem
 ===============================================================================
-                                 ^
-                                 |
-                        +--------+--------+
-                        |     00:02.0     |
-                        | PCIe-PCI bridge |
-                        |  (pci_dev)      |
-                        +--------+--------+
-                                 |
-                                 |
-                      +---------------------+    Bus 02(pci_bus)
-                      |                     |
-                      |                     |
-                      |                     |
-                 +----v----+           +----v----+
-                 | 02:00.0 |           | 02:01.0 |
-                 |(pci_dev)|           |(pci_dev)|
-                 +---------+           +---------+
+                    
+                                   -------+---------Bus 00(pci_bus) 
+                                          |                 
+                                 +--------+--------+       
+                                 |     00:02.0     |      
+                                 | PCIe-PCI bridge |
+                                 | (pci_dev)       |
+                                 +--------+--------+
+                                          |                                
+                                          |                                
+                               +---------------------+    Bus 02(pci_bus)  
+                               |                     |                     
+                               |                     |                     
+                               |                     |                     
+                          +----v----+           +----v----+                
+                          | 02:00.0 |           | 02:01.0 |                
+                          |(pci_dev)|           |(pci_dev)|                
+                          +---------+           +---------+
 
-                     Figure 2.1 internal representaion of PCIe/PCE bridge
+                     Figure 0.1 internal representaion of PCIe/PCE bridge
                                 and its child bus and devices
                      (this is an example, the number could be different)
          
@@ -209,5 +565,5 @@ pci_setup_device(struct pci_bus *bus, int devfn)
                  | Bus#4(pci_bus)     | Bus#5(pci_bus)    |Bus#6(pci_bus)
                  v                    v                   v
 
-                   Figure 2.2 internal representation of PCIe Switch
+                   Figure 0.2 internal representation of PCIe Switch
                    (this is an example, the number could be different)
