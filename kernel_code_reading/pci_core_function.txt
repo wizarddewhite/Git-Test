@@ -374,7 +374,7 @@ pci_add_new_bus(struct pci_bus *parent, struct pci_dev *dev, int busnr)
 	}
 	return child;
 
-2.5.1 pci_alloc_child_bus()
+2.5.1.1 pci_alloc_child_bus()
 ===============================================================================
 pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
 	child = pci_alloc_bus()
@@ -429,6 +429,22 @@ pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
 
                      Figure 2.2 relationship between pci_bus and its parent
                      (this is an example, the number could be different)
+
+2.5.2 pci_fixup_parent_subordinate_busnr(), fix parent bus number
+===============================================================================
+pci_fixup_parent_subordinate_busnr(struct pci_bus *child, int max)
+	struct pci_bus *parent = child->parent;
+
+	/* Attempts to fix that up are really dangerous unless
+	   we're going to re-assign all bus numbers. */
+	if (!pcibios_assign_all_busses())
+		return;
+
+	while (parent->parent && parent->subordinate < max) {
+		parent->subordinate = max;
+		pci_write_config_byte(parent->self, PCI_SUBORDINATE_BUS, max);
+		parent = parent->parent;
+	}
 
 3. __pci_read_base() read the BAR in config space, set to pci_dev->resource[]
 ===============================================================================
