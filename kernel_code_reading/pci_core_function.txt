@@ -67,7 +67,7 @@ pci_create_root_bus(struct device *parent, int bus,
              |bridge(struct device)          |      |
              |                               |------+
              +-------------------------------+
-             |self = NULL                    |
+             |self(struct pci_dev) = NULL    |
              +-------------------------------+
              |number = bus                   |
              +-------------------------------+  
