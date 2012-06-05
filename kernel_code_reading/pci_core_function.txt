@@ -216,7 +216,7 @@ pci_setup_device(struct pci_dev *dev )
                |                                    |
                +------------------------------------+
 
-               Figure 2.1 Newly added pci_dev structure
+               Figure 2.1 newly added pci_dev structure
 
 
 2.4.1.1.1 pci_read_bases(), setup pci_dev->resource from BAR 
@@ -408,7 +408,7 @@ pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
 
 	return child;
 
-             -------+-------------  Bus 00(pci_bus) <-------------------+
+             -------+---------      Bus 00(pci_bus) <-------------------+
                     |                 +---secondary(00) <---------------|------+
            +--------+--------+                                          |      |
            |     00:02.0     |                                          |      |
@@ -427,7 +427,7 @@ pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
     |(pci_dev)|           |(pci_dev)|                +----------------+
     +---------+           +---------+
 
-                     Figure 2.2 relationship between pci_bus and its parent
+                     Figure 2.2 newly added pci_bus and its parent
                      (this is an example, the number could be different)
 
 2.5.2 pci_fixup_parent_subordinate_busnr(), fix parent bus number
@@ -583,3 +583,36 @@ pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 
                    Figure 0.2 internal representation of PCIe Switch
                    (this is an example, the number could be different)
+
+                            Bus 0(pci_bus)                      
+                            +--------------------+<----+
+                            |                    |     |
+                            +--------------------+     |
+                                                       |
+                                                       |
+                             Bridge(pci_dev)           |                     
+                            +--------------------+<----|---+--------------+
+                            |subordinate(pci_bus)|-+   |   |              |
+                            +--------------------+ |   |   |              |
+                                                   |   |   |              |
+                                                   |   |   |              |
+                            Bus 1(pci_bus)         |   |   |              |
+                       +--->+-------------------+<-+   |   |              |
+                       |    |parent(pci_bus)    |------+   |              |
+                       |    +-------------------+          |              |
+                       |    |self(pci_dev)      |----------+              |
+                       |    |bridge(device)     |                         |
+                       |    +-------------------+                         |
+                       |    |devices(list_head) |                         |
+                       |    +--------+----------+                         |
+                       |             |                                    |
+                       |      ----+--+---+----                            |
+   pci_dev             |          |      |          pci_dev               |
+   +---------------+<--|----------+      +--------->+-----------------+   |
+   |bus(pci_bus)   |---+                            |bus(pci_bus)     |   |
+   +---------------+                                +-----------------+   |
+   |dev.parent     |                                |dev.parent       |---+
+   +---------------+                                +-----------------+
+
+                  Figure 0.3 relationship between bridge/bus/child device
+                  (this is an example, the number could be different)
