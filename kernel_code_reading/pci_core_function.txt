@@ -66,7 +66,8 @@ pci_create_root_bus(struct device *parent, int bus,
              +-------------------------------+<--+  |
              |bridge(struct device)          |      |
              |                               |------+
-             |                               |
+             +-------------------------------+
+             |self = NULL                    |
              +-------------------------------+
              |number = bus                   |
              +-------------------------------+  
@@ -419,9 +420,9 @@ pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
                     |                                +----------------+ |  | | |
                     |                                |parent          |-+  | | |
          +---------------------+    Bus 02(pci_bus)  +----------------+    | | |
-         |                     |                     |self            |----+ | |
+         |                     |                     |self(pci_dev)   |----+ | |
          |                     |                     +----------------+      | |
-         |                     |                     |bridge          |------+ |
+         |                     |                     |bridge(device)  |------+ |
     +----v----+           +----v----+                +----------------+        |
     | 02:00.0 |           | 02:01.0 |                |primary         |--------+
     |(pci_dev)|           |(pci_dev)|                +----------------+
@@ -586,18 +587,22 @@ pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 
                             Bus 0(pci_bus)                      
                             +--------------------+<----+
-                            |                    |     |
-                            +--------------------+     |
-                                                       |
-                                                       |
-                             Bridge(pci_dev)           |                     
-                            +--------------------+<----|---+--------------+
-                            |subordinate(pci_bus)|-+   |   |              |
-                            +--------------------+ |   |   |              |
-                                                   |   |   |              |
-                                                   |   |   |              |
-                            Bus 1(pci_bus)         |   |   |              |
-                       +--->+-------------------+<-+   |   |              |
+                            |children(list_head) |     |
+                            |                    |-+   |
+                            +--------------------+ |   |
+                                                   |   |
+                                                   |   |
+                    +------------------------------+   |
+                    |                                  |
+                    |                                  |
+                    |        Bridge(pci_dev)           |                     
+                    |       +--------------------+<----|---+--------------+
+                    |       |subordinate(pci_bus)|-+   |   |              |
+                    |       +--------------------+ |   |   |              |
+                    |                              |   |   |              |
+                    |                              |   |   |              |
+                    |       Bus 1(pci_bus)         |   |   |              |
+                    +--+--->+-------------------+<-+   |   |              |
                        |    |parent(pci_bus)    |------+   |              |
                        |    +-------------------+          |              |
                        |    |self(pci_dev)      |----------+              |
@@ -615,4 +620,6 @@ pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
    +---------------+                                +-----------------+
 
                   Figure 0.3 relationship between bridge/bus/child device
-                  (this is an example, the number could be different)
+                  (this is an example, the number could be different
+		   another version on web is http://tldp.org/LDP/tlk/dd/pci.html
+		   Section 6.6.1)
