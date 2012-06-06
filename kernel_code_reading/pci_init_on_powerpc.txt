@@ -4,104 +4,7 @@ pnv_pci_init();    called in start_kernel()->setup_arch()
 pcibios_init();    called in start_kernel()->res_init()->kernel_init()->
                              do_basic_setup()->do_initcalls()
 
-
-1. initialize on powerpc at bootup
-===============================================================================
-pcibios_init()
-	ppc_md.phys_mem_access_prot = pci_phys_mem_access_prot;
-
-	/* On ppc64, we always enable PCI domains and we keep domain 0
-	 * backward compatible in /proc for video cards
-	 */
-	pci_add_flags(PCI_ENABLE_PROC_DOMAINS | PCI_COMPAT_DOMAIN_0);
-
-	/* Scan all of the recorded PCI controllers.  */
-	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
-		pcibios_scan_phb(hose);
-		pci_bus_add_devices(hose->bus);
-	}
-
-	/* Call common code to handle resource allocation */
-	pcibios_resource_survey();
-
-1.1. pcibios_scan_phb()
-===============================================================================
-pcibios_scan_phb()
-	; Get some IO space for the new PHB 
-	pcibios_setup_phb_io_space(hose);
-
-	; Wire up PHB bus resources 
-	pcibios_setup_phb_resources(hose, &resources);
-
-	; Create an empty bus for the toplevel 
-	bus = pci_create_root_bus(hose->parent, hose->first_busno,
-				  hose->ops, hose, &resources);
-	hose->bus = bus;
-
-	/* Get probe mode and perform scan */
-	mode = PCI_PROBE_NORMAL;
-	if (node && ppc_md.pci_probe_mode)
-		mode = ppc_md.pci_probe_mode(bus);pnv_pci_probe_mode
-
-	if (mode == PCI_PROBE_DEVTREE) {
-		bus->subordinate = hose->last_busno;
-		of_scan_bus(node, bus);
-	}
-
-	if (mode == PCI_PROBE_NORMAL); create the bus tree
-		hose->last_busno = bus->subordinate = pci_scan_child_bus(bus);
-
-	if (ppc_md.pcibios_fixup_phb)
-		ppc_md.pcibios_fixup_phb(hose);
-
-	/* Configure PCI Express settings */
-	if (bus && !pci_has_flag(PCI_PROBE_ONLY)) {
-		struct pci_bus *child;
-		list_for_each_entry(child, &bus->children, node) {
-			struct pci_dev *self = child->self;
-			if (!self)
-				continue;
-			pcie_bus_configure_settings(child, self->pcie_mpss);
-		}
-	}
-
-1.1.1 pnv_pci_probe_mode()
-===============================================================================
-pnv_pci_probe_mode()
-	return PCI_PROBE_NORMAL;
-
-1.1.2 pnv_pci_ioda_fixup_phb()
-===============================================================================
-pnv_pci_ioda_fixup_phb()
-	; associate PEs per function
-	pnv_ioda_setup_PEs(hose->bus);
-
-	; calculate all resources
-	pnv_ioda_calc_bus(hose->bus, IORESOURCE_IO, &size, &align);
-	pnv_ioda_calc_bus(hose->bus, IORESOURCE_MEM, &size, &align);
-
-	; apply them to HW
-	pnv_ioda_update_resources(hose->bus);
-
-	; setup DMA
-	pnv_ioda_setup_dma(hose->private_data);
-
-	; Configure PCI Express settings 
-	list_for_each_entry(child, &hose->bus->children, node) {
-		struct pci_dev *self = child->self;
-		if (!self)
-			continue;
-		pcie_bus_configure_settings(child, self->pcie_mpss);
-	}
-
-1.2. pcibios_resource_survey()
-===============================================================================
-pcibios_resource_survey()
-	ppc_md.pcibios_fixup();
-	pnv_pci_ioda_fixup();
-
-
-2. pnv_pci_init()
+1. pnv_pci_init(), initialize hub and phb
 ===============================================================================
 start_kernel()
 	setup_arch(); arch/powerpc/kernel/setup_64.c
@@ -136,7 +39,7 @@ pnv_pci_init()
 	ppc_md.setup_msi_irqs = pnv_setup_msi_irqs;
 	ppc_md.teardown_msi_irqs = pnv_teardown_msi_irqs;
 
-2.1 pnv_pci_init_ioda_hub
+1.1 pnv_pci_init_ioda_hub
 ===============================================================================
 pnv_pci_init_ioda_hub(); go through each phb under ioda-hub
 	/* Count child PHBs */
@@ -146,7 +49,7 @@ pnv_pci_init_ioda_hub(); go through each phb under ioda-hub
 			pnv_pci_init_ioda1_phb(phbn);
 	}
 
-2.1.1 pnv_pci_init_ioda1_phb()
+1.1.1 pnv_pci_init_ioda1_phb()
 ===============================================================================
 pnv_pci_init_ioda1_phb();
 	prop64 = of_get_property(np, "ibm,opal-phbid", NULL)
@@ -166,6 +69,8 @@ pnv_pci_init_ioda1_phb();
 	pci_process_bridge_OF_ranges(phb->hose, np, primary);
 	phb->regs = of_iomap(np, 0);
 
+	; we have 128 PEs
+	; calculate the mem32_segsize, io_segsize, 
 	phb->ioda.total_pe = 128;
 	; calculate the m32_segsize
 	phb->ioda.m32_size = resource_size(&hose->mem_resources[0]);
@@ -212,10 +117,127 @@ pnv_pci_init_ioda1_phb();
 	rc = opal_pci_reset(phb_id, OPAL_PCI_IODA_TABLE_RESET, OPAL_ASSERT_RESET);
 	opal_pci_set_pe(phb_id, 0, 0, 7, 1, 1 , OPAL_MAP_PE);
 
-2.1.1.1 pci_process_bridge_OF_ranges()
+1.1.1.1 pci_process_bridge_OF_ranges(), set hose->mem_resource, hose->io_resource from FDT
 ===============================================================================
 this function read in the device tree property and 
 allocate resource in hose->mem_resources or hose->io_resource
+
+2. pcibios_init()
+===============================================================================
+pcibios_init()
+	ppc_md.phys_mem_access_prot = pci_phys_mem_access_prot;
+
+	/* On ppc64, we always enable PCI domains and we keep domain 0
+	 * backward compatible in /proc for video cards
+	 */
+	pci_add_flags(PCI_ENABLE_PROC_DOMAINS | PCI_COMPAT_DOMAIN_0);
+
+	/* Scan all of the recorded PCI controllers.  */
+	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
+		pcibios_scan_phb(hose);
+		pci_bus_add_devices(hose->bus);
+	}
+
+	/* Call common code to handle resource allocation */
+	pcibios_resource_survey();
+
+2.1. pcibios_scan_phb()
+===============================================================================
+pcibios_scan_phb()
+	; Get some IO space for the new PHB 
+	pcibios_setup_phb_io_space(hose);
+
+	; Wire up PHB bus resources 
+	pcibios_setup_phb_resources(hose, &resources);
+
+	; Create an empty bus for the toplevel 
+	bus = pci_create_root_bus(hose->parent, hose->first_busno,
+				  hose->ops, hose, &resources);
+	hose->bus = bus;
+
+	/* Get probe mode and perform scan */
+	mode = PCI_PROBE_NORMAL;
+	if (node && ppc_md.pci_probe_mode)
+		mode = ppc_md.pci_probe_mode(bus);pnv_pci_probe_mode
+
+	if (mode == PCI_PROBE_DEVTREE) {
+		bus->subordinate = hose->last_busno;
+		of_scan_bus(node, bus);
+	}
+
+	if (mode == PCI_PROBE_NORMAL); create the bus tree
+		hose->last_busno = bus->subordinate = pci_scan_child_bus(bus);
+
+	if (ppc_md.pcibios_fixup_phb)
+		ppc_md.pcibios_fixup_phb(hose);
+
+	/* Configure PCI Express settings */
+	if (bus && !pci_has_flag(PCI_PROBE_ONLY)) {
+		struct pci_bus *child;
+		list_for_each_entry(child, &bus->children, node) {
+			struct pci_dev *self = child->self;
+			if (!self)
+				continue;
+			pcie_bus_configure_settings(child, self->pcie_mpss);
+		}
+	}
+
+2.1.1 pnv_pci_probe_mode()
+===============================================================================
+pnv_pci_probe_mode()
+	return PCI_PROBE_NORMAL;
+
+2.1.2 pnv_pci_ioda_fixup_phb()
+===============================================================================
+pnv_pci_ioda_fixup_phb()
+	; associate PEs per function
+	pnv_ioda_setup_PEs(hose->bus);
+
+	; calculate all resources
+	pnv_ioda_calc_bus(hose->bus, IORESOURCE_IO, &size, &align);
+	pnv_ioda_calc_bus(hose->bus, IORESOURCE_MEM, &size, &align);
+
+	; apply them to HW
+	pnv_ioda_update_resources(hose->bus);
+
+	; setup DMA
+	pnv_ioda_setup_dma(hose->private_data);
+
+	; Configure PCI Express settings 
+	list_for_each_entry(child, &hose->bus->children, node) {
+		struct pci_dev *self = child->self;
+		if (!self)
+			continue;
+		pcie_bus_configure_settings(child, self->pcie_mpss);
+	}
+
+2.1.3 pcie_bus_configure_settings()
+===============================================================================
+pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
+	if (!pci_is_pcie(bus->self))
+		return;
+
+	if (pcie_bus_config == PCIE_BUS_TUNE_OFF)
+		return;
+
+	if (pcie_bus_config == PCIE_BUS_PEER2PEER)
+		smpss = 0;
+
+	if (pcie_bus_config == PCIE_BUS_SAFE) {
+		smpss = mpss;
+
+		pcie_find_smpss(bus->self, &smpss);
+		pci_walk_bus(bus, pcie_find_smpss, &smpss);
+	}
+
+	pcie_bus_configure_set(bus->self, &smpss);
+	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
+
+2.2. pcibios_resource_survey()
+===============================================================================
+pcibios_resource_survey()
+	ppc_md.pcibios_fixup();
+	pnv_pci_ioda_fixup();
 
 3. machine type initialization
 ===============================================================================
