@@ -1,0 +1,6 @@
+# m h  dom mon dow   command
+55 * * * *  DISPLAY=:0.0 zenity --info --text="take care of your eyes"
+30 11 * * * DISPLAY=:0.0 zenity --info --text="take care of your stomach"
+50 17 * * * DISPLAY=:0.0 zenity --info --text="go home"
+00 12 * * * rsync -avz /media/System/Task ywywyang@dragon:
+00 12 * * * rsync -avz /media/System/Train ywywyang@dragon:
