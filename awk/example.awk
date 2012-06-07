@@ -12,6 +12,8 @@ ls -l files | awk '{ x += $5 } END { print "total bytes: " x }'
 awk -F: '{ print $1 }' /etc/passwd | sort
 #Print the even-numbered lines in the data file:
 awk 'NR % 2 == 0' data
+#print the file length in line number
+awk 'END {print NR}' data
 
 #====================================================
 # Regex
