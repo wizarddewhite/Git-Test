@@ -599,3 +599,6 @@ pci_register_driver(&enic_driver)
 
 
 		pci_create_newid_files(drv);
+
+10. pcibios_resource_survey()
+================================================================================
