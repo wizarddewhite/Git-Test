@@ -1,0 +1,17 @@
+alias ltc-kvm LTC KVM <ltc-kvm@lists.linux.ibm.com>
+alias PowerKVM PowerKVM <PowerKVM@lists.linux.ibm.com>
+alias ram Ram Pai <linuxram@us.ibm.com>
+alias lmr Lucas Meneghel Rodrigues <lmr@redhat.com>
+alias pbonzini Paolo Bonzini <pbonzini@redhat.com>
+alias ltc-china LTC China mailing list <ltc-china@lists.linux.ibm.com>
+alias dwg David Gibson <dwg@au1.ibm.com>
+alias gavin Gavin Shan <shangw@linux.vnet.ibm.com>
+alias Ben Benjamin Herrenschmidt <benh@au1.ibm.com>
+alias liwp WanPeng Li <liwp@linux.vnet.ibm.com>
+alias zhangli Li AG Zhang <zhlbj@cn.ibm.com>
+alias liusheng Sheng SL Liu <liusheng@cn.ibm.com>
+alias paul Paul Mackerras <paulus@au1.ibm.com>
+alias hb Hong Bing HB Zhang <zhangzhb@cn.ibm.com>
+alias michael Michael Hohnbaum <hbaum@us.ibm.com>
+alias linux-pci Linux PCI <linux-pci@vger.kernel.org>
+alias yinghai Yinghai Lu <yinghai@kernel.org>
