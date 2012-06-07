@@ -30,8 +30,10 @@ awk '$1 !~ /J/' inventory-shipped
 #====================================================
 # Reading Input File
 #====================================================
-# change the recode seperator to '/'
+# change the recode separator to '/'
 awk 'BEGIN {RS = "/"}; {print $0}' BBS-list
+# change the field separator to ','
+awk 'BEGIN { FS = "," } ; { print $2 }' BBS-list
 # NF is the number of fields in the current record
 awk '/foo/ { print $1, NF }' BBS-list
 # change the content of a Field
