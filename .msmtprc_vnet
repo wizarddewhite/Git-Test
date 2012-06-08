@@ -1,0 +1,6 @@
+account default
+host ap.relay.ibm.com
+#auth plain
+user weiyang@linux.vnet.ibm.com
+password xxx
+from weiyang@linux.vnet.ibm.com
