@@ -1,0 +1,22 @@
+[user]
+	name = Richard Yang 
+	email = weiyang@linux.vnet.ibm.com
+[color]
+	ui = true
+[sendmail]
+	smtppass       = 123
+	smtpserver     = ap.relay.ibm.com
+	smtpuser       = weiyang@linux.vnet.ibm.com
+	smtpserverport = 143
+[diff]
+	tool = gvimdiff
+[difftool]
+	prompt = false
+[core]
+	editor = vim
+[merge]
+	tool = vimdiff
+[alias]
+	logview = log --graph --decorate --all
+	co = checkout
+	commit = commit -s
