@@ -10,7 +10,7 @@
 	smtpencryption = tls
 	smtppass       = 123
 	smtpserver     = smtp.gmail.com
-	smtpuser       = wizarddewhite
+	smtpuser       = wizarddewhite@gmail.com
 	smtpserverport = 143
 [diff]
 	tool = gvimdiff
