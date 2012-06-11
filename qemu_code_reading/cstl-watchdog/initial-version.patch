@@ -1,16 +1,16 @@
-commit 9371d2548da5f4c02465793748dd9ccb2bf2f3ba
+commit e4c79050965dec6ccd1f87e6e389ac4d534f3515
 Author: Wei Yang <weiyang@linux.vnet.ibm.com>
-Date:   Mon Jun 11 16:47:38 2012 +0800
+Date:   Mon Jun 11 17:31:21 2012 +0800
 
     cstl-watchdog: add initial version of CSTL watch dog
 
 diff --git a/Makefile.objs b/Makefile.objs
-index 226b01d..23bacc2 100644
+index 70c5c79..6002040 100644
 --- a/Makefile.objs
 +++ b/Makefile.objs
-@@ -322,6 +322,8 @@ hw-obj-$(CONFIG_DP8393X) += dp8393x.o
- hw-obj-$(CONFIG_DS1225Y) += ds1225y.o
- hw-obj-$(CONFIG_MIPSNET) += mipsnet.o
+@@ -326,6 +326,8 @@ hw-obj-$(CONFIG_MIPSNET) += mipsnet.o
+ 
+ hw-obj-y += qtest.o
  
 +hw-obj-y += cstl-watchdog.o
 +
