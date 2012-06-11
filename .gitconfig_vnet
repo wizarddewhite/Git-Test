@@ -3,11 +3,8 @@
 	email = weiyang@linux.vnet.ibm.com
 [color]
 	ui = true
-[sendmail]
-	smtppass       = 123
-	smtpserver     = ap.relay.ibm.com
-	smtpuser       = weiyang@linux.vnet.ibm.com
-	smtpserverport = 143
+[sendemail]
+	smtpserver = /usr/bin/msmtp
 [diff]
 	tool = gvimdiff
 [difftool]
