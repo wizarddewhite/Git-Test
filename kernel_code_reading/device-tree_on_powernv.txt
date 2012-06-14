@@ -1,3 +1,5 @@
+# reference
+# http://devicetree.org/Device_Tree_Usage
 /dts-v1/;
 
 / {
