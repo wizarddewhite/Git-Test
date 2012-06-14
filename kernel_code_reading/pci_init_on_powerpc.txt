@@ -49,6 +49,22 @@ pnv_pci_init_ioda_hub(); go through each phb under ioda-hub
 			pnv_pci_init_ioda1_phb(phbn);
 	}
 
+  +---------------------------------------------------------------+
+  |                                                               |
+  |                                                               |
+  |                             Hub                               |
+  |                                                               |
+  |                                                               |
+  |  +------+  +------+  +------+  +------+  +------+  +------+   |                                      |
+  |  | Phb  |  | Phb  |  | Phb  |  | Phb  |  | Phb  |  | Phb  |   |                                      |
+  |  |      |  |      |  |      |  |      |  |      |  |      |   |                                      |
+  |  +------+  +------+  +------+  +------+  +------+  +------+   |                                      |
+  |                                                               |
+  +---------------------------------------------------------------+
+   
+          Figure 1.1 Relationship between Hub and Phb
+
+
 1.1.1 pnv_pci_init_ioda1_phb()
 ===============================================================================
 pnv_pci_init_ioda1_phb();
@@ -76,6 +92,8 @@ pnv_pci_init_ioda1_phb();
 	phb->ioda.m32_size = resource_size(&hose->mem_resources[0]);
 	phb->ioda.m32_size += 0x10000;
 	phb->ioda.m32_segsize = phb->ioda.m32_size / phb->ioda.total_pe;
+	phb->ioda.m32_pci_base = hose->mem_resources[0].start -
+	                         hose->pci_mem_offset; convert back to the pci_addr
 
 	; calculate the io_segsize
 	phb->ioda.io_size = hose->pci_io_size;
@@ -121,6 +139,28 @@ pnv_pci_init_ioda1_phb();
 ===============================================================================
 this function read in the device tree property and 
 allocate resource in hose->mem_resources or hose->io_resource
+
+read the information from device tree and accroding to the *ranges* field of phb
+to assign the resources. For example:
+0x2000000 0x0 0x80000000 0x3da0 0x0       0x0 0x7fff0000
+pci address              cpu address      size
+
+pci_process_bridge_OF_ranges(struct pci_controller *hose, struct device_node *dev, 
+		             int primary)
+	pci_space = ranges[0];
+	pci_addr = of_read_number(ranges + 1, 2);
+	cpu_addr = of_translate_address(dev, ranges + 3);
+	size = of_read_number(ranges + pna + 3, 2);
+
+	hose->pci_mem_offset = cpu_addr - pci_addr;
+
+	res = &hose->mem_resources[];
+	
+	res->start = cpu_addr;
+	res->end = res->start + size - 1;
+	res->parent = NULL;
+	res->sibling = NULL;
+	res->child = NULL;
 
 2. pcibios_init()
 ===============================================================================
