@@ -261,7 +261,7 @@ pcibios_scan_phb()
 		hose->last_busno = bus->subordinate = pci_scan_child_bus(bus);
 
 	if (ppc_md.pcibios_fixup_phb)
-		ppc_md.pcibios_fixup_phb(hose);
+		ppc_md.pcibios_fixup_phb(hose);pnv_pci_ioda_fixup_phb
 
 	/* Configure PCI Express settings */
 	if (bus && !pci_has_flag(PCI_PROBE_ONLY)) {
@@ -350,7 +350,171 @@ pnv_pci_ioda_fixup_phb()
 		pcie_bus_configure_settings(child, self->pcie_mpss);
 	}
 
-2.1.4 pcie_bus_configure_settings()
+2.1.4.1 pnv_ioda_setup_PEs(), associate PEs per function
+===============================================================================
+; two kinds of PEs
+pnv_ioda_setup_PEs(struct pci_bus *bus)
+	struct pci_dev *dev;
+	struct pnv_ioda_pe *pe;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		pe = pnv_ioda_setup_dev_PE(dev);
+		if (pe == NULL)
+			continue;
+		/* Leaving the PCIe domain ... single PE# */
+		if (dev->pcie_type == PCI_EXP_TYPE_PCI_BRIDGE)
+			pnv_ioda_setup_bus_PE(dev, pe);
+		else if (dev->subordinate)
+			pnv_ioda_setup_PEs(dev->subordinate);
+	}
+
+2.1.4.2 pnv_ioda_calc_bus()
+===============================================================================
+pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags, 
+		  resource_size_t *size,
+		  resource_size_t *align)
+	struct pci_controller *hose = pci_bus_to_host(bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct list_head head;
+
+	; get alignment based on different type
+	if (flags & IORESOURCE_IO) {
+		bres = 0;
+		min_align = phb->ioda.io_segsize;
+		min_balign = 0x1000;
+	} else {
+		bres = 1;
+		min_align = phb->ioda.m32_segsize;
+		min_balign = 0x100000;
+	}
+
+	; Gather all our children resources ordered by alignment
+	INIT_LIST_HEAD(&head);
+
+	; Busses 
+	list_for_each_entry(cbus, &bus->children, node) {
+		pnv_ioda_calc_bus(cbus, flags, &dev_size, &dev_align);
+		pnv_ioda_add_wrap(&head, cbus, NULL, dev_size, dev_align);
+	}
+
+	; Devices 
+	list_for_each_entry(cdev, &bus->devices, bus_list) {
+		pnv_ioda_calc_dev(cdev, flags, &dev_size, &dev_align);
+		; dev_size is the total size of a kind of resource
+		; dev_align is the max size of one of it
+		/* Align them to segment size */
+		if (dev_align < min_align)
+			dev_align = min_align;
+		pnv_ioda_add_wrap(&head, NULL, cdev, dev_size, dev_align);
+		; resource and alignment for a particular pci_dev is added
+	}
+
+	if (list_empty(&head))
+		goto empty;
+	
+	; calculate the start
+	if (bus->self) {
+		/* No offset for downstream bridges */
+		start = 0;
+	} else {
+		/* Offset from the root */
+		if (flags & IORESOURCE_IO)
+			/* Don't hand out IO 0 */
+			start = hose->io_resource.start + 0x1000;
+		else
+			start = hose->mem_resources[0].start;
+	}
+
+	while(!list_empty(&head)) {
+		w = list_first_entry(&head, struct resource_wrap, link);
+		list_del(&w->link);
+		if (w->size) {
+			if (start) {
+				start = ALIGN(start, w->align);
+				if (w->dev)
+					pnv_ioda_offset_dev(w->dev,flags,start);
+				else if (w->bus)
+					pnv_ioda_offset_bus(w->bus,flags,start);
+			}
+			if (w->align > *align)
+				*align = w->align;
+		}
+		start += w->size;
+		kfree(w);
+	}
+empty:
+	/* Only setup P2P's, not the PHB itself */
+	if (bus->self) {
+		; means this is not a root bus
+		struct resource *res = bus->resource[bres];
+
+		if (WARN_ON(res == NULL))
+			return;
+
+		/*
+		 * FIXME: We should probably export and call
+		 * pci_bridge_check_ranges() to properly re-initialize
+		 * the PCI portion of the flags here, and to detect
+		 * what the bridge actually supports.
+		 */
+		res->start = 0;
+		res->flags = (*size) ? flags : 0;
+		res->end = (*size) ? (*size - 1) : 0;
+	}
+
+2.1.4.2 pnv_ioda_calc_dev(), get the size and alignment for a pci_dev
+===============================================================================
+; after return,
+; size equal the sum of all size of a certain type of resource
+; align equal the max size of a certain type of resource
+pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
+		resource_size_t *size, resource_size_t *align)
+
+	; Clear the resources out and mark them all unset 
+	for (i = 0; i <= PCI_ROM_RESOURCE; i++) {
+		r = &dev->resource[i];
+		if (!(r->flags & flags))
+		    continue;
+		if (r->start) {
+			r->end -= r->start; still preserve the size information
+			r->start = 0;
+		}
+		r->flags |= IORESOURCE_UNSET;
+	}
+
+	; assign certain type of resource from 0
+	; from biggest to smallest
+	start = 0;
+	for (;;) {
+		resource_size_t max_size = 0;
+		int max_no = -1;
+
+		/* Find next biggest resource */
+		for (i = 0; i <= PCI_ROM_RESOURCE; i++) {
+			r = &dev->resource[i];
+			if (!(r->flags & IORESOURCE_UNSET) ||
+			    !(r->flags & flags))
+				continue;
+			if (resource_size(r) > max_size) {
+				max_size = resource_size(r);
+				max_no = i;
+			}
+		}
+		if (max_no < 0)
+			break;
+		r = &dev->resource[max_no];
+		if (max_size > *align)
+			*align = max_size;
+		*size += max_size;
+		r->start = start;
+		start += max_size;
+		r->end = r->start + max_size - 1;
+		r->flags &= ~IORESOURCE_UNSET;
+		pr_devel("  ->     R%d %016llx..%016llx\n",
+			 max_no, r->start, r->end);
+	}
+
+2.1.5 pcie_bus_configure_settings()
 ===============================================================================
 pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	if (!pci_is_pcie(bus->self))
