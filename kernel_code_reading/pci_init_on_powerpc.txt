@@ -135,6 +135,49 @@ pnv_pci_init_ioda1_phb();
 	rc = opal_pci_reset(phb_id, OPAL_PCI_IODA_TABLE_RESET, OPAL_ASSERT_RESET);
 	opal_pci_set_pe(phb_id, 0, 0, 7, 1, 1 , OPAL_MAP_PE);
 
+
+           hose_list(struct list_head)
+           +---------------+
+           | next          |---+
+           +---------------+   |
+                        +------+
+                        |
+		        |   hose(struct pci_controller)
+                        +-->+---------------------------------+<----+
+                            |first_busno(int)                 |     |
+                            +---------------------------------+     |
+                            |last_busno(int)                  |     |
+                            +---------------------------------+     |
+                            |io_resource                      |     |
+                            +---------------------------------+     |
+                            |mem_resources[](struct resource) |     |
+                            +---------------------------------+     |
+                            |ops(struct pci_ops*)             |     |
+                            +---------------------------------+     |
+                            |private_data(void*)              |     |
+                            +----+----------------------------+     |
+                                 |                                  |
+                        +--------+                                  |
+                        |                                           |
+                        |                                           |
+                        |                                           |
+                        |                                           |
+                        |   phb(struct pnv_phb)                     |
+                        +->+---------------------------------+      |
+                           |hose(struct pci_controller*)     |----+-+
+                           +---------------------------------+
+                           |ioda                             |
+                           |    total_pe                     |
+                           |    io_size                      |
+                           |    io_segsize                   |
+                           |    m32_size                     |
+                           |    m32_segsize                  | 
+                           +---------------------------------+ 
+          
+              Figure 1.2 Relationship between phb and pci_controller
+
+
+
 1.1.1.1 pci_process_bridge_OF_ranges(), set hose->mem_resource, hose->io_resource from FDT
 ===============================================================================
 this function read in the device tree property and 
@@ -152,15 +195,22 @@ pci_process_bridge_OF_ranges(struct pci_controller *hose, struct device_node *de
 	cpu_addr = of_translate_address(dev, ranges + 3);
 	size = of_read_number(ranges + pna + 3, 2);
 
+	; mem resource
 	hose->pci_mem_offset = cpu_addr - pci_addr;
-
 	res = &hose->mem_resources[];
-	
+
+	; io resource
+	hose->pci_io_size = pci_addr + size;
+	hose->io_base_phys = cpu_addr - pci_addr; here pci_addr for I/O is 0
+	res = &hose->io_resource;
+
 	res->start = cpu_addr;
 	res->end = res->start + size - 1;
 	res->parent = NULL;
 	res->sibling = NULL;
 	res->child = NULL;
+
+
 
 2. pcibios_init()
 ===============================================================================
@@ -224,12 +274,59 @@ pcibios_scan_phb()
 		}
 	}
 
-2.1.1 pnv_pci_probe_mode()
+2.1.1 pcibios_setup_phb_io_space() map the physical address to virtual address
+===============================================================================
+pcibios_setup_phb_io_space(struct pci_controller *hose) 
+	pcibios_map_phb_io_space(hose)
+
+picbios_map_phb_io_space(struct pci_controller *hose)
+	struct vm_struct *area;
+
+	phys_page = _ALIGN_DOWN(hose->io_base_phys, PAGE_SIZE);
+	size_page = _ALIGN_UP(hose->pci_io_size, PAGE_SIZE);
+
+	area = __get_vm_area(size_page, 0, PHB_IO_BASE, PHB_IO_END);
+
+	hose->io_base_alloc = area->addr; virtual address allocated
+	hose->io_base_virt = (void __iomem *)
+              (area->addr + hose->io_base_phys - phys_page);
+	      ; virtual address which map to hose->io_base_phys
+
+	; map it
+	if (__ioremap_at(phys_page, area->addr, size_page,
+			 _PAGE_NO_CACHE | _PAGE_GUARDED) == NULL)
+
+	; Fixup hose IO resource
+	io_virt_offset = pcibios_io_space_offset(hose);
+	hose->io_resource.start += io_virt_offset;
+	hose->io_resource.end += io_virt_offset;
+
+2.1.2 pcibios_setup_phb_resources(), add io/mem resource to list
+===============================================================================
+pcibios_setup_phb_resources(struct pci_controller *hose, struct list_head *resources)
+	res = &hose->io_resource;
+
+	; add io resource to *resources* list
+	pci_add_resource_offset(resources, res, pcibios_io_space_offset(hose));
+
+
+	; add mem resource to *resources* list
+	for (i = 0; i < 3; ++i) {
+		res = &hose->mem_resources[i];
+		if (!res->flags) {
+			if (i > 0)
+				continue;
+		}
+
+		pci_add_resource_offset(resources, res, hose->pci_mem_offset);
+	}
+
+2.1.3 pnv_pci_probe_mode()
 ===============================================================================
 pnv_pci_probe_mode()
 	return PCI_PROBE_NORMAL;
 
-2.1.2 pnv_pci_ioda_fixup_phb()
+2.1.4 pnv_pci_ioda_fixup_phb()
 ===============================================================================
 pnv_pci_ioda_fixup_phb()
 	; associate PEs per function
@@ -253,7 +350,7 @@ pnv_pci_ioda_fixup_phb()
 		pcie_bus_configure_settings(child, self->pcie_mpss);
 	}
 
-2.1.3 pcie_bus_configure_settings()
+2.1.4 pcie_bus_configure_settings()
 ===============================================================================
 pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	if (!pci_is_pcie(bus->self))
