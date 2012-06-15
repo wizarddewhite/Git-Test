@@ -6,12 +6,15 @@ CFLAGS = -g
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource
+all: resource list_case
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure
 resource: resource.c resource_case.c
 	gcc -o resource -g resource.c resource_case.c
+
+list_case: list.h  list_case.c
+	gcc -o list_case -g  list_case.c
 
 %: %.c
 	echo test
