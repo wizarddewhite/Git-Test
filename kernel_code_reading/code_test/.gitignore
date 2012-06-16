@@ -1,2 +1,5 @@
 .*
+*.d
+resource
+list_case
 !.gitignore
