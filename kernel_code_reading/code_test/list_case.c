@@ -76,7 +76,6 @@ void listforeach_test()
 void listforeachentry_test()
 {
 	struct list_dummy *iter;
-	int i = 0;
 
 	list_for_each_entry(iter, &test_list, list_node)
 	{
@@ -84,10 +83,20 @@ void listforeachentry_test()
 	}
 }
 
+void listfirstentry_test()
+{
+	struct list_dummy *iter;
+
+	iter = list_first_entry(&test_list, typeof(*iter), list_node);
+
+	printf("index of first node is %d\n", iter->index);
+}
+
 int main()
 {
 	listaddtail_test();
 	listforeachentry_test();
+	listfirstentry_test();
 
 	return 0;
 }

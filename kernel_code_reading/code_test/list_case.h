@@ -25,4 +25,6 @@ struct list_dummy {
 	int index;
 };
 
+typedef struct list_dummy list_dummy;
+
 #endif //_LIST_CASE_
