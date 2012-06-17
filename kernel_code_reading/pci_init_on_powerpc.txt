@@ -368,8 +368,9 @@ pnv_ioda_setup_PEs(struct pci_bus *bus)
 			pnv_ioda_setup_PEs(dev->subordinate);
 	}
 
-2.1.4.2 pnv_ioda_calc_bus()
+2.1.4.2 pnv_ioda_calc_bus(), calculate the total resource size and largest alignment
 ===============================================================================
+; and arrange the resources in each bus and dev
 pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags, 
 		  resource_size_t *size,
 		  resource_size_t *align)
@@ -393,6 +394,8 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 
 	; Busses 
 	list_for_each_entry(cbus, &bus->children, node) {
+		; calculate the dev_size and dev_align of child bus
+		; add to the list
 		pnv_ioda_calc_bus(cbus, flags, &dev_size, &dev_align);
 		pnv_ioda_add_wrap(&head, cbus, NULL, dev_size, dev_align);
 	}
@@ -415,9 +418,11 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 	; calculate the start
 	if (bus->self) {
 		/* No offset for downstream bridges */
+		; bus->self != NULL means this is not root
 		start = 0;
 	} else {
 		/* Offset from the root */
+		; this is the root bus
 		if (flags & IORESOURCE_IO)
 			/* Don't hand out IO 0 */
 			start = hose->io_resource.start + 0x1000;
@@ -430,18 +435,29 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 		list_del(&w->link);
 		if (w->size) {
 			if (start) {
+				; currently we are on the root bus
 				start = ALIGN(start, w->align);
+				; for those dev and bus under root bus
+				; shift the dev itself
+				; or shift the whole bus offset!
 				if (w->dev)
 					pnv_ioda_offset_dev(w->dev,flags,start);
 				else if (w->bus)
 					pnv_ioda_offset_bus(w->bus,flags,start);
 			}
+			; set align to the largest one
 			if (w->align > *align)
 				*align = w->align;
 		}
 		start += w->size;
 		kfree(w);
 	}
+
+	/* Align and setup bridge resources */
+	*align = max_t(resource_size_t, *align,
+		       max_t(resource_size_t, min_align, min_balign));
+	*size = ALIGN(*size,
+		      max_t(resource_size_t, min_align, min_balign));
 empty:
 	/* Only setup P2P's, not the PHB itself */
 	if (bus->self) {
@@ -457,12 +473,15 @@ empty:
 		 * the PCI portion of the flags here, and to detect
 		 * what the bridge actually supports.
 		 */
+		; ok, now we will set the resource of the bus.
+		; res->start is set to 0, which means it is not allocated
+		; res->end is set to the size
 		res->start = 0;
 		res->flags = (*size) ? flags : 0;
 		res->end = (*size) ? (*size - 1) : 0;
 	}
 
-2.1.4.2 pnv_ioda_calc_dev(), get the size and alignment for a pci_dev
+2.1.4.3 pnv_ioda_calc_dev(), get the size and alignment for a pci_dev
 ===============================================================================
 ; after return,
 ; size equal the sum of all size of a certain type of resource
@@ -512,6 +531,164 @@ pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
 		r->flags &= ~IORESOURCE_UNSET;
 		pr_devel("  ->     R%d %016llx..%016llx\n",
 			 max_no, r->start, r->end);
+	}
+
+2.1.4.4 pnv_ioda_update_resoures(), apply the resouces configuration to HW
+===============================================================================
+pnv_ioda_update_resources(struct pci_bus *bus)
+	struct pci_controller *hose = pci_bus_to_host(bus);
+
+	/* Check if bus resources fit in our IO or M32 range */
+	; currently we just use 2 bus->resource[]
+	; one for io, one for mem32
+	; we need one more for m64
+	for (i = 0; bus->self && (i < 2); i++) {
+		struct resource *r = bus->resource[i];
+		if (r && !pnv_ioda_resource_fit(hose, r))
+			pr_err("%s: Bus %d resource %d disabled, no room\n",
+			       pci_name(bus->self), bus->number, i);
+	}
+
+	/* Update self if it's not a PHB */
+	if (bus->self)
+		pci_setup_bridge(bus);
+
+	/* Update child devices */
+	list_for_each_entry(cdev, &bus->devices, bus_list) {
+		/* Check if resource fits, if not, disabled it */
+		for (i = 0; i <= PCI_ROM_RESOURCE; i++) {
+			struct resource *r = &cdev->resource[i];
+			if (!pnv_ioda_resource_fit(hose, r))
+				pr_err("%s: Resource %d disabled, no room\n",
+				       pci_name(cdev), i);
+		}
+
+		/* Assign segments */
+		pnv_ioda_setup_pe_segments(cdev);
+
+		/* Update HW BARs */
+		for (i = 0; i <= PCI_ROM_RESOURCE; i++)
+			pci_update_resource(cdev, i);
+	}
+
+	/* Update child busses */
+	list_for_each_entry(cbus, &bus->children, node)
+		pnv_ioda_update_resources(cbus);
+
+2.1.4.4.1 pnv_ioda_resource_fit(), check whether this resource is valid
+===============================================================================
+; currently we just check m32 and io resouce
+; we need to fix it for m64
+pnv_ioda_resource_fit(struct pci_controller *hose,
+		      struct resource *r)
+	struct resource *bounds;
+
+	if (r->flags & IORESOURCE_IO)
+		bounds = &hose->io_resource;
+	else if (r->flags & IORESOURCE_MEM)
+		bounds = &hose->mem_resources[0];
+	else
+		return 1;
+
+	if (r->start >= bounds->start && r->end <= bounds->end)
+		return 1;
+	r->flags = 0;
+	return 0;
+	
+2.1.4.4.2 pnv_ioda_setup_pe_segments(), 
+===============================================================================
+pnv_ioda_setup_pe_segments(struct pci_dev *dev)
+	struct pci_controller *hose = pci_bus_to_host(dev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct pci_dn *pdn = pnv_ioda_get_pdn(dev);
+
+	/* Anything not referenced in the device-tree gets PE#0 */
+	pe = pdn ? pdn->pe_number : 0;
+
+	struct resource io_res;
+	struct resource m32_res;
+
+	/* Calculate the device min/max */
+	io_res.start = m32_res.start = (resource_size_t)-1;
+	io_res.end = m32_res.end = 0;
+	io_res.flags = IORESOURCE_IO;
+	m32_res.flags = IORESOURCE_MEM;
+
+	; expand the io_res and m32_res according to the device
+	; resource requirement
+	for (i = 0; i <= PCI_ROM_RESOURCE; i++) {
+		struct resource *r = NULL;
+		if (dev->resource[i].flags & IORESOURCE_IO)
+			r = &io_res;
+		if (dev->resource[i].flags & IORESOURCE_MEM)
+			r = &m32_res;
+		if (!r)
+			continue;
+		if (dev->resource[i].start < r->start)
+			r->start = dev->resource[i].start;
+		if (dev->resource[i].end > r->end)
+			r->end = dev->resource[i].end;
+	}
+
+	/* Setup IO segments */
+	if (io_res.start < io_res.end) {
+		pcibios_resource_to_bus(dev, &region, &io_res);
+		pos = region.start; this is the pci address?
+		i = pos / phb->ioda.io_segsize;
+		while(i < phb->ioda.total_pe && pos <= region.end) {
+			if (phb->ioda.io_segmap[i]) {
+				pr_err("%s: Trying to use IO seg #%d which is"
+				       " already used by PE# %d\n",
+				       pci_name(dev), i,
+				       phb->ioda.io_segmap[i]);
+				/* XXX DO SOMETHING TO DISABLE DEVICE ? */
+				break;
+			}
+			phb->ioda.io_segmap[i] = pe; assigne to pe?
+			; don't know what it will do
+			rc = opal_pci_map_pe_mmio_window(phb->opal_id, pe,
+							 OPAL_IO_WINDOW_TYPE,
+							 0, i);
+			if (rc != OPAL_SUCCESS) {
+				pr_err("%s: OPAL error %d setting up mapping"
+				       " for IO seg# %d\n",
+				       pci_name(dev), rc, i);
+				/* XXX DO SOMETHING TO DISABLE DEVICE ? */
+				break;
+			}
+			pos += phb->ioda.io_segsize;
+			i++;
+		};
+	}
+
+	/* Setup M32 segments */
+	if (m32_res.start < m32_res.end) {
+		pcibios_resource_to_bus(dev, &region, &m32_res);
+		pos = region.start;
+		i = pos / phb->ioda.m32_segsize;
+		while(i < phb->ioda.total_pe && pos <= region.end) {
+			if (phb->ioda.m32_segmap[i]) {
+				pr_err("%s: Trying to use M32 seg #%d which is"
+				       " already used by PE# %d\n",
+				       pci_name(dev), i,
+				       phb->ioda.m32_segmap[i]);
+				/* XXX DO SOMETHING TO DISABLE DEVICE ? */
+				break;
+			}
+			phb->ioda.m32_segmap[i] = pe;
+			rc = opal_pci_map_pe_mmio_window(phb->opal_id, pe,
+							 OPAL_M32_WINDOW_TYPE,
+							 0, i);
+			if (rc != OPAL_SUCCESS) {
+				pr_err("%s: OPAL error %d setting up mapping"
+				       " for M32 seg# %d\n",
+				       pci_name(dev), rc, i);
+				/* XXX DO SOMETHING TO DISABLE DEVICE ? */
+				break;
+			}
+			pos += phb->ioda.m32_segsize;
+			i++;
+		}
 	}
 
 2.1.5 pcie_bus_configure_settings()
