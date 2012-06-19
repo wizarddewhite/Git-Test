@@ -92,11 +92,32 @@ void listfirstentry_test()
 	printf("index of first node is %d\n", iter->index);
 }
 
+void listforeachentryreverse_test()
+{
+	struct list_dummy *iter;
+
+	list_for_each_entry_reverse(iter, &test_list, list_node)
+	{
+		printf("index of entry is %d\n", iter->index);
+	}
+
+}
+
+void listforeachentrysafe_test()
+{
+	struct list_dummy *iter;
+	struct list_dummy *tmp;
+
+	list_for_each_entry_safe(iter, tmp, &test_list, list_node)
+	{
+		printf("index of entry is %d\n", iter->index);
+	}
+}
+
 int main()
 {
 	listaddtail_test();
-	listforeachentry_test();
-	listfirstentry_test();
+	listforeachentrysafe_test();
 
 	return 0;
 }
