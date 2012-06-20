@@ -67,6 +67,10 @@ pnv_pci_init_ioda_hub(); go through each phb under ioda-hub
 
 1.1.1 pnv_pci_init_ioda1_phb()
 ===============================================================================
+; create a pci_controller for phb
+; go through the device tree and retrieve the io/mem resource vale
+; stroe them in the pci_controller
+; after that, divide those resource equally to PEs.
 pnv_pci_init_ioda1_phb();
 	prop64 = of_get_property(np, "ibm,opal-phbid", NULL)
 	phb_id = be64_to_cpup(prop64);
@@ -240,9 +244,12 @@ pcibios_scan_phb()
 	pcibios_setup_phb_io_space(hose);
 
 	; Wire up PHB bus resources 
+	; add the io/mem resource to *resources* list
 	pcibios_setup_phb_resources(hose, &resources);
 
 	; Create an empty bus for the toplevel 
+	; *resources* contains the io/mem resource info from device tree
+	; after this step this info is passed to the root bus
 	bus = pci_create_root_bus(hose->parent, hose->first_busno,
 				  hose->ops, hose, &resources);
 	hose->bus = bus;
@@ -267,6 +274,7 @@ pcibios_scan_phb()
 	if (bus && !pci_has_flag(PCI_PROBE_ONLY)) {
 		struct pci_bus *child;
 		list_for_each_entry(child, &bus->children, node) {
+			; child->self points to the bridge
 			struct pci_dev *self = child->self;
 			if (!self)
 				continue;
@@ -326,7 +334,11 @@ pcibios_setup_phb_resources(struct pci_controller *hose, struct list_head *resou
 pnv_pci_probe_mode()
 	return PCI_PROBE_NORMAL;
 
-2.1.4 pnv_pci_ioda_fixup_phb()
+2.1.4 pci_scan_child_bus()
+===============================================================================
+this is a core function which is used to enumerate the pci tree
+
+2.1.5 pnv_pci_ioda_fixup_phb()
 ===============================================================================
 pnv_pci_ioda_fixup_phb()
 	; associate PEs per function
@@ -350,7 +362,7 @@ pnv_pci_ioda_fixup_phb()
 		pcie_bus_configure_settings(child, self->pcie_mpss);
 	}
 
-2.1.4.1 pnv_ioda_setup_PEs(), associate PEs per function
+2.1.5.1 pnv_ioda_setup_PEs(), associate PEs per function
 ===============================================================================
 ; two kinds of PEs
 pnv_ioda_setup_PEs(struct pci_bus *bus)
@@ -368,7 +380,7 @@ pnv_ioda_setup_PEs(struct pci_bus *bus)
 			pnv_ioda_setup_PEs(dev->subordinate);
 	}
 
-2.1.4.2 pnv_ioda_calc_bus(), calculate the total resource size and largest alignment
+2.1.5.2 pnv_ioda_calc_bus(), calculate the total resource size and largest alignment
 ===============================================================================
 ; and arrange the resources in each bus and dev
 pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags, 
@@ -395,7 +407,7 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 	; Busses 
 	list_for_each_entry(cbus, &bus->children, node) {
 		; calculate the dev_size and dev_align of child bus
-		; add to the list
+		; add to the list from biggest to smallest
 		pnv_ioda_calc_bus(cbus, flags, &dev_size, &dev_align);
 		pnv_ioda_add_wrap(&head, cbus, NULL, dev_size, dev_align);
 	}
@@ -430,22 +442,24 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 			start = hose->mem_resources[0].start;
 	}
 
+	; now go throught the head list
 	while(!list_empty(&head)) {
 		w = list_first_entry(&head, struct resource_wrap, link);
 		list_del(&w->link);
 		if (w->size) {
 			if (start) {
-				; currently we are on the root bus
+				; first align the start based on current alignment
 				start = ALIGN(start, w->align);
-				; for those dev and bus under root bus
+				; for those dev and bus under bus
 				; shift the dev itself
-				; or shift the whole bus offset!
+				; or shift the whole bus offset
 				if (w->dev)
 					pnv_ioda_offset_dev(w->dev,flags,start);
 				else if (w->bus)
 					pnv_ioda_offset_bus(w->bus,flags,start);
 			}
 			; set align to the largest one
+			; we can improve it here since the head list is ordered
 			if (w->align > *align)
 				*align = w->align;
 		}
@@ -460,6 +474,8 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 		      max_t(resource_size_t, min_align, min_balign));
 empty:
 	/* Only setup P2P's, not the PHB itself */
+	; setup the bridge to contain the resource requirement
+	; from its children
 	if (bus->self) {
 		; means this is not a root bus
 		struct resource *res = bus->resource[bres];
@@ -481,11 +497,13 @@ empty:
 		res->end = (*size) ? (*size - 1) : 0;
 	}
 
-2.1.4.3 pnv_ioda_calc_dev(), get the size and alignment for a pci_dev
+2.1.5.3 pnv_ioda_calc_dev(), get the size and alignment for a pci_dev
 ===============================================================================
 ; after return,
 ; size equal the sum of all size of a certain type of resource
 ; align equal the max size of a certain type of resource
+; Note: this one just calculate the io/mem res for normal device 
+;       not touch the bridge resource. IMPORTANT
 pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
 		resource_size_t *size, resource_size_t *align)
 
@@ -501,7 +519,7 @@ pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
 		r->flags |= IORESOURCE_UNSET;
 	}
 
-	; assign certain type of resource from 0
+	; re-assign certain type of resource from 0
 	; from biggest to smallest
 	start = 0;
 	for (;;) {
@@ -523,7 +541,7 @@ pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
 			break;
 		r = &dev->resource[max_no];
 		if (max_size > *align)
-			*align = max_size;
+			*align = max_size; align is set to the max size of one of the resource
 		*size += max_size;
 		r->start = start;
 		start += max_size;
@@ -533,7 +551,7 @@ pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
 			 max_no, r->start, r->end);
 	}
 
-2.1.4.4 pnv_ioda_update_resoures(), apply the resouces configuration to HW
+2.1.5.4 pnv_ioda_update_resoures(), apply the resouces configuration to HW
 ===============================================================================
 pnv_ioda_update_resources(struct pci_bus *bus)
 	struct pci_controller *hose = pci_bus_to_host(bus);
@@ -575,7 +593,7 @@ pnv_ioda_update_resources(struct pci_bus *bus)
 	list_for_each_entry(cbus, &bus->children, node)
 		pnv_ioda_update_resources(cbus);
 
-2.1.4.4.1 pnv_ioda_resource_fit(), check whether this resource is valid
+2.1.5.4.1 pnv_ioda_resource_fit(), check whether this resource is valid
 ===============================================================================
 ; currently we just check m32 and io resouce
 ; we need to fix it for m64
@@ -595,7 +613,7 @@ pnv_ioda_resource_fit(struct pci_controller *hose,
 	r->flags = 0;
 	return 0;
 	
-2.1.4.4.2 pnv_ioda_setup_pe_segments(), 
+2.1.5.4.2 pnv_ioda_setup_pe_segments(), 
 ===============================================================================
 pnv_ioda_setup_pe_segments(struct pci_dev *dev)
 	struct pci_controller *hose = pci_bus_to_host(dev->bus);
@@ -691,7 +709,7 @@ pnv_ioda_setup_pe_segments(struct pci_dev *dev)
 		}
 	}
 
-2.1.5 pcie_bus_configure_settings()
+2.1.6 pcie_bus_configure_settings()
 ===============================================================================
 pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	if (!pci_is_pcie(bus->self))
@@ -713,7 +731,7 @@ pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	pcie_bus_configure_set(bus->self, &smpss);
 	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
 
-2.2 pci_bus_add_devices(), go throught the root bus and add devices
+2.2 pci_bus_add_devices(), breath first go throught the root bus and add devices
 ===============================================================================
 pci_bus_add_devices(struct pci_bus *bus)
 	; add newly discovered PCI devices to global device list
