@@ -73,6 +73,10 @@ pci_create_root_bus(struct device *parent, int bus,
              +-------------------------------+  
              |secondary = bus                |  
              +-------------------------------+  
+             |resources(list_head)           |  
+             |     a list of io/mem resource |
+             |     available for this bus    |  
+             +-------------------------------+  
 
                 Figure 1.1 relationship between pci_root_bus/host_bridge
 
