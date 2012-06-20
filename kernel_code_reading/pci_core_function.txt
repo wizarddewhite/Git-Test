@@ -432,8 +432,8 @@ pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
          |                     |                 +--------------------+                                       
          |                     |                 |resource(struct *)  |            
          |                     |                 |  point to corres-  |
-    +----v----+           +----v----+            |  ponding res in    |
-    | 02:00.0 |           | 02:01.0 |            |  self, which is    |
+    +----v----+           +----v----+            |  ponding bridge res|
+    | 02:00.0 |           | 02:01.0 |            |  in self, which is |
     |(pci_dev)|           |(pci_dev)|            |  the bridge        |
     +---------+           +---------+            +--------------------+
 
