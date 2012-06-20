@@ -87,7 +87,7 @@ void listfirstentry_test()
 {
 	struct list_dummy *iter;
 
-	iter = list_first_entry(&test_list, typeof(*iter), list_node);
+	iter = list_first_entry(&test_list, struct list_dummy, list_node);
 
 	printf("index of first node is %d\n", iter->index);
 }
