@@ -421,16 +421,21 @@ pci_alloc_child_bus(struct pci_bus *parent, struct pci_dev *bridge, int busnr)
            | (pci_dev)       |                                          |  |   |
            |     dev         |<----------------------------------------------+ |
            +--------+--------+                                          |  | | |
-                    |                                +----------------+ |  | | |
-                    |                                |parent          |-+  | | |
-         +---------------------+    Bus 02(pci_bus)  +----------------+    | | |
-         |                     |                     |self(pci_dev)   |----+ | |
-         |                     |                     +----------------+      | |
-         |                     |                     |bridge(device)  |------+ |
-    +----v----+           +----v----+                +----------------+        |
-    | 02:00.0 |           | 02:01.0 |                |primary         |--------+
-    |(pci_dev)|           |(pci_dev)|                +----------------+
-    +---------+           +---------+
+                    |                            +--------------------+ |  | | |
+                    |                            |parent              |-+  | | |
+         +---------------------+ Bus 02(pci_bus) +--------------------+    | | |
+         |                     |                 |self(pci_dev)       |----+ | |
+         |                     |                 +--------------------+      | |
+         |                     |                 |bridge(device)      |------+ |                              
+         |                     |                 +--------------------+        |                              
+         |                     |                 |primary             |--------+                              
+         |                     |                 +--------------------+                                       
+         |                     |                 |resource(struct *)  |            
+         |                     |                 |  point to corres-  |
+    +----v----+           +----v----+            |  ponding res in    |
+    | 02:00.0 |           | 02:01.0 |            |  self, which is    |
+    |(pci_dev)|           |(pci_dev)|            |  the bridge        |
+    +---------+           +---------+            +--------------------+
 
                      Figure 2.2 newly added pci_bus and its parent
                      (this is an example, the number could be different)
