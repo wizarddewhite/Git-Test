@@ -95,6 +95,9 @@ pci_scan_child_bus(struct pci_bus *bus)
 
 	if (!bus->is_added) {
 		dev_dbg(&bus->dev, "fixups for bus\n");
+		; this is a platform depent code in which it
+		; will call pci_read_bridge_bases() to assign the 
+		; bus->resource[]
 		pcibios_fixup_bus(bus);
 		if (pci_is_root_bus(bus))
 			bus->is_added = 1;
