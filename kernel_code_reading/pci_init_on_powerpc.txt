@@ -364,11 +364,13 @@ pnv_pci_ioda_fixup_phb()
 
 2.1.5.1 pnv_ioda_setup_PEs(), associate PEs per function
 ===============================================================================
+; originally passed the root bus
 ; two kinds of PEs
 pnv_ioda_setup_PEs(struct pci_bus *bus)
 	struct pci_dev *dev;
 	struct pnv_ioda_pe *pe;
 
+	; traverse the devices first
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		pe = pnv_ioda_setup_dev_PE(dev);
 		if (pe == NULL)
