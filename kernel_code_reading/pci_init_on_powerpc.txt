@@ -334,7 +334,7 @@ pcibios_setup_phb_resources(struct pci_controller *hose, struct list_head *resou
 pnv_pci_probe_mode()
 	return PCI_PROBE_NORMAL;
 
-2.1.4 pci_scan_child_bus()
+2.1.4 pci_scan_child_bus(), enumerate the pci tree
 ===============================================================================
 this is a core function which is used to enumerate the pci tree
 
@@ -381,6 +381,112 @@ pnv_ioda_setup_PEs(struct pci_bus *bus)
 		else if (dev->subordinate)
 			pnv_ioda_setup_PEs(dev->subordinate);
 	}
+
+2.1.5.1.1 pnv_ioda_setup_dev_PE(), 
+===============================================================================
+pnv_ioda_setup_dev_PE(struct pci_dev *dev)
+	struct pci_controller *hose = pci_bus_to_host(dev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct pci_dn *pdn = pnv_ioda_get_pdn(dev);
+	struct pnv_ioda_pe *pe;
+	int pe_num;
+
+	/* PE#0 has been pre-set */
+	; find a available pe number
+	if (dev->bus->number == 0)
+		pe_num = 0;
+	else
+		pe_num = pnv_ioda_alloc_pe(phb);
+
+	if (pe_num == IODA_INVALID_PE) {
+		pr_warning("%s: Not enough PE# available, disabling device\n",
+			   pci_name(dev));
+		return NULL;
+	}
+
+	pe = &phb->ioda.pe_array[pe_num];
+	pci_dev_get(dev);
+	; associate the dev with this PE
+	pdn->pcidev = dev;
+	pdn->pe_number = pe_num;
+	pe->pdev = dev;
+	pe->pbus = NULL;
+	pe->tce32_seg = -1;
+	pe->mve_number = -1;
+	pe->rid = dev->bus->number << 8 | pdn->devfn;
+
+	pe_info(pe, "Associated device to PE\n");
+
+	if (pnv_ioda_configure_pe(phb, pe)) {
+		/* XXX What do we do here ? */
+		if (pe_num)
+			pnv_ioda_free_pe(phb, pe_num);
+		pdn->pe_number = IODA_INVALID_PE;
+		pe->pdev = NULL;
+		pci_dev_put(dev);
+		return NULL;
+	}
+
+	/* Assign a DMA weight to the device */
+	pe->dma_weight = pnv_ioda_dma_weight(dev);
+	if (pe->dma_weight != 0) {
+		phb->ioda.dma_weight += pe->dma_weight;
+		phb->ioda.dma_pe_count++;
+	}
+
+	/* Link the PE */
+	; add to the link list
+	pnv_ioda_link_pe_by_weight(phb, pe);
+
+	return pe;
+2.1.5.1.2 pnv_ioda_setup_bus_PE(), 
+===============================================================================
+pnv_ioda_setup_bus_PE(struct pci_dev *dev, struct pnv_ioda_pe *ppe)
+	struct pci_controller *hose = pci_bus_to_host(dev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct pci_bus *bus = dev->subordinate;
+	struct pnv_ioda_pe *pe;
+	int pe_num;
+
+	pe_num = pnv_ioda_alloc_pe(phb);
+	if (pe_num == IODA_INVALID_PE) {
+		pr_warning("%s: Not enough PE# available, disabling bus\n",
+			   pci_name(dev));
+		return;
+	}
+
+	pe = &phb->ioda.pe_array[pe_num];
+	; means the parent?
+	ppe->bus_pe = pe;
+	; associate with the bus
+	pe->pbus = bus;
+	pe->pdev = NULL;
+	pe->tce32_seg = -1;
+	pe->mve_number = -1;
+	pe->rid = bus->secondary << 8;
+	pe->dma_weight = 0;
+
+	if (pnv_ioda_configure_pe(phb, pe)) {
+		/* XXX What do we do here ? */
+		if (pe_num)
+			pnv_ioda_free_pe(phb, pe_num);
+		pe->pbus = NULL;
+		return;
+	}
+
+	/* Associate it with all child devices */
+	pnv_ioda_setup_same_PE(bus, pe);
+
+	/* Account for one DMA PE if at least one DMA capable device exist
+	 * below the bridge
+	 */
+	if (pe->dma_weight != 0) {
+		phb->ioda.dma_weight += pe->dma_weight;
+		phb->ioda.dma_pe_count++;
+	}
+
+	/* Link the PE */
+	pnv_ioda_link_pe_by_weight(phb, pe);
 
 2.1.5.2 pnv_ioda_calc_bus(), calculate the total resource size and largest alignment
 ===============================================================================
@@ -553,7 +659,7 @@ pnv_ioda_calc_dev(struct pci_dev *dev, unsigned int flags,
 			 max_no, r->start, r->end);
 	}
 
-2.1.5.4 pnv_ioda_update_resoures(), apply the resouces configuration to HW
+2.1.5.4 pnv_ioda_update_resources(), apply the resouces configuration to HW
 ===============================================================================
 pnv_ioda_update_resources(struct pci_bus *bus)
 	struct pci_controller *hose = pci_bus_to_host(bus);
@@ -570,6 +676,7 @@ pnv_ioda_update_resources(struct pci_bus *bus)
 	}
 
 	/* Update self if it's not a PHB */
+	; apply the io/mem limit to hw
 	if (bus->self)
 		pci_setup_bridge(bus);
 
@@ -587,6 +694,7 @@ pnv_ioda_update_resources(struct pci_bus *bus)
 		pnv_ioda_setup_pe_segments(cdev);
 
 		/* Update HW BARs */
+		; write to the physical BAR
 		for (i = 0; i <= PCI_ROM_RESOURCE; i++)
 			pci_update_resource(cdev, i);
 	}
@@ -733,6 +841,42 @@ pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	pcie_bus_configure_set(bus->self, &smpss);
 	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
 
+2.1.6.1 pci_walk_bus(), walk the pci tree and call cb for each pci_dev
+===============================================================================
+pci_walk_bus(struct pci_bus *top, int (*cb)(struct pci_dev *, void *), void *userdata)
+	struct pci_dev *dev;
+	struct pci_bus *bus;
+	struct list_head *next;
+
+	bus = top;
+	down_read(&pci_bus_sem);
+	next = top->devices.next;
+	for (;;) {
+		if (next == &bus->devices) {
+			/* end of this bus, go up or finish */
+			if (bus == top)
+				break;
+			next = bus->self->bus_list.next;
+			bus = bus->self->bus;
+			continue;
+		}
+		dev = list_entry(next, struct pci_dev, bus_list);
+		if (dev->subordinate) {
+			/* this is a pci-pci bridge, do its devices next */
+			next = dev->subordinate->devices.next;
+			bus = dev->subordinate;
+		} else
+			next = dev->bus_list.next;
+
+		/* Run device routines with the device locked */
+		device_lock(&dev->dev);
+		retval = cb(dev, userdata);
+		device_unlock(&dev->dev);
+		if (retval)
+			break;
+	}
+	up_read(&pci_bus_sem);
+
 2.2 pci_bus_add_devices(), breath first go throught the root bus and add devices
 ===============================================================================
 pci_bus_add_devices(struct pci_bus *bus)
@@ -777,8 +921,97 @@ pci_bus_add_devices(struct pci_bus *bus)
 2.3 pcibios_resource_survey()
 ===============================================================================
 pcibios_resource_survey()
-	ppc_md.pcibios_fixup();
-	pnv_pci_ioda_fixup();
+	struct pci_bus *b;
+
+	/* Allocate and assign resources */
+	list_for_each_entry(b, &pci_root_buses, node)
+		pcibios_allocate_bus_resources(b);
+	pcibios_allocate_resources(0);
+	pcibios_allocate_resources(1);
+
+	/* Before we start assigning unassigned resource, we try to reserve
+	 * the low IO area and the VGA memory area if they intersect the
+	 * bus available resources to avoid allocating things on top of them
+	 */
+	if (!pci_has_flag(PCI_PROBE_ONLY)) {
+		list_for_each_entry(b, &pci_root_buses, node)
+			pcibios_reserve_legacy_regions(b);
+	}
+
+	/* Now, if the platform didn't decide to blindly trust the firmware,
+	 * we proceed to assigning things that were left unassigned
+	 */
+	if (!pci_has_flag(PCI_PROBE_ONLY)) {
+		pr_debug("PCI: Assigning unassigned resources...\n");
+		pci_assign_unassigned_resources();
+	}
+
+	/* Call machine dependent fixup */
+	if (ppc_md.pcibios_fixup)
+		ppc_md.pcibios_fixup();
+
+2.3 pcibios_allocate_bus_resources()
+===============================================================================
+pcibios_allocate_bus_resources(struct pci_bus *bus)
+	struct pci_bus *b;
+	int i;
+	struct resource *res, *pr;
+
+	; go throught each res in bus
+	pci_bus_for_each_resource(bus, res, i) {
+		if (!res || !res->flags || res->start > res->end || res->parent)
+			continue;
+
+		/* If the resource was left unset at this point, we clear it */
+		if (res->flags & IORESOURCE_UNSET)
+			goto clear_resource;
+
+		; find the pr, parent resource
+		if (bus->parent == NULL)
+			pr = (res->flags & IORESOURCE_IO) ?
+				&ioport_resource : &iomem_resource;
+		else {
+			pr = pci_find_parent_resource(bus->self, res);
+			if (pr == res) {
+				/* this happens when the generic PCI
+				 * code (wrongly) decides that this
+				 * bridge is transparent  -- paulus
+				 */
+				continue;
+			}
+		}
+
+		pr_debug("PCI: %s (bus %d) bridge rsrc %d: %016llx-%016llx "
+			 "[0x%x], parent %p (%s)\n",
+			 bus->self ? pci_name(bus->self) : "PHB",
+			 bus->number, i,
+			 (unsigned long long)res->start,
+			 (unsigned long long)res->end,
+			 (unsigned int)res->flags,
+			 pr, (pr && pr->name) ? pr->name : "nil");
+
+		if (pr && !(pr->flags & IORESOURCE_UNSET)) {
+			if (request_resource(pr, res) == 0)
+				continue;
+			/*
+			 * Must be a conflict with an existing entry.
+			 * Move that entry (or entries) under the
+			 * bridge resource and try again.
+			 */
+			if (reparent_resources(pr, res) == 0)
+				continue;
+		}
+		pr_warning("PCI: Cannot allocate resource region "
+			   "%d of PCI bridge %d, will remap\n", i, bus->number);
+	; if cannot allocate it, just clear it.
+	clear_resource:
+		res->start = res->end = 0;
+		res->flags = 0;
+	}
+
+	; go through child buses
+	list_for_each_entry(b, &bus->children, node)
+		pcibios_allocate_bus_resources(b);
 
 3. machine type initialization
 ===============================================================================
