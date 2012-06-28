@@ -210,13 +210,15 @@ pci_setup_device(struct pci_dev *dev )
                struct pci_dev
                +------------------------------------+
                |dev(struct device)                  |
-               |   bus (attached to which bus)      |
-               |       bridge                       |<----+
-               |   devfn (device/function number)   |     |
-               |   vendor (vendor ID)               |     |
-               |   device (device ID)               |     |
-               |   parent           ----------------|-----+
-               |   bus = &pci_bus_type              |
+               |   parent           ----------------|----+ 
+               |   bus = &pci_bus_type              |    |
+               +------------------------------------+    |
+               |bus(pci_bus) attached to which bus  |    |
+               |    bridge(device)                  |<---+ 
+               +------------------------------------+
+               |devfn (device/function number)      |      
+               |vendor (vendor ID)                  |      
+               |device (device ID)                  |      
                +------------------------------------+
                |resource                            |
                |    (an array of struct resource)   |
