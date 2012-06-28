@@ -1,0 +1,45 @@
+
+PCI bus number adjustment. 
+1. Put VF in separate bus number from the PF.
+   If we put VF in the same bus as PF, they will form into the same PE.
+   Since PE is the smallest element on powernv platform, this will
+   introduce some problem. We can give the PF to hypervisor and VF to
+   the guest.
+
+   In current implementation, some VF will be given the same bus number
+   as the PF. So we need to change the scheme in the kernel.
+
+2. Make bus number alignment for PLX bridge.
+   For PLX bridge, the secondary bus number need to be 2^N aligned. 
+   While current kernel code does not meet this requirement. 
+   Gavin suggest to do it in the platform related code, which means we
+   need to enumarate the pci tree in platform code too. 
+
+Resource assignment.
+1. Enable the M64 bar
+   Currently M64 is not enabled on powernv. So we need to enable this
+   first.
+
+2. Setup M64 bar in PCI bus/bridge
+   Below is written by Gavin. 
+
+	For particular P2P bridge, we already had all memory bars reserved now as follows.
+	In order to cover the M64 bar, we have to use the prefectable (64bits) memory bar.
+
+	BAR		Purpose
+	-----------------------------------------------
+	0		IO
+	1		MMIO (M32)
+	2		MMIO Prefect (M32)
+	3		Unused
+
+	Generally speaking, we have to set the P2P memory bars as follows and then use
+	M32/M64 to cover everything we have
+
+	BAR		Purpose			Target				M32/M64
+	-------------------------------------------------------------------------------
+	0		IO			32-bits MMIO bars		M32
+	1		MMIO (32)		32-bits prefetch MMIO bars	M64
+	2		MMIO Prefect (M64)	64-bits MMIO bars		M64
+	3		Unused			64-bits prefetch MMIO bars	M64
+
