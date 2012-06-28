@@ -256,6 +256,22 @@ pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	dev->dev.release = pci_release_dev;
 	pci_dev_get(dev);
 
+	dev->dev.dma_mask = &dev->dma_mask;
+	dev->dev.dma_parms = &dev->dma_parms;
+	dev->dev.coherent_dma_mask = 0xffffffffull;
+
+	pci_set_dma_max_seg_size(dev, 65536);
+	pci_set_dma_seg_boundary(dev, 0xffffffff);
+
+	/* Fix up broken headers */
+	pci_fixup_device(pci_fixup_header, dev);
+
+	/* moved out from quirk header fixup code */
+	pci_reassigndev_resource_alignment(dev);
+
+	/* Clear the state_saved flag. */
+	dev->state_saved = false;
+
 	pci_init_capabilities(dev);
 
 	; add to the bus->devices list
