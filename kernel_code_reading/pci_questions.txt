@@ -118,3 +118,44 @@ Some issue want to identify:
 
 2. pci_bus->resource redundant?
    in pci_alloc_child_bus
+
+
+PE related questions:
+1. What is the purpose of PE?
+   dynamically assigen the IOA, part of IOA, for Dynamic Reconfiguration and LPAR.
+   prevent one PE affect another and prevent one PE access others resource
+
+2. what step need to be done to enable the PE? requirement
+   A PE is defined by its Enhanced I/O Error Handling (EEH) domain and associated resources.
+   The resources that need to be partitioned and not overlap with other PE domain include:
+   * The Memory Mapped I/O (MMIO) Load and Store address space which is available to the PE
+     use the page table mechanism to control this.
+   * The DMA I/O bus address space which is available to the PE
+     TCE like IO MMU.
+   * The configuration address space of the PE
+   * The interrupts which are accessible to the PE
+   * The error domains of the PE
+     one PE error will not affect another PE.
+     controlled by EEH
+   * The reset domain: A reset domain contains all the components of a PE
+     all PE must be independently resetable by a reset domain
+   * power domain(optional?) 
+     need to be in different power domain than other PEs
+
+3. terminology in PE
+
+3.1 PE domain
+    A PE domain is defined by its top-most (closest to the PHB) PCI configuration address (in the terms of the RTAS calls,
+    the PHB_Unit_ID_Hi, PHB_Unit_ID_Low, and config_addr), which will be called the PE configuration address in
+    this architecture, and encompasses everything below that in the I/O tree.
+
+3.2 PE primary bus
+    The top-most PCI bus of the PE will be called the PE primary bus.
+
+
+
+4. How this PE is used by OS?
+
+5. where is the PE state?
+   as shown in Figure 9 (page 84) in PAPR
+   any requirement of where should PE state be put?
