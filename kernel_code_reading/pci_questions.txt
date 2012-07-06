@@ -121,6 +121,7 @@ Some issue want to identify:
 
 
 PE related questions:
+=====================================================================
 1. What is the purpose of PE?
    dynamically assigen the IOA, part of IOA, for Dynamic Reconfiguration and LPAR.
    prevent one PE affect another and prevent one PE access others resource
@@ -142,6 +143,7 @@ PE related questions:
    * power domain(optional?) 
      need to be in different power domain than other PEs
 
+
 3. terminology in PE
 
 3.1 PE domain
@@ -159,3 +161,18 @@ PE related questions:
 5. where is the PE state?
    as shown in Figure 9 (page 84) in PAPR
    any requirement of where should PE state be put?
+
+6. key difference between current implementation and future implementation
+   The key difference between how IBM is implementing PEs today and how we
+   are planning on doing it in the future, is that the endpoint state is 
+   migrated from an IBM-unique bridge chip up to the PHB, allowing the use 
+   of cheaper industry-standard switch and bridge chips in the future. 
+
+   Reason: 
+   This capability to migrate the function from the Terminal Bridges to the 
+   PHB is made possible by the fact that the PCI-E provides IOA identification 
+   information in each PCI-E transaction. 
+
+
+7. how TCE and TVT is used?
+
