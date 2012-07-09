@@ -105,7 +105,7 @@ os.system(cmd)
 pubkey_file = open(pub_tmp_file, "w")
 
 for machine in machines:
-	cmd = 'ssh -o ConnectTimeout=100 root@%s "rm -f /root/.ssh/id_rsa*; ssh-keygen -t rsa -f /root/.ssh/id_rsa -N \'\' -q"; cat /root/.ssh/id_rsa.pub' %(machine)
+	cmd = 'ssh -o ConnectTimeout=100 root@%s "rm -f /root/.ssh/id_rsa*; ssh-keygen -t rsa -f /root/.ssh/id_rsa -N \'\' -q; cat /root/.ssh/id_rsa.pub"' %(machine)
 	ret = ssh_cmd(machine, machines[machine][0], cmd)
 
 	if ret == -1:
