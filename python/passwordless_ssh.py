@@ -99,7 +99,7 @@ if len(duplicate) != 0:
 
 # ssh on each host, generate public key 
 # gather all their public key
-pub_tmp_file = "/tmp/public_key_tmp_file"
+pub_tmp_file = "public_key_tmp_file"
 cmd = 'rm -f %s' %pub_tmp_file
 os.system(cmd)
 pubkey_file = open(pub_tmp_file, "w")
@@ -129,7 +129,8 @@ for machine in machines:
 pubkey_file.close()
 
 if debug:
-	os.system('cat /tmp/public_key_tmp_file')
+	cmd = "cat %s" %pub_tmp_file
+	os.system(cmd)
 
 # copy the publick key to every host
 for machine in machines:
