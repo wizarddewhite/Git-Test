@@ -25,9 +25,9 @@ def main():
 		child.logfile = sys.stdout
 		i = child.expect(['Username: ', 'Unable to connect to remote host'], 30)
 		if i == 0:
-			child.sendline('ywywyang@cn.ibm.com')
+			child.sendline('abc@mail.com')
 			child.expect('Password:')
-			child.sendline('0502shyw')
+			child.sendline('123456')
 			i == child.expect(['BSO Authentication Successful', 'BSO Authentication Error'])
 			if i == 0:
 				print "Passed"
