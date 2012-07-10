@@ -154,15 +154,52 @@ PE related questions:
 3.2 PE primary bus
     The top-most PCI bus of the PE will be called the PE primary bus.
 
+3.3 MMIO validation, MDE & MDT 
+    MMIO Domain Entry and MMIO Domain Table
+    The MMIO Domain Tables (MDTs), which contain the MDEs, are located in the PHB chip.
 
+    several bits in the MMIO address is used to associate the address range with a 
+    MMIO Domain Entry (MDE).
 
-4. How this PE is used by OS?
+    The MDE associates an MMIO address range (that is, each MDE Index) 
+    with a PE's #, by the PE # field in the MDE.
 
-5. where is the PE state?
+3.4 DMA validation, TVT & TCT
+    TVT: Translation Validation Table
+    TCT: Translation and Control Table
+    TTA: TCE Table Address
+
+    TVT is located in PHB
+    TCT is located in System Memory
+
+3.5 MSI validation
+
+3.6 where is the PE state?
    as shown in Figure 9 (page 84) in PAPR
    any requirement of where should PE state be put?
 
-6. key difference between current implementation and future implementation
+3.6.1 PE state contains
+    EEH Enablement state 
+    MMIO stopped state
+    DMA stopped state
+
+    MMIO stopped state and DMA stopped state should be independent
+
+4. How this PE is used by OS?
+
+5. how MMIO address translate between pci domain and cpu domain
+   there are several variants
+   platform is 32-bit or 64-bit
+   pci bus is 32-bit or 64-bit, for PCIE it is 64-bit
+   IOA is 32-bit or 64-bit
+
+   what is the difference of 32-bit MMIO and 64-bit MMIO?
+
+6. how DMA address translates
+   DMA channel is different from the MMIO channel?
+   this is 32-bit or 64-bit?
+
+7. key difference between current implementation and future implementation
    The key difference between how IBM is implementing PEs today and how we
    are planning on doing it in the future, is that the endpoint state is 
    migrated from an IBM-unique bridge chip up to the PHB, allowing the use 
@@ -174,5 +211,5 @@ PE related questions:
    information in each PCI-E transaction. 
 
 
-7. how TCE and TVT is used?
+8. how TCE and TVT is used?
 
