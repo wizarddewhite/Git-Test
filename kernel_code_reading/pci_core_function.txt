@@ -2065,6 +2065,132 @@ pci_enable_resources(struct pci_dev *dev, int mask)
 	}
 	return 0;
 
+14. pci_enable_msi(), called in driver to enable msi
+===============================================================================
+#define pci_enable_msi(pdev)	pci_enable_msi_block(pdev, 1)
+pci_enable_msi_block(struct pci_dev *dev, unsigned int nvec)
+	int status, pos, maxvec;
+	u16 msgctl;
+
+	pos = pci_find_capability(dev, PCI_CAP_ID_MSI);
+	if (!pos)
+		return -EINVAL;
+	pci_read_config_word(dev, pos + PCI_MSI_FLAGS, &msgctl);
+	; maxvec is the available msi number in hardware
+	maxvec = 1 << ((msgctl & PCI_MSI_FLAGS_QMASK) >> 1);
+	if (nvec > maxvec)
+		return maxvec;
+
+	status = pci_msi_check_device(dev, nvec, PCI_CAP_ID_MSI);
+	if (status)
+		return status;
+
+	WARN_ON(!!dev->msi_enabled);
+
+	/* Check whether driver already requested MSI-X irqs */
+	if (dev->msix_enabled) {
+		dev_info(&dev->dev, "can't enable MSI "
+			 "(MSI-X already enabled)\n");
+		return -EINVAL;
+	}
+
+	status = msi_capability_init(dev, nvec);
+	return status;
+
+14.1 pci_msi_check_device()
+===============================================================================
+pci_msi_check_device(struct pci_dev *dev, int nvec, int type)
+	struct pci_bus *bus;
+	int ret;
+
+	/* MSI must be globally enabled and supported by the device */
+	if (!pci_msi_enable || !dev || dev->no_msi)
+		return -EINVAL;
+
+	/*
+	 * You can't ask to have 0 or less MSIs configured.
+	 *  a) it's stupid ..
+	 *  b) the list manipulation code assumes nvec >= 1.
+	 */
+	if (nvec < 1)
+		return -ERANGE;
+
+	/*
+	 * Any bridge which does NOT route MSI transactions from its
+	 * secondary bus to its primary bus must set NO_MSI flag on
+	 * the secondary pci_bus.
+	 * We expect only arch-specific PCI host bus controller driver
+	 * or quirks for specific PCI bridges to be setting NO_MSI.
+	 */
+	for (bus = dev->bus; bus; bus = bus->parent)
+		if (bus->bus_flags & PCI_BUS_FLAGS_NO_MSI)
+			return -EINVAL;
+
+	ret = arch_msi_check_device(dev, nvec, type);
+	if (ret)
+		return ret;
+
+	if (!pci_find_capability(dev, type))
+		return -EINVAL;
+
+	return 0;
+
+14.2 msi_capability_init()
+===============================================================================
+msi_capability_init(struct pci_dev *dev, int nvec)
+	struct msi_desc *entry;
+	int pos, ret;
+	u16 control;
+	unsigned mask;
+
+	pos = pci_find_capability(dev, PCI_CAP_ID_MSI);
+	msi_set_enable(dev, pos, 0);	/* Disable MSI during set up */
+
+	pci_read_config_word(dev, msi_control_reg(pos), &control);
+	/* MSI Entry Initialization */
+	entry = alloc_msi_entry(dev);
+	if (!entry)
+		return -ENOMEM;
+
+	entry->msi_attrib.is_msix	= 0;
+	entry->msi_attrib.is_64		= is_64bit_address(control);
+	entry->msi_attrib.entry_nr	= 0;
+	entry->msi_attrib.maskbit	= is_mask_bit_support(control);
+	entry->msi_attrib.default_irq	= dev->irq;	/* Save IOAPIC IRQ */
+	entry->msi_attrib.pos		= pos;
+
+	entry->mask_pos = msi_mask_reg(pos, entry->msi_attrib.is_64);
+	/* All MSIs are unmasked by default, Mask them all */
+	if (entry->msi_attrib.maskbit)
+		pci_read_config_dword(dev, entry->mask_pos, &entry->masked);
+	mask = msi_capable_mask(control);
+	msi_mask_irq(entry, mask, mask);
+
+	list_add_tail(&entry->list, &dev->msi_list);
+
+	/* Configure MSI capability structure */
+	ret = arch_setup_msi_irqs(dev, nvec, PCI_CAP_ID_MSI);
+	if (ret) {
+		msi_mask_irq(entry, mask, ~mask);
+		free_msi_irqs(dev);
+		return ret;
+	}
+
+	ret = populate_msi_sysfs(dev);
+	if (ret) {
+		msi_mask_irq(entry, mask, ~mask);
+		free_msi_irqs(dev);
+		return ret;
+	}
+
+	/* Set MSI enabled bits	 */
+	pci_intx_for_msi(dev, 0);
+	msi_set_enable(dev, pos, 1);
+	dev->msi_enabled = 1;
+
+	dev->irq = entry->irq;
+	return 0;
+}
 0. Figures, internal representation of pci subsystem
 ===============================================================================
                     
