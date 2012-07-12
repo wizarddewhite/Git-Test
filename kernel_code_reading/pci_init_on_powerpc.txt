@@ -309,7 +309,7 @@ picbios_map_phb_io_space(struct pci_controller *hose)
 	hose->io_resource.start += io_virt_offset;
 	hose->io_resource.end += io_virt_offset;
 
-2.1.2 pcibios_setup_phb_resources(), add io/mem resource to list
+2.1.2 pcibios_setup_phb_resources(), add io/mem resource, which is read from FDT , to list
 ===============================================================================
 pcibios_setup_phb_resources(struct pci_controller *hose, struct list_head *resources)
 	res = &hose->io_resource;
