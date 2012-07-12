@@ -38,6 +38,8 @@ pci_create_root_bus(struct device *parent, int bus,
 
 	/* Add initial resources to the bus */
 	; add the resource in *resources* list to bus->resources list
+	; well for a root bus, the *resources* list is retrieved from
+	; hardware, etc, on x86 from ACPI, on power from FDT
 	pci_bus_add_resource()
 
 	list_add_tail(&host_bridge->list, &pci_host_bridges);
@@ -80,6 +82,22 @@ pci_create_root_bus(struct device *parent, int bus,
 
                 Figure 1.1 relationship between pci_root_bus/host_bridge
 
+
+1.1 pci_bus_add_resource(), add a res to bus->resources list
+===============================================================================
+pci_bus_add_resource(struct pci_bus *bus, struct resource *res,
+			  unsigned int flags)
+	struct pci_bus_resource *bus_res;
+
+	bus_res = kzalloc(sizeof(struct pci_bus_resource), GFP_KERNEL);
+	if (!bus_res) {
+		dev_err(&bus->dev, "can't add %pR resource\n", res);
+		return;
+	}
+
+	bus_res->res = res;
+	bus_res->flags = flags;
+	list_add_tail(&bus_res->list, &bus->resources);
 
 2. pci_scan_child_bus(), give the a pci bus, create the sub pci tree
 ===============================================================================
