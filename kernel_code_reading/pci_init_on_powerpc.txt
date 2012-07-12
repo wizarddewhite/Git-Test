@@ -605,8 +605,13 @@ empty:
 		res->end = (*size) ? (*size - 1) : 0;
 	}
 
-2.1.5.3 pnv_ioda_calc_dev(), get the size and alignment for a pci_dev
+2.1.5.3 pnv_ioda_calc_dev(), assign dev resources, get the size and alignment 
 ===============================================================================
+; Calculate resource usage & alignment requirement of a single
+; device. This will also assign all resources within the device
+; for a given type starting at 0 for the biggest one and then
+; assigning in decreasing order of size.
+; 
 ; after return,
 ; size equal the sum of all size of a certain type of resource
 ; align equal the max size of a certain type of resource
