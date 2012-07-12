@@ -182,7 +182,7 @@ pnv_pci_init_ioda1_phb();
 
 
 
-1.1.1.1 pci_process_bridge_OF_ranges(), set hose->mem_resource, hose->io_resource from FDT
+1.1.1.1 pci_process_bridge_OF_ranges(), set hose->mem_resources, hose->io_resource from FDT
 ===============================================================================
 this function read in the device tree property and 
 allocate resource in hose->mem_resources or hose->io_resource
