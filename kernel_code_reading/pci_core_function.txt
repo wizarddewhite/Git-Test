@@ -101,6 +101,12 @@ pci_bus_add_resource(struct pci_bus *bus, struct resource *res,
 
 2. pci_scan_child_bus(), give the a pci bus, create the sub pci tree
 ===============================================================================
+this is the core function in the pci core to enumerate the pci tree. 
+What it will do is:
+* bus number assignment and reservation for VFs
+* set the pci_dev->resource by reading BAR info
+* call pci_read_bridge_bases() for bridge to set the io/mem limit
+
 pci_scan_child_bus(struct pci_bus *bus)
 	max = bus->secondary
 
