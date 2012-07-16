@@ -2215,6 +2215,94 @@ msi_capability_init(struct pci_dev *dev, int nvec)
 	dev->irq = entry->irq;
 	return 0;
 }
+
+15. understand the lspci output
+===============================================================================
+
+15.1. show the numberic output
+===============================================================================
+$ lspci -n | head -n 5
+0000:00:00.0 0604: 1014:03b9 (rev 10)
+0000:01:00.0 0604: 111d:8018 (rev 0e)
+0000:02:02.0 0604: 111d:8018 (rev 0e)
+0000:02:04.0 0604: 111d:8018 (rev 0e)
+0000:20:00.0 0200: 8086:10bc (rev 06)
+
+domain:b:d:f device class: vendor ID: device ID
+
+15.2. convert lspci output to physical layout
+===============================================================================
+$ lspci -t
+-+-[0005:00]---00.0-[01-a0]----00.0-[02-a0]--+-04.0-[20]--
+ |                                           +-05.0-[40]--
+ |                                           +-06.0-[60]----00.0
+ |                                           +-08.0-[80-90]----00.0-[90]--+-01.0
+ |                                           |                            +-01.1
+ |                                           |                            \-01.2
+ |                                           \-09.0-[a0]--
+ +-[0004:00]---00.0-[01]--
+ +-[0003:00]---00.0-[01]--
+ +-[0002:00]---00.0-[01]--
+ +-[0001:00]---00.0-[01]--
+ \-[0000:00]---00.0-[01-40]----00.0-[02-40]--+-02.0-[20]--+-00.0
+                                             |            \-00.1
+                                             \-04.0-[40]--+-00.0
+                                                          \-00.1
+
+number in the square of a device means the bus number range of the bridge.
+
+$ lspci | grep 0005
+0005:00:00.0 PCI bridge: IBM Device 03b9 (rev 10)
+0005:01:00.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:04.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:05.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:06.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:08.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:09.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:60:00.0 RAID bus controller: IBM Obsidian-E PCI-E SCSI controller (rev 01)
+0005:80:00.0 PCI bridge: PLX Technology, Inc. PEX8112 x1 Lane PCI Express-to-PCI Bridge (rev aa)
+0005:90:01.0 USB Controller: NEC Corporation USB (rev 43)
+0005:90:01.1 USB Controller: NEC Corporation USB (rev 43)
+0005:90:01.2 USB Controller: NEC Corporation USB 2.0 (rev 04)
+
+
+
+
+                                     --------+---------- Bus #0
+                                             |          
+                                   +---------+----------+
+                                   |IBM Device 00:00.0  |
+                                   |           [01-a0]  |
+                                   +---------+----------+
+                                             |           
+                              ---------------+-----------------Bus #1
+                                             |          
+                                   +---------+----------+
+                                   |PLX Bridge 01:00.0  |
+                                   |           [02-a0]  |
+                                   +---------+----------+
+                                             |           
+      -----+---------------------+-----------+-------+------------------+---------------+-Bus #2
+           |                     |                   |                  |               |
+    +------+-------+    +--------+------+      +-----+-------+  +-------+----------+  +-+---------------+
+    |PLX Bridge    |    |PLX Bridge     |      |PLX Bridge   |  |PLX Bridge        |  |PLX Bridge       |
+    |02:04.0       |    |02:05.0        |      |02:06.0      |  |02:08.0 [80-90]   |  |02:09.0          |
+    +------+-------+    +-----+---------+      +----+--------+  +-------+----------+  +-------+---------+
+           |                  |                     |                   |                     |          
+       ----+-----Bus#20    ---+----Bus#40        ---+-----Bus#60    ----+------Bus#80 --------+---------Bus#a0
+                                                                        |                                     
+                                                                        |                                     
+                                                                +-------+-----------+                         
+                                                                |PLX Bridge 80:00.0 |                         
+                                                                |                   |                         
+                                                                +-------+-----------+                         
+                                                                        |                                     
+                                                      -------+----------++---------------+---------Bus#90
+                                                             |           |               |               
+                                                      +------+------+  +-+---------+  +--+----------+    
+                                                      |usb 90:01.0  |  |usb 90:01.1|  |usb 90:01.2  |    
+                                                      +-------------+  +-----------+  +-------------+    
+
 0. Figures, internal representation of pci subsystem
 ===============================================================================
                     
