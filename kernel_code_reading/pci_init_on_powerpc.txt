@@ -512,7 +512,7 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 	; Gather all our children resources ordered by alignment
 	INIT_LIST_HEAD(&head);
 
-	; Busses 
+	; Busses , take care of the child buses
 	list_for_each_entry(cbus, &bus->children, node) {
 		; calculate the dev_size and dev_align of child bus
 		; add to the list from biggest to smallest
@@ -520,7 +520,7 @@ pnv_ioda_calc_bus(struct pci_bus *bus, unsigned int flags,
 		pnv_ioda_add_wrap(&head, cbus, NULL, dev_size, dev_align);
 	}
 
-	; Devices 
+	; Devices, assign and calculate resources of devices on current bus 
 	list_for_each_entry(cdev, &bus->devices, bus_list) {
 		pnv_ioda_calc_dev(cdev, flags, &dev_size, &dev_align);
 		; dev_size is the total size of a kind of resource
