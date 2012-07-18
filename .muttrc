@@ -1,4 +1,4 @@
-set sendmail = "/usr/bin/msmtp -v -X /home/wizard/log/msmtp.log"
+set sendmail = "/usr/bin/msmtp -v -X ~/Mail/msmtp.log"
 #set the display index format
 set index_format="%4C %Z %{%b %d} %-15.15L (%4l) %s"
 #set mail boxs, press "c" than "tab"
@@ -26,10 +26,12 @@ set pager_stop
 #after setting flag, like 't','D', move curser to next mail
 set resolve=yes
 #when set alias by 'a', which file to save
-set alias_file=/home/wizard/.mutt/alias
-source /home/wizard/.mutt/alias
+set alias_file=~/Mail/alias
+source ~/Mail/alias
 #where to save sent mail
-#set record="~/Mail/=sent-mail-`date +%Y-%m`"
+set record="~/Mail/sent-`date +%Y-%m`"
+#where to save postponed mail
+set postponed="~/Mail/postponed"
 #set coding set for display
 #set charset="gb2312"
 #char set for sending mail
@@ -41,21 +43,21 @@ set noconfirmappend
 #edit mail header or not?
 set edit_headers=yes
 #leave number of lines to show mail list in pager mode
-set pager_index_lines=15
-# the signature
-set signature='echo "Wizard\nHelp you, Help me"|'
+set pager_index_lines=8
+#set signature
+set signature='echo "Richard Yang\nHelp you, Help me"|'
 
 # the mail list you subscribed, press 'L' to reply to list
-subscribe shlug@googlegroups.com
+#subscribe shlug@googlegroups.com
 
-my_hdr From: Wizard<wizarddewhite@gmail.com>
-my_hdr Reply-To: Wizard<wizarddewhite@gmail.com>
+my_hdr From: Richard Yang<weiyang@linux.vnet.ibm.com>
+my_hdr Reply-To: Richard Yang<weiyang@linux.vnet.ibm.com>
 
-macro index G "!fetchmail -av"        
-macro pager G "!fetchmail -av"       
+macro index G "!fetchmail -av"
+macro pager G "!fetchmail -av"
 
 #invoke utlview for a url link
-macro pager \cb <pipe-entry>'urlview'<enter>'Follow links with urlview' 
+macro pager \cb <pipe-entry>'urlview'<enter>'Follow links with urlview'
 
 color hdrdefault white black  # headers white on black
 color header brightgreen black ^From:  # sender's name in green
