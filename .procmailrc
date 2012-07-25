@@ -14,6 +14,12 @@ weiyang
 * ^(From|Cc|To).*PowerKVM
 PowerKVM
 
+#kvm-cstl
+:0:
+* ^(From|Cc|To).*kvm-cstl
+kvm-cstl
+
+
 # linuxppc
 :0:
 * ^(From|Cc|To).*linuxppc-dev
@@ -28,6 +34,11 @@ ltc-china
 :0:
 * ^(From|Cc|To).*kvm
 kvm
+
+#ltc-interlock
+:0:
+* ^(From|Cc|To).*ltc-interlock
+ltc-interlock
 
 :0:
 * ^(From|Cc|To).*autotest
