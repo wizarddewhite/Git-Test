@@ -80,12 +80,23 @@ pnv_pci_init_ioda1_phb();
 		phb->hose = hose = pcibios_alloc_controller(np); will add to hose_list
 	}
 
+	spin_lock_init(&phb->lock);
+	/* XXX Use device-tree */
 	hose->first_busno = 0;
 	hose->last_busno = 0xff;
 	hose->private_data = phb;
 	phb->opal_id = phb_id;
 	phb->type = PNV_PHB_IODA1;
 
+	/* Detect specific models for error handling */
+	if (of_device_is_compatible(np, "ibm,p7ioc-pciex"))
+		phb->model = PNV_PHB_MODEL_P7IOC;
+	else
+		phb->model = PNV_PHB_MODEL_UNKNOWN;
+
+	/* We parse "ranges" now since we need to deduce the register base
+	 * from the IO base
+	 */
 	pci_process_bridge_OF_ranges(phb->hose, np, primary);
 	phb->regs = of_iomap(np, 0);
 
@@ -133,7 +144,7 @@ pnv_pci_init_ioda1_phb();
 	ppc_md.pcibios_fixup_phb = pnv_pci_ioda_fixup_phb;
 	ppc_md.pcibios_fixup = pnv_pci_ioda_fixup;
 	ppc_md.pcibios_enable_device_hook = pnv_pci_enable_device_hook;
-	pci_add_flags(PCI_REASSIGN_ALL_RSRC); when the flag is used?
+	pci_add_flags(PCI_PROBE_ONLY | PCI_REASSIGN_ALL_RSRC); when the flag is used?
 
 	/* Reset IODA tables to a clean state */
 	rc = opal_pci_reset(phb_id, OPAL_PCI_IODA_TABLE_RESET, OPAL_ASSERT_RESET);
@@ -214,7 +225,105 @@ pci_process_bridge_OF_ranges(struct pci_controller *hose, struct device_node *de
 	res->sibling = NULL;
 	res->child = NULL;
 
+1.2 pci_devs_phb_init
+===============================================================================
+ * This routine walks over all phb's (pci-host bridges) on the
+ * system, and sets up assorted pci-related structures 
+ * (including pci info in the device node structs) for each
+ * pci device found underneath.  This routine runs once,
+ * early in the boot sequence.
 
+pci_devs_phb_init(void)
+	struct pci_controller *phb, *tmp;
+
+	/* This must be done first so the device nodes have valid pci info! */
+	list_for_each_entry_safe(phb, tmp, &hose_list, list_node)
+		pci_devs_phb_init_dynamic(phb);
+
+
+1.2.1 pci_devs_phb_init_dynamic
+===============================================================================
+pci_devs_phb_init_dynamic(struct pci_controller *phb)
+	struct device_node *dn = phb->dn;
+	struct pci_dn *pdn;
+
+	/* PHB nodes themselves must not match */
+	update_dn_pci_info(dn, phb);
+	pdn = dn->data;
+	if (pdn) {
+		pdn->devfn = pdn->busno = -1;
+		pdn->phb = phb;
+	}
+
+	/* Update dn->phb ptrs for new phb and children devices */
+	traverse_pci_devices(dn, update_dn_pci_info, phb);
+
+1.2.1.1 update_dn_pci_info, allocate dn for phb and set busno/devfn from FDT
+===============================================================================
+update_dn_pci_info(struct device_node *dn, void *data)
+	struct pci_controller *phb = data;
+	const int *type =
+		of_get_property(dn, "ibm,pci-config-space-type", NULL);
+	const u32 *regs;
+	struct pci_dn *pdn;
+
+	pdn = zalloc_maybe_bootmem(sizeof(*pdn), GFP_KERNEL);
+	if (pdn == NULL)
+		return NULL;
+	dn->data = pdn;
+	pdn->node = dn;
+	pdn->phb = phb;
+#ifdef CONFIG_PPC_POWERNV
+	pdn->pe_number = IODA_INVALID_PE;
+#endif
+	regs = of_get_property(dn, "reg", NULL);
+	if (regs) {
+		/* First register entry is addr (00BBSS00)  */
+		pdn->busno = (regs[0] >> 16) & 0xff;
+		pdn->devfn = (regs[0] >> 8) & 0xff;
+	}
+
+	pdn->pci_ext_config_space = (type && *type == 1);
+	return NULL;
+
+1.2.1.2 traverse_pci_devices, traverse through the pci tree and call update_dn_pci_info for each device
+===============================================================================
+traverse_pci_devices(struct device_node *start, traverse_func pre,
+		void *data)
+	struct device_node *dn, *nextdn;
+	void *ret;
+
+	/* We started with a phb, iterate all childs */
+	for (dn = start->child; dn; dn = nextdn) {
+		const u32 *classp;
+		u32 class;
+
+		nextdn = NULL;
+		classp = of_get_property(dn, "class-code", NULL);
+		class = classp ? *classp : 0;
+
+		if (pre && ((ret = pre(dn, data)) != NULL))
+			return ret;
+
+		/* If we are a PCI bridge, go down */
+		if (dn->child && ((class >> 8) == PCI_CLASS_BRIDGE_PCI ||
+				  (class >> 8) == PCI_CLASS_BRIDGE_CARDBUS))
+			/* Depth first...do children */
+			nextdn = dn->child;
+		else if (dn->sibling)
+			/* ok, try next sibling instead. */
+			nextdn = dn->sibling;
+		if (!nextdn) {
+			/* Walk up to next valid sibling. */
+			do {
+				dn = dn->parent;
+				if (dn == start)
+					return NULL;
+			} while (dn->sibling == NULL);
+			nextdn = dn->sibling;
+		}
+	}
+	return NULL;
 
 2. pcibios_init()
 ===============================================================================
@@ -282,7 +391,7 @@ pcibios_scan_phb()
 		}
 	}
 
-2.1.1 pcibios_setup_phb_io_space() map the physical address to virtual address
+2.1.1 pcibios_setup_phb_io_space(), map the physical address to virtual address
 ===============================================================================
 pcibios_setup_phb_io_space(struct pci_controller *hose) 
 	pcibios_map_phb_io_space(hose)
@@ -439,6 +548,7 @@ pnv_ioda_setup_dev_PE(struct pci_dev *dev)
 	pnv_ioda_link_pe_by_weight(phb, pe);
 
 	return pe;
+
 2.1.5.1.2 pnv_ioda_setup_bus_PE(), 
 ===============================================================================
 pnv_ioda_setup_bus_PE(struct pci_dev *dev, struct pnv_ioda_pe *ppe)
@@ -955,7 +1065,73 @@ pcibios_resource_survey()
 	if (ppc_md.pcibios_fixup)
 		ppc_md.pcibios_fixup();
 
-2.3 pcibios_allocate_bus_resources()
+2.3.1 pcibios_allocate_bus_resources(), 
+===============================================================================
+pcibios_allocate_bus_resources(struct pci_bus *bus)
+	struct pci_bus *b;
+	int i;
+	struct resource *res, *pr;
+
+	pr_debug("PCI: Allocating bus resources for %04x:%02x...\n",
+		 pci_domain_nr(bus), bus->number);
+
+	pci_bus_for_each_resource(bus, res, i) {
+		if (!res || !res->flags || res->start > res->end || res->parent)
+			continue;
+
+		/* If the resource was left unset at this point, we clear it */
+		if (res->flags & IORESOURCE_UNSET)
+			goto clear_resource;
+
+		if (bus->parent == NULL)
+			pr = (res->flags & IORESOURCE_IO) ?
+				&ioport_resource : &iomem_resource;
+		else {
+			pr = pci_find_parent_resource(bus->self, res);
+			if (pr == res) {
+				/* this happens when the generic PCI
+				 * code (wrongly) decides that this
+				 * bridge is transparent  -- paulus
+				 */
+				continue;
+			}
+		}
+
+		pr_debug("PCI: %s (bus %d) bridge rsrc %d: %016llx-%016llx "
+			 "[0x%x], parent %p (%s)\n",
+			 bus->self ? pci_name(bus->self) : "PHB",
+			 bus->number, i,
+			 (unsigned long long)res->start,
+			 (unsigned long long)res->end,
+			 (unsigned int)res->flags,
+			 pr, (pr && pr->name) ? pr->name : "nil");
+
+		if (pr && !(pr->flags & IORESOURCE_UNSET)) {
+			if (request_resource(pr, res) == 0)
+				continue;
+			/*
+			 * Must be a conflict with an existing entry.
+			 * Move that entry (or entries) under the
+			 * bridge resource and try again.
+			 */
+			if (reparent_resources(pr, res) == 0)
+				continue;
+		}
+		pr_warning("PCI: Cannot allocate resource region "
+			   "%d of PCI bridge %d, will remap\n", i, bus->number);
+	clear_resource:
+		res->start = res->end = 0;
+		res->flags = 0;
+	}
+
+	list_for_each_entry(b, &bus->children, node)
+		pcibios_allocate_bus_resources(b);
+
+2.3.1 pci_assign_unassigned_resources(), resouce assignment
+===============================================================================
+this function will be called depends on the pci_flags
+
+2.4 pcibios_allocate_bus_resources()
 ===============================================================================
 pcibios_allocate_bus_resources(struct pci_bus *bus)
 	struct pci_bus *b;
@@ -1018,7 +1194,7 @@ pcibios_allocate_bus_resources(struct pci_bus *bus)
 	list_for_each_entry(b, &bus->children, node)
 		pcibios_allocate_bus_resources(b);
 
-3. machine type initialization
+3. machine type initialization, setup the ppc_md structure based on the machine type
 ===============================================================================
 define_machine(powernv) {
 	.name			= "PowerNV",
@@ -1086,3 +1262,56 @@ second round of __start()
 				start_here_common
 					setup_system
 					start_kernel
+
+5. pcibios_fixup_resources(), mark the resource of a new pci device as IORESOURCE_UNSET
+===============================================================================
+This function is called by pci_device_add(). 
+
+pcibios_fixup_resources(struct pci_dev *dev)
+{
+	struct pci_controller *hose = pci_bus_to_host(dev->bus);
+	int i;
+
+	if (!hose) {
+		printk(KERN_ERR "No host bridge for PCI dev %s !\n",
+		       pci_name(dev));
+		return;
+	}
+	for (i = 0; i < DEVICE_COUNT_RESOURCE; i++) {
+		struct resource *res = dev->resource + i;
+		if (!res->flags)
+			continue;
+
+		/* If we're going to re-assign everything, we mark all resources
+		 * as unset (and 0-base them). In addition, we mark BARs starting
+		 * at 0 as unset as well, except if PCI_PROBE_ONLY is also set
+		 * since in that case, we don't want to re-assign anything
+		 */
+		if (pci_has_flag(PCI_REASSIGN_ALL_RSRC) ||
+		    (res->start == 0 && !pci_has_flag(PCI_PROBE_ONLY))) {
+			/* Only print message if not re-assigning */
+			if (!pci_has_flag(PCI_REASSIGN_ALL_RSRC))
+				pr_debug("PCI:%s Resource %d %016llx-%016llx [%x] "
+					 "is unassigned\n",
+					 pci_name(dev), i,
+					 (unsigned long long)res->start,
+					 (unsigned long long)res->end,
+					 (unsigned int)res->flags);
+			res->end -= res->start;
+			res->start = 0;
+			res->flags |= IORESOURCE_UNSET;
+			continue;
+		}
+
+		pr_debug("PCI:%s Resource %d %016llx-%016llx [%x]\n",
+			 pci_name(dev), i,
+			 (unsigned long long)res->start,\
+			 (unsigned long long)res->end,
+			 (unsigned int)res->flags);
+	}
+
+	/* Call machine specific resource fixup */
+	if (ppc_md.pcibios_fixup_resources)
+		ppc_md.pcibios_fixup_resources(dev);
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_ANY_ID, PCI_ANY_ID, pcibios_fixup_resources);
