@@ -2216,95 +2216,120 @@ msi_capability_init(struct pci_dev *dev, int nvec)
 	return 0;
 }
 
-15. understand the lspci output
+15. pci_fixup, for pci stuff there is several fixup functions
 ===============================================================================
 
-15.1. show the numberic output
+15.1 definition
 ===============================================================================
-$ lspci -n | head -n 5
-0000:00:00.0 0604: 1014:03b9 (rev 10)
-0000:01:00.0 0604: 111d:8018 (rev 0e)
-0000:02:02.0 0604: 111d:8018 (rev 0e)
-0000:02:04.0 0604: 111d:8018 (rev 0e)
-0000:20:00.0 0200: 8086:10bc (rev 06)
+In kernel there are following types of fixup functions.
 
-domain:b:d:f device class: vendor ID: device ID
+enum pci_fixup_pass {
+	pci_fixup_early,	/* Before probing BARs */
+	pci_fixup_header,	/* After reading configuration header */
+	pci_fixup_final,	/* Final phase of device fixups */
+	pci_fixup_enable,	/* pci_enable_device() time */
+	pci_fixup_resume,	/* pci_device_resume() */
+	pci_fixup_suspend,	/* pci_device_suspend */
+	pci_fixup_resume_early, /* pci_device_resume_early() */
+};
 
-15.2. convert lspci output to physical layout
+And the function is defined by these macro which is defined in include/linux/pci.h.
+And will be put into specific sections.
+
+#define DECLARE_PCI_FIXUP_EARLY(vendor, device, hook)			\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_early,			\
+		vendor##device##hook, vendor, device, PCI_ANY_ID, 0, hook)
+#define DECLARE_PCI_FIXUP_HEADER(vendor, device, hook)			\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_header,			\
+		vendor##device##hook, vendor, device, PCI_ANY_ID, 0, hook)
+#define DECLARE_PCI_FIXUP_FINAL(vendor, device, hook)			\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_final,			\
+		vendor##device##hook, vendor, device, PCI_ANY_ID, 0, hook)
+#define DECLARE_PCI_FIXUP_ENABLE(vendor, device, hook)			\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_enable,			\
+		vendor##device##hook, vendor, device, PCI_ANY_ID, 0, hook)
+#define DECLARE_PCI_FIXUP_RESUME(vendor, device, hook)			\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_resume,			\
+		resume##vendor##device##hook, vendor, device,		\
+		PCI_ANY_ID, 0, hook)
+#define DECLARE_PCI_FIXUP_RESUME_EARLY(vendor, device, hook)		\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_resume_early,		\
+		resume_early##vendor##device##hook, vendor, device,	\
+		PCI_ANY_ID, 0, hook)
+#define DECLARE_PCI_FIXUP_SUSPEND(vendor, device, hook)			\
+	DECLARE_PCI_FIXUP_SECTION(.pci_fixup_suspend,			\
+		suspend##vendor##device##hook, vendor, device,		\
+		PCI_ANY_ID, 0, hook)
+
+15.2 how to call
 ===============================================================================
-$ lspci -t
--+-[0005:00]---00.0-[01-a0]----00.0-[02-a0]--+-04.0-[20]--
- |                                           +-05.0-[40]--
- |                                           +-06.0-[60]----00.0
- |                                           +-08.0-[80-90]----00.0-[90]--+-01.0
- |                                           |                            +-01.1
- |                                           |                            \-01.2
- |                                           \-09.0-[a0]--
- +-[0004:00]---00.0-[01]--
- +-[0003:00]---00.0-[01]--
- +-[0002:00]---00.0-[01]--
- +-[0001:00]---00.0-[01]--
- \-[0000:00]---00.0-[01-40]----00.0-[02-40]--+-02.0-[20]--+-00.0
-                                             |            \-00.1
-                                             \-04.0-[40]--+-00.0
-                                                          \-00.1
-
-number in the square of a device means the bus number range of the bridge.
-
-$ lspci | grep 0005
-0005:00:00.0 PCI bridge: IBM Device 03b9 (rev 10)
-0005:01:00.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
-0005:02:04.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
-0005:02:05.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
-0005:02:06.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
-0005:02:08.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
-0005:02:09.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
-0005:60:00.0 RAID bus controller: IBM Obsidian-E PCI-E SCSI controller (rev 01)
-0005:80:00.0 PCI bridge: PLX Technology, Inc. PEX8112 x1 Lane PCI Express-to-PCI Bridge (rev aa)
-0005:90:01.0 USB Controller: NEC Corporation USB (rev 43)
-0005:90:01.1 USB Controller: NEC Corporation USB (rev 43)
-0005:90:01.2 USB Controller: NEC Corporation USB 2.0 (rev 04)
+pci_fixup_device() is used to call those fixup functions.
 
 
+void pci_fixup_device(enum pci_fixup_pass pass, struct pci_dev *dev)
+{
+	struct pci_fixup *start, *end;
 
+	switch(pass) {
+	case pci_fixup_early:
+		start = __start_pci_fixups_early;
+		end = __end_pci_fixups_early;
+		break;
 
-                                     --------+---------- Bus #0
-                                             |          
-                                   +---------+----------+
-                                   |IBM Device 00:00.0  |
-                                   |           [01-a0]  |
-                                   +---------+----------+
-                                             |           
-                              ---------------+-----------------Bus #1
-  Physical Bridge                            |          
-  +----------------------------------------------------------------------------------------------------------------+
-  |                                          |                                 Internal representation             |
-  |                                +---------+----------+                                                          |
-  |                                |PLX Bridge 01:00.0  |                                                          |
-  |                                |           [02-a0]  |                                                          |
-  |                                +---------+----------+                                                          |
-  |                                          |                                                                     |
-  |   -----+---------------------+-----------+-------+------------------+---------------+-Bus #2                   |
-  |        |                     |                   |                  |               |                          |
-  | +------+-------+    +--------+------+      +-----+-------+  +-------+----------+  +-+---------------+          |
-  | |PLX Bridge    |    |PLX Bridge     |      |PLX Bridge   |  |PLX Bridge        |  |PLX Bridge       |          |
-  | |02:04.0       |    |02:05.0        |      |02:06.0      |  |02:08.0 [80-90]   |  |02:09.0          |          |
-  | +------+-------+    +-----+---------+      +----+--------+  +-------+----------+  +-------+---------+          |
-  |        |                  |                     |                   |                     |                    |
-  +----------------------------------------------------------------------------------------------------------------+
-           |                  |                     |                   |                     |                     
-       ----+-----Bus#20    ---+----Bus#40        ---+-----Bus#60    ----+------Bus#80 --------+---------Bus#a0      
-                                                                        |                                           
-                                                                +-------+-----------+                         
-                                                                |PLX Bridge 80:00.0 |                         
-                                                                |                   |                         
-                                                                +-------+-----------+                         
-                                                                        |                                     
-                                                      -------+----------++---------------+---------Bus#90
-                                                             |           |               |               
-                                                      +------+------+  +-+---------+  +--+----------+    
-                                                      |usb 90:01.0  |  |usb 90:01.1|  |usb 90:01.2  |    
-                                                      +-------------+  +-----------+  +-------------+    
+	case pci_fixup_header:
+		start = __start_pci_fixups_header;
+		end = __end_pci_fixups_header;
+		break;
+
+	case pci_fixup_final:
+		start = __start_pci_fixups_final;
+		end = __end_pci_fixups_final;
+		break;
+
+	case pci_fixup_enable:
+		start = __start_pci_fixups_enable;
+		end = __end_pci_fixups_enable;
+		break;
+
+	case pci_fixup_resume:
+		start = __start_pci_fixups_resume;
+		end = __end_pci_fixups_resume;
+		break;
+
+	case pci_fixup_resume_early:
+		start = __start_pci_fixups_resume_early;
+		end = __end_pci_fixups_resume_early;
+		break;
+
+	case pci_fixup_suspend:
+		start = __start_pci_fixups_suspend;
+		end = __end_pci_fixups_suspend;
+		break;
+
+	default:
+		/* stupid compiler warning, you would think with an enum... */
+		return;
+	}
+	pci_do_fixups(dev, start, end);
+}
+
+static void pci_do_fixups(struct pci_dev *dev, struct pci_fixup *f,
+			  struct pci_fixup *end)
+{
+	ktime_t calltime;
+
+	for (; f < end; f++)
+		if ((f->class == (u32) (dev->class >> f->class_shift) ||
+		     f->class == (u32) PCI_ANY_ID) &&
+		    (f->vendor == dev->vendor ||
+		     f->vendor == (u16) PCI_ANY_ID) &&
+		    (f->device == dev->device ||
+		     f->device == (u16) PCI_ANY_ID)) {
+			calltime = fixup_debug_start(dev, f->hook);
+			f->hook(dev);
+			fixup_debug_report(dev, calltime, f->hook);
+		}
+}
 
 0. Figures, internal representation of pci subsystem
 ===============================================================================
@@ -2400,3 +2425,94 @@ $ lspci | grep 0005
                   (this is an example, the number could be different
 		   another version on web is http://tldp.org/LDP/tlk/dd/pci.html
 		   Section 6.6.1)
+
+1. understand the lspci output
+===============================================================================
+
+1.1. show the numberic output
+===============================================================================
+$ lspci -n | head -n 5
+0000:00:00.0 0604: 1014:03b9 (rev 10)
+0000:01:00.0 0604: 111d:8018 (rev 0e)
+0000:02:02.0 0604: 111d:8018 (rev 0e)
+0000:02:04.0 0604: 111d:8018 (rev 0e)
+0000:20:00.0 0200: 8086:10bc (rev 06)
+
+domain:b:d:f device class: vendor ID: device ID
+
+1.2. convert lspci output to physical layout
+===============================================================================
+$ lspci -t
+-+-[0005:00]---00.0-[01-a0]----00.0-[02-a0]--+-04.0-[20]--
+ |                                           +-05.0-[40]--
+ |                                           +-06.0-[60]----00.0
+ |                                           +-08.0-[80-90]----00.0-[90]--+-01.0
+ |                                           |                            +-01.1
+ |                                           |                            \-01.2
+ |                                           \-09.0-[a0]--
+ +-[0004:00]---00.0-[01]--
+ +-[0003:00]---00.0-[01]--
+ +-[0002:00]---00.0-[01]--
+ +-[0001:00]---00.0-[01]--
+ \-[0000:00]---00.0-[01-40]----00.0-[02-40]--+-02.0-[20]--+-00.0
+                                             |            \-00.1
+                                             \-04.0-[40]--+-00.0
+                                                          \-00.1
+
+number in the square of a device means the bus number range of the bridge.
+
+$ lspci | grep 0005
+0005:00:00.0 PCI bridge: IBM Device 03b9 (rev 10)
+0005:01:00.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:04.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:05.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:06.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:08.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:02:09.0 PCI bridge: PLX Technology, Inc. PEX 8624 24-lane, 6-Port PCI Express Gen 2 (5.0 GT/s) Switch [ExpressLane] (rev bb)
+0005:60:00.0 RAID bus controller: IBM Obsidian-E PCI-E SCSI controller (rev 01)
+0005:80:00.0 PCI bridge: PLX Technology, Inc. PEX8112 x1 Lane PCI Express-to-PCI Bridge (rev aa)
+0005:90:01.0 USB Controller: NEC Corporation USB (rev 43)
+0005:90:01.1 USB Controller: NEC Corporation USB (rev 43)
+0005:90:01.2 USB Controller: NEC Corporation USB 2.0 (rev 04)
+
+
+
+
+                                     --------+---------- Bus #0
+                                             |          
+                                   +---------+----------+
+                                   |IBM Device 00:00.0  |
+                                   |           [01-a0]  |
+                                   +---------+----------+
+                                             |           
+                              ---------------+-----------------Bus #1
+  Physical Bridge                            |          
+  +----------------------------------------------------------------------------------------------------------------+
+  |                                          |                                 Internal representation             |
+  |                                +---------+----------+                                                          |
+  |                                |PLX Bridge 01:00.0  |                                                          |
+  |                                |           [02-a0]  |                                                          |
+  |                                +---------+----------+                                                          |
+  |                                          |                                                                     |
+  |   -----+---------------------+-----------+-------+------------------+---------------+-Bus #2                   |
+  |        |                     |                   |                  |               |                          |
+  | +------+-------+    +--------+------+      +-----+-------+  +-------+----------+  +-+---------------+          |
+  | |PLX Bridge    |    |PLX Bridge     |      |PLX Bridge   |  |PLX Bridge        |  |PLX Bridge       |          |
+  | |02:04.0       |    |02:05.0        |      |02:06.0      |  |02:08.0 [80-90]   |  |02:09.0          |          |
+  | +------+-------+    +-----+---------+      +----+--------+  +-------+----------+  +-------+---------+          |
+  |        |                  |                     |                   |                     |                    |
+  +----------------------------------------------------------------------------------------------------------------+
+           |                  |                     |                   |                     |                     
+       ----+-----Bus#20    ---+----Bus#40        ---+-----Bus#60    ----+------Bus#80 --------+---------Bus#a0      
+                                                                        |                                           
+                                                                +-------+-----------+                         
+                                                                |PLX Bridge 80:00.0 |                         
+                                                                |                   |                         
+                                                                +-------+-----------+                         
+                                                                        |                                     
+                                                      -------+----------++---------------+---------Bus#90
+                                                             |           |               |               
+                                                      +------+------+  +-+---------+  +--+----------+    
+                                                      |usb 90:01.0  |  |usb 90:01.1|  |usb 90:01.2  |    
+                                                      +-------------+  +-----------+  +-------------+    
+
