@@ -6,7 +6,7 @@ CFLAGS = -g
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource list_case
+all: resource list_case cscope
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure
