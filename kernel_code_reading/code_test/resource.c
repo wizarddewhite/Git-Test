@@ -795,7 +795,11 @@ void __resource_extend_parents_top(struct resource *b_res,
 	__resource_update_parents_top(b_res, size, parent_res);
 }
 
-/* this function will go deep in the resource tree to allocate a resource */
+/* this function will go deep in the resource tree to allocate a resource 
+ * compare __request_region() with __request_resource().
+ * __request_resource will just go through the first level, while 
+ * __request_region will go deep into the resource tree and find a proper one.
+ * */
 struct resource * __request_region(struct resource *parent,
 				   resource_size_t start, resource_size_t n,
 				   const char *name, int flags)

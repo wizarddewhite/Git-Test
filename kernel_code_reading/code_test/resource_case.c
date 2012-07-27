@@ -439,7 +439,18 @@ void request_region_test()
 {
 	init2();
 
+	printf("this test is used to show the difference between "
+			"request_resource_conflict and __request_region\n");
+
+	struct resource tmp;
+	tmp.start = 105;
+	tmp.end = 114;
+	printf("try to use request_resource_conflict to request resource %lu-%lu\n", tmp.start, tmp.end);
+	if (request_resource_conflict(&root, &tmp))
+		printf("failed to request resource %lu-%lu by request_resource_conflict\n", tmp.start, tmp.end);
+
 	/* this will allocate [105,114] deep in the tree */
+	printf("try to use request_region to request resource %lu-%lu\n", tmp.start, tmp.end);
 	__request_region(&root, 105, 10, "test", 0);
 	dump(&root, 0);
 }
