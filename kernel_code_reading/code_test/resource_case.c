@@ -286,11 +286,13 @@ void adjust_resource_test()
 	init2();
 
 	adjust_resource(&res[1], 51, 60);
-	printf("move res[1] \n");
+	printf("move res[1] %lu-%lu to %lu-%lu\n", 
+			res[1].start, res[1].end, 51UL, (51+60)-1UL);
 	dump(&root, 0);
 
 	adjust_resource(&res[1], res[1].start, 100);
-	printf("expand res[1] \n");
+	printf("expand res[1] %lu-%lu to size %d\n",
+			res[1].start, res[1].end, 100);
 	dump(&root, 0);
 
 	return;
