@@ -289,6 +289,14 @@ static int __find_resource(struct resource *root, struct resource *old,
 	 * Skip past an allocated resource that starts at 0, since the assignment
 	 * of this->start - 1 to tmp->end below would cause an underflow.
 	 */
+	/* This condition handle a special case, in which the first child of root
+	 * start just from the root->start.
+	 * In this case, there is no free space between root and root->child.
+	 * If we don't add this special handling, when we jump into the loop,
+	 * tmp.start = root->start
+	 * tmp.end   = this->start-1 = root->start-1
+	 * So you see the underflow.
+	 */
 	if (this && this->start == root->start) {
 		tmp.start = (this == old) ? old->start : this->end + 1;
 		this = this->sibling;
