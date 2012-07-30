@@ -1,0 +1,17 @@
+# default settings for polling and logging
+set postmaster "root"
+set syslog
+set daemon 20
+set logfile "/home/richard/Mail/log"
+
+# set your ltc imap account user id and password in these next lines
+# and change localuser to match your Linux workstation login
+poll imap.linux.ibm.com with proto IMAP auth cram-md5
+username "weiyang" with password "shyw144025" is "richard" here keep
+sslproto none, no rewrite, no idle
+mda "/usr/bin/procmail -d %T"
+
+# The 'sslproto none' option disables tls and ssl support. If you want to
+# use tls encryption change 'none' to 'tls1'. See the fetchmail man
+# page for a description of 'no rewrite' and 'no idle'. You may also wish
+# to consider the options 'fetchall', 'keep', and 'nokeep'.

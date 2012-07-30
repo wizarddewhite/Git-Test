@@ -1,0 +1,45 @@
+PATH=/usr/bin:/usr/local/bin
+MAILDIR=/home/richard/Mail
+DEFAULT=$HOME/Mail/inbox
+LOGFILE=/dev/null
+SHELL=/bin/bash
+
+#put mail for me to me
+:0:
+* ^(From|Cc|To).*weiyang
+weiyang
+
+# powerkvm
+:0:
+* ^(From|Cc|To).*PowerKVM
+PowerKVM
+
+#kvm-cstl
+:0:
+* ^(From|Cc|To).*kvm-cstl
+kvm-cstl
+
+
+# linuxppc
+:0:
+* ^(From|Cc|To).*linuxppc-dev
+linuxppc-dev
+
+# ltc-china
+:0:
+* ^(From|Cc|To).*ltc-china
+ltc-china
+
+# kvm
+:0:
+* ^(From|Cc|To).*kvm
+kvm
+
+#ltc-interlock
+:0:
+* ^(From|Cc|To).*ltc-interlock
+ltc-interlock
+
+:0:
+* ^(From|Cc|To).*autotest
+autotest
