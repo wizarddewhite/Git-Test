@@ -29,7 +29,7 @@ set resolve=yes
 set alias_file=~/Mail/alias
 source ~/Mail/alias
 #where to save sent mail
-set record="~/Mail/sent-`date +%Y-%m`"
+set record="~/Mail/weiyang"
 #where to save postponed mail
 set postponed="~/Mail/postponed"
 #set coding set for display
