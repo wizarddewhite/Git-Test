@@ -1214,69 +1214,6 @@ pnv_ioda_setup_PEs(struct pci_bus *bus)
 		}
 	}
 
-2.4 pcibios_allocate_bus_resources()
-===============================================================================
-pcibios_allocate_bus_resources(struct pci_bus *bus)
-	struct pci_bus *b;
-	int i;
-	struct resource *res, *pr;
-
-	; go throught each res in bus
-	pci_bus_for_each_resource(bus, res, i) {
-		if (!res || !res->flags || res->start > res->end || res->parent)
-			continue;
-
-		/* If the resource was left unset at this point, we clear it */
-		if (res->flags & IORESOURCE_UNSET)
-			goto clear_resource;
-
-		; find the pr, parent resource
-		if (bus->parent == NULL)
-			pr = (res->flags & IORESOURCE_IO) ?
-				&ioport_resource : &iomem_resource;
-		else {
-			pr = pci_find_parent_resource(bus->self, res);
-			if (pr == res) {
-				/* this happens when the generic PCI
-				 * code (wrongly) decides that this
-				 * bridge is transparent  -- paulus
-				 */
-				continue;
-			}
-		}
-
-		pr_debug("PCI: %s (bus %d) bridge rsrc %d: %016llx-%016llx "
-			 "[0x%x], parent %p (%s)\n",
-			 bus->self ? pci_name(bus->self) : "PHB",
-			 bus->number, i,
-			 (unsigned long long)res->start,
-			 (unsigned long long)res->end,
-			 (unsigned int)res->flags,
-			 pr, (pr && pr->name) ? pr->name : "nil");
-
-		if (pr && !(pr->flags & IORESOURCE_UNSET)) {
-			if (request_resource(pr, res) == 0)
-				continue;
-			/*
-			 * Must be a conflict with an existing entry.
-			 * Move that entry (or entries) under the
-			 * bridge resource and try again.
-			 */
-			if (reparent_resources(pr, res) == 0)
-				continue;
-		}
-		pr_warning("PCI: Cannot allocate resource region "
-			   "%d of PCI bridge %d, will remap\n", i, bus->number);
-	; if cannot allocate it, just clear it.
-	clear_resource:
-		res->start = res->end = 0;
-		res->flags = 0;
-	}
-
-	; go through child buses
-	list_for_each_entry(b, &bus->children, node)
-		pcibios_allocate_bus_resources(b);
-
 3. machine type initialization, setup the ppc_md structure based on the machine type
 ===============================================================================
 define_machine(powernv) {
