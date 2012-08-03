@@ -1525,7 +1525,213 @@ pnv_ioda_setup_pe_seg(struct pci_controller *hose,
 	}
 }
 
-5. machine type initialization, setup the ppc_md structure based on the machine type
+5. pnv_ioda_setup_dma(), setup the DMA for each PHB
+===============================================================================
+pnv_ioda_setup_dma(struct pnv_phb *phb)
+{
+	struct pci_controller *hose = phb->hose;
+	unsigned int residual, remaining, segs, tw, base;
+	struct pnv_ioda_pe *pe;
+
+	/* If we have more PE# than segments available, hand out one
+	 * per PE until we run out and let the rest fail. If not,
+	 * then we assign at least one segment per PE, plus more based
+	 * on the amount of devices under that PE
+	 */
+	; tce count would be different from PE#?
+	if (phb->ioda.dma_pe_count > phb->ioda.tce32_count)
+		residual = 0;
+	else
+		residual = phb->ioda.tce32_count -
+			phb->ioda.dma_pe_count;
+
+	pr_info("PCI: Domain %04x has %ld available 32-bit DMA segments\n",
+		hose->global_number, phb->ioda.tce32_count);
+	pr_info("PCI: %d PE# for a total weight of %d\n",
+		phb->ioda.dma_pe_count, phb->ioda.dma_weight);
+
+	/* Walk our PE list and configure their DMA segments, hand them
+	 * out one base segment plus any residual segments based on
+	 * weight
+	 */
+	remaining = phb->ioda.tce32_count;
+	tw = phb->ioda.dma_weight;
+	base = 0;
+	list_for_each_entry(pe, &phb->ioda.pe_dma_list, dma_link) {
+		if (!pe->dma_weight)
+			continue;
+		if (!remaining) {
+			pe_warn(pe, "No DMA32 resources available\n");
+			continue;
+		}
+		segs = 1;
+		if (residual) {
+			segs += ((pe->dma_weight * residual)  + (tw / 2)) / tw;
+			if (segs > remaining)
+				segs = remaining;
+		}
+		pe_info(pe, "DMA weight %d, assigned %d DMA32 segments\n",
+			pe->dma_weight, segs);
+		pnv_pci_ioda_setup_dma_pe(phb, pe, base, segs);
+		remaining -= segs;
+		base += segs;
+	}
+}
+
+5.1 pnv_pci_ioda_setup_dma_pe(), 
+===============================================================================
+; base      is the segment base index
+; segs      is the number of segments assign to pe
+pnv_pci_ioda_setup_dma_pe(struct pnv_phb *phb,
+						struct pnv_ioda_pe *pe,
+						unsigned int base,
+						unsigned int segs)
+{
+
+	struct page *tce_mem = NULL;
+	const __be64 *swinvp;
+	struct iommu_table *tbl;
+	unsigned int i;
+	int64_t rc;
+	void *addr;
+
+	/* 256M DMA window, 4K TCE pages, 8 bytes TCE */
+#define TCE32_TABLE_SIZE	((0x10000000 / 0x1000) * 8)
+
+	/* XXX FIXME: Handle 64-bit only DMA devices */
+	/* XXX FIXME: Provide 64-bit DMA facilities & non-4K TCE tables etc.. */
+	/* XXX FIXME: Allocate multi-level tables on PHB3 */
+
+	/* We shouldn't already have a 32-bit DMA associated */
+	if (WARN_ON(pe->tce32_seg >= 0))
+		return;
+
+	/* Grab a 32-bit TCE table */
+	pe->tce32_seg = base;
+	pe_info(pe, " Setting up 32-bit TCE table at %08x..%08x\n",
+		(base << 28), ((base + segs) << 28) - 1);
+
+	/* XXX Currently, we allocate one big contiguous table for the
+	 * TCEs. We only really need one chunk per 256M of TCE space
+	 * (ie per segment) but that's an optimization for later, it
+	 * requires some added smarts with our get/put_tce implementation
+	 */
+	tce_mem = alloc_pages_node(phb->hose->node, GFP_KERNEL,
+				   get_order(TCE32_TABLE_SIZE * segs));
+	if (!tce_mem) {
+		pe_err(pe, " Failed to allocate a 32-bit TCE memory\n");
+		goto fail;
+	}
+	addr = page_address(tce_mem);
+	memset(addr, 0, TCE32_TABLE_SIZE * segs);
+
+	/* Configure HW */
+	for (i = 0; i < segs; i++) {
+		rc = opal_pci_map_pe_dma_window(phb->opal_id,
+					      pe->pe_number,
+					      base + i, 1,
+					      __pa(addr) + TCE32_TABLE_SIZE * i,
+					      TCE32_TABLE_SIZE, 0x1000);
+		if (rc) {
+			pe_err(pe, " Failed to configure 32-bit TCE table,"
+			       " err %ld\n", rc);
+			goto fail;
+		}
+	}
+
+	/* Setup linux iommu table */
+	tbl = &pe->tce32_table;
+	pnv_pci_setup_iommu_table(tbl, addr, TCE32_TABLE_SIZE * segs,
+				  base << 28);
+
+	/* OPAL variant of P7IOC SW invalidated TCEs */
+	swinvp = of_get_property(phb->hose->dn, "ibm,opal-tce-kill", NULL);
+	if (swinvp) {
+		/* We need a couple more fields -- an address and a data
+		 * to or.  Since the bus is only printed out on table free
+		 * errors, and on the first pass the data will be a relative
+		 * bus number, print that out instead.
+		 */
+		tbl->it_busno = 0;
+		tbl->it_index = (unsigned long)ioremap(be64_to_cpup(swinvp), 8);
+		tbl->it_type = TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE
+			| TCE_PCI_SWINV_PAIR;
+	}
+	iommu_init_table(tbl, phb->hose->node);
+
+	if (pe->pdev)
+		set_iommu_table_base(&pe->pdev->dev, tbl);
+	else
+		pnv_ioda_setup_bus_dma(pe, pe->pbus);
+
+	return;
+ fail:
+	/* XXX Failure: Try to fallback to 64-bit only ? */
+	if (pe->tce32_seg >= 0)
+		pe->tce32_seg = -1;
+	if (tce_mem)
+		__free_pages(tce_mem, get_order(TCE32_TABLE_SIZE * segs));
+}
+
+5.2 pnv_pci_setup_iommu_table(), 
+===============================================================================
+pnv_pci_setup_iommu_table(struct iommu_table *tbl,
+			       void *tce_mem, u64 tce_size,
+			       u64 dma_offset)
+{
+	tbl->it_blocksize = 16;
+	tbl->it_base = (unsigned long)tce_mem;
+	tbl->it_offset = dma_offset >> IOMMU_PAGE_SHIFT;
+	tbl->it_index = 0;
+	tbl->it_size = tce_size >> 3;
+	tbl->it_busno = 0;
+	tbl->it_type = TCE_PCI;
+}
+
+5.3 iommu_init_table(), 
+===============================================================================
+iommu_table *iommu_init_table(struct iommu_table *tbl, int nid)
+{
+	unsigned long sz;
+	static int welcomed = 0;
+	struct page *page;
+
+	/* Set aside 1/4 of the table for large allocations. */
+	tbl->it_halfpoint = tbl->it_size * 3 / 4;
+
+	/* number of bytes needed for the bitmap */
+	sz = (tbl->it_size + 7) >> 3;
+
+	page = alloc_pages_node(nid, GFP_ATOMIC, get_order(sz));
+	if (!page)
+		panic("iommu_init_table: Can't allocate %ld bytes\n", sz);
+	tbl->it_map = page_address(page);
+	memset(tbl->it_map, 0, sz);
+
+	/*
+	 * Reserve page 0 so it will not be used for any mappings.
+	 * This avoids buggy drivers that consider page 0 to be invalid
+	 * to crash the machine or even lose data.
+	 */
+	if (tbl->it_offset == 0)
+		set_bit(0, tbl->it_map);
+
+	tbl->it_hint = 0;
+	tbl->it_largehint = tbl->it_halfpoint;
+	spin_lock_init(&tbl->it_lock);
+
+	iommu_table_clear(tbl);
+
+	if (!welcomed) {
+		printk(KERN_INFO "IOMMU table initialized, virtual merging %s\n",
+		       novmerge ? "disabled" : "enabled");
+		welcomed = 1;
+	}
+
+	return tbl;
+}
+
+6. machine type initialization, setup the ppc_md structure based on the machine type
 ===============================================================================
 define_machine(powernv) {
 	.name			= "PowerNV",
@@ -1554,7 +1760,7 @@ head_64.S
 
 			ppc_md.probe(); if match return 1
 
-6. device tree parse in prom_init()
+7. device tree parse in prom_init()
 ===============================================================================
 prom_init.c
 	prom_init_client_services();
@@ -1594,7 +1800,7 @@ second round of __start()
 					setup_system
 					start_kernel
 
-7. pcibios_fixup_resources(), mark the resource of a new pci device as IORESOURCE_UNSET
+8. pcibios_fixup_resources(), mark the resource of a new pci device as IORESOURCE_UNSET
 ===============================================================================
 This function is called by pci_device_add(). 
 
