@@ -1187,7 +1187,7 @@ pnv_pci_ioda_fixup(void)
 	pnv_pci_ioda_setup_seg();
 	pnv_pci_ioda_setup_DMA();
 
-2.3.4.1 pnv_pci_ioda_setup_PEs(), iterate on each root bus
+2.3.4.1 pnv_pci_ioda_setup_PEs(), iterate on each root bus, setup PE
 ===============================================================================
 pnv_pci_ioda_setup_PEs(void)
 	struct pci_controller *hose, *tmp;
@@ -1195,6 +1195,38 @@ pnv_pci_ioda_setup_PEs(void)
 	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
 		pnv_ioda_setup_PEs(hose->bus);
 	}
+
+2.3.4.2 pnv_pci_ioda_setup_seg(), iterate on each PE 
+===============================================================================
+pnv_pci_ioda_setup_seg(void)
+{
+	struct pci_controller *tmp, *hose;
+	struct pnv_phb *phb;
+	struct pnv_ioda_pe *pe;
+
+	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
+		phb = hose->private_data;
+		list_for_each_entry(pe, &phb->ioda.pe_list, list) {
+			pnv_ioda_setup_pe_seg(hose, pe);
+		}
+	}
+}
+
+2.3.4.2 pnv_pci_ioda_setup_DMA(), iterate on each PHB
+===============================================================================
+pnv_pci_ioda_setup_DMA(void)
+{
+	struct pci_controller *hose, *tmp;
+	struct pnv_phb *phb;
+
+	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
+		pnv_ioda_setup_dma(hose->private_data);
+
+		/* Mark the PHB initialization done */
+		phb = hose->private_data;
+		phb->initialized = 1;
+	}
+}
 
 3. pnv_ioda_setup_PEs(), set up PE
 ===============================================================================
