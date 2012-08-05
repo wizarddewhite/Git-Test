@@ -396,29 +396,42 @@ void resource_extend_parents_top_test()
 
 void allocate_resource_test()
 {
-	struct resource res1, res2;
+	struct resource res1, res2, res3;
 	init2();
 
 	res1.parent = NULL;
 	res1.sibling = NULL;
 	res1.child = NULL;
+	printf("try to allocate a resource with size 10 under res[1] %ld-%ld\n",
+			res[1].start, res[1].end);
 	allocate_resource(&res[1], &res1, 10, res[1].start, res[1].end,
 			1, NULL, NULL);
 	dump(&root, 0);
 
+        /* couldn't allocate resource since the boundary issue */
 	res2.parent = NULL;
 	res2.sibling = NULL;
 	res2.child = NULL;
-//	works
-//	allocate_resource(&res[1], &res2, 10, res[1].start, res[1].end,
-//			1, NULL, NULL);
-
-// couldn't allocate resource since the boundary issue
+	printf("try to allocate a resource with size 10 under res[1] %ld-%ld\n",
+			res[1].start, res[1].end);
+	printf("but we must allocate from %ld-%ld, Fail\n", res[0].start, res[0].end);
 	allocate_resource(&res[1], &res2, 10, res[0].start, res[0].end,
 			1, NULL, NULL);
 
 	dump(&root, 0);
 
+        /*  change the boundary, allocate_resource() could find a suitable
+	 *  aperture
+	 */
+	res3.parent = NULL;
+	res3.sibling = NULL;
+	res3.child = NULL;
+	printf("try to allocate a resource with size 10 under res[1] %ld-%ld\n",
+			res[1].start, res[1].end);
+	printf("but we must allocate from %ld-%ld, Succeed\n", res[0].start, res[1].end);
+	allocate_resource(&res[1], &res2, 10, res[0].start, res[1].end,
+			1, NULL, NULL);
+	dump(&root, 0);
 }
 
 void extend_res_test()
