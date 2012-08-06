@@ -1685,7 +1685,7 @@ out:
 		kfree(add_res);
 	}
 
-9.3 pci_bus_release_bridge_resources()
+9.3 pci_bus_release_bridge_resources(), release the io/mem window on a bridge
 ===============================================================================
 ; try to release pci bridge resources that is from leaf bridge,
 ; so we can allocate big new one later
