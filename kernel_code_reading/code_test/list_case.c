@@ -38,7 +38,7 @@ void islast_test()
 		printf("list is non last\n");
 }
 
-void listadd_test()
+void list_add_test()
 {
 	int i;
 
@@ -51,7 +51,7 @@ void listadd_test()
 	}
 }
 
-void listaddtail_test()
+void list_add_tail_test()
 {
 	int i;
 
@@ -64,7 +64,7 @@ void listaddtail_test()
 	}
 }
 
-void listforeach_test()
+void list_for_each_test()
 {
 	struct list_head *iter;
 	int i = 0;
@@ -73,7 +73,7 @@ void listforeach_test()
 		printf("%d\n", i++);
 }
 
-void listforeachentry_test()
+void list_for_each_entry_test()
 {
 	struct list_dummy *iter;
 
@@ -83,7 +83,7 @@ void listforeachentry_test()
 	}
 }
 
-void listfirstentry_test()
+void list_first_entry_test()
 {
 	struct list_dummy *iter;
 
@@ -92,7 +92,7 @@ void listfirstentry_test()
 	printf("index of first node is %d\n", iter->index);
 }
 
-void listforeachentryreverse_test()
+void list_for_each_entry_reverse_test()
 {
 	struct list_dummy *iter;
 
@@ -103,7 +103,7 @@ void listforeachentryreverse_test()
 
 }
 
-void listforeachentrysafe_test()
+void list_for_each_entry_safe_test()
 {
 	struct list_dummy *iter;
 	struct list_dummy *tmp;
@@ -116,8 +116,8 @@ void listforeachentrysafe_test()
 
 int main()
 {
-	listaddtail_test();
-	listforeachentrysafe_test();
+	list_add_tail_test();
+	list_for_each_entry_safe_test();
 
 	return 0;
 }
