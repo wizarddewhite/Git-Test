@@ -51,6 +51,17 @@ void list_add_test()
 	}
 }
 
+void list_del_test()
+{
+	printf("prepare the list for test: \n");
+	list_add_tail_test();
+	list_for_each_entry_safe_test();
+
+	list_del(&elem[7].list_node);
+	printf("after delete the elment 7: \n");
+	list_for_each_entry_safe_test();
+}
+
 void list_add_tail_test()
 {
 	int i;

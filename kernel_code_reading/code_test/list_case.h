@@ -27,4 +27,10 @@ struct list_dummy {
 
 typedef struct list_dummy list_dummy;
 
+void list_del_test();
+
+void list_add_tail_test();
+
+void list_for_each_entry_safe_test();
+
 #endif //_LIST_CASE_
