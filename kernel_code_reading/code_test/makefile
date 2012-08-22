@@ -6,19 +6,18 @@ CFLAGS = -g
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource list_case cscope
+all: resource list_case align_case queue_case cscope
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure
-resource: resource.c resource_case.c
-	gcc -o resource -g resource.c resource_case.c
+resource: resource.c resource_case.o
+	gcc -o resource -g resource.c resource_case.o
 
-list_case: list.h  list_case.c
-	gcc -o list_case -g  list_case.c
+%: %.o
+	gcc $(CFLAGS) $<  -o $@ 
 
-%: %.c
-	echo test
-	gcc $(CFLAGS)  $<  -o $@ 
+%.o : %.c
+	gcc $(CFLAGS) -c $< -o $@
 
 ifneq "$(MAKECMDGOALS)" "clean"
         include $(DEPENDENCY)
@@ -32,6 +31,7 @@ endif
 clean:
 	rm -f $(PROGRAM)
 	rm -f $(DEPENDENCY)
+	rm -f *.o
 	rm -f cscope.*
 	rm -f tags
 
