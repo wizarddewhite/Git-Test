@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include "kernel.h"
 
-int main()
+void common_test()
 {
 	int res;
 
@@ -36,6 +36,39 @@ int main()
 
 	res = ALIGN(9, 8);
 	printf("ALIGN(9, 8) = %d\n", res);
+}
 
+void calculate_mem_align()
+{
+	unsigned int aligns[12]; /* Alignments from 1Mb to 2Gb */
+	unsigned int min_align, align, align1, size;
+	int order;
+
+	for (order = 0; order <= 11; order++) {
+		aligns[order] = 0;
+	}
+	aligns[0] = 5 * (1 << 20); /* 5*1M = 5M */
+	aligns[2] = 3 * (1 << 22); /* 3*4M = 12M */
+	aligns[5] = 2 * (1 << 25); /* 2*32M = 64M */
+
+	align = 0;
+	min_align = 0;
+
+	for (order = 0; order <= 5; order++) {
+		align1 = 1;
+		align1 <<= (order + 20);
+
+		size = ALIGN(align + min_align, min_align);
+		if (!align)
+			min_align = align1;
+		else if (ALIGN(align + min_align, min_align) < align1)
+			min_align = align1 >> 1;
+		align += aligns[order];
+	}
+}
+
+int main()
+{
+	calculate_mem_align();
 	return 0;
 }
