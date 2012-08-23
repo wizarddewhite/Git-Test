@@ -36,6 +36,10 @@ void common_test()
 
 	res = ALIGN(9, 8);
 	printf("ALIGN(9, 8) = %d\n", res);
+
+	/* what will happen if the align is not power of 2? */
+	res = ALIGN(9, 7);
+	printf("ALIGN(9, 7) = %d\n", res);
 }
 
 void calculate_mem_align()
@@ -69,6 +73,6 @@ void calculate_mem_align()
 
 int main()
 {
-	calculate_mem_align();
+	common_test();
 	return 0;
 }
