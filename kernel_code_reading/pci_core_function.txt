@@ -1530,7 +1530,7 @@ pci_bus_dump_res(struct pci_bus *bus)
 
 		dev_printk(KERN_DEBUG, &bus->dev, "resource %d %pR\n", i, res);
         }
-3. __pci_read_base(), read the BAR in config space, set to pci_dev->resource[]
+4. __pci_read_base(), read the BAR in config space, set to pci_dev->resource[]
 ===============================================================================
 ; this function is used to retrieve the information in the BAR of a pci device
 ; and convert the information to a resource structure
@@ -1652,7 +1652,7 @@ __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 	res->flags = 0;
 	goto out;
 
-3.1 pcibios_bus_to_resource() 
+4.1 pcibios_bus_to_resource() 
 ===============================================================================
 ; calculate CPU address of BAR, set to pci_dev->resource
 pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
@@ -1681,7 +1681,7 @@ pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
 	res->start = region->start + offset;
 	res->end = region->end + offset;
 
-4. pci_find_bus(), find the bus with given domain and bus number
+5. pci_find_bus(), find the bus with given domain and bus number
 ===============================================================================
 pci_find_bus(int domain, int busnr)
 	; go through all root buses
@@ -1695,7 +1695,7 @@ pci_find_bus(int domain, int busnr)
 	}
 	return NULL;
 
-4.1 pci_find_next_bus(), find a next pci bus start from "from"
+5.1 pci_find_next_bus(), find a next pci bus start from "from"
 ===============================================================================
 ; One pci root bus represent a pci domain
 ; the pci root bus are linked list, pci_root_buses
@@ -1711,7 +1711,7 @@ pci_find_next_bus(struct pci_bus *from)
 		b = pci_bus_b(n);
 	return b;
 
-4.2 pci_do_find_bus(), traverse the pci tree and find the bus with busnr
+5.2 pci_do_find_bus(), traverse the pci tree and find the bus with busnr
 ===============================================================================
 pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 	if(bus->number == busnr)
@@ -1724,7 +1724,7 @@ pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 	}
 	return NULL;
 
-5. pci_bus_add_devices(), go throught the root bus, form the pci bus tree and add devices
+6. pci_bus_add_devices(), go throught the root bus, form the pci bus tree and add devices
 ===============================================================================
  * Add newly discovered PCI devices (which are on the bus->devices
  * list) to the global PCI device list, add the sysfs and procfs
@@ -1776,7 +1776,7 @@ pci_bus_add_devices(const struct pci_bus *bus)
 			dev_err(&dev->dev, "Error adding bus, continuing\n");
 	}
 
-5.1 pci_bus_add_device(), register pci_dev->dev, create sysfs entry
+6.1 pci_bus_add_device(), register pci_dev->dev, create sysfs entry
 ===============================================================================
 pci_bus_add_device(struct pci_dev *dev)
 	retval = device_add(&dev->dev);
@@ -1788,7 +1788,7 @@ pci_bus_add_device(struct pci_dev *dev)
 	pci_create_sysfs_dev_files(dev);
 	return 0;
 
-5.2 pci_bus_add_child(), register the bus->dev, create sysfs entry
+6.2 pci_bus_add_child(), register the bus->dev, create sysfs entry
 ===============================================================================
 pci_bus_add_child(struct pci_bus *bus)
 	if (bus->bridge)
@@ -1805,7 +1805,7 @@ pci_bus_add_child(struct pci_bus *bus)
 
 	return retval;
 
-6. pcie_bus_configure_settings()
+7. pcie_bus_configure_settings()
 ===============================================================================
 pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	if (!pci_is_pcie(bus->self))
@@ -1831,11 +1831,11 @@ pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	pcie_bus_configure_set(bus->self, &smpss);
 	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
 
-6.1 pcie_find_smpss()
+7.1 pcie_find_smpss()
 ===============================================================================
 pcie_find_smpss(struct pci_dev *dev, void *data)
 
-6.2 pci_walk_bus(), walk devices on/under bus, calling callback
+7.2 pci_walk_bus(), walk devices on/under bus, calling callback
 ===============================================================================
 pci_walk_bus(struct pci_bus *top, int(*cb)(struct pci_dev *, void *),
 		void *userdata)
@@ -1866,7 +1866,7 @@ pci_walk_bus(struct pci_bus *top, int(*cb)(struct pci_dev *, void *),
 			break;
 	}
 
-7. pci_update_resource(), write resource info into bar
+8. pci_update_resource(), write resource info into physical bar
 ===============================================================================
 pci_update_resource(struct pci_dev *dev, int resno)
 	struct resource *res = dev->resource + resno;
@@ -1883,7 +1883,7 @@ pci_update_resource(struct pci_dev *dev, int resno)
 	pci_write_config_dword(dev, reg, new);
 	pci_read_config_dword(dev, reg, &check);
 
-7.1 pci_resouce_bar(), retrieve the bar offset in config space 
+8.1 pci_resouce_bar(), retrieve the bar offset in config space 
 ===============================================================================
 ; well, seems it do not take care of the bridge's resource
 pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
@@ -1905,7 +1905,7 @@ pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
 	dev_err(&dev->dev, "BAR %d: invalid resource\n", resno);
 	return 0;
 
-8. pci_read_bridge_bases(), for a bridge set its io/mem forward range
+9. pci_read_bridge_bases(), for a bridge set its io/mem window
 ===============================================================================
 pci_read_bridge_bases(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
@@ -1936,7 +1936,7 @@ pci_read_bridge_bases(struct pci_bus *child)
 		}
 	}
 
-8.1 pci_bus_remove_resources(), clean up the resource list
+9.1 pci_bus_remove_resources(), clean up the resource list
 ===============================================================================
 pci_bus_remove_resources(struct pci_bus *bus)
 	int i;
@@ -1948,7 +1948,7 @@ pci_bus_remove_resources(struct pci_bus *bus)
 	pci_free_resource_list(&bus->resources);
 
 
-8.2 pci_read_bridge_io(), get io limit
+9.2 pci_read_bridge_io(), get io limit
 ===============================================================================
 pci_read_bridge_io(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
@@ -1980,7 +1980,7 @@ pci_read_bridge_io(struct pci_bus *child)
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 
-8.3 pci_read_bridge_mmio(), get mem limit
+9.3 pci_read_bridge_mmio(), get mem limit
 ===============================================================================
 pci_read_bridge_mmio(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
@@ -1998,7 +1998,7 @@ pci_read_bridge_mmio(struct pci_bus *child)
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 
-8.3 pci_read_bridge_mmio_pref(), get mem pref limit
+9.4 pci_read_bridge_mmio_pref(), get mem pref limit
 ===============================================================================
 
 
@@ -2227,7 +2227,7 @@ static void __pci_setup_bridge(struct pci_bus *bus, unsigned long type)
 	pci_write_config_word(bridge, PCI_BRIDGE_CONTROL, bus->bridge_ctl);
 }
 
-12. pci_iov_init(), this function is called on pci enumeration to setup sriov
+13. pci_iov_init(), this function is called on pci enumeration to setup sriov
 ===============================================================================
 int pci_iov_init(struct pci_dev *dev)
 {
@@ -2243,7 +2243,7 @@ int pci_iov_init(struct pci_dev *dev)
 	return -ENODEV;
 }
 
-12.1 sriov_init()
+13.1 sriov_init()
 ===============================================================================
 sriov_init(struct pci_dev *dev, int pos)
 {
@@ -2349,7 +2349,8 @@ failed:
 
 	return rc;
 }
-12. pci_enable_sriov(), enable the sriov for the PF
+
+14. pci_enable_sriov(), enable the sriov for the PF
 ===============================================================================
 ; this function is called in the driver to generate the VFs
 pci_enable_sriov(struct pci_dev *dev, int nr_virtfn)
@@ -2360,7 +2361,7 @@ pci_enable_sriov(struct pci_dev *dev, int nr_virtfn)
 
 	return sriov_enable(dev, nr_virtfn);
 
-12.1 sriov_enable()
+14.1 sriov_enable()
 ===============================================================================
 sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	int rc;
@@ -2480,7 +2481,7 @@ failed:
 
 	return rc;
 
-12.1.1 virtfn_add()
+14.1.1 virtfn_add()
 ===============================================================================
 ; id starts from 0
 virtfn_add(struct pci_dev *dev, int id, int reset)
@@ -2603,7 +2604,7 @@ failed1:
 
                Figure 12.1 vitual pci_dev and physical pci_dev
 
-12.1.1.1 virtfn_add_bus(), create the virtual bus for VF
+14.1.1.1 virtfn_add_bus(), create the virtual bus for VF
 ===============================================================================
 pci_bus *virtfn_add_bus(struct pci_bus *bus, int busnr)
 	int rc;
@@ -2677,13 +2678,13 @@ pci_bus *virtfn_add_bus(struct pci_bus *bus, int busnr)
                      Figure 12.2 virtual bus and physical bus
                      (this is an example, the number could be different)
 
-12.1.2 virtfn_bus(), calculate the bus number for VF
+14.1.2 virtfn_bus(), calculate the bus number for VF
 ===============================================================================
 virtfn_bus(struct pci_dev *dev, int id)
 	return dev->bus->number + ((dev->devfn + dev->sriov->offset +
 				    dev->sriov->stride * id) >> 8);
 
-13. pci_enable_resources()
+15. pci_enable_resources()
 ===============================================================================
 pci_enable_resources(struct pci_dev *dev, int mask)
 	u16 cmd, old_cmd;
@@ -2724,7 +2725,7 @@ pci_enable_resources(struct pci_dev *dev, int mask)
 	}
 	return 0;
 
-14. pci_enable_msi(), called in driver to enable msi
+16. pci_enable_msi(), called in driver to enable msi
 ===============================================================================
 #define pci_enable_msi(pdev)	pci_enable_msi_block(pdev, 1)
 pci_enable_msi_block(struct pci_dev *dev, unsigned int nvec)
@@ -2756,7 +2757,7 @@ pci_enable_msi_block(struct pci_dev *dev, unsigned int nvec)
 	status = msi_capability_init(dev, nvec);
 	return status;
 
-14.1 pci_msi_check_device()
+16.1 pci_msi_check_device()
 ===============================================================================
 pci_msi_check_device(struct pci_dev *dev, int nvec, int type)
 	struct pci_bus *bus;
@@ -2794,7 +2795,7 @@ pci_msi_check_device(struct pci_dev *dev, int nvec, int type)
 
 	return 0;
 
-14.2 msi_capability_init()
+16.2 msi_capability_init()
 ===============================================================================
 msi_capability_init(struct pci_dev *dev, int nvec)
 	struct msi_desc *entry;
@@ -2851,10 +2852,10 @@ msi_capability_init(struct pci_dev *dev, int nvec)
 	return 0;
 }
 
-15. pci_fixup, for pci stuff there is several fixup functions
+17. pci_fixup, for pci stuff there is several fixup functions
 ===============================================================================
 
-15.1 definition
+17.1 definition
 ===============================================================================
 In kernel there are following types of fixup functions.
 
@@ -2896,7 +2897,7 @@ And will be put into specific sections.
 		suspend##vendor##device##hook, vendor, device,		\
 		PCI_ANY_ID, 0, hook)
 
-15.2 how to call
+17.2 how to call
 ===============================================================================
 pci_fixup_device() is used to call those fixup functions.
 
