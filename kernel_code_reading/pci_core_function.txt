@@ -1963,46 +1963,7 @@ pci_walk_bus(struct pci_bus *top, int(*cb)(struct pci_dev *, void *),
 			break;
 	}
 
-9. pci_update_resource(), write resource info into physical bar
-===============================================================================
-pci_update_resource(struct pci_dev *dev, int resno)
-	struct resource *res = dev->resource + resno;
-	pcibios_resource_to_bus(dev, &region, res);
-	new = region.start | (res->flags & PCI_REGION_FLAG_MASK);
-	if (res->flags & IORESOURCE_IO)
-		mask = (u32)PCI_BASE_ADDRESS_IO_MASK;
-	else
-		mask = (u32)PCI_BASE_ADDRESS_MEM_MASK;
-
-	; calculate reg for the real offset in config space
-	reg = pci_resource_bar(dev, resno, &type);
-
-	pci_write_config_dword(dev, reg, new);
-	pci_read_config_dword(dev, reg, &check);
-
-9.1 pci_resouce_bar(), retrieve the bar offset in config space 
-===============================================================================
-; well, seems it do not take care of the bridge's resource
-pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
-	int reg;
-
-	if (resno < PCI_ROM_RESOURCE) {
-		*type = pci_bar_unknown;
-		return PCI_BASE_ADDRESS_0 + 4 * resno;
-	} else if (resno == PCI_ROM_RESOURCE) {
-		*type = pci_bar_mem32;
-		return dev->rom_base_reg;
-	} else if (resno < PCI_BRIDGE_RESOURCES) {
-		/* device specific resource */
-		reg = pci_iov_resource_bar(dev, resno, type);
-		if (reg)
-			return reg;
-	}
-
-	dev_err(&dev->dev, "BAR %d: invalid resource\n", resno);
-	return 0;
-
-10. pci_assign_resource(), assign one resource specified by resno of a pci device
+9. pci_assign_resource(), assign one resource specified by resno of a pci device
 ===============================================================================
 ; with a given device and resource index(resno), try to register it on a parent resource
 ; and if this succeed, apply this to the hardware
@@ -2044,7 +2005,7 @@ pci_assign_resource(struct pci_dev *dev, int resno)
 	}
 	return ret;
 
-10.1 _pci_assign_resource()
+9.1 _pci_assign_resource()
 ===============================================================================
 ; dev       point to the particular pci device
 ; resno     is the resource index
@@ -2082,7 +2043,7 @@ _pci_assign_resource(struct pci_dev *dev, int resno, int size, resource_size_t m
 
 	return ret;
 
-10.1.1 __pci_assign_resource()
+9.1.1 __pci_assign_resource()
 ===============================================================================
 ; bus       the pci bus which the device attached to
 ; dev       point to the particular pci device
@@ -2115,7 +2076,7 @@ __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 	}
 	return ret;
 
-10.1.1.1 pci_bus_alloc_resource()
+9.1.1.1 pci_bus_alloc_resource()
 ===============================================================================
 ; bus         on wich bus you want to assign the resource
 ; res         which one you want to assign
@@ -2168,7 +2129,7 @@ pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 	}
 	return ret;
  
-11. pci_reassign_resource(), assign additional resource request
+10. pci_reassign_resource(), assign additional resource request
 ===============================================================================
 ; dev     point to the pci device
 ; resno   index of the resource
@@ -2197,6 +2158,45 @@ pci_reassign_resource(struct pci_dev *dev, int resno, resource_size_t addsize,
 			pci_update_resource(dev, resno);
 	}
 	return ret;
+
+11. pci_update_resource(), write resource info into physical bar
+===============================================================================
+pci_update_resource(struct pci_dev *dev, int resno)
+	struct resource *res = dev->resource + resno;
+	pcibios_resource_to_bus(dev, &region, res);
+	new = region.start | (res->flags & PCI_REGION_FLAG_MASK);
+	if (res->flags & IORESOURCE_IO)
+		mask = (u32)PCI_BASE_ADDRESS_IO_MASK;
+	else
+		mask = (u32)PCI_BASE_ADDRESS_MEM_MASK;
+
+	; calculate reg for the real offset in config space
+	reg = pci_resource_bar(dev, resno, &type);
+
+	pci_write_config_dword(dev, reg, new);
+	pci_read_config_dword(dev, reg, &check);
+
+11.1 pci_resouce_bar(), retrieve the bar offset in config space 
+===============================================================================
+; well, seems it do not take care of the bridge's resource
+pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
+	int reg;
+
+	if (resno < PCI_ROM_RESOURCE) {
+		*type = pci_bar_unknown;
+		return PCI_BASE_ADDRESS_0 + 4 * resno;
+	} else if (resno == PCI_ROM_RESOURCE) {
+		*type = pci_bar_mem32;
+		return dev->rom_base_reg;
+	} else if (resno < PCI_BRIDGE_RESOURCES) {
+		/* device specific resource */
+		reg = pci_iov_resource_bar(dev, resno, type);
+		if (reg)
+			return reg;
+	}
+
+	dev_err(&dev->dev, "BAR %d: invalid resource\n", resno);
+	return 0;
 
 12. pci_setup_bridge(), this is used to apply the bridge resource to hardware
 ===============================================================================
