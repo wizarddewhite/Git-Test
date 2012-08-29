@@ -2227,7 +2227,48 @@ static void __pci_setup_bridge(struct pci_bus *bus, unsigned long type)
 	pci_write_config_word(bridge, PCI_BRIDGE_CONTROL, bus->bridge_ctl);
 }
 
-13. pci_iov_init(), this function is called on pci enumeration to setup sriov
+13. pci_enable_resources()
+===============================================================================
+pci_enable_resources(struct pci_dev *dev, int mask)
+	u16 cmd, old_cmd;
+	int i;
+	struct resource *r;
+
+	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+	old_cmd = cmd;
+
+	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+		if (!(mask & (1 << i)))
+			continue;
+
+		r = &dev->resource[i];
+
+		if (!(r->flags & (IORESOURCE_IO | IORESOURCE_MEM)))
+			continue;
+		if ((i == PCI_ROM_RESOURCE) &&
+				(!(r->flags & IORESOURCE_ROM_ENABLE)))
+			continue;
+
+		if (!r->parent) {
+			dev_err(&dev->dev, "device not available "
+				"(can't reserve %pR)\n", r);
+			return -EINVAL;
+		}
+
+		if (r->flags & IORESOURCE_IO)
+			cmd |= PCI_COMMAND_IO;
+		if (r->flags & IORESOURCE_MEM)
+			cmd |= PCI_COMMAND_MEMORY;
+	}
+
+	if (cmd != old_cmd) {
+		dev_info(&dev->dev, "enabling device (%04x -> %04x)\n",
+			 old_cmd, cmd);
+		pci_write_config_word(dev, PCI_COMMAND, cmd);
+	}
+	return 0;
+
+14. pci_iov_init(), this function is called on pci enumeration to setup sriov
 ===============================================================================
 int pci_iov_init(struct pci_dev *dev)
 {
@@ -2243,7 +2284,7 @@ int pci_iov_init(struct pci_dev *dev)
 	return -ENODEV;
 }
 
-13.1 sriov_init()
+14.1 sriov_init()
 ===============================================================================
 sriov_init(struct pci_dev *dev, int pos)
 {
@@ -2350,7 +2391,7 @@ failed:
 	return rc;
 }
 
-14. pci_enable_sriov(), enable the sriov for the PF
+15. pci_enable_sriov(), enable the sriov for the PF
 ===============================================================================
 ; this function is called in the driver to generate the VFs
 pci_enable_sriov(struct pci_dev *dev, int nr_virtfn)
@@ -2361,7 +2402,7 @@ pci_enable_sriov(struct pci_dev *dev, int nr_virtfn)
 
 	return sriov_enable(dev, nr_virtfn);
 
-14.1 sriov_enable()
+15.1 sriov_enable()
 ===============================================================================
 sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	int rc;
@@ -2481,7 +2522,7 @@ failed:
 
 	return rc;
 
-14.1.1 virtfn_add()
+15.1.1 virtfn_add()
 ===============================================================================
 ; id starts from 0
 virtfn_add(struct pci_dev *dev, int id, int reset)
@@ -2604,7 +2645,7 @@ failed1:
 
                Figure 12.1 vitual pci_dev and physical pci_dev
 
-14.1.1.1 virtfn_add_bus(), create the virtual bus for VF
+15.1.1.1 virtfn_add_bus(), create the virtual bus for VF
 ===============================================================================
 pci_bus *virtfn_add_bus(struct pci_bus *bus, int busnr)
 	int rc;
@@ -2678,52 +2719,11 @@ pci_bus *virtfn_add_bus(struct pci_bus *bus, int busnr)
                      Figure 12.2 virtual bus and physical bus
                      (this is an example, the number could be different)
 
-14.1.2 virtfn_bus(), calculate the bus number for VF
+15.1.2 virtfn_bus(), calculate the bus number for VF
 ===============================================================================
 virtfn_bus(struct pci_dev *dev, int id)
 	return dev->bus->number + ((dev->devfn + dev->sriov->offset +
 				    dev->sriov->stride * id) >> 8);
-
-15. pci_enable_resources()
-===============================================================================
-pci_enable_resources(struct pci_dev *dev, int mask)
-	u16 cmd, old_cmd;
-	int i;
-	struct resource *r;
-
-	pci_read_config_word(dev, PCI_COMMAND, &cmd);
-	old_cmd = cmd;
-
-	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
-		if (!(mask & (1 << i)))
-			continue;
-
-		r = &dev->resource[i];
-
-		if (!(r->flags & (IORESOURCE_IO | IORESOURCE_MEM)))
-			continue;
-		if ((i == PCI_ROM_RESOURCE) &&
-				(!(r->flags & IORESOURCE_ROM_ENABLE)))
-			continue;
-
-		if (!r->parent) {
-			dev_err(&dev->dev, "device not available "
-				"(can't reserve %pR)\n", r);
-			return -EINVAL;
-		}
-
-		if (r->flags & IORESOURCE_IO)
-			cmd |= PCI_COMMAND_IO;
-		if (r->flags & IORESOURCE_MEM)
-			cmd |= PCI_COMMAND_MEMORY;
-	}
-
-	if (cmd != old_cmd) {
-		dev_info(&dev->dev, "enabling device (%04x -> %04x)\n",
-			 old_cmd, cmd);
-		pci_write_config_word(dev, PCI_COMMAND, cmd);
-	}
-	return 0;
 
 16. pci_enable_msi(), called in driver to enable msi
 ===============================================================================
