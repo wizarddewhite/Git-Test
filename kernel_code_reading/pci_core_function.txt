@@ -1530,7 +1530,132 @@ pci_bus_dump_res(struct pci_bus *bus)
 
 		dev_printk(KERN_DEBUG, &bus->dev, "resource %d %pR\n", i, res);
         }
-4. __pci_read_base(), read the BAR in config space, set to pci_dev->resource[]
+
+4. pci_bus_add_devices(), go throught the root bus, form the pci bus tree and add devices
+===============================================================================
+ * Add newly discovered PCI devices (which are on the bus->devices
+ * list) to the global PCI device list, add the sysfs and procfs
+ * entries.  Where a bridge is found, add the discovered bus to
+ * the parents list of child buses, and recurse (breadth-first
+ * to be compatible with 2.4)
+
+ ; this function will call list_add_tail() to connect the bus with its parent
+
+pci_bus_add_devices(const struct pci_bus *bus)
+ 	; go throught the devices just under current bus
+	; and add to system
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		/* Skip already-added devices */
+		if (dev->is_added)
+			continue;
+		retval = pci_bus_add_device(dev);
+		if (retval)
+			dev_err(&dev->dev, "Error adding device, continuing\n");
+	}
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		BUG_ON(!dev->is_added);
+
+		child = dev->subordinate;
+		/*
+		 * If there is an unattached subordinate bus, attach
+		 * it and then scan for unattached PCI devices.
+		 */
+		if (!child)
+			continue;
+		; add child to parent->children
+		; here we form a pci bus tree
+		if (list_empty(&child->node)) {
+			down_write(&pci_bus_sem);
+			list_add_tail(&child->node, &dev->bus->children);
+			up_write(&pci_bus_sem);
+		}
+		pci_bus_add_devices(child);
+
+		/*
+		 * register the bus with sysfs as the parent is now
+		 * properly registered.
+		 */
+		if (child->is_added)
+			continue;
+		retval = pci_bus_add_child(child);
+		if (retval)
+			dev_err(&dev->dev, "Error adding bus, continuing\n");
+	}
+
+4.1 pci_bus_add_device(), register pci_dev->dev, create sysfs entry
+===============================================================================
+pci_bus_add_device(struct pci_dev *dev)
+	retval = device_add(&dev->dev);
+	if (retval)
+		return retval;
+
+	dev->is_added = 1;
+	pci_proc_attach_device(dev);
+	pci_create_sysfs_dev_files(dev);
+	return 0;
+
+4.2 pci_bus_add_child(), register the bus->dev, create sysfs entry
+===============================================================================
+pci_bus_add_child(struct pci_bus *bus)
+	if (bus->bridge)
+		bus->dev.parent = bus->bridge;
+
+	retval = device_register(&bus->dev);
+	if (retval)
+		return retval;
+
+	bus->is_added = 1;
+
+	/* Create legacy_io and legacy_mem files for this bus */
+	pci_create_legacy_files(bus);
+
+	return retval;
+
+5. pci_find_bus(), find the bus with given domain and bus number
+===============================================================================
+pci_find_bus(int domain, int busnr)
+	; go through all root buses
+	while ((bus = pci_find_next_bus(bus)) != NULL)  {
+		if (pci_domain_nr(bus) != domain)
+			continue;
+		; go through the domain
+		tmp_bus = pci_do_find_bus(bus, busnr);
+		if (tmp_bus)
+			return tmp_bus;
+	}
+	return NULL;
+
+5.1 pci_find_next_bus(), find a next pci bus start from "from"
+===============================================================================
+; One pci root bus represent a pci domain
+; the pci root bus are linked list, pci_root_buses
+
+pci_find_next_bus(struct pci_bus *from)
+	; if from is null, we start from the beginning of pci_root_buses
+	; if from is not null, we follow this from
+	; hmm... I think the bus with the same parent will be on the same list
+	n = from ? from->node.next : pci_root_buses.next;
+
+	; n == &pci_root_buses means we have visited all the root bus
+	if (n != &pci_root_buses)
+		b = pci_bus_b(n);
+	return b;
+
+5.2 pci_do_find_bus(), traverse the pci tree and find the bus with busnr
+===============================================================================
+pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
+	if(bus->number == busnr)
+		return bus;
+
+	list_for_each(tmp, &bus->children) {
+		child = pci_do_find_bus(pci_bus_b(tmp), busnr);
+		if(child)
+			return child;
+	}
+	return NULL;
+
+6. __pci_read_base(), read the BAR in config space, set to pci_dev->resource[]
 ===============================================================================
 ; this function is used to retrieve the information in the BAR of a pci device
 ; and convert the information to a resource structure
@@ -1652,7 +1777,7 @@ __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 	res->flags = 0;
 	goto out;
 
-4.1 pcibios_bus_to_resource() 
+6.1 pcibios_bus_to_resource() 
 ===============================================================================
 ; calculate CPU address of BAR, set to pci_dev->resource
 pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
@@ -1681,231 +1806,7 @@ pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
 	res->start = region->start + offset;
 	res->end = region->end + offset;
 
-5. pci_find_bus(), find the bus with given domain and bus number
-===============================================================================
-pci_find_bus(int domain, int busnr)
-	; go through all root buses
-	while ((bus = pci_find_next_bus(bus)) != NULL)  {
-		if (pci_domain_nr(bus) != domain)
-			continue;
-		; go through the domain
-		tmp_bus = pci_do_find_bus(bus, busnr);
-		if (tmp_bus)
-			return tmp_bus;
-	}
-	return NULL;
-
-5.1 pci_find_next_bus(), find a next pci bus start from "from"
-===============================================================================
-; One pci root bus represent a pci domain
-; the pci root bus are linked list, pci_root_buses
-
-pci_find_next_bus(struct pci_bus *from)
-	; if from is null, we start from the beginning of pci_root_buses
-	; if from is not null, we follow this from
-	; hmm... I think the bus with the same parent will be on the same list
-	n = from ? from->node.next : pci_root_buses.next;
-
-	; n == &pci_root_buses means we have visited all the root bus
-	if (n != &pci_root_buses)
-		b = pci_bus_b(n);
-	return b;
-
-5.2 pci_do_find_bus(), traverse the pci tree and find the bus with busnr
-===============================================================================
-pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
-	if(bus->number == busnr)
-		return bus;
-
-	list_for_each(tmp, &bus->children) {
-		child = pci_do_find_bus(pci_bus_b(tmp), busnr);
-		if(child)
-			return child;
-	}
-	return NULL;
-
-6. pci_bus_add_devices(), go throught the root bus, form the pci bus tree and add devices
-===============================================================================
- * Add newly discovered PCI devices (which are on the bus->devices
- * list) to the global PCI device list, add the sysfs and procfs
- * entries.  Where a bridge is found, add the discovered bus to
- * the parents list of child buses, and recurse (breadth-first
- * to be compatible with 2.4)
-
- ; this function will call list_add_tail() to connect the bus with its parent
-
-pci_bus_add_devices(const struct pci_bus *bus)
- 	; go throught the devices just under current bus
-	; and add to system
-	list_for_each_entry(dev, &bus->devices, bus_list) {
-		/* Skip already-added devices */
-		if (dev->is_added)
-			continue;
-		retval = pci_bus_add_device(dev);
-		if (retval)
-			dev_err(&dev->dev, "Error adding device, continuing\n");
-	}
-
-	list_for_each_entry(dev, &bus->devices, bus_list) {
-		BUG_ON(!dev->is_added);
-
-		child = dev->subordinate;
-		/*
-		 * If there is an unattached subordinate bus, attach
-		 * it and then scan for unattached PCI devices.
-		 */
-		if (!child)
-			continue;
-		; add child to parent->children
-		; here we form a pci bus tree
-		if (list_empty(&child->node)) {
-			down_write(&pci_bus_sem);
-			list_add_tail(&child->node, &dev->bus->children);
-			up_write(&pci_bus_sem);
-		}
-		pci_bus_add_devices(child);
-
-		/*
-		 * register the bus with sysfs as the parent is now
-		 * properly registered.
-		 */
-		if (child->is_added)
-			continue;
-		retval = pci_bus_add_child(child);
-		if (retval)
-			dev_err(&dev->dev, "Error adding bus, continuing\n");
-	}
-
-6.1 pci_bus_add_device(), register pci_dev->dev, create sysfs entry
-===============================================================================
-pci_bus_add_device(struct pci_dev *dev)
-	retval = device_add(&dev->dev);
-	if (retval)
-		return retval;
-
-	dev->is_added = 1;
-	pci_proc_attach_device(dev);
-	pci_create_sysfs_dev_files(dev);
-	return 0;
-
-6.2 pci_bus_add_child(), register the bus->dev, create sysfs entry
-===============================================================================
-pci_bus_add_child(struct pci_bus *bus)
-	if (bus->bridge)
-		bus->dev.parent = bus->bridge;
-
-	retval = device_register(&bus->dev);
-	if (retval)
-		return retval;
-
-	bus->is_added = 1;
-
-	/* Create legacy_io and legacy_mem files for this bus */
-	pci_create_legacy_files(bus);
-
-	return retval;
-
-7. pcie_bus_configure_settings()
-===============================================================================
-pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
-	if (!pci_is_pcie(bus->self))
-		return;
-
-	if (pcie_bus_config == PCIE_BUS_TUNE_OFF)
-		return;
-
-	/* FIXME - Peer to peer DMA is possible, though the endpoint would need
-	 * to be aware to the MPS of the destination.  To work around this,
-	 * simply force the MPS of the entire system to the smallest possible.
-	 */
-	if (pcie_bus_config == PCIE_BUS_PEER2PEER)
-		smpss = 0;
-
-	if (pcie_bus_config == PCIE_BUS_SAFE) {
-		smpss = mpss;
-
-		pcie_find_smpss(bus->self, &smpss);
-		pci_walk_bus(bus, pcie_find_smpss, &smpss);
-	}
-
-	pcie_bus_configure_set(bus->self, &smpss);
-	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
-
-7.1 pcie_find_smpss()
-===============================================================================
-pcie_find_smpss(struct pci_dev *dev, void *data)
-
-7.2 pci_walk_bus(), walk devices on/under bus, calling callback
-===============================================================================
-pci_walk_bus(struct pci_bus *top, int(*cb)(struct pci_dev *, void *),
-		void *userdata)
-	bus = top;
-	next = top->devices.next;
-	for (;;) {
-		if (next == &bus->devices) {; meet the end of bus->devices
-			/* end of this bus, go up or finish */
-			if (bus == top)
-				break;
-			next = bus->self->bus_list.next;
-			bus = bus->self->bus;
-			continue;
-		}
-		dev = list_entry(next, struct pci_dev, bus_list);
-		if (dev->subordinate) {
-			/* this is a pci-pci bridge, do its devices next */
-			next = dev->subordinate->devices.next;
-			bus = dev->subordinate;
-		} else
-			next = dev->bus_list.next;
-
-		/* Run device routines with the device locked */
-		device_lock(&dev->dev);
-		retval = cb(dev, userdata);
-		device_unlock(&dev->dev);
-		if (retval)
-			break;
-	}
-
-8. pci_update_resource(), write resource info into physical bar
-===============================================================================
-pci_update_resource(struct pci_dev *dev, int resno)
-	struct resource *res = dev->resource + resno;
-	pcibios_resource_to_bus(dev, &region, res);
-	new = region.start | (res->flags & PCI_REGION_FLAG_MASK);
-	if (res->flags & IORESOURCE_IO)
-		mask = (u32)PCI_BASE_ADDRESS_IO_MASK;
-	else
-		mask = (u32)PCI_BASE_ADDRESS_MEM_MASK;
-
-	; calculate reg for the real offset in config space
-	reg = pci_resource_bar(dev, resno, &type);
-
-	pci_write_config_dword(dev, reg, new);
-	pci_read_config_dword(dev, reg, &check);
-
-8.1 pci_resouce_bar(), retrieve the bar offset in config space 
-===============================================================================
-; well, seems it do not take care of the bridge's resource
-pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
-	int reg;
-
-	if (resno < PCI_ROM_RESOURCE) {
-		*type = pci_bar_unknown;
-		return PCI_BASE_ADDRESS_0 + 4 * resno;
-	} else if (resno == PCI_ROM_RESOURCE) {
-		*type = pci_bar_mem32;
-		return dev->rom_base_reg;
-	} else if (resno < PCI_BRIDGE_RESOURCES) {
-		/* device specific resource */
-		reg = pci_iov_resource_bar(dev, resno, type);
-		if (reg)
-			return reg;
-	}
-
-	dev_err(&dev->dev, "BAR %d: invalid resource\n", resno);
-	return 0;
-
-9. pci_read_bridge_bases(), for a bridge set its io/mem window
+7. pci_read_bridge_bases(), for a bridge set its io/mem window
 ===============================================================================
 pci_read_bridge_bases(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
@@ -1936,7 +1837,7 @@ pci_read_bridge_bases(struct pci_bus *child)
 		}
 	}
 
-9.1 pci_bus_remove_resources(), clean up the resource list
+7.1 pci_bus_remove_resources(), clean up the resource list
 ===============================================================================
 pci_bus_remove_resources(struct pci_bus *bus)
 	int i;
@@ -1948,7 +1849,7 @@ pci_bus_remove_resources(struct pci_bus *bus)
 	pci_free_resource_list(&bus->resources);
 
 
-9.2 pci_read_bridge_io(), get io limit
+7.2 pci_read_bridge_io(), get io limit
 ===============================================================================
 pci_read_bridge_io(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
@@ -1980,7 +1881,7 @@ pci_read_bridge_io(struct pci_bus *child)
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 
-9.3 pci_read_bridge_mmio(), get mem limit
+7.3 pci_read_bridge_mmio(), get mem limit
 ===============================================================================
 pci_read_bridge_mmio(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
@@ -1998,9 +1899,108 @@ pci_read_bridge_mmio(struct pci_bus *child)
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 
-9.4 pci_read_bridge_mmio_pref(), get mem pref limit
+7.4 pci_read_bridge_mmio_pref(), get mem pref limit
 ===============================================================================
 
+8. pcie_bus_configure_settings()
+===============================================================================
+pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
+	if (!pci_is_pcie(bus->self))
+		return;
+
+	if (pcie_bus_config == PCIE_BUS_TUNE_OFF)
+		return;
+
+	/* FIXME - Peer to peer DMA is possible, though the endpoint would need
+	 * to be aware to the MPS of the destination.  To work around this,
+	 * simply force the MPS of the entire system to the smallest possible.
+	 */
+	if (pcie_bus_config == PCIE_BUS_PEER2PEER)
+		smpss = 0;
+
+	if (pcie_bus_config == PCIE_BUS_SAFE) {
+		smpss = mpss;
+
+		pcie_find_smpss(bus->self, &smpss);
+		pci_walk_bus(bus, pcie_find_smpss, &smpss);
+	}
+
+	pcie_bus_configure_set(bus->self, &smpss);
+	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
+
+8.1 pcie_find_smpss()
+===============================================================================
+pcie_find_smpss(struct pci_dev *dev, void *data)
+
+8.2 pci_walk_bus(), walk devices on/under bus, calling callback
+===============================================================================
+pci_walk_bus(struct pci_bus *top, int(*cb)(struct pci_dev *, void *),
+		void *userdata)
+	bus = top;
+	next = top->devices.next;
+	for (;;) {
+		if (next == &bus->devices) {; meet the end of bus->devices
+			/* end of this bus, go up or finish */
+			if (bus == top)
+				break;
+			next = bus->self->bus_list.next;
+			bus = bus->self->bus;
+			continue;
+		}
+		dev = list_entry(next, struct pci_dev, bus_list);
+		if (dev->subordinate) {
+			/* this is a pci-pci bridge, do its devices next */
+			next = dev->subordinate->devices.next;
+			bus = dev->subordinate;
+		} else
+			next = dev->bus_list.next;
+
+		/* Run device routines with the device locked */
+		device_lock(&dev->dev);
+		retval = cb(dev, userdata);
+		device_unlock(&dev->dev);
+		if (retval)
+			break;
+	}
+
+9. pci_update_resource(), write resource info into physical bar
+===============================================================================
+pci_update_resource(struct pci_dev *dev, int resno)
+	struct resource *res = dev->resource + resno;
+	pcibios_resource_to_bus(dev, &region, res);
+	new = region.start | (res->flags & PCI_REGION_FLAG_MASK);
+	if (res->flags & IORESOURCE_IO)
+		mask = (u32)PCI_BASE_ADDRESS_IO_MASK;
+	else
+		mask = (u32)PCI_BASE_ADDRESS_MEM_MASK;
+
+	; calculate reg for the real offset in config space
+	reg = pci_resource_bar(dev, resno, &type);
+
+	pci_write_config_dword(dev, reg, new);
+	pci_read_config_dword(dev, reg, &check);
+
+9.1 pci_resouce_bar(), retrieve the bar offset in config space 
+===============================================================================
+; well, seems it do not take care of the bridge's resource
+pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
+	int reg;
+
+	if (resno < PCI_ROM_RESOURCE) {
+		*type = pci_bar_unknown;
+		return PCI_BASE_ADDRESS_0 + 4 * resno;
+	} else if (resno == PCI_ROM_RESOURCE) {
+		*type = pci_bar_mem32;
+		return dev->rom_base_reg;
+	} else if (resno < PCI_BRIDGE_RESOURCES) {
+		/* device specific resource */
+		reg = pci_iov_resource_bar(dev, resno, type);
+		if (reg)
+			return reg;
+	}
+
+	dev_err(&dev->dev, "BAR %d: invalid resource\n", resno);
+	return 0;
 
 10. pci_assign_resource(), assign one resource specified by resno of a pci device
 ===============================================================================
