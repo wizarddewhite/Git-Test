@@ -659,24 +659,34 @@ pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
 4. pci_find_bus(), find the bus with given domain and bus number
 ===============================================================================
 pci_find_bus(int domain, int busnr)
+	; go through all root buses
 	while ((bus = pci_find_next_bus(bus)) != NULL)  {
 		if (pci_domain_nr(bus) != domain)
 			continue;
+		; go through the domain
 		tmp_bus = pci_do_find_bus(bus, busnr);
 		if (tmp_bus)
 			return tmp_bus;
 	}
 	return NULL;
 
-4.1 pci_find_next_bus()
+4.1 pci_find_next_bus(), find a next pci bus start from "from"
 ===============================================================================
+; One pci root bus represent a pci domain
+; the pci root bus are linked list, pci_root_buses
+
 pci_find_next_bus(struct pci_bus *from)
+	; if from is null, we start from the beginning of pci_root_buses
+	; if from is not null, we follow this from
+	; hmm... I think the bus with the same parent will be on the same list
 	n = from ? from->node.next : pci_root_buses.next;
+
+	; n == &pci_root_buses means we have visited all the root bus
 	if (n != &pci_root_buses)
 		b = pci_bus_b(n);
 	return b;
 
-4.2 pci_do_find_bus()
+4.2 pci_do_find_bus(), traverse the pci tree and find the bus with busnr
 ===============================================================================
 pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 	if(bus->number == busnr)
