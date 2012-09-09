@@ -1,3 +1,36 @@
+0. Preface
+===============================================================================
+This file contains the most used functions of pci subsystem initialization in
+linux kernel. Definitly, this file is not complete and updated to the latest
+code. While this file is just a note during my code reading.
+
+Section 1. PCI bus enumeration
+pci_create_root_bus(), pci_scan_child_bus(), pci_assign_unassigned_resources()
+are the three most important functions for pci bus enumeration.
+
+pci_bus_add_devices() and pci_find_bus() also helps during the bus
+enumeration.
+
+Section 2. Configuration space and resource related
+Configuration space is a very important concept for pci devices, this is the
+reason for me to list those functions which read/write the configuration
+space. 
+
+They are __pci_read_base(), pci_read_bridge_bases(),
+pcie_bus_configure_settings().
+
+Resource is another very important concept for pci devices. And actually the
+resource information is in the configuration space. This is the reason I put
+this category in the same section as the configuration space functions.
+
+They are pci_assign_resource(), pci_reassign_resource(),
+pci_update_resource(), pci_setup_bridge(), pci_enable_resources().
+
+Section 3. SRIOV related
+For SRIOV pci devices, there are two related functions.
+pci_iov_init() is called in the pci enumeration stage.
+pci_enable_sriov() is called in the device driver to setup other stuffs.
+
 1. pci_create_root_bus()
 ===============================================================================
 pci_create_root_bus(struct device *parent, int bus,
