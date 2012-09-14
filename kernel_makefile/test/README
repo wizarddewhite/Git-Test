@@ -1,0 +1,5 @@
+This is a test for the kernel build system.
+
+We try to add a directory in the kernel source tree and build this.
+
+
