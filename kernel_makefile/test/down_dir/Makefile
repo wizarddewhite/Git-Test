@@ -3,6 +3,5 @@
 #
 
 
-obj-y := test.o down_dir/
+obj-y := down_dir.o
 
-test-y := test_dep.o
