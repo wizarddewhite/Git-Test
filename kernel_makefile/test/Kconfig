@@ -1,0 +1,8 @@
+menu "Test module Kconfig"
+
+config DOWN_DIR
+	tristate "Test Down Directory"
+	help
+	  This is a test option
+
+endmenu
