@@ -30,5 +30,17 @@ config INT_TYPE
 	default 128
 endif
 
+choice
+	prompt "Choice entry test"
+	default OPTION_TWO
+
+config OPTION_ONE
+	bool "option one"
+
+config OPTION_TWO
+	bool "option two"
+
+endchoice
+
 source "test/down_dir/Kconfig"
 endmenu
