@@ -8,4 +8,14 @@ config DOWN_DIR
 	help
 	  This is a test option
 
+config BOOL_TYPE_TEST
+	bool "Bool Type config entry"
+	default n
+	help
+	  This is a bool type config entry
+
+config STRING_TYPE_TEST
+	string "String Type config entry"
+	default "string in kconfig"
+
 endmenu
