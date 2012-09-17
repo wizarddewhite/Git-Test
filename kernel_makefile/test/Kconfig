@@ -8,6 +8,7 @@ config DOWN_DIR
 	help
 	  This is a test option
 
+if DOWN_DIR
 config BOOL_TYPE_TEST
 	bool "Bool Type config entry"
 	default n
@@ -27,6 +28,7 @@ config INT_TYPE
 	range 2 1024
 	default 512 if X86_64
 	default 128
+endif
 
 source "test/down_dir/Kconfig"
 endmenu
