@@ -22,4 +22,10 @@ config DEFAULT_BOOL
 	def_bool y
 	prompt "Default bool type"
 
+config INT_TYPE
+	int "Int type (2-1024)"
+	range 2 1024
+	default 512 if X86_64
+	default 128
+
 endmenu
