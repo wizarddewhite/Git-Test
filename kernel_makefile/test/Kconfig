@@ -3,6 +3,7 @@ menu "Test module Kconfig"
 
 config DOWN_DIR
 	tristate "Test Down Directory"
+	default y
 	select KEYS
 	help
 	  This is a test option
