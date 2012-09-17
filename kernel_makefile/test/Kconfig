@@ -18,4 +18,8 @@ config STRING_TYPE_TEST
 	string "String Type config entry"
 	default "string in kconfig"
 
+config DEFAULT_BOOL
+	def_bool y
+	prompt "Default bool type"
+
 endmenu
