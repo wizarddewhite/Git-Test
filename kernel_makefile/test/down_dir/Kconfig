@@ -1,0 +1,8 @@
+menuconfig DOWN_DIR_KCONFIG
+	bool "Enable down dir config"
+	default y
+
+config MENUCONFIG_ENTRY
+	bool "Menuconfig entry"
+	default y
+
