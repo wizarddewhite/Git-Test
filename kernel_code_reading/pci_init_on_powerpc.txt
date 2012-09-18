@@ -203,6 +203,9 @@ to assign the resources. For example:
 0x2000000 0x0 0x80000000 0x3da0 0x0       0x0 0x7fff0000
 pci address              cpu address      size
 
+This page shows the detailed information about it.
+http://devicetree.org/Device_Tree_Usage
+
 pci_process_bridge_OF_ranges(struct pci_controller *hose, struct device_node *dev, 
 		             int primary)
 	pci_space = ranges[0];
