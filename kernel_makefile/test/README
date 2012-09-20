@@ -2,4 +2,30 @@ This is a test for the kernel build system.
 
 We try to add a directory in the kernel source tree and build this.
 
+On an x86 machine, you need to do the following change to use this test.
+
+
+diff --git a/Makefile b/Makefile
+index aa8e315..d921c23 100644
+--- a/Makefile
++++ b/Makefile
+@@ -715,7 +715,7 @@ export mod_strip_cmd
+ 
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+-core-y         += kernel/ mm/ fs/ ipc/ security/ crypto/ block/
++core-y         += kernel/ mm/ fs/ ipc/ security/ crypto/ block/ test/
+ 
+ vmlinux-dirs   := $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
+                     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index c70684f..47ba337 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -2233,3 +2233,5 @@ source "crypto/Kconfig"
+ source "arch/x86/kvm/Kconfig"
+ 
+ source "lib/Kconfig"
++
++source "test/Kconfig"
 
