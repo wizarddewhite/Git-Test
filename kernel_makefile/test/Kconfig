@@ -3,8 +3,8 @@ menu "Test module Kconfig"
 
 config DOWN_DIR
 	tristate "Test Down Directory"
-	default y
-	select KEYS
+	default n
+	select DOWN_DIR_KCONFIG
 	help
 	  This is a test option
 
@@ -20,7 +20,7 @@ config STRING_TYPE_TEST
 	default "string in kconfig"
 
 config DEFAULT_BOOL
-	def_bool y
+	def_bool n
 	prompt "Default bool type"
 
 config INT_TYPE

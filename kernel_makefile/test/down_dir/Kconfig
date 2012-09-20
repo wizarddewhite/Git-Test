@@ -1,11 +1,12 @@
 menuconfig DOWN_DIR_KCONFIG
 	bool "Enable down dir config"
-	default y
+	default n
+	select MENUCONFIG_ENTRY
 
 if DOWN_DIR_KCONFIG
 
 config MENUCONFIG_ENTRY
 	bool "Menuconfig entry"
-	default y
+	default n
 
 endif # DOWN_DIR_KCONFIG
