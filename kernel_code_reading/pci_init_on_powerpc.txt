@@ -1195,6 +1195,7 @@ pnv_pci_ioda_fixup(void)
 pnv_pci_ioda_setup_PEs(void)
 	struct pci_controller *hose, *tmp;
 
+	; go through the hose_list
 	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
 		pnv_ioda_setup_PEs(hose->bus);
 	}
@@ -1254,7 +1255,7 @@ pnv_ioda_setup_PEs(struct pci_bus *bus)
 ===============================================================================
 ; bus     on which bus the PE will be
 ; all     1: the PE will include all buses under bus
-          2: the PE will just include bus
+          2: the PE will just include this individual bus
 pnv_ioda_setup_bus_PE(struct pci_bus *bus, int all)
 {
 	struct pci_controller *hose = pci_bus_to_host(bus);
