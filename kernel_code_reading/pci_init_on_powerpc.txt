@@ -1318,7 +1318,26 @@ pnv_ioda_setup_bus_PE(struct pci_bus *bus, int all)
 	pnv_ioda_link_pe_by_weight(phb, pe);
 }
 
-3.1.1 pnv_ioda_configure_pe()
+3.1.1 pnv_ioda_alloc_pe(), find an available PE number
+===============================================================================
+pnv_ioda_alloc_pe(struct pnv_phb *phb)
+{
+	unsigned long pe;
+
+	; pe_alloc is a 128/8 byte bitmap area
+	; each bit represent the presentation of a pe
+	do {
+		pe = find_next_zero_bit(phb->ioda.pe_alloc,
+					phb->ioda.total_pe, 0);
+		if (pe >= phb->ioda.total_pe)
+			return IODA_INVALID_PE;
+	} while(test_and_set_bit(pe, phb->ioda.pe_alloc));
+
+	phb->ioda.pe_array[pe].pe_number = pe;
+	return pe;
+}
+
+3.1.2 pnv_ioda_configure_pe()
 ===============================================================================
 pnv_ioda_configure_pe(struct pnv_phb *phb,
 					   struct pnv_ioda_pe *pe)
@@ -1416,8 +1435,10 @@ pnv_ioda_configure_pe(struct pnv_phb *phb,
 	return 0;
 }
 
-3.1.2 pnv_ioda_setup_same_PE(), pci device on the same bus with the same PE#
+3.1.3 pnv_ioda_setup_same_PE(), pci device on the same bus with the same PE#
 ===============================================================================
+; i think this function set the pci device node
+; add up the dma_weight
 pnv_ioda_setup_same_PE(struct pci_bus *bus, struct pnv_ioda_pe *pe)
 {
 	struct pci_dev *dev;
@@ -1441,7 +1462,7 @@ pnv_ioda_setup_same_PE(struct pci_bus *bus, struct pnv_ioda_pe *pe)
 	}
 }
 
-3.1.3 pnv_ioda_link_pe_by_weight()
+3.1.4 pnv_ioda_link_pe_by_weight()
 ===============================================================================
 pnv_ioda_link_pe_by_weight(struct pnv_phb *phb,
 						 struct pnv_ioda_pe *pe)
@@ -1476,6 +1497,8 @@ pnv_ioda_setup_pe_seg(struct pci_controller *hose,
 	; we need to do some change
 	BUG_ON(!(pe->flags & (PNV_IODA_PE_BUS | PNV_IODA_PE_BUS_ALL)));
 
+	; this function go through the bridge resouce
+	; each io/mem region get a map for a PE
 	pci_bus_for_each_resource(pe->pbus, res, i) {
 		if (!res || !res->flags ||
 		    res->start > res->end)
