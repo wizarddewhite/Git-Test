@@ -13,6 +13,9 @@ all: resource list_case align_case queue_case cscope
 resource: resource.c resource_case.o
 	gcc -o resource -g resource.c resource_case.o
 
+queue_case: queue_case.c kfifo.c
+	gcc -o $@ -g $^
+
 %: %.o
 	gcc $(CFLAGS) $<  -o $@ 
 
