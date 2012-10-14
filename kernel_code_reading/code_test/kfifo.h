@@ -54,6 +54,78 @@ struct kfifo __STRUCT_KFIFO_PTR(unsigned char, 0, void);
  */
 #define	__is_kfifo_ptr(fifo)	(sizeof(*fifo) == sizeof(struct __kfifo))
 
+static inline unsigned int 
+__kfifo_uint_must_check_helper(unsigned int val)
+{
+	return val;
+}
+
+/**
+ * kfifo_size - returns the size of the fifo in elements
+ * @fifo: address of the fifo to be used
+ */
+#define kfifo_size(fifo)	((fifo)->kfifo.mask + 1)
+
+/**
+ * kfifo_reset - removes the entire fifo content
+ * @fifo: address of the fifo to be used
+ *
+ * Note: usage of kfifo_reset() is dangerous. It should be only called when the
+ * fifo is exclusived locked or when it is secured that no other thread is
+ * accessing the fifo.
+ */
+#define kfifo_reset(fifo) \
+(void)({ \
+	typeof((fifo) + 1) __tmp = (fifo); \
+	__tmp->kfifo.in = __tmp->kfifo.out = 0; \
+})
+
+/**
+ * kfifo_len - returns the number of used elements in the fifo
+ * @fifo: address of the fifo to be used
+ */
+#define kfifo_len(fifo) \
+({ \
+	typeof((fifo) + 1) __tmpl = (fifo); \
+	__tmpl->kfifo.in - __tmpl->kfifo.out; \
+})
+
+/**
+ * kfifo_is_empty - returns true if the fifo is empty
+ * @fifo: address of the fifo to be used
+ */
+#define	kfifo_is_empty(fifo) \
+({ \
+	typeof((fifo) + 1) __tmpq = (fifo); \
+	__tmpq->kfifo.in == __tmpq->kfifo.out; \
+})
+
+/**
+ * kfifo_is_full - returns true if the fifo is full
+ * @fifo: address of the fifo to be used
+ */
+#define	kfifo_is_full(fifo) \
+({ \
+	typeof((fifo) + 1) __tmpq = (fifo); \
+	kfifo_len(__tmpq) > __tmpq->kfifo.mask; \
+})
+
+/**
+ * kfifo_avail - returns the number of unused elements in the fifo
+ * @fifo: address of the fifo to be used
+ */
+#define	kfifo_avail(fifo) \
+__kfifo_uint_must_check_helper( \
+({ \
+	typeof((fifo) + 1) __tmpq = (fifo); \
+	const size_t __recsize = sizeof(*__tmpq->rectype); \
+	unsigned int __avail = kfifo_size(__tmpq) - kfifo_len(__tmpq); \
+	(__recsize) ? ((__avail <= __recsize) ? 0 : \
+	__kfifo_max_r(__avail - __recsize, __recsize)) : \
+	__avail; \
+}) \
+)
+
 /**
  * kfifo_init - initialize a fifo using a preallocated buffer
  * @fifo: the fifo to assign the buffer
@@ -74,4 +146,5 @@ struct kfifo __STRUCT_KFIFO_PTR(unsigned char, 0, void);
 	-1; \
 })
 
+unsigned int __kfifo_max_r(unsigned int len, unsigned int recsize);
 #endif //_KFIFO_H_

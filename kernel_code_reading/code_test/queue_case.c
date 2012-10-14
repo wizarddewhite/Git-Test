@@ -43,8 +43,20 @@ struct kfifo * queue_init_test(int size)
 	return queue;
 }
 
-int main() 
+void queue_status_test()
 {
 	struct kfifo *queue = queue_init_test(1024);
+
+	printf("queue size is %d\n", kfifo_size(queue));
+	printf("queue available %d\n", kfifo_avail(queue));
+	printf("used number is %d\n", kfifo_len(queue));
+	printf("queue is empty: %s\n", kfifo_is_empty(queue)?"yes":"no");
+
+	return;
+}
+
+int main() 
+{
+	queue_status_test();
 	return 0;
 }

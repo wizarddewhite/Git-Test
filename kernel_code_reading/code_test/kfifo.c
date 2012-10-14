@@ -42,3 +42,12 @@ int __kfifo_init(struct __kfifo *fifo, void *buffer,
 
 	return 0;
 }
+
+unsigned int __kfifo_max_r(unsigned int len, unsigned int recsize)
+{
+	unsigned int max = (1 << (recsize << 3)) - 1;
+
+	if (len > max)
+		return max;
+	return len;
+}
