@@ -19,6 +19,9 @@
 #ifndef _KFIFO_H_
 #define _KFIFO_H_
 
+#include <string.h>
+#include "kernel.h"
+
 struct __kfifo {
 	unsigned int	in;
 	unsigned int	out;
@@ -144,6 +147,34 @@ __kfifo_uint_must_check_helper( \
 	__is_kfifo_ptr(__tmp) ? \
 	__kfifo_init(__kfifo, buffer, size, sizeof(*__tmp->type)) : \
 	-1; \
+})
+
+/**
+ * kfifo_in - put data into the fifo
+ * @fifo: address of the fifo to be used
+ * @buf: the data to be added
+ * @n: number of elements to be added
+ *
+ * This macro copies the given buffer into the fifo and returns the
+ * number of copied elements.
+ *
+ * Note that with only one concurrent reader and one concurrent
+ * writer, you don't need extra locking to use these macro.
+ */
+#define	kfifo_in(fifo, buf, n) \
+({ \
+	typeof((fifo) + 1) __tmp = (fifo); \
+	typeof((buf) + 1) __buf = (buf); \
+	unsigned long __n = (n); \
+	const size_t __recsize = sizeof(*__tmp->rectype); \
+	struct __kfifo *__kfifo = &__tmp->kfifo; \
+	if (0) { \
+		typeof(__tmp->ptr_const) __dummy __attribute__ ((unused)); \
+		__dummy = (typeof(__buf))NULL; \
+	} \
+	(__recsize) ?\
+	__kfifo_in_r(__kfifo, __buf, __n, __recsize) : \
+	__kfifo_in(__kfifo, __buf, __n); \
 })
 
 unsigned int __kfifo_max_r(unsigned int len, unsigned int recsize);
