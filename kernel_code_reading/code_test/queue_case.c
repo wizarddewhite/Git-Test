@@ -58,12 +58,50 @@ void queue_status_test()
 
 void queue_in_test()
 {
-	char  *buffer = malloc(16);
-	struct kfifo *queue = queue_init_test(buffer, 16);
-	int i = 0;
+	int i ;
+	char  *buffer; 
+	struct kfifo *queue; 
+
+	i = 16;
+
+	buffer = malloc(i * sizeof(i));
+	queue = queue_init_test(buffer, i * sizeof(i));
 
 	for (i = 0; i < 32; i++)
 		kfifo_in(queue, &i, sizeof(i));
+
+	printf("queue size is %d\n", kfifo_size(queue));
+	printf("queue available %d\n", kfifo_avail(queue));
+	printf("used number is %d\n", kfifo_len(queue));
+	printf("queue is empty: %s\n", kfifo_is_empty(queue)?"yes":"no");
+
+	return;
+}
+
+void queue_out_test()
+{
+	int i , tmp;
+	char  *buffer; 
+	struct kfifo *queue; 
+
+	i = 16;
+
+	buffer = malloc(i * sizeof(i));
+	queue = queue_init_test(buffer, i * sizeof(i));
+
+	for (i = 0; i < 16; i++)
+		kfifo_in(queue, &i, sizeof(i));
+
+	printf("queue size is %d\n", kfifo_size(queue));
+	printf("queue available %d\n", kfifo_avail(queue));
+	printf("used number is %d\n", kfifo_len(queue));
+	printf("queue is empty: %s\n", kfifo_is_empty(queue)?"yes":"no");
+
+	for (i = 0; i < 6; i++)
+	{
+		kfifo_out(queue, &tmp, sizeof(tmp));
+		printf("%d\n", tmp);
+	}
 
 	printf("queue size is %d\n", kfifo_size(queue));
 	printf("queue available %d\n", kfifo_avail(queue));

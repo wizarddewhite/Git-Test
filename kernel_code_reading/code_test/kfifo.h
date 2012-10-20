@@ -177,5 +177,35 @@ __kfifo_uint_must_check_helper( \
 	__kfifo_in(__kfifo, __buf, __n); \
 })
 
+/**
+ * kfifo_out - get data from the fifo
+ * @fifo: address of the fifo to be used
+ * @buf: pointer to the storage buffer
+ * @n: max. number of elements to get
+ *
+ * This macro get some data from the fifo and return the numbers of elements
+ * copied.
+ *
+ * Note that with only one concurrent reader and one concurrent
+ * writer, you don't need extra locking to use these macro.
+ */
+#define	kfifo_out(fifo, buf, n) \
+__kfifo_uint_must_check_helper( \
+({ \
+	typeof((fifo) + 1) __tmp = (fifo); \
+	typeof((buf) + 1) __buf = (buf); \
+	unsigned long __n = (n); \
+	const size_t __recsize = sizeof(*__tmp->rectype); \
+	struct __kfifo *__kfifo = &__tmp->kfifo; \
+	if (0) { \
+		typeof(__tmp->ptr) __dummy = NULL; \
+		__buf = __dummy; \
+	} \
+	(__recsize) ?\
+	__kfifo_out_r(__kfifo, __buf, __n, __recsize) : \
+	__kfifo_out(__kfifo, __buf, __n); \
+}) \
+)
+
 unsigned int __kfifo_max_r(unsigned int len, unsigned int recsize);
 #endif //_KFIFO_H_

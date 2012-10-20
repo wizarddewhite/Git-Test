@@ -60,6 +60,25 @@ unsigned int __kfifo_max_r(unsigned int len, unsigned int recsize)
 	return len;
 }
 
+#define	__KFIFO_PEEK(data, out, mask) \
+	((data)[(out) & (mask)])
+/*
+ * __kfifo_peek_n internal helper function for determinate the length of
+ * the next record in the fifo
+ */
+static unsigned int __kfifo_peek_n(struct __kfifo *fifo, size_t recsize)
+{
+	unsigned int l;
+	unsigned int mask = fifo->mask;
+	unsigned char *data = fifo->data;
+
+	l = __KFIFO_PEEK(data, fifo->out, mask);
+
+	if (--recsize)
+		l |= __KFIFO_PEEK(data, fifo->out + 1, mask) << 8;
+
+	return l;
+}
 
 static void kfifo_copy_in(struct __kfifo *fifo, const void *src,
 		unsigned int len, unsigned int off)
@@ -128,5 +147,75 @@ unsigned int __kfifo_in_r(struct __kfifo *fifo, const void *buf,
 
 	kfifo_copy_in(fifo, buf, len, fifo->in + recsize);
 	fifo->in += len + recsize;
+	return len;
+}
+
+static void kfifo_copy_out(struct __kfifo *fifo, void *dst,
+		unsigned int len, unsigned int off)
+{
+	unsigned int size = fifo->mask + 1;
+	unsigned int esize = fifo->esize;
+	unsigned int l;
+
+	off &= fifo->mask;
+	if (esize != 1) {
+		off *= esize;
+		size *= esize;
+		len *= esize;
+	}
+	l = min(len, size - off);
+
+	memcpy(dst, fifo->data + off, l);
+	memcpy(dst + l, fifo->data, len - l);
+	/*
+	 * make sure that the data is copied before
+	 * incrementing the fifo->out index counter
+	 */
+	//smp_wmb();
+}
+
+unsigned int __kfifo_out_peek(struct __kfifo *fifo,
+		void *buf, unsigned int len)
+{
+	unsigned int l;
+
+	l = fifo->in - fifo->out;
+	if (len > l)
+		len = l;
+
+	kfifo_copy_out(fifo, buf, len, fifo->out);
+	return len;
+}
+
+unsigned int __kfifo_out(struct __kfifo *fifo,
+		void *buf, unsigned int len)
+{
+	len = __kfifo_out_peek(fifo, buf, len);
+	fifo->out += len;
+	return len;
+}
+
+static unsigned int kfifo_out_copy_r(struct __kfifo *fifo,
+	void *buf, unsigned int len, size_t recsize, unsigned int *n)
+{
+	*n = __kfifo_peek_n(fifo, recsize);
+
+	if (len > *n)
+		len = *n;
+
+	kfifo_copy_out(fifo, buf, len, fifo->out + recsize);
+	return len;
+}
+
+unsigned int __kfifo_out_r(struct __kfifo *fifo, void *buf,
+		unsigned int len, size_t recsize)
+{
+	unsigned int n;
+
+	if (fifo->in == fifo->out)
+		return 0;
+
+	len = kfifo_out_copy_r(fifo, buf, len, recsize, &n);
+	fifo->out += n + recsize;
 	return len;
 }
