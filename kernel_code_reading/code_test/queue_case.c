@@ -20,15 +20,14 @@
 #include <stdlib.h>
 #include "kfifo.h"
 
-struct kfifo * queue_init_test(int size)
+struct kfifo * queue_init_test(void *buf, int size)
 {
 	struct kfifo *queue;
 	char         *buffer;
 
 	queue  = malloc(sizeof(struct kfifo));
-	buffer = malloc(size);
 
-	kfifo_init(queue, buffer, size);
+	kfifo_init(queue, buf, size);
 
 	/* After this the "queue" is initialized like this
 	 * queue
@@ -45,7 +44,8 @@ struct kfifo * queue_init_test(int size)
 
 void queue_status_test()
 {
-	struct kfifo *queue = queue_init_test(1024);
+	char  *buffer = malloc(1024);
+	struct kfifo *queue = queue_init_test(buffer, 1024);
 
 	printf("queue size is %d\n", kfifo_size(queue));
 	printf("queue available %d\n", kfifo_avail(queue));
@@ -58,7 +58,8 @@ void queue_status_test()
 
 void queue_in_test()
 {
-	struct kfifo *queue = queue_init_test(16);
+	char  *buffer = malloc(16);
+	struct kfifo *queue = queue_init_test(buffer, 16);
 	int i = 0;
 
 	for (i = 0; i < 32; i++)
