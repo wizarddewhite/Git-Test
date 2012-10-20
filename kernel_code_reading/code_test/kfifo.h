@@ -84,6 +84,20 @@ __kfifo_uint_must_check_helper(unsigned int val)
 })
 
 /**
+ * kfifo_reset - removes the entire fifo content
+ * @fifo: address of the fifo to be used
+ *
+ * Note: usage of kfifo_reset() is dangerous. It should be only called when the
+ * fifo is exclusived locked or when it is secured that no other thread is
+ * accessing the fifo.
+ */
+#define kfifo_reset(fifo) \
+(void)({ \
+	typeof((fifo) + 1) __tmp = (fifo); \
+	__tmp->kfifo.in = __tmp->kfifo.out = 0; \
+})
+
+/**
  * kfifo_len - returns the number of used elements in the fifo
  * @fifo: address of the fifo to be used
  */
