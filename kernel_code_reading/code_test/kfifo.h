@@ -48,6 +48,20 @@ struct __kfifo {
 /*
  * define compatibility "struct kfifo" for dynamic allocated fifos
  */
+/*
+ * After expanding the structure, it looks like:
+ * struct kfifo {
+ * 	union {
+ * 		struct __kfifo      kfifo;
+ * 		unsigned char      *type;
+ * 		char               *rectype[0];
+ * 		void               *ptr;
+ * 		const void         *ptr_const;
+ * 	};
+ * 	unsigned char buf[0];
+ * };
+ */
+
 struct kfifo __STRUCT_KFIFO_PTR(unsigned char, 0, void);
 
 /*
