@@ -1,5 +1,8 @@
 # reference
 # http://devicetree.org/Device_Tree_Usage
+
+# How to generate this file:
+#   dtc -I fs -o /home/ywywyang/device-tree /proc/device-tree
 /dts-v1/;
 
 / {
