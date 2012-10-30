@@ -15,6 +15,7 @@ class MyThread(threading.Thread):
 if __name__ == "__main__":
 	t = MyThread(2)
 	t.start()
+	t.join()  # this thread will wait untill the thread t stop
 	print "main"
 	for i in range(5):
 		print i
