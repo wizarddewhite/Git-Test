@@ -1046,6 +1046,10 @@ pcibios_resource_survey()
 		; handle bridges
 		pcibios_allocate_bus_resources(b);
 	; handle normal pci devices
+	; on powernv platform, these two function will not work
+	; since in pcibios_fixup_resources() res->flags will be set IORESOURCE_UNSET;
+	; the reason is pci_add_flags(PCI_REASSIGN_ALL_RSRC) is called in 
+	; pnv_pci_init_ioda1_phb()
 	pcibios_allocate_resources(0);
 	pcibios_allocate_resources(1);
 
@@ -1140,6 +1144,7 @@ pcibios_allocate_resources(int pass)
 	u16 command;
 	struct resource *r;
 
+	; iterate through the list of known PCI devices
 	for_each_pci_dev(dev) {
 		pci_read_config_word(dev, PCI_COMMAND, &command);
 		for (idx = 0; idx <= PCI_ROM_RESOURCE; idx++) {
@@ -1195,7 +1200,7 @@ pnv_pci_ioda_fixup(void)
 pnv_pci_ioda_setup_PEs(void)
 	struct pci_controller *hose, *tmp;
 
-	; go through the hose_list
+	; go through the hose_list(phb)
 	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
 		pnv_ioda_setup_PEs(hose->bus);
 	}
