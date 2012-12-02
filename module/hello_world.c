@@ -19,9 +19,14 @@
 #include <linux/init.h>
 #include <linux/module.h>
 MODULE_LICENSE("Dual BSD/GPL");
+
+static unsigned int num;
+module_param(num, uint, S_IRUGO);
+MODULE_PARM_DESC(num, "Number used in this example");
+
 static int hello_init(void)
 {
-        printk(KERN_ALERT "Hello, world\n");
+        printk(KERN_ALERT "Hello, world %d\n", num);
         return 0;
 }
 static void hello_exit(void)
