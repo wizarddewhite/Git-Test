@@ -1884,3 +1884,8 @@ pcibios_fixup_resources(struct pci_dev *dev)
 		ppc_md.pcibios_fixup_resources(dev);
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_ANY_ID, PCI_ANY_ID, pcibios_fixup_resources);
+
+9. eeh related functions
+===============================================================================
+eeh_check_failure()
+
