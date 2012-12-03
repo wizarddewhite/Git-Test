@@ -31,6 +31,19 @@ For SRIOV pci devices, there are two related functions.
 pci_iov_init() is called in the pci enumeration stage.
 pci_enable_sriov() is called in the device driver to setup other stuffs.
 
+
+Section 4. interfaces used in driver
+The last stage for enabling a pci device is connect the device with its
+driver. The section describes some interfaces used in the driver to enable the
+devices.
+
+pci_read_config_byte(), etc are used to access the configuration space of the
+pci device.
+
+pci_resource_start(), is used to get the BAR information.
+
+pci_enable_device(), enable the device.
+
 1. pci_create_root_bus()
 ===============================================================================
 pci_create_root_bus(struct device *parent, int bus,
@@ -2885,8 +2898,10 @@ msi_capability_init(struct pci_dev *dev, int nvec)
 	return 0;
 }
 
-17. pci_fixup, for pci stuff there is several fixup functions
+17. pci_fixup
 ===============================================================================
+For pci stuff there is several fixup functions, they are called in different
+stages and they are very important part of the pci subsystem.
 
 17.1 definition
 ===============================================================================
@@ -2933,7 +2948,6 @@ And will be put into specific sections.
 17.2 how to call
 ===============================================================================
 pci_fixup_device() is used to call those fixup functions.
-
 
 void pci_fixup_device(enum pci_fixup_pass pass, struct pci_dev *dev)
 {
@@ -2998,6 +3012,96 @@ static void pci_do_fixups(struct pci_dev *dev, struct pci_fixup *f,
 			f->hook(dev);
 			fixup_debug_report(dev, calltime, f->hook);
 		}
+}
+
+18. APIs used in driver
+===============================================================================
+
+18.1 pci_read_config_byte(), access the configuration space
+===============================================================================
+pci_read_config_byte() drivers/pci/access.c
+
+
+#define PCI_OP_READ(size,type,len) \
+int pci_bus_read_config_##size \
+	(struct pci_bus *bus, unsigned int devfn, int pos, type *value)	\
+{									\
+	int res;							\
+	unsigned long flags;						\
+	u32 data = 0;							\
+	if (PCI_##size##_BAD) return PCIBIOS_BAD_REGISTER_NUMBER;	\
+	raw_spin_lock_irqsave(&pci_lock, flags);			\
+	res = bus->ops->read(bus, devfn, pos, len, &data);		\
+	*value = (type)data;						\
+	raw_spin_unlock_irqrestore(&pci_lock, flags);		\
+	return res;							\
+}
+
+PCI_OP_READ(byte, u8, 1)
+	
+This means the read operation is defined in the bus->ops->read. This operation
+is set in pci_create_root_bus() and passed in as the third parameter. On
+powernv platform, this is set to pnv_pci_ops.
+
+
+18.2 pci_resourse_start(), access the BAR IO space
+===============================================================================
+
+/* these helpers provide future and backwards compatibility
+ * for accessing popular PCI BAR info */
+#define pci_resource_start(dev, bar)	((dev)->resource[(bar)].start)
+#define pci_resource_end(dev, bar)	((dev)->resource[(bar)].end)
+#define pci_resource_flags(dev, bar)	((dev)->resource[(bar)].flags)
+#define pci_resource_len(dev,bar) \
+	((pci_resource_start((dev), (bar)) == 0 &&	\
+	  pci_resource_end((dev), (bar)) ==		\
+	  pci_resource_start((dev), (bar))) ? 0 :	\
+							\
+	 (pci_resource_end((dev), (bar)) -		\
+	  pci_resource_start((dev), (bar)) + 1))
+
+18.3 pci_enable_device(), enable the device
+===============================================================================
+int pci_enable_device(struct pci_dev *dev)
+{
+	return __pci_enable_device_flags(dev, IORESOURCE_MEM | IORESOURCE_IO);
+}
+
+; calculate those bars and enable the bars
+; and do some architecture related routine
+static int __pci_enable_device_flags(struct pci_dev *dev,
+				     resource_size_t flags)
+{
+	int err;
+	int i, bars = 0;
+
+	/*
+	 * Power state could be unknown at this point, either due to a fresh
+	 * boot or a device removal call.  So get the current power state
+	 * so that things like MSI message writing will behave as expected
+	 * (e.g. if the device really is in D0 at enable time).
+	 */
+	if (dev->pm_cap) {
+		u16 pmcsr;
+		pci_read_config_word(dev, dev->pm_cap + PCI_PM_CTRL, &pmcsr);
+		dev->current_state = (pmcsr & PCI_PM_CTRL_STATE_MASK);
+	}
+
+	if (atomic_add_return(1, &dev->enable_cnt) > 1)
+		return 0;		/* already enabled */
+
+	/* only skip sriov related */
+	for (i = 0; i <= PCI_ROM_RESOURCE; i++)
+		if (dev->resource[i].flags & flags)
+			bars |= (1 << i);
+	for (i = PCI_BRIDGE_RESOURCES; i < DEVICE_COUNT_RESOURCE; i++)
+		if (dev->resource[i].flags & flags)
+			bars |= (1 << i);
+
+	err = do_pci_enable_device(dev, bars);
+	if (err < 0)
+		atomic_dec(&dev->enable_cnt);
+	return err;
 }
 
 0. Figures, internal representation of pci subsystem
