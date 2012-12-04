@@ -16,6 +16,6 @@
 [alias]
 	logview = log --graph --decorate --all
 	last = log -1
-	oneline = log --pretty=oneline
+	oneline = log --oneline
 	co = checkout
 	commit = commit -s
