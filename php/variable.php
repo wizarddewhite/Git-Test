@@ -45,6 +45,17 @@ echo "9 + 10 = "; echo $b;
 
 ?>
 
+<?php
+
+function func5($para1)
+{
+	return $para1 % 5;
+}
+
+echo "<br/>23 % 5 = " . func5(23);
+
+?>
+
 
 </body>
 </html>
