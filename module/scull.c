@@ -16,12 +16,6 @@
  * =====================================================================================
  */
 
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/cdev.h>
-#include <linux/fs.h>
-#include <asm/uaccess.h>
-
 #include "scull.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -143,12 +137,18 @@ static void scull_setup_cdev(struct scull_dev *dev, int index)
 	/* Fail gracefully if need be */
 	if (err)
 		printk(KERN_NOTICE "Error %d adding scull%d", err, index);
+
+	scull_setup_sysfs(dev, index);
+
+	return;
 }
 
 static void scull_cleanup_cdev(struct scull_dev *dev, int index)
 {
 	if (!dev)
 		return;
+
+	scull_cleanup_sysfs(dev, index);
 
 	/* Unregister it from the system */
 	cdev_del(&dev->cdev);
