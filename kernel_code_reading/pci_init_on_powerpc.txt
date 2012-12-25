@@ -11,7 +11,7 @@ start_kernel()
 		ppc_md.setup_arch(); ppc_md is setup in probe_machine, 
 		                   ; see "machine type initialization"
 		pnv_setup_arch()
-			pnv_pci_init();
+			pnv_pci_init(); setup pci
 
 pnv_pci_init()
 	pci_add_flags(PCI_CAN_SKIP_ISA_ALIGN)
@@ -32,7 +32,7 @@ pnv_pci_init()
 	ppc_md.tce_build = pnv_tce_build;
 	ppc_md.tce_free = pnv_tce_free;
 	ppc_md.pci_probe_mode = pnv_pci_probe_mode;
-	set_pci_dma_ops(&dma_iommu_ops);
+	set_pci_dma_ops(&dma_iommu_ops); setup the dma ops
 
 	/* Configure MSIs */
 	ppc_md.msi_check_device = pnv_msi_check_device;
