@@ -1,0 +1,151 @@
+1. Begin of the story, how to view the information of interrupts
+--------------------------------------------------------------------------------
+1.1 cat /proc/interrupts to view the usage of interrupts
+$ cat /proc/interrupts 
+           CPU0       CPU1       CPU2       CPU3       
+  0:         43          0          0          0   IO-APIC-edge      timer
+  1:         33          0          0          0   IO-APIC-edge      i8042
+  8:          1          0          0          0   IO-APIC-edge      rtc0
+  9:        852          0       2122          0   IO-APIC-fasteoi   acpi
+ 12:       2614          0          0          0   IO-APIC-edge      i8042
+ 14:     108275          0          0          0   IO-APIC-edge      ata_piix
+ 15:      14429          0          0          0   IO-APIC-edge      ata_piix
+ 16:       2051          0      16240          0   IO-APIC-fasteoi   ehci_hcd:usb1, mmc0
+ 19:         33          0          0          0   IO-APIC-fasteoi   ata_piix
+ 23:       9465          0          0          0   IO-APIC-fasteoi   ehci_hcd:usb2
+ 40:        108      29654          0          0   PCI-MSI-edge      eth0
+ 41:       3275          0          0          0   PCI-MSI-edge      i915
+ 42:         25          0          0          0   PCI-MSI-edge      mei
+ 43:        218          0          0          0   PCI-MSI-edge      snd_hda_intel
+NMI:          0          0          0          0   Non-maskable interrupts
+LOC:     476869     379408     586012     453522   Local timer interrupts
+SPU:          0          0          0          0   Spurious interrupts
+PMI:          0          0          0          0   Performance monitoring interrupts
+IWI:          0          0          0          0   IRQ work interrupts
+RTR:          2          0          0          0   APIC ICR read retries
+RES:      90713      73843      16261      18190   Rescheduling interrupts
+CAL:      43340      43737      51101      47489   Function call interrupts
+TLB:          0          0          0          0   TLB shootdowns
+TRM:          0          0          0          0   Thermal event interrupts
+THR:          0          0          0          0   Threshold APIC interrupts
+MCE:          0          0          0          0   Machine check exceptions
+MCP:         11         11         11         11   Machine check polls
+ERR:          0
+MIS:          0
+
+1.2 cat /proc/stat also contain oneline of the statistics of interrupts
+--------------------------------------------------------------------------------
+$ cat /proc/stat
+cpu  80331 1472 28528 936286 63543 0 315 0 0 0
+cpu0 24250 328 10003 227818 14209 0 224 0 0 0
+cpu1 14403 334 4645 243912 15035 0 53 0 0 0
+cpu2 26812 539 8726 224215 16325 0 29 0 0 0
+cpu3 14865 270 5152 240341 17972 0 7 0 0 0
+intr 2510830 43 33 0 0 0 0 0 0 1 3020 0 0 2614 0 108382 14682 18991 0 0 33 0 0 0 9938 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 30094 3284 25 218 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+ctxt 10832341
+btime 1356656233
+processes 11695
+procs_running 2
+procs_blocked 0
+softirq 2032905 0 515690 559 32977 114500 0 3510 372855 3102 989712
+
+2. where to start from the code?
+--------------------------------------------------------------------------------
+my sily method,
+   git grep "\<interrupts\>" | grep proc
+
+In the mess of messages, I catch two lines.
+   fs/proc/Kconfig:	  It's totally cool; for example, "cat /proc/interrupts" gives
+   kernel/irq/Kconfig:# Use the generic /proc/interrupts implementation
+
+The first one is not what we want, then trace on the second one. In this file,
+it defines a macro.
+
+# Use the generic /proc/interrupts implementation
+config GENERIC_IRQ_SHOW
+       bool
+
+Let me find who is guarded by this macro.
+   git grep GENERIC_IRQ_SHOW
+
+This time it is more easy to catch the point.
+   kernel/irq/proc.c:#ifdef CONFIG_GENERIC_IRQ_SHOW
+
+In file kernel/irq/proc.c, the function show_interrupts() is guarded by the
+macro. And this function is assigned in file fs/proc/interrupts.c.
+
+Finally, this is the file we are looking for and here we start the journey.
+
+3. show_interrupts()
+--------------------------------------------------------------------------------
+Each time this function is called, the v contains the irq number and this
+function will output the information of the irq with this number.
+
+int show_interrupts(struct seq_file *p, void *v)
+{
+	static int prec;
+
+	unsigned long flags, any_count = 0;
+	int i = *(loff_t *) v, j;
+	struct irqaction *action;
+	struct irq_desc *desc;
+
+	if (i > ACTUAL_NR_IRQS)
+		return 0;
+
+	if (i == ACTUAL_NR_IRQS)
+		return arch_show_interrupts(p, prec);
+
+	/* print header and calculate the width of the first column */
+	if (i == 0) {
+		for (prec = 3, j = 1000; prec < 10 && j <= nr_irqs; ++prec)
+			j *= 10;
+
+		seq_printf(p, "%*s", prec + 8, "");
+		for_each_online_cpu(j)
+			seq_printf(p, "CPU%-8d", j);
+		seq_putc(p, '\n');
+	}
+
+	desc = irq_to_desc(i);
+	if (!desc)
+		return 0;
+
+	raw_spin_lock_irqsave(&desc->lock, flags);
+	for_each_online_cpu(j)
+		any_count |= kstat_irqs_cpu(i, j);
+	action = desc->action;
+	if (!action && !any_count)
+		goto out;
+
+	seq_printf(p, "%*d: ", prec, i);
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", kstat_irqs_cpu(i, j));
+
+	if (desc->irq_data.chip) {
+		if (desc->irq_data.chip->irq_print_chip)
+			desc->irq_data.chip->irq_print_chip(&desc->irq_data, p);
+		else if (desc->irq_data.chip->name)
+			seq_printf(p, " %8s", desc->irq_data.chip->name);
+		else
+			seq_printf(p, " %8s", "-");
+	} else {
+		seq_printf(p, " %8s", "None");
+	}
+#ifdef CONFIG_GENERIC_IRQ_SHOW_LEVEL
+	seq_printf(p, " %-8s", irqd_is_level_type(&desc->irq_data) ? "Level" : "Edge");
+#endif
+	if (desc->name)
+		seq_printf(p, "-%-8s", desc->name);
+
+	if (action) {
+		seq_printf(p, "  %s", action->name);
+		while ((action = action->next) != NULL)
+			seq_printf(p, ", %s", action->name);
+	}
+
+	seq_putc(p, '\n');
+out:
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
+	return 0;
+}
