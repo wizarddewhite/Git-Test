@@ -1,0 +1,291 @@
+1. pci_read_irq_line(), register an irq in the system
+--------------------------------------------------------------------------------
+; this function is called on power platform, while this is useful to
+; understand the general idea
+pci_read_irq_line(struct pci_dev *pci_dev)
+{
+	struct of_irq oirq;
+	unsigned int virq;
+
+	pr_debug("PCI: Try to map irq for %s...\n", pci_name(pci_dev));
+
+#ifdef DEBUG
+	memset(&oirq, 0xff, sizeof(oirq));
+#endif
+	/* Try to get a mapping from the device-tree */
+	if (of_irq_map_pci(pci_dev, &oirq)) {
+		u8 line, pin;
+
+		/* If that fails, lets fallback to what is in the config
+		 * space and map that through the default controller. We
+		 * also set the type to level low since that's what PCI
+		 * interrupts are. If your platform does differently, then
+		 * either provide a proper interrupt tree or don't use this
+		 * function.
+		 */
+		if (pci_read_config_byte(pci_dev, PCI_INTERRUPT_PIN, &pin))
+			return -1;
+		if (pin == 0)
+			return -1;
+		if (pci_read_config_byte(pci_dev, PCI_INTERRUPT_LINE, &line) ||
+		    line == 0xff || line == 0) {
+			return -1;
+		}
+		pr_debug(" No map ! Using line %d (pin %d) from PCI config\n",
+			 line, pin);
+
+		virq = irq_create_mapping(NULL, line);
+		if (virq != NO_IRQ)
+			irq_set_irq_type(virq, IRQ_TYPE_LEVEL_LOW);
+	} else {
+		pr_debug(" Got one, spec %d cells (0x%08x 0x%08x...) on %s\n",
+			 oirq.size, oirq.specifier[0], oirq.specifier[1],
+			 of_node_full_name(oirq.controller));
+
+		virq = irq_create_of_mapping(oirq.controller, oirq.specifier,
+					     oirq.size);
+	}
+	if(virq == NO_IRQ) {
+		pr_debug(" Failed to map !\n");
+		return -1;
+	}
+
+	pr_debug(" Mapped to linux irq %d\n", virq);
+
+	pci_dev->irq = virq; this information will be used in the driver
+
+	return 0;
+}
+
+1.1 irq_create_mapping
+--------------------------------------------------------------------------------
+irq_create_mapping(struct irq_domain *domain,
+				irq_hw_number_t hwirq)
+{
+	unsigned int hint;
+	int virq;
+
+	pr_debug("irq_create_mapping(0x%p, 0x%lx)\n", domain, hwirq);
+
+	/* Look for default domain if nececssary */
+	if (domain == NULL)
+		domain = irq_default_domain;
+	if (domain == NULL) {
+		pr_warning("irq_create_mapping called for"
+			   " NULL domain, hwirq=%lx\n", hwirq);
+		WARN_ON(1);
+		return 0;
+	}
+	pr_debug("-> using domain @%p\n", domain);
+
+	/* Check if mapping already exists */
+	virq = irq_find_mapping(domain, hwirq);
+	if (virq) {
+		pr_debug("-> existing mapping on virq %d\n", virq);
+		return virq;
+	}
+
+	/* Get a virtual interrupt number */
+	if (domain->revmap_type == IRQ_DOMAIN_MAP_LEGACY)
+		return irq_domain_legacy_revmap(domain, hwirq);
+
+	/* Allocate a virtual interrupt number */
+	hint = hwirq % nr_irqs;
+	if (hint == 0)
+		hint++;
+	virq = irq_alloc_desc_from(hint, of_node_to_nid(domain->of_node));
+	if (virq <= 0)
+		virq = irq_alloc_desc_from(1, of_node_to_nid(domain->of_node));
+	if (virq <= 0) {
+		pr_debug("-> virq allocation failed\n");
+		return 0;
+	}
+
+	if (irq_domain_associate(domain, virq, hwirq)) {
+		irq_free_desc(virq);
+		return 0;
+	}
+
+	pr_debug("irq %lu on domain %s mapped to virtual irq %u\n",
+		hwirq, of_node_full_name(domain->of_node), virq);
+
+	return virq;
+}
+
+1.1.1 irq_alloc_desc_from()
+--------------------------------------------------------------------------------
+; irq_alloc_desc_from is define to be __irq_alloc_descs()
+__irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
+		  struct module *owner)
+{
+	int start, ret;
+
+	if (!cnt)
+		return -EINVAL;
+
+	if (irq >= 0) {
+		if (from > irq)
+			return -EINVAL;
+		from = irq;
+	}
+
+	mutex_lock(&sparse_irq_lock);
+
+	start = bitmap_find_next_zero_area(allocated_irqs, IRQ_BITMAP_BITS,
+					   from, cnt, 0);
+	ret = -EEXIST;
+	if (irq >=0 && start != irq)
+		goto err;
+
+	if (start + cnt > nr_irqs) {
+		ret = irq_expand_nr_irqs(start + cnt);
+		if (ret)
+			goto err;
+	}
+
+	bitmap_set(allocated_irqs, start, cnt);
+	mutex_unlock(&sparse_irq_lock);
+	return alloc_descs(start, cnt, node, owner);
+
+err:
+	mutex_unlock(&sparse_irq_lock);
+	return ret;
+}
+
+1.1.1.1 alloc_descs()
+--------------------------------------------------------------------------------
+alloc_descs(unsigned int start, unsigned int cnt, int node,
+		       struct module *owner)
+{
+	struct irq_desc *desc;
+	int i;
+
+	for (i = 0; i < cnt; i++) {
+		desc = alloc_desc(start + i, node, owner);
+		if (!desc)
+			goto err;
+		mutex_lock(&sparse_irq_lock);
+		irq_insert_desc(start + i, desc);
+		mutex_unlock(&sparse_irq_lock);
+	}
+	return start;
+
+err:
+	for (i--; i >= 0; i--)
+		free_desc(start + i);
+
+	mutex_lock(&sparse_irq_lock);
+	bitmap_clear(allocated_irqs, start, cnt);
+	mutex_unlock(&sparse_irq_lock);
+	return -ENOMEM;
+}
+
+2. be_irq_register()
+--------------------------------------------------------------------------------
+be_irq_register(struct be_adapter *adapter)
+{
+	struct net_device *netdev = adapter->netdev;
+	int status;
+
+	if (msix_enabled(adapter)) {
+		status = be_msix_register(adapter);
+		if (status == 0)
+			goto done;
+		/* INTx is not supported for VF */
+		if (!be_physfn(adapter))
+			return status;
+	}
+
+	/* INTx */
+	netdev->irq = adapter->pdev->irq; sounds familiar? take a look in
+		                        ; pci_read_irq_line()
+	status = request_irq(netdev->irq, be_intx, IRQF_SHARED, netdev->name,
+			adapter);
+	if (status) {
+		dev_err(&adapter->pdev->dev,
+			"INTx request IRQ failed - err %d\n", status);
+		return status;
+	}
+done:
+	adapter->isr_registered = true;
+	return 0;
+}
+
+2.1 request_irq()
+--------------------------------------------------------------------------------
+static inline int __must_check
+request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags,
+	    const char *name, void *dev)
+{
+	return request_threaded_irq(irq, handler, NULL, flags, name, dev);
+}
+
+int request_threaded_irq(unsigned int irq, irq_handler_t handler,
+			 irq_handler_t thread_fn, unsigned long irqflags,
+			 const char *devname, void *dev_id)
+{
+	struct irqaction *action;
+	struct irq_desc *desc;
+	int retval;
+
+	/*
+	 * Sanity-check: shared interrupts must pass in a real dev-ID,
+	 * otherwise we'll have trouble later trying to figure out
+	 * which interrupt is which (messes up the interrupt freeing
+	 * logic etc).
+	 */
+	if ((irqflags & IRQF_SHARED) && !dev_id)
+		return -EINVAL;
+
+	desc = irq_to_desc(irq); get it from the system registry
+	if (!desc)
+		return -EINVAL;
+
+	if (!irq_settings_can_request(desc) ||
+	    WARN_ON(irq_settings_is_per_cpu_devid(desc)))
+		return -EINVAL;
+
+	if (!handler) {
+		if (!thread_fn)
+			return -EINVAL;
+		handler = irq_default_primary_handler;
+	}
+
+	action = kzalloc(sizeof(struct irqaction), GFP_KERNEL);
+	if (!action)
+		return -ENOMEM;
+
+	action->handler = handler;
+	action->thread_fn = thread_fn;
+	action->flags = irqflags;
+	action->name = devname;
+	action->dev_id = dev_id;
+
+	chip_bus_lock(desc);
+	retval = __setup_irq(irq, desc, action);
+	chip_bus_sync_unlock(desc);
+
+	if (retval)
+		kfree(action);
+
+#ifdef CONFIG_DEBUG_SHIRQ_FIXME
+	if (!retval && (irqflags & IRQF_SHARED)) {
+		/*
+		 * It's a shared IRQ -- the driver ought to be prepared for it
+		 * to happen immediately, so let's make sure....
+		 * We disable the irq to make sure that a 'real' IRQ doesn't
+		 * run in parallel with our fake.
+		 */
+		unsigned long flags;
+
+		disable_irq(irq);
+		local_irq_save(flags);
+
+		handler(irq, dev_id);
+
+		local_irq_restore(flags);
+		enable_irq(irq);
+	}
+#endif
+	return retval;
+}
