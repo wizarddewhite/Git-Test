@@ -108,6 +108,43 @@ static struct attribute_group attr_group = {
 	.attrs = attrs,
 };
 
+/*
+ * The "ltc" file where a static variable is read from and written to.
+ */
+static int ltc;
+static ssize_t ltc_show(struct kobject *kobj, struct kobj_attribute *attr,
+		char *buf)
+{
+	return sprintf(buf, "%d\n", ltc);
+}
+
+static ssize_t ltc_store(struct kobject *kobj, struct kobj_attribute *attr,
+		const char *buf, size_t count)
+{
+	sscanf(buf, "%du", &ltc);
+	return count;
+}
+
+static struct kobj_attribute ltc_attribute =
+	__ATTR(ltc, 0666, ltc_show, ltc_store);
+
+static int ltc1;
+static ssize_t ltc1_show(struct kobject *kobj, struct kobj_attribute *attr,
+		char *buf)
+{
+	return sprintf(buf, "%d\n", ltc1);
+}
+
+static ssize_t ltc1_store(struct kobject *kobj, struct kobj_attribute *attr,
+		const char *buf, size_t count)
+{
+	sscanf(buf, "%du", &ltc1);
+	return count;
+}
+
+static struct kobj_attribute ltc1_attribute =
+	__ATTR(ltc1, 0666, ltc1_show, ltc1_store);
+
 static struct kobject *example_kobj;
 
 static int __init example_init(void)
@@ -129,6 +166,14 @@ static int __init example_init(void)
 
 	/* Create the files associated with this kobject */
 	retval = sysfs_create_group(example_kobj, &attr_group);
+	if (retval)
+		kobject_put(example_kobj);
+
+	retval = sysfs_add_file_to_group(example_kobj, &ltc_attribute.attr, NULL);
+	if (retval)
+		kobject_put(example_kobj);
+
+	retval = sysfs_create_file(example_kobj, &ltc1_attribute.attr);
 	if (retval)
 		kobject_put(example_kobj);
 
