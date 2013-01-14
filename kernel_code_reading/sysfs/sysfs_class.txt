@@ -1,0 +1,124 @@
+1. classes_init(), /sys/class
+================================================================================
+static struct kset *class_kset;
+
+int __init classes_init(void)
+{
+	class_kset = kset_create_and_add("class", NULL, NULL);
+	if (!class_kset)
+		return -ENOMEM;
+	return 0;
+}
+
+2. pcibus_class_init(), /sys/class/pci_bus
+================================================================================
+static struct class pcibus_class = {
+	.name		= "pci_bus",
+	.dev_release	= &release_pcibus_dev,
+	.dev_attrs	= pcibus_dev_attrs,
+};
+
+static int __init pcibus_class_init(void)
+{
+	return class_register(&pcibus_class);
+}
+
+2.1 class_register()
+================================================================================
+/* This is a #define to keep the compiler from merging different
+ * instances of the __key variable */
+#define class_register(class)			\
+({						\
+	static struct lock_class_key __key;	\
+	__class_register(class, &__key);	\
+})
+
+struct class {
+	const char		*name;
+	struct module		*owner;
+
+	struct class_attribute		*class_attrs;
+	struct device_attribute		*dev_attrs;
+	struct bin_attribute		*dev_bin_attrs;
+	struct kobject			*dev_kobj;
+
+	int (*dev_uevent)(struct device *dev, struct kobj_uevent_env *env);
+	char *(*devnode)(struct device *dev, umode_t *mode);
+
+	void (*class_release)(struct class *class);
+	void (*dev_release)(struct device *dev);
+
+	int (*suspend)(struct device *dev, pm_message_t state);
+	int (*resume)(struct device *dev);
+
+	const struct kobj_ns_type_operations *ns_type;
+	const void *(*namespace)(struct device *dev);
+
+	const struct dev_pm_ops *pm;
+
+	struct subsys_private *p;
+};
+
+struct subsys_private {
+	struct kset subsys;
+	struct kset *devices_kset;
+	struct list_head interfaces;
+	struct mutex mutex;
+
+	struct kset *drivers_kset;
+	struct klist klist_devices;
+	struct klist klist_drivers;
+	struct blocking_notifier_head bus_notifier;
+	unsigned int drivers_autoprobe:1;
+	struct bus_type *bus;
+
+	struct kset glue_dirs;
+	struct class *class;
+};
+
+; cls->cp->subsys.kobj represents the /sys/class/pci_bus
+int __class_register(struct class *cls, struct lock_class_key *key)
+{
+	struct subsys_private *cp;
+	int error;
+
+	pr_debug("device class '%s': registering\n", cls->name);
+
+	cp = kzalloc(sizeof(*cp), GFP_KERNEL);
+	if (!cp)
+		return -ENOMEM;
+	klist_init(&cp->klist_devices, klist_class_dev_get, klist_class_dev_put);
+	INIT_LIST_HEAD(&cp->interfaces);
+	kset_init(&cp->glue_dirs);
+	__mutex_init(&cp->mutex, "subsys mutex", key);
+	error = kobject_set_name(&cp->subsys.kobj, "%s", cls->name);
+	if (error) {
+		kfree(cp);
+		return error;
+	}
+
+	/* set the default /sys/dev directory for devices of this class */
+	if (!cls->dev_kobj)
+		cls->dev_kobj = sysfs_dev_char_kobj;
+
+#if defined(CONFIG_BLOCK)
+	/* let the block class directory show up in the root of sysfs */
+	if (!sysfs_deprecated || cls != &block_class)
+		cp->subsys.kobj.kset = class_kset;
+#else
+	cp->subsys.kobj.kset = class_kset;
+#endif
+	cp->subsys.kobj.ktype = &class_ktype;
+	cp->class = cls;
+	cls->p = cp;
+
+	error = kset_register(&cp->subsys);
+	if (error) {
+		kfree(cp);
+		return error;
+	}
+	error = add_class_attrs(class_get(cls));
+	class_put(cls);
+	return error;
+}
+
