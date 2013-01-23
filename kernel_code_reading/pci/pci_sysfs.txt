@@ -1,0 +1,444 @@
+1. pcibus_class_init(), /sys/class/pci_bus
+================================================================================
+static struct class pcibus_class = {
+	.name		= "pci_bus",
+	.dev_release	= &release_pcibus_dev,
+	.dev_attrs	= pcibus_dev_attrs,
+};
+
+static int __init pcibus_class_init(void)
+{
+	return class_register(&pcibus_class);
+}
+
+1.1 class_register()
+================================================================================
+/* This is a #define to keep the compiler from merging different
+ * instances of the __key variable */
+#define class_register(class)			\
+({						\
+	static struct lock_class_key __key;	\
+	__class_register(class, &__key);	\
+})
+
+struct class {
+	const char		*name;
+	struct module		*owner;
+
+	struct class_attribute		*class_attrs;
+	struct device_attribute		*dev_attrs;
+	struct bin_attribute		*dev_bin_attrs;
+	struct kobject			*dev_kobj;
+
+	int (*dev_uevent)(struct device *dev, struct kobj_uevent_env *env);
+	char *(*devnode)(struct device *dev, umode_t *mode);
+
+	void (*class_release)(struct class *class);
+	void (*dev_release)(struct device *dev);
+
+	int (*suspend)(struct device *dev, pm_message_t state);
+	int (*resume)(struct device *dev);
+
+	const struct kobj_ns_type_operations *ns_type;
+	const void *(*namespace)(struct device *dev);
+
+	const struct dev_pm_ops *pm;
+
+	struct subsys_private *p;
+};
+
+struct subsys_private {
+	struct kset subsys;
+	struct kset *devices_kset;
+	struct list_head interfaces;
+	struct mutex mutex;
+
+	struct kset *drivers_kset;
+	struct klist klist_devices;
+	struct klist klist_drivers;
+	struct blocking_notifier_head bus_notifier;
+	unsigned int drivers_autoprobe:1;
+	struct bus_type *bus;
+
+	struct kset glue_dirs;
+	struct class *class;
+};
+
+; cls->cp->subsys.kobj represents the /sys/class/pci_bus
+int __class_register(struct class *cls, struct lock_class_key *key)
+{
+	struct subsys_private *cp;
+	int error;
+
+	pr_debug("device class '%s': registering\n", cls->name);
+
+	cp = kzalloc(sizeof(*cp), GFP_KERNEL);
+	if (!cp)
+		return -ENOMEM;
+	klist_init(&cp->klist_devices, klist_class_dev_get, klist_class_dev_put);
+	INIT_LIST_HEAD(&cp->interfaces);
+	kset_init(&cp->glue_dirs);
+	__mutex_init(&cp->mutex, "subsys mutex", key);
+	error = kobject_set_name(&cp->subsys.kobj, "%s", cls->name);
+	if (error) {
+		kfree(cp);
+		return error;
+	}
+
+	/* set the default /sys/dev directory for devices of this class */
+	if (!cls->dev_kobj)
+		cls->dev_kobj = sysfs_dev_char_kobj;
+
+#if defined(CONFIG_BLOCK)
+	/* let the block class directory show up in the root of sysfs */
+	if (!sysfs_deprecated || cls != &block_class)
+		cp->subsys.kobj.kset = class_kset;
+#else
+	cp->subsys.kobj.kset = class_kset;
+#endif
+	cp->subsys.kobj.ktype = &class_ktype;
+	cp->class = cls;
+	cls->p = cp;
+
+	error = kset_register(&cp->subsys);
+	if (error) {
+		kfree(cp);
+		return error;
+	}
+	error = add_class_attrs(class_get(cls));
+	class_put(cls);
+	return error;
+}
+
+
+2. pci_create_root_bus(), /sys/devices/pciXXXX:XX
+================================================================================
+struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
+		struct pci_ops *ops, void *sysdata, struct list_head *resources)
+{
+	int error;
+	struct pci_host_bridge *bridge;
+	struct pci_bus *b, *b2;
+	struct pci_host_bridge_window *window, *n;
+	struct resource *res;
+	resource_size_t offset;
+	char bus_addr[64];
+	char *fmt;
+
+	[...snip...]
+
+	bridge = pci_alloc_host_bridge(b);
+	if (!bridge)
+		goto err_out;
+
+	bridge->dev.parent = parent;
+	bridge->dev.release = pci_release_bus_bridge_dev;
+	dev_set_name(&bridge->dev, "pci%04x:%02x", pci_domain_nr(b), bus);
+	error = device_register(&bridge->dev);
+	if (error)
+		goto bridge_dev_reg_err;
+	b->bridge = get_device(&bridge->dev);
+	device_enable_async_suspend(b->bridge);
+	pci_set_bus_of_node(b);
+
+
+	[...snip...]
+
+}
+
+2.1. device_register(), /sys/devices/pciXXXX:XX
+================================================================================
+int device_register(struct device *dev)
+{
+	device_initialize(dev);
+	return device_add(dev);
+}
+
+2.1.1 device_add(),
+================================================================================
+int device_add(struct device *dev)
+{
+	struct device *parent = NULL;
+	struct kobject *kobj;
+	struct class_interface *class_intf;
+	int error = -EINVAL;
+
+	dev = get_device(dev);
+	if (!dev)
+		goto done;
+
+	if (!dev->p) {
+		error = device_private_init(dev);
+		if (error)
+			goto done;
+	}
+
+	/*
+	 * for statically allocated devices, which should all be converted
+	 * some day, we need to initialize the name. We prevent reading back
+	 * the name, and force the use of dev_name()
+	 */
+	if (dev->init_name) {
+		dev_set_name(dev, "%s", dev->init_name);
+		dev->init_name = NULL;
+	}
+
+	/* subsystems can specify simple device enumeration */
+	if (!dev_name(dev) && dev->bus && dev->bus->dev_name)
+		dev_set_name(dev, "%s%u", dev->bus->dev_name, dev->id);
+
+	if (!dev_name(dev)) {
+		error = -EINVAL;
+		goto name_error;
+	}
+
+	pr_debug("device: '%s': %s\n", dev_name(dev), __func__);
+
+	parent = get_device(dev->parent);
+	kobj = get_device_parent(dev, parent);
+	if (kobj)
+		dev->kobj.parent = kobj;
+
+	/* use parent numa_node */
+	if (parent)
+		set_dev_node(dev, dev_to_node(parent));
+
+	/* first, register with generic layer. */
+	/* we require the name to be set before, and pass NULL */
+	error = kobject_add(&dev->kobj, dev->kobj.parent, NULL);
+	if (error)
+		goto Error;
+
+	/* notify platform of device entry */
+	if (platform_notify)
+		platform_notify(dev);
+
+	error = device_create_file(dev, &uevent_attr);
+	if (error)
+		goto attrError;
+
+	if (MAJOR(dev->devt)) {
+		error = device_create_file(dev, &devt_attr);
+		if (error)
+			goto ueventattrError;
+
+		error = device_create_sys_dev_entry(dev);
+		if (error)
+			goto devtattrError;
+
+		devtmpfs_create_node(dev);
+	}
+
+	error = device_add_class_symlinks(dev);
+	if (error)
+		goto SymlinkError;
+	error = device_add_attrs(dev);
+	if (error)
+		goto AttrsError;
+	error = bus_add_device(dev);
+	if (error)
+		goto BusError;
+	error = dpm_sysfs_add(dev);
+	if (error)
+		goto DPMError;
+	device_pm_add(dev);
+
+	/* Notify clients of device addition.  This call must come
+	 * after dpm_sysfs_add() and before kobject_uevent().
+	 */
+	if (dev->bus)
+		blocking_notifier_call_chain(&dev->bus->p->bus_notifier,
+					     BUS_NOTIFY_ADD_DEVICE, dev);
+
+	kobject_uevent(&dev->kobj, KOBJ_ADD);
+	bus_probe_device(dev);
+	if (parent)
+		klist_add_tail(&dev->p->knode_parent,
+			       &parent->p->klist_children);
+
+	if (dev->class) {
+		mutex_lock(&dev->class->p->mutex);
+		/* tie the class to the device */
+		klist_add_tail(&dev->knode_class,
+			       &dev->class->p->klist_devices);
+
+		/* notify any interfaces that the device is here */
+		list_for_each_entry(class_intf,
+				    &dev->class->p->interfaces, node)
+			if (class_intf->add_dev)
+				class_intf->add_dev(dev, class_intf);
+		mutex_unlock(&dev->class->p->mutex);
+	}
+done:
+	put_device(dev);
+	return error;
+ DPMError:
+	bus_remove_device(dev);
+ BusError:
+	device_remove_attrs(dev);
+ AttrsError:
+	device_remove_class_symlinks(dev);
+ SymlinkError:
+	if (MAJOR(dev->devt))
+		devtmpfs_delete_node(dev);
+	if (MAJOR(dev->devt))
+		device_remove_sys_dev_entry(dev);
+ devtattrError:
+	if (MAJOR(dev->devt))
+		device_remove_file(dev, &devt_attr);
+ ueventattrError:
+	device_remove_file(dev, &uevent_attr);
+ attrError:
+	kobject_uevent(&dev->kobj, KOBJ_REMOVE);
+	kobject_del(&dev->kobj);
+ Error:
+	cleanup_device_parent(dev);
+	if (parent)
+		put_device(parent);
+name_error:
+	kfree(dev->p);
+	dev->p = NULL;
+	goto done;
+}
+
+3. pci_bus_add_device(), this will create sysfs file for each individual pci device
+================================================================================
+int pci_bus_add_device(struct pci_dev *dev)
+{
+	int retval;
+
+	pci_fixup_device(pci_fixup_final, dev);
+	retval = device_add(&dev->dev);
+	if (retval)
+		return retval;
+
+	dev->is_added = 1;
+	pci_proc_attach_device(dev);
+	pci_create_sysfs_dev_files(dev);
+	return 0;
+}
+
+3.1 pci_proc_attach_device(), this will create file under /proc/bus/pci/xx 
+================================================================================
+; this proc file is attached to bus->procdir
+int pci_proc_attach_device(struct pci_dev *dev)
+{
+	struct pci_bus *bus = dev->bus;
+	struct proc_dir_entry *e;
+	char name[16];
+
+	if (!proc_initialized)
+		return -EACCES;
+
+	if (!bus->procdir) {
+		if (pci_proc_domain(bus)) {
+			sprintf(name, "%04x:%02x", pci_domain_nr(bus),
+					bus->number);
+		} else {
+			sprintf(name, "%02x", bus->number);
+		}
+		bus->procdir = proc_mkdir(name, proc_bus_pci_dir);
+		if (!bus->procdir)
+			return -ENOMEM;
+	}
+
+	sprintf(name, "%02x.%x", PCI_SLOT(dev->devfn), PCI_FUNC(dev->devfn));
+	e = proc_create_data(name, S_IFREG | S_IRUGO | S_IWUSR, bus->procdir,
+			     &proc_bus_pci_operations, dev);
+	if (!e)
+		return -ENOMEM;
+	e->size = dev->cfg_size;
+	dev->procent = e;
+
+	return 0;
+}
+
+3.2 pci_create_sysfs_dev_files(), /sys/devices/pci0000:00/0000:00:00.0
+================================================================================
+int __must_check pci_create_sysfs_dev_files (struct pci_dev *pdev)
+{
+	int retval;
+	int rom_size = 0;
+	struct bin_attribute *attr;
+
+	if (!sysfs_initialized)
+		return -EACCES;
+
+	; config space
+	if (pdev->cfg_size < PCI_CFG_SPACE_EXP_SIZE)
+		retval = sysfs_create_bin_file(&pdev->dev.kobj, &pci_config_attr);
+	else
+		retval = sysfs_create_bin_file(&pdev->dev.kobj, &pcie_config_attr);
+	if (retval)
+		goto err;
+
+	; reousrce[0-6]
+	retval = pci_create_resource_files(pdev);
+	if (retval)
+		goto err_config_file;
+
+	if (pci_resource_len(pdev, PCI_ROM_RESOURCE))
+		rom_size = pci_resource_len(pdev, PCI_ROM_RESOURCE);
+	else if (pdev->resource[PCI_ROM_RESOURCE].flags & IORESOURCE_ROM_SHADOW)
+		rom_size = 0x20000;
+
+	/* If the device has a ROM, try to expose it in sysfs. */
+	if (rom_size) {
+		attr = kzalloc(sizeof(*attr), GFP_ATOMIC);
+		if (!attr) {
+			retval = -ENOMEM;
+			goto err_resource_files;
+		}
+		sysfs_bin_attr_init(attr);
+		attr->size = rom_size;
+		attr->attr.name = "rom";
+		attr->attr.mode = S_IRUSR | S_IWUSR;
+		attr->read = pci_read_rom;
+		attr->write = pci_write_rom;
+		retval = sysfs_create_bin_file(&pdev->dev.kobj, attr);
+		if (retval) {
+			kfree(attr);
+			goto err_resource_files;
+		}
+		pdev->rom_attr = attr;
+	}
+
+	if ((pdev->class >> 8) == PCI_CLASS_DISPLAY_VGA) {
+		retval = device_create_file(&pdev->dev, &vga_attr);
+		if (retval)
+			goto err_rom_file;
+	}
+
+	/* add platform-specific attributes */
+	retval = pcibios_add_platform_entries(pdev);
+	if (retval)
+		goto err_vga_file;
+
+	/* add sysfs entries for various capabilities */
+	retval = pci_create_capabilities_sysfs(pdev);
+	if (retval)
+		goto err_vga_file;
+
+	pci_create_firmware_label_files(pdev);
+
+	return 0;
+
+err_vga_file:
+	if ((pdev->class >> 8) == PCI_CLASS_DISPLAY_VGA)
+		device_remove_file(&pdev->dev, &vga_attr);
+err_rom_file:
+	if (rom_size) {
+		sysfs_remove_bin_file(&pdev->dev.kobj, pdev->rom_attr);
+		kfree(pdev->rom_attr);
+		pdev->rom_attr = NULL;
+	}
+err_resource_files:
+	pci_remove_resource_files(pdev);
+err_config_file:
+	if (pdev->cfg_size < PCI_CFG_SPACE_EXP_SIZE)
+		sysfs_remove_bin_file(&pdev->dev.kobj, &pci_config_attr);
+	else
+		sysfs_remove_bin_file(&pdev->dev.kobj, &pcie_config_attr);
+err:
+	return retval;
+}
