@@ -1,27 +1,80 @@
 1. bus_register() drivers/base/bus.c
 ================================================================================
-int bus_register(struct bus_type *bus)
+int __bus_register(struct bus_type *bus, struct lock_class_key *key)
+{
+	int retval;
 	struct subsys_private *priv;
+
+	priv = kzalloc(sizeof(struct subsys_private), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
 	priv->bus = bus;
 	bus->p = priv;
-	priv->subsys.kobj.kset = bus_kset;
+
+	BLOCKING_INIT_NOTIFIER_HEAD(&priv->bus_notifier);
+
+	retval = kobject_set_name(&priv->subsys.kobj, "%s", bus->name);
+	if (retval)
+		goto out;
+
+	priv->subsys.kobj.kset = bus_kset; /sys/bus
 	priv->subsys.kobj.ktype = &bus_ktype;
 	priv->drivers_autoprobe = 1;
 
+	; for pci_bus_type it will create a dir /sys/bus/pci
 	retval = kset_register(&priv->subsys);
+	if (retval)
+		goto out;
 
 	retval = bus_create_file(bus, &bus_attr_uevent);
+	if (retval)
+		goto bus_uevent_fail;
 
+	; for pci_bus_type it will create a dir /sys/bus/pci/devices
 	priv->devices_kset = kset_create_and_add("devices", NULL,
 						 &priv->subsys.kobj);
+	if (!priv->devices_kset) {
+		retval = -ENOMEM;
+		goto bus_devices_fail;
+	}
 
+	; for pci_bus_type it will create a dir /sys/bus/pci/drivers
 	priv->drivers_kset = kset_create_and_add("drivers", NULL,
 						 &priv->subsys.kobj);
+	if (!priv->drivers_kset) {
+		retval = -ENOMEM;
+		goto bus_drivers_fail;
+	}
 
+	INIT_LIST_HEAD(&priv->interfaces);
+	__mutex_init(&priv->mutex, "subsys mutex", key);
 	klist_init(&priv->klist_devices, klist_devices_get, klist_devices_put);
 	klist_init(&priv->klist_drivers, NULL, NULL);
 
 	retval = add_probe_files(bus);
+	if (retval)
+		goto bus_probe_files_fail;
 
 	retval = bus_add_attrs(bus);
+	if (retval)
+		goto bus_attrs_fail;
 
+	pr_debug("bus: '%s': registered\n", bus->name);
+	return 0;
+
+bus_attrs_fail:
+	remove_probe_files(bus);
+bus_probe_files_fail:
+	kset_unregister(bus->p->drivers_kset);
+bus_drivers_fail:
+	kset_unregister(bus->p->devices_kset);
+bus_devices_fail:
+	bus_remove_file(bus, &bus_attr_uevent);
+bus_uevent_fail:
+	kset_unregister(&bus->p->subsys);
+out:
+	kfree(bus->p);
+	bus->p = NULL;
+	return retval;
+}
