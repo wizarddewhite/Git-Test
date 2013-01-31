@@ -1,0 +1,182 @@
+1. pcie_portdrv_init()
+================================================================================
+static int __init pcie_portdrv_init(void)
+{
+	int retval;
+
+	if (pcie_ports_disabled)
+		return pci_register_driver(&pcie_portdriver);
+
+	dmi_check_system(pcie_portdrv_dmi_table);
+
+	retval = pcie_port_bus_register();
+	if (retval) {
+		printk(KERN_WARNING "PCIE: bus_register error: %d\n", retval);
+		goto out;
+	}
+	retval = pci_register_driver(&pcie_portdriver);
+	if (retval)
+		pcie_port_bus_unregister();
+ out:
+	return retval;
+}
+
+1.1 pcie_port_bus_register(), create the pci_express bus
+================================================================================
+; this bus appears at /sys/bus/pci_express
+struct bus_type pcie_port_bus_type = {
+	.name 		= "pci_express",
+	.match 		= pcie_port_bus_match,
+};
+
+int pcie_port_bus_register(void)
+{
+	return bus_register(&pcie_port_bus_type);
+}
+
+1.2 pcie_portdriver
+================================================================================
+static struct pci_driver pcie_portdriver = {
+	.name		= "pcieport",
+	.id_table	= &port_pci_ids[0],
+
+	.probe		= pcie_portdrv_probe,
+	.remove		= pcie_portdrv_remove,
+
+	.err_handler 	= &pcie_portdrv_err_handler,
+
+	.driver.pm 	= PCIE_PORTDRV_PM_OPS,
+};
+
+1.2.1 pcie_portdrv_probe(), just work for specific pci devices
+================================================================================
+static int __devinit pcie_portdrv_probe(struct pci_dev *dev,
+					const struct pci_device_id *id)
+{
+	int status;
+
+	if (!pci_is_pcie(dev) ||
+	    ((pci_pcie_type(dev) != PCI_EXP_TYPE_ROOT_PORT) &&
+	     (pci_pcie_type(dev) != PCI_EXP_TYPE_UPSTREAM) &&
+	     (pci_pcie_type(dev) != PCI_EXP_TYPE_DOWNSTREAM)))
+		return -ENODEV;
+
+	if (!dev->irq && dev->pin) {
+		dev_warn(&dev->dev, "device [%04x:%04x] has invalid IRQ; "
+			 "check vendor BIOS\n", dev->vendor, dev->device);
+	}
+	status = pcie_port_device_register(dev);
+	if (status)
+		return status;
+
+	pci_save_state(dev);
+	/*
+	 * D3cold may not work properly on some PCIe port, so disable
+	 * it by default.
+	 */
+	dev->d3cold_allowed = false;
+	if (!pci_match_id(port_runtime_pm_black_list, dev))
+		pm_runtime_put_noidle(&dev->dev);
+
+	return 0;
+}
+
+1.2.1.1 pcie_port_device_register(), one pcie device for one capability
+================================================================================
+int pcie_port_device_register(struct pci_dev *dev)
+{
+	int status, capabilities, i, nr_service;
+	int irqs[PCIE_PORT_DEVICE_MAXSERVICES];
+
+	/* Enable PCI Express port device */
+	status = pci_enable_device(dev);
+	if (status)
+		return status;
+
+	/* Get and check PCI Express port services */
+	capabilities = get_port_device_capability(dev);
+	if (!capabilities)
+		return 0;
+
+	pci_set_master(dev);
+	/*
+	 * Initialize service irqs. Don't use service devices that
+	 * require interrupts if there is no way to generate them.
+	 */
+	status = init_service_irqs(dev, irqs, capabilities);
+	if (status) {
+		capabilities &= PCIE_PORT_SERVICE_VC;
+		if (!capabilities)
+			goto error_disable;
+	}
+
+	/* Allocate child services if any */
+	status = -ENODEV;
+	nr_service = 0;
+	for (i = 0; i < PCIE_PORT_DEVICE_MAXSERVICES; i++) {
+		int service = 1 << i;
+		if (!(capabilities & service))
+			continue;
+		if (!pcie_device_init(dev, service, irqs[i]))
+			nr_service++;
+	}
+	if (!nr_service)
+		goto error_cleanup_irqs;
+
+	return 0;
+
+error_cleanup_irqs:
+	cleanup_service_irqs(dev);
+error_disable:
+	pci_disable_device(dev);
+	return status;
+}
+
+1.2.1.1.1 pcie_device_init(), pcie device is created and register to system
+================================================================================
+static int pcie_device_init(struct pci_dev *pdev, int service, int irq)
+{
+	int retval;
+	struct pcie_device *pcie;
+	struct device *device;
+
+	pcie = kzalloc(sizeof(*pcie), GFP_KERNEL);
+	if (!pcie)
+		return -ENOMEM;
+	pcie->port = pdev;
+	pcie->irq = irq;
+	pcie->service = service;
+
+	/* Initialize generic device interface */
+	device = &pcie->device;
+	device->bus = &pcie_port_bus_type;
+	device->release = release_pcie_device;	/* callback to free pcie dev */
+	dev_set_name(device, "%s:pcie%02x",
+		     pci_name(pdev),
+		     get_descriptor_id(pci_pcie_type(pdev), service));
+	device->parent = &pdev->dev;
+	device_enable_async_suspend(device);
+
+	retval = device_register(device);
+	if (retval)
+		kfree(pcie);
+	else
+		get_device(device);
+	return retval;
+}
+
+1.2.1.2 pci_save_state()
+================================================================================
+int pci_save_state(struct pci_dev *dev)
+{
+	int i;
+	/* XXX: 100% dword access ok here? */
+	for (i = 0; i < 16; i++)
+		pci_read_config_dword(dev, i * 4, &dev->saved_config_space[i]);
+	dev->state_saved = true;
+	if ((i = pci_save_pcie_state(dev)) != 0)
+		return i;
+	if ((i = pci_save_pcix_state(dev)) != 0)
+		return i;
+	return 0;
+}
