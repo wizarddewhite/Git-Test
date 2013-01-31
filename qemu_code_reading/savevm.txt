@@ -1,0 +1,355 @@
+1. do_savevm()
+================================================================================
+void do_savevm(Monitor *mon, const QDict *qdict)
+{
+    BlockDriverState *bs, *bs1;
+    QEMUSnapshotInfo sn1, *sn = &sn1, old_sn1, *old_sn = &old_sn1;
+    int ret;
+    QEMUFile *f;
+    int saved_vm_running;
+    uint64_t vm_state_size;
+    qemu_timeval tv;
+    struct tm tm;
+    ; "name" is the name of the snapshot image name
+    const char *name = qdict_get_try_str(qdict, "name");
+
+    /* Verify if there is a device that doesn't support snapshots and is writable */
+    bs = NULL;
+    while ((bs = bdrv_next(bs))) {
+
+        if (!bdrv_is_inserted(bs) || bdrv_is_read_only(bs)) {
+            continue;
+        }
+
+        if (!bdrv_can_snapshot(bs)) {
+            monitor_printf(mon, "Device '%s' is writable but does not support snapshots.\n",
+                               bdrv_get_device_name(bs));
+            return;
+        }
+    }
+
+    bs = bdrv_snapshots();
+    if (!bs) {
+        monitor_printf(mon, "No block device can accept snapshots\n");
+        return;
+    }
+
+    saved_vm_running = runstate_is_running();
+    vm_stop(RUN_STATE_SAVE_VM);
+
+    memset(sn, 0, sizeof(*sn));
+
+    /* fill auxiliary fields */
+    qemu_gettimeofday(&tv);
+    sn->date_sec = tv.tv_sec;
+    sn->date_nsec = tv.tv_usec * 1000;
+    sn->vm_clock_nsec = qemu_get_clock_ns(vm_clock);
+
+    if (name) {
+        ret = bdrv_snapshot_find(bs, old_sn, name);
+        if (ret >= 0) {
+            pstrcpy(sn->name, sizeof(sn->name), old_sn->name);
+            pstrcpy(sn->id_str, sizeof(sn->id_str), old_sn->id_str);
+        } else {
+            pstrcpy(sn->name, sizeof(sn->name), name);
+        }
+    } else {
+        /* cast below needed for OpenBSD where tv_sec is still 'long' */
+        localtime_r((const time_t *)&tv.tv_sec, &tm);
+        strftime(sn->name, sizeof(sn->name), "vm-%Y%m%d%H%M%S", &tm);
+    }
+
+    /* Delete old snapshots of the same name */
+    if (name && del_existing_snapshots(mon, name) < 0) {
+        goto the_end;
+    }
+
+    /* save the VM state */
+    f = qemu_fopen_bdrv(bs, 1);
+    if (!f) {
+        monitor_printf(mon, "Could not open VM state file\n");
+        goto the_end;
+    }
+    ret = qemu_savevm_state(f);
+    vm_state_size = qemu_ftell(f);
+    qemu_fclose(f);
+    if (ret < 0) {
+        monitor_printf(mon, "Error %d while writing VM\n", ret);
+        goto the_end;
+    }
+
+    /* create the snapshots */
+
+    bs1 = NULL;
+    while ((bs1 = bdrv_next(bs1))) {
+        if (bdrv_can_snapshot(bs1)) {
+            /* Write VM state size only to the image that contains the state */
+            sn->vm_state_size = (bs == bs1 ? vm_state_size : 0);
+            ret = bdrv_snapshot_create(bs1, sn);
+            if (ret < 0) {
+                monitor_printf(mon, "Error while creating snapshot on '%s'\n",
+                               bdrv_get_device_name(bs1));
+            }
+        }
+    }
+
+ the_end:
+    if (saved_vm_running)
+        vm_start();
+}
+
+1.1 vm_stop()
+================================================================================
+void vm_stop(RunState state)
+{
+    if (qemu_in_vcpu_thread()) {
+        qemu_system_vmstop_request(state);
+        /*
+         * FIXME: should not return to device code in case
+         * vm_stop() has been requested.
+         */
+        cpu_stop_current();
+        return;
+    }
+    do_vm_stop(state);
+}
+
+1.1.1 do_vm_stop()
+================================================================================
+static void do_vm_stop(RunState state)
+{
+    if (runstate_is_running()) {
+        cpu_disable_ticks();
+        pause_all_vcpus();
+        runstate_set(state);
+        vm_state_notify(0, state);
+        bdrv_drain_all();
+        bdrv_flush_all();
+        monitor_protocol_event(QEVENT_STOP, NULL);
+    }
+}
+
+1.2 qemu_savevm_state() 
+================================================================================
+static int qemu_savevm_state(QEMUFile *f)
+{
+    int ret;
+    MigrationParams params = {
+        .blk = 0,
+        .shared = 0
+    };
+
+    if (qemu_savevm_state_blocked(NULL)) {
+        ret = -EINVAL;
+        goto out;
+    }
+
+    ret = qemu_savevm_state_begin(f, &params);
+    if (ret < 0)
+        goto out;
+
+    do {
+        ret = qemu_savevm_state_iterate(f);
+        if (ret < 0)
+            goto out;
+    } while (ret == 0);
+
+    ret = qemu_savevm_state_complete(f);
+
+out:
+    if (ret == 0) {
+        ret = qemu_file_get_error(f);
+    }
+
+    return ret;
+}
+
+1.2.1 qemu_savevm_state_blocked()
+================================================================================
+bool qemu_savevm_state_blocked(Error **errp)
+{
+    SaveStateEntry *se;
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        if (se->no_migrate) {
+            error_set(errp, QERR_MIGRATION_NOT_SUPPORTED, se->idstr);
+            return true;
+        }
+    }
+    return false;
+}
+
+1.2.2 qemu_savevm_state_begin()
+================================================================================
+int qemu_savevm_state_begin(QEMUFile *f,
+                            const MigrationParams *params)
+{
+    SaveStateEntry *se;
+    int ret;
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        if (!se->ops || !se->ops->set_params) {
+            continue;
+        }
+        se->ops->set_params(params, se->opaque);
+    }
+    
+    qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
+    qemu_put_be32(f, QEMU_VM_FILE_VERSION);
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        int len;
+
+        if (!se->ops || !se->ops->save_live_setup) {
+            continue;
+        }
+        if (se->ops && se->ops->is_active) {
+            if (!se->ops->is_active(se->opaque)) {
+                continue;
+            }
+        }
+        /* Section type */
+        qemu_put_byte(f, QEMU_VM_SECTION_START);
+        qemu_put_be32(f, se->section_id);
+
+        /* ID string */
+        len = strlen(se->idstr);
+        qemu_put_byte(f, len);
+        qemu_put_buffer(f, (uint8_t *)se->idstr, len);
+
+        qemu_put_be32(f, se->instance_id);
+        qemu_put_be32(f, se->version_id);
+
+        ret = se->ops->save_live_setup(f, se->opaque);
+        if (ret < 0) {
+            qemu_savevm_state_cancel();
+            return ret;
+        }
+    }
+    ret = qemu_file_get_error(f);
+    if (ret != 0) {
+        qemu_savevm_state_cancel();
+    }
+
+    return ret;
+
+}
+
+1.2.3 qemu_savevm_state_iterate()
+================================================================================
+int qemu_savevm_state_iterate(QEMUFile *f)
+{
+    SaveStateEntry *se;
+    int ret = 1;
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        if (!se->ops || !se->ops->save_live_iterate) {
+            continue;
+        }
+        if (se->ops && se->ops->is_active) {
+            if (!se->ops->is_active(se->opaque)) {
+                continue;
+            }
+        }
+        if (qemu_file_rate_limit(f)) {
+            return 0;
+        }
+        trace_savevm_section_start();
+        /* Section type */
+        qemu_put_byte(f, QEMU_VM_SECTION_PART);
+        qemu_put_be32(f, se->section_id);
+
+        ret = se->ops->save_live_iterate(f, se->opaque);
+        trace_savevm_section_end(se->section_id);
+
+        if (ret <= 0) {
+            /* Do not proceed to the next vmstate before this one reported
+               completion of the current stage. This serializes the migration
+               and reduces the probability that a faster changing state is
+               synchronized over and over again. */
+            break;
+        }
+    }
+    if (ret != 0) {
+        return ret;
+    }
+    ret = qemu_file_get_error(f);
+    if (ret != 0) {
+        qemu_savevm_state_cancel();
+    }
+    return ret;
+}
+
+1.2.4 qemu_savevm_state_complete()
+================================================================================
+int qemu_savevm_state_complete(QEMUFile *f)
+{
+    SaveStateEntry *se;
+    int ret;
+
+    cpu_synchronize_all_states();
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        if (!se->ops || !se->ops->save_live_complete) {
+            continue;
+        }
+        if (se->ops && se->ops->is_active) {
+            if (!se->ops->is_active(se->opaque)) {
+                continue;
+            }
+        }
+        trace_savevm_section_start();
+        /* Section type */
+        qemu_put_byte(f, QEMU_VM_SECTION_END);
+        qemu_put_be32(f, se->section_id);
+
+        ret = se->ops->save_live_complete(f, se->opaque);
+        trace_savevm_section_end(se->section_id);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        int len;
+
+        if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
+	    continue;
+        }
+        trace_savevm_section_start();
+        /* Section type */
+        qemu_put_byte(f, QEMU_VM_SECTION_FULL);
+        qemu_put_be32(f, se->section_id);
+
+        /* ID string */
+        len = strlen(se->idstr);
+        qemu_put_byte(f, len);
+        qemu_put_buffer(f, (uint8_t *)se->idstr, len);
+
+        qemu_put_be32(f, se->instance_id);
+        qemu_put_be32(f, se->version_id);
+
+        vmstate_save(f, se);
+        trace_savevm_section_end(se->section_id);
+    }
+
+    qemu_put_byte(f, QEMU_VM_EOF);
+
+    return qemu_file_get_error(f);
+}
+
+1.3 bdrv_snapshot_create()
+================================================================================
+
+1.4 vm_start()
+================================================================================
+void vm_start(void)
+{
+    if (!runstate_is_running()) {
+        cpu_enable_ticks();
+        runstate_set(RUN_STATE_RUNNING);
+        vm_state_notify(1, RUN_STATE_RUNNING);
+        resume_all_vcpus();
+        monitor_protocol_event(QEVENT_RESUME, NULL);
+    }
+}
