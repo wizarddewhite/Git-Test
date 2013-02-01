@@ -134,6 +134,7 @@ error_disable:
 
 1.2.1.1.1 pcie_device_init(), pcie device is created and register to system
 ================================================================================
+; the pcie device's parent is the pci device
 static int pcie_device_init(struct pci_dev *pdev, int service, int irq)
 {
 	int retval;
@@ -179,4 +180,46 @@ int pci_save_state(struct pci_dev *dev)
 	if ((i = pci_save_pcix_state(dev)) != 0)
 		return i;
 	return 0;
+}
+
+2. pcie_port_service_register(), register a service driver
+================================================================================
+; this driver is under /sys/bus/pci_express/drivers
+int pcie_port_service_register(struct pcie_port_service_driver *new)
+{
+	if (pcie_ports_disabled)
+		return -ENODEV;
+
+	new->driver.name = (char *)new->name;
+	new->driver.bus = &pcie_port_bus_type;
+	new->driver.probe = pcie_port_probe_service;
+	new->driver.remove = pcie_port_remove_service;
+	new->driver.shutdown = pcie_port_shutdown_service;
+
+	return driver_register(&new->driver);
+}
+
+2.1 pcie_port_probe_service(), then call the probe function in service driver
+================================================================================
+static int pcie_port_probe_service(struct device *dev)
+{
+	struct pcie_device *pciedev;
+	struct pcie_port_service_driver *driver;
+	int status;
+
+	if (!dev || !dev->driver)
+		return -ENODEV;
+
+	driver = to_service_driver(dev->driver);
+	if (!driver || !driver->probe)
+		return -ENODEV;
+
+	pciedev = to_pcie_device(dev);
+	status = driver->probe(pciedev);
+	if (!status) {
+		dev_printk(KERN_DEBUG, dev, "service driver %s loaded\n",
+			driver->name);
+		get_device(dev);
+	}
+	return status;
 }
