@@ -1,5 +1,11 @@
-1. pcie_portdrv_init()
+1. pcie_portdrv_init(), create bus "pci_express" and pcie_device
 ================================================================================
+; PCI Driver "pcieport" under bus "pci" ---> pcie_device under bus "pci_express" 
+;
+; This pcie_portdrv_init will:
+; 1. create the "pci_express" bus
+; 2. create those pcie_device
+
 static int __init pcie_portdrv_init(void)
 {
 	int retval;
@@ -34,8 +40,15 @@ int pcie_port_bus_register(void)
 	return bus_register(&pcie_port_bus_type);
 }
 
-1.2 pcie_portdriver
+1.2 pcie_portdriver, create pcie_device
 ================================================================================
+; this driver just match bridges
+static const struct pci_device_id port_pci_ids[] = { {
+	/* handle any PCI-Express port */
+	PCI_DEVICE_CLASS(((PCI_CLASS_BRIDGE_PCI << 8) | 0x00), ~0),
+	}, { /* end: all zeroes */ }
+};
+
 static struct pci_driver pcie_portdriver = {
 	.name		= "pcieport",
 	.id_table	= &port_pci_ids[0],
@@ -182,7 +195,7 @@ int pci_save_state(struct pci_dev *dev)
 	return 0;
 }
 
-2. pcie_port_service_register(), register a service driver
+2. pcie_port_service_register(), API to register a service driver for a pcie_device
 ================================================================================
 ; this driver is under /sys/bus/pci_express/drivers
 int pcie_port_service_register(struct pcie_port_service_driver *new)
