@@ -42,7 +42,7 @@ in file include/linux/init.h
 
 So we see for a loadable module, module_init() will call init_module().
 
-3. definition of init_module()
+3. definition of init_module(), kernel/module.c
 --------------------------------------------------------------------------------
 /* This is where the real work happens */
 SYSCALL_DEFINE3(init_module, void __user *, umod,
