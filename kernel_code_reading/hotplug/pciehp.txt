@@ -274,6 +274,74 @@ static int pcie_init_slot(struct controller *ctrl)
 	return 0;
 }
 
+2.2.2.1 pciehp_queue_pushbutton_work()
+================================================================================
+void pciehp_queue_pushbutton_work(struct work_struct *work)
+{
+	struct slot *p_slot = container_of(work, struct slot, work.work);
+	struct power_work_info *info;
+
+	info = kmalloc(sizeof(*info), GFP_KERNEL);
+	if (!info) {
+		ctrl_err(p_slot->ctrl, "%s: Cannot allocate memory\n",
+			 __func__);
+		return;
+	}
+	info->p_slot = p_slot;
+	INIT_WORK(&info->work, pciehp_power_thread);
+
+	mutex_lock(&p_slot->lock);
+	switch (p_slot->state) {
+	case BLINKINGOFF_STATE:
+		p_slot->state = POWEROFF_STATE;
+		break;
+	case BLINKINGON_STATE:
+		p_slot->state = POWERON_STATE;
+		break;
+	default:
+		kfree(info);
+		goto out;
+	}
+	queue_work(pciehp_wq, &info->work);
+ out:
+	mutex_unlock(&p_slot->lock);
+}
+
+2.2.2.1.1 pciehp_power_thread()
+================================================================================
+static void pciehp_power_thread(struct work_struct *work)
+{
+	struct power_work_info *info =
+		container_of(work, struct power_work_info, work);
+	struct slot *p_slot = info->p_slot;
+
+	mutex_lock(&p_slot->lock);
+	switch (p_slot->state) {
+	case POWEROFF_STATE:
+		mutex_unlock(&p_slot->lock);
+		ctrl_dbg(p_slot->ctrl,
+			 "Disabling domain:bus:device=%04x:%02x:00\n",
+			 pci_domain_nr(p_slot->ctrl->pcie->port->subordinate),
+			 p_slot->ctrl->pcie->port->subordinate->number);
+		pciehp_disable_slot(p_slot);
+		mutex_lock(&p_slot->lock);
+		p_slot->state = STATIC_STATE;
+		break;
+	case POWERON_STATE:
+		mutex_unlock(&p_slot->lock);
+		if (pciehp_enable_slot(p_slot) && PWR_LED(p_slot->ctrl))
+			pciehp_green_led_off(p_slot);
+		mutex_lock(&p_slot->lock);
+		p_slot->state = STATIC_STATE;
+		break;
+	default:
+		break;
+	}
+	mutex_unlock(&p_slot->lock);
+
+	kfree(info);
+}
+
 2.3 init_slot(), one slot for one hotplug_slot 
 ================================================================================
 ; the hotplug_slot contains three part:
