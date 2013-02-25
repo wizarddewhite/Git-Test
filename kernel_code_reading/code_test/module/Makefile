@@ -5,7 +5,7 @@ ifneq ($(KERNELRELEASE),)
     obj-m += proc_fs.o seq_fs.o kobject-example.o
     obj-m += scull.o
     scull-objs := scull_sysfs.o
-    obj-m += usermodehelper.o timer.o
+    obj-m += usermodehelper.o timer.o workqueue.o
 # hello_world-objs :=
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
