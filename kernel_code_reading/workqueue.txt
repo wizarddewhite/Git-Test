@@ -1,0 +1,73 @@
+1. init_workqueues()
+================================================================================
+static int __init init_workqueues(void)
+{
+	unsigned int cpu;
+	int i;
+
+	/* make sure we have enough bits for OFFQ CPU number */
+	BUILD_BUG_ON((1LU << (BITS_PER_LONG - WORK_OFFQ_CPU_SHIFT)) <
+		     WORK_CPU_LAST);
+
+	cpu_notifier(workqueue_cpu_up_callback, CPU_PRI_WORKQUEUE_UP);
+	hotcpu_notifier(workqueue_cpu_down_callback, CPU_PRI_WORKQUEUE_DOWN);
+
+	/* initialize gcwqs */
+	for_each_gcwq_cpu(cpu) {
+		struct global_cwq *gcwq = get_gcwq(cpu);
+		struct worker_pool *pool;
+
+		spin_lock_init(&gcwq->lock);
+		gcwq->cpu = cpu;
+		gcwq->flags |= GCWQ_DISASSOCIATED;
+
+		for (i = 0; i < BUSY_WORKER_HASH_SIZE; i++)
+			INIT_HLIST_HEAD(&gcwq->busy_hash[i]);
+
+		for_each_worker_pool(pool, gcwq) {
+			pool->gcwq = gcwq;
+			INIT_LIST_HEAD(&pool->worklist);
+			INIT_LIST_HEAD(&pool->idle_list);
+
+			init_timer_deferrable(&pool->idle_timer);
+			pool->idle_timer.function = idle_worker_timeout;
+			pool->idle_timer.data = (unsigned long)pool;
+
+			setup_timer(&pool->mayday_timer, gcwq_mayday_timeout,
+				    (unsigned long)pool);
+
+			mutex_init(&pool->assoc_mutex);
+			ida_init(&pool->worker_ida);
+		}
+	}
+
+	/* create the initial worker */
+	for_each_online_gcwq_cpu(cpu) {
+		struct global_cwq *gcwq = get_gcwq(cpu);
+		struct worker_pool *pool;
+
+		if (cpu != WORK_CPU_UNBOUND)
+			gcwq->flags &= ~GCWQ_DISASSOCIATED;
+
+		for_each_worker_pool(pool, gcwq) {
+			struct worker *worker;
+
+			worker = create_worker(pool);
+			BUG_ON(!worker);
+			spin_lock_irq(&gcwq->lock);
+			start_worker(worker);
+			spin_unlock_irq(&gcwq->lock);
+		}
+	}
+
+	system_wq = alloc_workqueue("events", 0, 0);
+	system_highpri_wq = alloc_workqueue("events_highpri", WQ_HIGHPRI, 0);
+	system_long_wq = alloc_workqueue("events_long", 0, 0);
+	system_unbound_wq = alloc_workqueue("events_unbound", WQ_UNBOUND,
+					    WQ_UNBOUND_MAX_ACTIVE);
+	system_freezable_wq = alloc_workqueue("events_freezable",
+					      WQ_FREEZABLE, 0);
+	BUG_ON(!system_wq || !system_highpri_wq || !system_long_wq ||
+	       !system_unbound_wq || !system_freezable_wq);
+	return 0;
+}
