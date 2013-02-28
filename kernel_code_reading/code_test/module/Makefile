@@ -6,6 +6,7 @@ ifneq ($(KERNELRELEASE),)
     obj-m += scull.o
     scull-objs := scull_sysfs.o
     obj-m += usermodehelper.o timer.o workqueue.o
+    obj-m += pci_driver.o
 # hello_world-objs :=
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
