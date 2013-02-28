@@ -1,5 +1,6 @@
-1. register_netdev()
+1. register_netdev(), register a network device into the system
 ================================================================================
+; this is called by a driver of network device 
 int register_netdev(struct net_device *dev)
 {
 	int err;
