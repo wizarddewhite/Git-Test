@@ -31,18 +31,49 @@ static DEFINE_PCI_DEVICE_TABLE(test_e1000_pci_tbl) = {
 };
 MODULE_DEVICE_TABLE(pci, test_e1000_pci_tbl);
 
+char test_e1000_driver_name[] = "e1000e_test";
+
 static int test_e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	int err;
+	int err, bar;
+	u16 vendor, device;
+
+	/* access the config space */
+	pci_read_config_word(pdev, PCI_VENDOR_ID, &vendor);
+	pci_read_config_word(pdev, PCI_DEVICE_ID, &device);
+	pr_info("The vendor_id is %x, the device_id is %x\n", vendor, device);
+
+	err = pci_enable_device_mem(pdev);
+
+	/* IO BARs */
+	bar = pci_select_bars(pdev, IORESOURCE_IO);
+	pr_info("Availale IO BARs are %x\n", bar);
+
+	/* Request a IO region */
+	err = pci_request_selected_regions_exclusive(pdev,
+			bar, test_e1000_driver_name);
+
+	/* MEM BARs */
+	bar = pci_select_bars(pdev, IORESOURCE_MEM);
+	pr_info("Availale MEM BARs are %x\n", bar);
+
+	/* Request a MEM region */
+	err = pci_request_selected_regions_exclusive(pdev,
+			bar, test_e1000_driver_name);
+
 	return err;
 }
 
 static void test_e1000_remove(struct pci_dev *pdev)
 {
+	pci_release_selected_regions(pdev, 
+			pci_select_bars(pdev, IORESOURCE_IO|IORESOURCE_MEM));
+
+	pci_disable_device(pdev);
 }
 
 static struct pci_driver test_e1000e_driver = {
-	.name     = "e1000e_test",
+	.name     = test_e1000_driver_name,
 	.id_table = test_e1000_pci_tbl,
 	.probe    = test_e1000_probe,
 	.remove   = test_e1000_remove,
