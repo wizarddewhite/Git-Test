@@ -18,6 +18,13 @@ typedef struct {
 
 my_work_t *work, *work2;
 
+typedef struct {
+	struct delayed_work   delay_work;
+	int                   x;
+}my_delay_work_t;
+
+my_delay_work_t *work_d;
+
 
 static void my_wq_function( struct work_struct *work)
 {
@@ -28,6 +35,19 @@ static void my_wq_function( struct work_struct *work)
 	printk( "my_work.x %d\n", my_work->x );
 
 	kfree(my_work);
+
+	return;
+}
+
+static void my_delay_wq_function(struct work_struct *work)
+{
+	my_delay_work_t *wk;
+
+	wk = container_of(work, my_delay_work_t, delay_work.work);
+
+	printk("my_delay_work.x %d\n", wk->x);
+
+	kfree(wk);
 
 	return;
 }
@@ -55,7 +75,16 @@ int workqueue_init( void )
 
 			ret = queue_work(my_wq, &work2->my_work);
 		}
+
+		/* Queue a delayed work */
+		work_d = (my_delay_work_t *)kmalloc(sizeof(my_delay_work_t), GFP_KERNEL);
+		if (work_d) {
+			INIT_DELAYED_WORK(&work_d->delay_work, my_delay_wq_function);
+			work_d->x = 3;
+			ret = queue_delayed_work(my_wq, &work_d->delay_work, 2*HZ);
+		}
 	}
+
 
 	return 0;
 }
