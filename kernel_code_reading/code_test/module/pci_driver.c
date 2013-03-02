@@ -51,6 +51,7 @@ static int test_e1000_probe(struct pci_dev *pdev, const struct pci_device_id *en
 	void *ioaddr;
 	u32 rctl;
 	struct priv_data *priv;
+	int pm_cap;
 
 	/* access the config space */
 	pci_read_config_word(pdev, PCI_VENDOR_ID, &vendor);
@@ -112,6 +113,10 @@ static int test_e1000_probe(struct pci_dev *pdev, const struct pci_device_id *en
 	writel(rctl | E1000_RCTL_EN, ioaddr + E1000_RCTL);
 	rctl = readl(ioaddr + E1000_RCTL);
 	pr_info(" -- after enablement        0x%08x\n", rctl);
+
+	pm_cap = pci_find_capability(pdev, PCI_CAP_ID_PM);
+	pr_info("The Power Management Capability Position is %d\n", pm_cap);
+
 	return err;
 
 fail2:
