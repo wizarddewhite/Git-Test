@@ -1,0 +1,680 @@
+1. tun_init()
+================================================================================
+static int __init tun_init(void)
+{
+	int ret = 0;
+
+	pr_info("%s, %s\n", DRV_DESCRIPTION, DRV_VERSION);
+	pr_info("%s\n", DRV_COPYRIGHT);
+
+	ret = rtnl_link_register(&tun_link_ops);
+	if (ret) {
+		pr_err("Can't register link_ops\n");
+		goto err_linkops;
+	}
+
+	ret = misc_register(&tun_miscdev);
+	if (ret) {
+		pr_err("Can't register misc device %d\n", TUN_MINOR);
+		goto err_misc;
+	}
+	return  0;
+err_misc:
+	rtnl_link_unregister(&tun_link_ops);
+err_linkops:
+	return ret;
+}
+
+1.1 rtnl_link_register(&tun_link_ops), register ops in "link_ops"
+================================================================================
+static struct rtnl_link_ops tun_link_ops __read_mostly = {
+	.kind		= DRV_NAME,
+	.priv_size	= sizeof(struct tun_struct),
+	.setup		= tun_setup,
+	.validate	= tun_validate,
+};
+
+int rtnl_link_register(struct rtnl_link_ops *ops)
+{
+	int err;
+
+	rtnl_lock();
+	err = __rtnl_link_register(ops);
+	rtnl_unlock();
+	return err;
+}
+
+1.1.1 __rtnl_link_register(ops)
+================================================================================
+int __rtnl_link_register(struct rtnl_link_ops *ops)
+{
+	if (rtnl_link_ops_get(ops->kind))
+		return -EEXIST;
+
+	if (!ops->dellink)
+		ops->dellink = unregister_netdevice_queue;
+
+	list_add_tail(&ops->list, &link_ops);
+	return 0;
+}
+
+1.2 misc_register(&tun_miscdev), create char dev, /dev/net/tun
+================================================================================
+static struct miscdevice tun_miscdev = {
+	.minor = TUN_MINOR,
+	.name = "tun",
+	.nodename = "net/tun",
+	.fops = &tun_fops,
+};
+
+static const struct file_operations tun_fops = {
+	.owner	= THIS_MODULE,
+	.llseek = no_llseek,
+	.read  = do_sync_read,
+	.aio_read  = tun_chr_aio_read,
+	.write = do_sync_write,
+	.aio_write = tun_chr_aio_write,
+	.poll	= tun_chr_poll,
+	.unlocked_ioctl	= tun_chr_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = tun_chr_compat_ioctl,
+#endif
+	.open	= tun_chr_open,
+	.release = tun_chr_close,
+	.fasync = tun_chr_fasync
+};
+
+int misc_register(struct miscdevice * misc)
+{
+	struct miscdevice *c;
+	dev_t dev;
+	int err = 0;
+
+	INIT_LIST_HEAD(&misc->list);
+
+	mutex_lock(&misc_mtx);
+	list_for_each_entry(c, &misc_list, list) {
+		if (c->minor == misc->minor) {
+			mutex_unlock(&misc_mtx);
+			return -EBUSY;
+		}
+	}
+
+	if (misc->minor == MISC_DYNAMIC_MINOR) {
+		int i = find_first_zero_bit(misc_minors, DYNAMIC_MINORS);
+		if (i >= DYNAMIC_MINORS) {
+			mutex_unlock(&misc_mtx);
+			return -EBUSY;
+		}
+		misc->minor = DYNAMIC_MINORS - i - 1;
+		set_bit(i, misc_minors);
+	}
+
+	dev = MKDEV(MISC_MAJOR, misc->minor);
+
+	misc->this_device = device_create(misc_class, misc->parent, dev,
+					  misc, "%s", misc->name);
+	if (IS_ERR(misc->this_device)) {
+		int i = DYNAMIC_MINORS - misc->minor - 1;
+		if (i < DYNAMIC_MINORS && i >= 0)
+			clear_bit(i, misc_minors);
+		err = PTR_ERR(misc->this_device);
+		goto out;
+	}
+
+	/*
+	 * Add it to the front, so that later devices can "override"
+	 * earlier defaults
+	 */
+	list_add(&misc->list, &misc_list);
+ out:
+	mutex_unlock(&misc_mtx);
+	return err;
+}
+
+1.2.1 device_create(), /sys/class/misc/tun, /sys/devices/virtual/misc/tun
+================================================================================
+struct device *device_create(struct class *class, struct device *parent,
+			     dev_t devt, void *drvdata, const char *fmt, ...)
+{
+	va_list vargs;
+	struct device *dev;
+
+	va_start(vargs, fmt);
+	dev = device_create_vargs(class, parent, devt, drvdata, fmt, vargs);
+	va_end(vargs);
+	return dev;
+}
+
+1.2.1.1 device_create_vargs()
+================================================================================
+struct device *device_create_vargs(struct class *class, struct device *parent,
+				   dev_t devt, void *drvdata, const char *fmt,
+				   va_list args)
+{
+	struct device *dev = NULL;
+	int retval = -ENODEV;
+
+	if (class == NULL || IS_ERR(class))
+		goto error;
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev) {
+		retval = -ENOMEM;
+		goto error;
+	}
+
+	dev->devt = devt;
+	dev->class = class;
+	dev->parent = parent;
+	dev->release = device_create_release;
+	dev_set_drvdata(dev, drvdata);
+
+	retval = kobject_set_name_vargs(&dev->kobj, fmt, args);
+	if (retval)
+		goto error;
+
+	retval = device_register(dev);
+	if (retval)
+		goto error;
+
+	return dev;
+
+error:
+	put_device(dev);
+	return ERR_PTR(retval);
+}
+
+2. why it is named /dev/net/tun
+================================================================================
+dev->class = class; class == misc_class;
+	|
+device_register(dev)
+	|
+dev->kobj.kset = devices_kset;
+	|
+device_add(dev)
+	|
+kobject_uevent(&dev->kobj, KOBJ_ADD);
+	|
+kset = top_kobj->kset; == devices_kset;
+	|
+event_ops = kset->uevent_ops; == device_uevent_ops;
+	|
+retval = uevent_ops->uevent(kset, kobj, env); call dev_uevent in drivers/base/core.c
+	|
+name = device_get_devnode(dev, &mode, &tmp);
+	|
+*tmp = dev->class->devnode(dev, mode); misc_class->devnode == misc_devnode
+	|
+static char *misc_devnode(struct device *dev, umode_t *mode)
+{
+	struct miscdevice *c = dev_get_drvdata(dev);
+
+	if (mode && c->mode)
+		*mode = c->mode;
+	if (c->nodename)
+		return kstrdup(c->nodename, GFP_KERNEL);
+	return NULL;
+}
+	|
+static struct miscdevice tun_miscdev = {
+	.minor = TUN_MINOR,
+	.name = "tun",
+	.nodename = "net/tun",  <- name here
+	.fops = &tun_fops,
+};
+	|
+All these things are added in uevent message~
+
+The uevent dumped is:
+
+UDEV_LOG=3
+ACTION=add
+DEVPATH=/devices/virtual/misc/tun
+SUBSYSTEM=misc
+DEVNAME=/dev/net/tun
+SEQNUM=2155
+MAJOR=10
+MINOR=200
+
+3. tun_fops {}
+================================================================================
+static const struct file_operations tun_fops = {
+	.owner	= THIS_MODULE,
+	.llseek = no_llseek,
+	.read  = do_sync_read,
+	.aio_read  = tun_chr_aio_read,
+	.write = do_sync_write,
+	.aio_write = tun_chr_aio_write,
+	.poll	= tun_chr_poll,
+	.unlocked_ioctl	= tun_chr_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = tun_chr_compat_ioctl,
+#endif
+	.open	= tun_chr_open,
+	.release = tun_chr_close,
+	.fasync = tun_chr_fasync
+};
+
+3.1 tun_chr_open()
+================================================================================
+static int tun_chr_open(struct inode *inode, struct file * file)
+{
+	struct tun_file *tfile;
+
+	DBG1(KERN_INFO, "tunX: tun_chr_open\n");
+
+	tfile = (struct tun_file *)sk_alloc(&init_net, AF_UNSPEC, GFP_KERNEL,
+					    &tun_proto);
+	if (!tfile)
+		return -ENOMEM;
+	rcu_assign_pointer(tfile->tun, NULL);
+	tfile->net = get_net(current->nsproxy->net_ns);
+	tfile->flags = 0;
+
+	rcu_assign_pointer(tfile->socket.wq, &tfile->wq);
+	init_waitqueue_head(&tfile->wq.wait);
+
+	tfile->socket.file = file;
+	tfile->socket.ops = &tun_socket_ops;
+
+	sock_init_data(&tfile->socket, &tfile->sk);
+	sk_change_net(&tfile->sk, tfile->net);
+
+	tfile->sk.sk_write_space = tun_sock_write_space;
+	tfile->sk.sk_sndbuf = INT_MAX;
+
+	file->private_data = tfile;
+	set_bit(SOCK_EXTERNALLY_ALLOCATED, &tfile->socket.flags);
+	INIT_LIST_HEAD(&tfile->next);
+
+	return 0;
+}
+
+3.2 tun_chr_ioctl
+================================================================================
+static long tun_chr_ioctl(struct file *file,
+			  unsigned int cmd, unsigned long arg)
+{
+	return __tun_chr_ioctl(file, cmd, arg, sizeof (struct ifreq));
+}
+
+static long __tun_chr_ioctl(struct file *file, unsigned int cmd,
+			    unsigned long arg, int ifreq_len)
+{
+	struct tun_file *tfile = file->private_data;
+	struct tun_struct *tun;
+	void __user* argp = (void __user*)arg;
+	struct ifreq ifr;
+	kuid_t owner;
+	kgid_t group;
+	int sndbuf;
+	int vnet_hdr_sz;
+	int ret;
+
+	if (cmd == TUNSETIFF || cmd == TUNSETQUEUE || _IOC_TYPE(cmd) == 0x89) {
+		if (copy_from_user(&ifr, argp, ifreq_len))
+			return -EFAULT;
+	} else {
+		memset(&ifr, 0, sizeof(ifr));
+	}
+	if (cmd == TUNGETFEATURES) {
+		/* Currently this just means: "what IFF flags are valid?".
+		 * This is needed because we never checked for invalid flags on
+		 * TUNSETIFF. */
+		return put_user(IFF_TUN | IFF_TAP | IFF_NO_PI | IFF_ONE_QUEUE |
+				IFF_VNET_HDR | IFF_MULTI_QUEUE,
+				(unsigned int __user*)argp);
+	} else if (cmd == TUNSETQUEUE)
+		return tun_set_queue(file, &ifr);
+
+	ret = 0;
+	rtnl_lock();
+
+	tun = __tun_get(tfile);
+	if (cmd == TUNSETIFF && !tun) {
+		ifr.ifr_name[IFNAMSIZ-1] = '\0';
+
+		ret = tun_set_iff(tfile->net, file, &ifr);
+
+		if (ret)
+			goto unlock;
+
+		if (copy_to_user(argp, &ifr, ifreq_len))
+			ret = -EFAULT;
+		goto unlock;
+	}
+
+	ret = -EBADFD;
+	if (!tun)
+		goto unlock;
+
+	tun_debug(KERN_INFO, tun, "tun_chr_ioctl cmd %u\n", cmd);
+
+	ret = 0;
+	switch (cmd) {
+	case TUNGETIFF:
+		tun_get_iff(current->nsproxy->net_ns, tun, &ifr);
+
+		if (copy_to_user(argp, &ifr, ifreq_len))
+			ret = -EFAULT;
+		break;
+
+	case TUNSETNOCSUM:
+		/* Disable/Enable checksum */
+
+		/* [unimplemented] */
+		tun_debug(KERN_INFO, tun, "ignored: set checksum %s\n",
+			  arg ? "disabled" : "enabled");
+		break;
+
+	case TUNSETPERSIST:
+		/* Disable/Enable persist mode. Keep an extra reference to the
+		 * module to prevent the module being unprobed.
+		 */
+		if (arg && !(tun->flags & TUN_PERSIST)) {
+			tun->flags |= TUN_PERSIST;
+			__module_get(THIS_MODULE);
+		}
+		if (!arg && (tun->flags & TUN_PERSIST)) {
+			tun->flags &= ~TUN_PERSIST;
+			module_put(THIS_MODULE);
+		}
+
+		tun_debug(KERN_INFO, tun, "persist %s\n",
+			  arg ? "enabled" : "disabled");
+		break;
+
+	case TUNSETOWNER:
+		/* Set owner of the device */
+		owner = make_kuid(current_user_ns(), arg);
+		if (!uid_valid(owner)) {
+			ret = -EINVAL;
+			break;
+		}
+		tun->owner = owner;
+		tun_debug(KERN_INFO, tun, "owner set to %u\n",
+			  from_kuid(&init_user_ns, tun->owner));
+		break;
+
+	case TUNSETGROUP:
+		/* Set group of the device */
+		group = make_kgid(current_user_ns(), arg);
+		if (!gid_valid(group)) {
+			ret = -EINVAL;
+			break;
+		}
+		tun->group = group;
+		tun_debug(KERN_INFO, tun, "group set to %u\n",
+			  from_kgid(&init_user_ns, tun->group));
+		break;
+
+	case TUNSETLINK:
+		/* Only allow setting the type when the interface is down */
+		if (tun->dev->flags & IFF_UP) {
+			tun_debug(KERN_INFO, tun,
+				  "Linktype set failed because interface is up\n");
+			ret = -EBUSY;
+		} else {
+			tun->dev->type = (int) arg;
+			tun_debug(KERN_INFO, tun, "linktype set to %d\n",
+				  tun->dev->type);
+			ret = 0;
+		}
+		break;
+
+#ifdef TUN_DEBUG
+	case TUNSETDEBUG:
+		tun->debug = arg;
+		break;
+#endif
+	case TUNSETOFFLOAD:
+		ret = set_offload(tun, arg);
+		break;
+
+	case TUNSETTXFILTER:
+		/* Can be set only for TAPs */
+		ret = -EINVAL;
+		if ((tun->flags & TUN_TYPE_MASK) != TUN_TAP_DEV)
+			break;
+		ret = update_filter(&tun->txflt, (void __user *)arg);
+		break;
+
+	case SIOCGIFHWADDR:
+		/* Get hw address */
+		memcpy(ifr.ifr_hwaddr.sa_data, tun->dev->dev_addr, ETH_ALEN);
+		ifr.ifr_hwaddr.sa_family = tun->dev->type;
+		if (copy_to_user(argp, &ifr, ifreq_len))
+			ret = -EFAULT;
+		break;
+
+	case SIOCSIFHWADDR:
+		/* Set hw address */
+		tun_debug(KERN_DEBUG, tun, "set hw address: %pM\n",
+			  ifr.ifr_hwaddr.sa_data);
+
+		ret = dev_set_mac_address(tun->dev, &ifr.ifr_hwaddr);
+		break;
+
+	case TUNGETSNDBUF:
+		sndbuf = tfile->socket.sk->sk_sndbuf;
+		if (copy_to_user(argp, &sndbuf, sizeof(sndbuf)))
+			ret = -EFAULT;
+		break;
+
+	case TUNSETSNDBUF:
+		if (copy_from_user(&sndbuf, argp, sizeof(sndbuf))) {
+			ret = -EFAULT;
+			break;
+		}
+
+		tun->sndbuf = sndbuf;
+		tun_set_sndbuf(tun);
+		break;
+
+	case TUNGETVNETHDRSZ:
+		vnet_hdr_sz = tun->vnet_hdr_sz;
+		if (copy_to_user(argp, &vnet_hdr_sz, sizeof(vnet_hdr_sz)))
+			ret = -EFAULT;
+		break;
+
+	case TUNSETVNETHDRSZ:
+		if (copy_from_user(&vnet_hdr_sz, argp, sizeof(vnet_hdr_sz))) {
+			ret = -EFAULT;
+			break;
+		}
+		if (vnet_hdr_sz < (int)sizeof(struct virtio_net_hdr)) {
+			ret = -EINVAL;
+			break;
+		}
+
+		tun->vnet_hdr_sz = vnet_hdr_sz;
+		break;
+
+	case TUNATTACHFILTER:
+		/* Can be set only for TAPs */
+		ret = -EINVAL;
+		if ((tun->flags & TUN_TYPE_MASK) != TUN_TAP_DEV)
+			break;
+		ret = -EFAULT;
+		if (copy_from_user(&tun->fprog, argp, sizeof(tun->fprog)))
+			break;
+
+		ret = tun_attach_filter(tun);
+		break;
+
+	case TUNDETACHFILTER:
+		/* Can be set only for TAPs */
+		ret = -EINVAL;
+		if ((tun->flags & TUN_TYPE_MASK) != TUN_TAP_DEV)
+			break;
+		ret = 0;
+		tun_detach_filter(tun, tun->numqueues);
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+unlock:
+	rtnl_unlock();
+	if (tun)
+		tun_put(tun);
+	return ret;
+}
+
+3.2.1 tun_set_iff()
+================================================================================
+static int tun_set_iff(struct net *net, struct file *file, struct ifreq *ifr)
+{
+	struct tun_struct *tun;
+	struct tun_file *tfile = file->private_data;
+	struct net_device *dev;
+	int err;
+
+	if (tfile->detached)
+		return -EINVAL;
+
+	dev = __dev_get_by_name(net, ifr->ifr_name);
+	if (dev) {
+		if (ifr->ifr_flags & IFF_TUN_EXCL)
+			return -EBUSY;
+		if ((ifr->ifr_flags & IFF_TUN) && dev->netdev_ops == &tun_netdev_ops)
+			tun = netdev_priv(dev);
+		else if ((ifr->ifr_flags & IFF_TAP) && dev->netdev_ops == &tap_netdev_ops)
+			tun = netdev_priv(dev);
+		else
+			return -EINVAL;
+
+		if (tun_not_capable(tun))
+			return -EPERM;
+		err = security_tun_dev_open(tun->security);
+		if (err < 0)
+			return err;
+
+		err = tun_attach(tun, file);
+		if (err < 0)
+			return err;
+
+		if (tun->flags & TUN_TAP_MQ &&
+		    (tun->numqueues + tun->numdisabled > 1))
+			return err;
+	}
+	else {
+		char *name;
+		unsigned long flags = 0;
+		int queues = ifr->ifr_flags & IFF_MULTI_QUEUE ?
+			     MAX_TAP_QUEUES : 1;
+
+		if (!ns_capable(net->user_ns, CAP_NET_ADMIN))
+			return -EPERM;
+		err = security_tun_dev_create();
+		if (err < 0)
+			return err;
+
+		/* Set dev type */
+		if (ifr->ifr_flags & IFF_TUN) {
+			/* TUN device */
+			flags |= TUN_TUN_DEV;
+			name = "tun%d";
+		} else if (ifr->ifr_flags & IFF_TAP) {
+			/* TAP device */
+			flags |= TUN_TAP_DEV;
+			name = "tap%d";
+		} else
+			return -EINVAL;
+
+		if (*ifr->ifr_name)
+			name = ifr->ifr_name;
+
+		dev = alloc_netdev_mqs(sizeof(struct tun_struct), name,
+				       tun_setup, queues, queues);
+
+		if (!dev)
+			return -ENOMEM;
+
+		dev_net_set(dev, net);
+		dev->rtnl_link_ops = &tun_link_ops;
+
+		tun = netdev_priv(dev);
+		tun->dev = dev;
+		tun->flags = flags;
+		tun->txflt.count = 0;
+		tun->vnet_hdr_sz = sizeof(struct virtio_net_hdr);
+
+		tun->filter_attached = false;
+		tun->sndbuf = tfile->socket.sk->sk_sndbuf;
+
+		spin_lock_init(&tun->lock);
+
+		err = security_tun_dev_alloc_security(&tun->security);
+		if (err < 0)
+			goto err_free_dev;
+
+		tun_net_init(dev);
+
+		err = tun_flow_init(tun);
+		if (err < 0)
+			goto err_free_dev;
+
+		dev->hw_features = NETIF_F_SG | NETIF_F_FRAGLIST |
+			TUN_USER_FEATURES;
+		dev->features = dev->hw_features;
+
+		INIT_LIST_HEAD(&tun->disabled);
+		err = tun_attach(tun, file);
+		if (err < 0)
+			goto err_free_dev;
+
+		err = register_netdevice(tun->dev);
+		if (err < 0)
+			goto err_free_dev;
+
+		if (device_create_file(&tun->dev->dev, &dev_attr_tun_flags) ||
+		    device_create_file(&tun->dev->dev, &dev_attr_owner) ||
+		    device_create_file(&tun->dev->dev, &dev_attr_group))
+			pr_err("Failed to create tun sysfs files\n");
+	}
+
+	netif_carrier_on(tun->dev);
+
+	tun_debug(KERN_INFO, tun, "tun_set_iff\n");
+
+	if (ifr->ifr_flags & IFF_NO_PI)
+		tun->flags |= TUN_NO_PI;
+	else
+		tun->flags &= ~TUN_NO_PI;
+
+	/* This flag has no real effect.  We track the value for backwards
+	 * compatibility.
+	 */
+	if (ifr->ifr_flags & IFF_ONE_QUEUE)
+		tun->flags |= TUN_ONE_QUEUE;
+	else
+		tun->flags &= ~TUN_ONE_QUEUE;
+
+	if (ifr->ifr_flags & IFF_VNET_HDR)
+		tun->flags |= TUN_VNET_HDR;
+	else
+		tun->flags &= ~TUN_VNET_HDR;
+
+	if (ifr->ifr_flags & IFF_MULTI_QUEUE)
+		tun->flags |= TUN_TAP_MQ;
+	else
+		tun->flags &= ~TUN_TAP_MQ;
+
+	/* Make sure persistent devices do not get stuck in
+	 * xoff state.
+	 */
+	if (netif_running(tun->dev))
+		netif_tx_wake_all_queues(tun->dev);
+
+	strcpy(ifr->ifr_name, tun->dev->name);
+	return 0;
+
+ err_free_dev:
+	free_netdev(dev);
+	return err;
+}
