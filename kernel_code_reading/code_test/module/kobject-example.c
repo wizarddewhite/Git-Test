@@ -161,6 +161,7 @@ static int __init example_init(void)
 	 * not known ahead of time.
 	 */
 	example_kobj = kobject_create_and_add("kobject_example", kernel_kobj);
+	printk("the ktype of example_kobj is %p\n", example_kobj->ktype);
 	if (!example_kobj)
 		return -ENOMEM;
 
