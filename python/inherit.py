@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # Filename: inherit.py
 
-class SchoolMember:
+class SchoolMember(object):
     '''Represents any school member.'''
     def __init__(self, name, age):
         self.name = name
