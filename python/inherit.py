@@ -32,7 +32,10 @@ class Student(SchoolMember):
         print 'marks: "%d"' % self.marks
     def say(self, sentence, mood):
         print "%s, I am %s" %(sentence, mood)
+#    def say(self, sentence):
+#        SchoolMember.say(self, sentence)
 t = Teacher("Mrs. Shrividya", 40, 3000)
 s = Student('Swaroop', 22, 75) 
 t.tell()
 s.say("Good morning", "happy")
+#s.say("Good Bye")
