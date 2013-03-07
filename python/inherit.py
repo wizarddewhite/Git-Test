@@ -10,6 +10,8 @@ class SchoolMember(object):
     def tell(self):
         '''Tell my details.'''
         print 'Name:"%s" Age:"%s"' %(self.name, self.age)
+    def say(self, sentence):
+        print sentence
 class Teacher(SchoolMember):
     '''Represents a teacher.'''
     def __init__(self, name, age, salary):
@@ -28,6 +30,9 @@ class Student(SchoolMember):
     def tell(self):
         SchoolMember.tell(self)
         print 'marks: "%d"' % self.marks
+    def say(self, sentence, mood):
+        print "%s, I am %s" %(sentence, mood)
 t = Teacher("Mrs. Shrividya", 40, 3000)
 s = Student('Swaroop', 22, 75) 
 t.tell()
+s.say("Good morning", "happy")
