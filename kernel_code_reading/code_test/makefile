@@ -7,7 +7,7 @@ CFLAGS = -g
 
 .PHONY: all clean cscope
 all: resource list_case align_case queue_case cscope \
-	map_case netlink_listener
+	map_case netlink_listener hlist_case
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure
