@@ -1,0 +1,802 @@
+1. net_ns_init(), initialize the first namespace(init_net), ops(net_ns_ops) 
+================================================================================
+struct net init_net = {
+	.dev_base_head = LIST_HEAD_INIT(init_net.dev_base_head),
+};
+
+static int __init net_ns_init(void)
+{
+	struct net_generic *ng;
+
+#ifdef CONFIG_NET_NS
+	net_cachep = kmem_cache_create("net_namespace", sizeof(struct net),
+					SMP_CACHE_BYTES,
+					SLAB_PANIC, NULL);
+
+	/* Create workqueue for cleanup */
+	netns_wq = create_singlethread_workqueue("netns");
+	if (!netns_wq)
+		panic("Could not create netns workq");
+#endif
+
+	ng = net_alloc_generic();
+	if (!ng)
+		panic("Could not allocate generic netns");
+
+	rcu_assign_pointer(init_net.gen, ng);
+
+	mutex_lock(&net_mutex);
+	if (setup_net(&init_net, &init_user_ns))
+		panic("Could not setup the initial network namespace");
+
+	rtnl_lock();
+	list_add_tail_rcu(&init_net.list, &net_namespace_list);
+	rtnl_unlock();
+
+	mutex_unlock(&net_mutex);
+
+	register_pernet_subsys(&net_ns_ops);
+
+	return 0;
+}
+
+1.1 setup_net(&init_net, &init_user_ns)
+================================================================================
+struct user_namespace init_user_ns = {
+	.uid_map = {
+		.nr_extents = 1,
+		.extent[0] = {
+			.first = 0,
+			.lower_first = 0,
+			.count = 4294967295U,
+		},
+	},
+	.gid_map = {
+		.nr_extents = 1,
+		.extent[0] = {
+			.first = 0,
+			.lower_first = 0,
+			.count = 4294967295U,
+		},
+	},
+	.projid_map = {
+		.nr_extents = 1,
+		.extent[0] = {
+			.first = 0,
+			.lower_first = 0,
+			.count = 4294967295U,
+		},
+	},
+	.kref = {
+		.refcount	= ATOMIC_INIT(3),
+	},
+	.owner = GLOBAL_ROOT_UID,
+	.group = GLOBAL_ROOT_GID,
+	.proc_inum = PROC_USER_INIT_INO,
+};
+
+static __net_init int setup_net(struct net *net, struct user_namespace *user_ns)
+{
+	/* Must be called with net_mutex held */
+	const struct pernet_operations *ops, *saved_ops;
+	int error = 0;
+	LIST_HEAD(net_exit_list);
+
+	atomic_set(&net->count, 1);
+	atomic_set(&net->passive, 1);
+	net->dev_base_seq = 1;
+	net->user_ns = user_ns;
+
+#ifdef NETNS_REFCNT_DEBUG
+	atomic_set(&net->use_count, 0);
+#endif
+
+	list_for_each_entry(ops, &pernet_list, list) {
+		error = ops_init(ops, net);
+		if (error < 0)
+			goto out_undo;
+	}
+out:
+	return error;
+
+out_undo:
+	/* Walk through the list backwards calling the exit functions
+	 * for the pernet modules whose init functions did not fail.
+	 */
+	list_add(&net->exit_list, &net_exit_list);
+	saved_ops = ops;
+	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
+		ops_exit_list(ops, &net_exit_list);
+
+	ops = saved_ops;
+	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
+		ops_free_list(ops, &net_exit_list);
+
+	rcu_barrier();
+	goto out;
+}
+
+1.2 register_pernet_subsys(&net_ns_ops), wired, it is a subsys or an operation?
+================================================================================
+static struct pernet_operations __net_initdata net_ns_ops = {
+	.init = net_ns_net_init,
+	.exit = net_ns_net_exit,
+};
+
+1.2.1 net_ns_net_init(), ops: proc number
+================================================================================
+static __net_init int net_ns_net_init(struct net *net)
+{
+	return proc_alloc_inum(&net->proc_inum);
+}
+
+2. net_dev_init(), init net subsystem
+================================================================================
+static int __init net_dev_init(void)
+{
+	int i, rc = -ENOMEM;
+
+	BUG_ON(!dev_boot_phase);
+
+	if (dev_proc_init())
+		goto out;
+
+	if (netdev_kobject_init())
+		goto out;
+
+	INIT_LIST_HEAD(&ptype_all);
+	for (i = 0; i < PTYPE_HASH_SIZE; i++)
+		INIT_LIST_HEAD(&ptype_base[i]);
+
+	if (register_pernet_subsys(&netdev_net_ops))
+		goto out;
+
+	/*
+	 *	Initialise the packet receive queues.
+	 */
+
+	for_each_possible_cpu(i) {
+		struct softnet_data *sd = &per_cpu(softnet_data, i);
+
+		memset(sd, 0, sizeof(*sd));
+		skb_queue_head_init(&sd->input_pkt_queue);
+		skb_queue_head_init(&sd->process_queue);
+		sd->completion_queue = NULL;
+		INIT_LIST_HEAD(&sd->poll_list);
+		sd->output_queue = NULL;
+		sd->output_queue_tailp = &sd->output_queue;
+#ifdef CONFIG_RPS
+		sd->csd.func = rps_trigger_softirq;
+		sd->csd.info = sd;
+		sd->csd.flags = 0;
+		sd->cpu = i;
+#endif
+
+		sd->backlog.poll = process_backlog;
+		sd->backlog.weight = weight_p;
+		sd->backlog.gro_list = NULL;
+		sd->backlog.gro_count = 0;
+	}
+
+	dev_boot_phase = 0;
+
+	/* The loopback device is special if any other network devices
+	 * is present in a network namespace the loopback device must
+	 * be present. Since we now dynamically allocate and free the
+	 * loopback device ensure this invariant is maintained by
+	 * keeping the loopback device as the first device on the
+	 * list of network devices.  Ensuring the loopback devices
+	 * is the first device that appears and the last network device
+	 * that disappears.
+	 */
+	if (register_pernet_device(&loopback_net_ops))
+		goto out;
+
+	if (register_pernet_device(&default_device_ops))
+		goto out;
+
+	open_softirq(NET_TX_SOFTIRQ, net_tx_action);
+	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
+
+	hotcpu_notifier(dev_cpu_callback, 0);
+	dst_init();
+	dev_mcast_init();
+	rc = 0;
+out:
+	return rc;
+}
+
+2.1 dev_proc_init(), create proc file 
+================================================================================
+static struct pernet_operations __net_initdata dev_proc_ops = {
+	.init = dev_proc_net_init,
+	.exit = dev_proc_net_exit,
+};
+
+static int __init dev_proc_init(void)
+{
+	return register_pernet_subsys(&dev_proc_ops);
+}
+
+2.1.1 register_pernet_subsys(&dev_proc_ops);
+================================================================================
+
+2.1.1.1 dev_proc_net_init(&dev_proc_ops), under /proc/pic/net
+================================================================================
+static int __net_init dev_proc_net_init(struct net *net)
+{
+	int rc = -ENOMEM;
+
+	if (!proc_net_fops_create(net, "dev", S_IRUGO, &dev_seq_fops))
+		goto out;
+	if (!proc_net_fops_create(net, "softnet_stat", S_IRUGO, &softnet_seq_fops))
+		goto out_dev;
+	if (!proc_net_fops_create(net, "ptype", S_IRUGO, &ptype_seq_fops))
+		goto out_softnet;
+
+	if (wext_proc_init(net))
+		goto out_ptype;
+	rc = 0;
+out:
+	return rc;
+out_ptype:
+	proc_net_remove(net, "ptype");
+out_softnet:
+	proc_net_remove(net, "softnet_stat");
+out_dev:
+	proc_net_remove(net, "dev");
+	goto out;
+}
+
+2.1.1.1.1 proc_net_fops_create()
+================================================================================
+struct proc_dir_entry *proc_net_fops_create(struct net *net,
+	const char *name, umode_t mode, const struct file_operations *fops)
+{
+	return proc_create(name, mode, net->proc_net, fops);
+}
+
+2.2 netdev_kobject_init()
+================================================================================
+int netdev_kobject_init(void)
+{
+	kobj_ns_type_register(&net_ns_type_operations);
+	return class_register(&net_class);
+}
+
+2.2.1 kobj_ns_type_register(&net_ns_type_operations), register namespace of net
+================================================================================
+; there is an array for kobject namespace, 
+; register one for network
+struct kobj_ns_type_operations net_ns_type_operations = {
+	.type = KOBJ_NS_TYPE_NET,
+	.grab_current_ns = net_grab_current_ns,
+	.netlink_ns = net_netlink_ns,
+	.initial_ns = net_initial_ns,
+	.drop_ns = net_drop_ns,
+};
+
+int kobj_ns_type_register(const struct kobj_ns_type_operations *ops)
+{
+	enum kobj_ns_type type = ops->type;
+	int error;
+
+	spin_lock(&kobj_ns_type_lock);
+
+	error = -EINVAL;
+	if (type >= KOBJ_NS_TYPES)
+		goto out;
+
+	error = -EINVAL;
+	if (type <= KOBJ_NS_TYPE_NONE)
+		goto out;
+
+	error = -EBUSY;
+	if (kobj_ns_ops_tbl[type])
+		goto out;
+
+	error = 0;
+	kobj_ns_ops_tbl[type] = ops;
+
+out:
+	spin_unlock(&kobj_ns_type_lock);
+	return error;
+}
+
+2.2.2 class_register(&net_class), register a class for net, /sys/class/net
+================================================================================
+static struct class net_class = {
+	.name = "net",
+	.dev_release = netdev_release,
+#ifdef CONFIG_SYSFS
+	.dev_attrs = net_class_attributes,
+#endif /* CONFIG_SYSFS */
+#ifdef CONFIG_HOTPLUG
+	.dev_uevent = netdev_uevent,
+#endif
+	.ns_type = &net_ns_type_operations,
+	.namespace = net_namespace,
+};
+
+2.3 register_pernet_subsys(&netdev_net_ops)
+================================================================================
+static struct pernet_operations __net_initdata netdev_net_ops = {
+	.init = netdev_init,
+	.exit = netdev_exit,
+};
+
+2.3.1 netdev_init(), ops: netdev_init, init hash talbe of dev name/index
+================================================================================
+static int __net_init netdev_init(struct net *net)
+{
+	if (net != &init_net)
+		INIT_LIST_HEAD(&net->dev_base_head);
+
+	net->dev_name_head = netdev_create_hash();
+	if (net->dev_name_head == NULL)
+		goto err_name;
+
+	net->dev_index_head = netdev_create_hash();
+	if (net->dev_index_head == NULL)
+		goto err_idx;
+
+	return 0;
+
+err_idx:
+	kfree(net->dev_name_head);
+err_name:
+	return -ENOMEM;
+}
+
+2.4 register_pernet_device(&loopback_net_ops)
+================================================================================
+struct pernet_operations __net_initdata loopback_net_ops = {
+       .init = loopback_net_init,
+};
+
+2.4.1 loopback_net_init(), create loopback net device in every namespace
+================================================================================
+static __net_init int loopback_net_init(struct net *net)
+{
+	struct net_device *dev;
+	int err;
+
+	err = -ENOMEM;
+	dev = alloc_netdev(0, "lo", loopback_setup);
+	if (!dev)
+		goto out;
+
+	dev_net_set(dev, net);
+	err = register_netdev(dev);
+	if (err)
+		goto out_free_netdev;
+
+	BUG_ON(dev->ifindex != LOOPBACK_IFINDEX);
+	net->loopback_dev = dev;
+	return 0;
+
+
+out_free_netdev:
+	free_netdev(dev);
+out:
+	if (net_eq(net, &init_net))
+		panic("loopback: Failed to register netdevice: %d\n", err);
+	return err;
+}
+
+2.5 register_pernet_device(&default_device_ops)
+================================================================================
+static struct pernet_operations __net_initdata default_device_ops = {
+	.exit = default_device_exit,
+	.exit_batch = default_device_exit_batch,
+};
+
+2.5.1 default_device_exit()
+================================================================================
+static void __net_exit default_device_exit(struct net *net)
+{
+	struct net_device *dev, *aux;
+	/*
+	 * Push all migratable network devices back to the
+	 * initial network namespace
+	 */
+	rtnl_lock();
+	for_each_netdev_safe(net, dev, aux) {
+		int err;
+		char fb_name[IFNAMSIZ];
+
+		/* Ignore unmoveable devices (i.e. loopback) */
+		if (dev->features & NETIF_F_NETNS_LOCAL)
+			continue;
+
+		/* Leave virtual devices for the generic cleanup */
+		if (dev->rtnl_link_ops)
+			continue;
+
+		/* Push remaining network devices to init_net */
+		snprintf(fb_name, IFNAMSIZ, "dev%d", dev->ifindex);
+		err = dev_change_net_namespace(dev, &init_net, fb_name);
+		if (err) {
+			pr_emerg("%s: failed to move %s to init_net: %d\n",
+				 __func__, dev->name, err);
+			BUG();
+		}
+	}
+	rtnl_unlock();
+}
+
+2.6 open_softirq(NET_TX_SOFTIRQ, net_tx_action);
+================================================================================
+void open_softirq(int nr, void (*action)(struct softirq_action *))
+{
+	softirq_vec[nr].action = action;
+}
+
+2.6.1 net_tx_action()
+================================================================================
+static void net_tx_action(struct softirq_action *h)
+{
+	struct softnet_data *sd = &__get_cpu_var(softnet_data);
+
+	if (sd->completion_queue) {
+		struct sk_buff *clist;
+
+		local_irq_disable();
+		clist = sd->completion_queue;
+		sd->completion_queue = NULL;
+		local_irq_enable();
+
+		while (clist) {
+			struct sk_buff *skb = clist;
+			clist = clist->next;
+
+			WARN_ON(atomic_read(&skb->users));
+			trace_kfree_skb(skb, net_tx_action);
+			__kfree_skb(skb);
+		}
+	}
+
+	if (sd->output_queue) {
+		struct Qdisc *head;
+
+		local_irq_disable();
+		head = sd->output_queue;
+		sd->output_queue = NULL;
+		sd->output_queue_tailp = &sd->output_queue;
+		local_irq_enable();
+
+		while (head) {
+			struct Qdisc *q = head;
+			spinlock_t *root_lock;
+
+			head = head->next_sched;
+
+			root_lock = qdisc_lock(q);
+			if (spin_trylock(root_lock)) {
+				smp_mb__before_clear_bit();
+				clear_bit(__QDISC_STATE_SCHED,
+					  &q->state);
+				qdisc_run(q);
+				spin_unlock(root_lock);
+			} else {
+				if (!test_bit(__QDISC_STATE_DEACTIVATED,
+					      &q->state)) {
+					__netif_reschedule(q);
+				} else {
+					smp_mb__before_clear_bit();
+					clear_bit(__QDISC_STATE_SCHED,
+						  &q->state);
+				}
+			}
+		}
+	}
+}
+
+2.7 open_softirq(NET_RX_SOFTIRQ, net_rx_action);
+================================================================================
+
+2.7.1 net_rx_action()
+================================================================================
+static void net_rx_action(struct softirq_action *h)
+{
+	struct softnet_data *sd = &__get_cpu_var(softnet_data);
+	unsigned long time_limit = jiffies + 2;
+	int budget = netdev_budget;
+	void *have;
+
+	local_irq_disable();
+
+	while (!list_empty(&sd->poll_list)) {
+		struct napi_struct *n;
+		int work, weight;
+
+		/* If softirq window is exhuasted then punt.
+		 * Allow this to run for 2 jiffies since which will allow
+		 * an average latency of 1.5/HZ.
+		 */
+		if (unlikely(budget <= 0 || time_after(jiffies, time_limit)))
+			goto softnet_break;
+
+		local_irq_enable();
+
+		/* Even though interrupts have been re-enabled, this
+		 * access is safe because interrupts can only add new
+		 * entries to the tail of this list, and only ->poll()
+		 * calls can remove this head entry from the list.
+		 */
+		n = list_first_entry(&sd->poll_list, struct napi_struct, poll_list);
+
+		have = netpoll_poll_lock(n);
+
+		weight = n->weight;
+
+		/* This NAPI_STATE_SCHED test is for avoiding a race
+		 * with netpoll's poll_napi().  Only the entity which
+		 * obtains the lock and sees NAPI_STATE_SCHED set will
+		 * actually make the ->poll() call.  Therefore we avoid
+		 * accidentally calling ->poll() when NAPI is not scheduled.
+		 */
+		work = 0;
+		if (test_bit(NAPI_STATE_SCHED, &n->state)) {
+			work = n->poll(n, weight);
+			trace_napi_poll(n);
+		}
+
+		WARN_ON_ONCE(work > weight);
+
+		budget -= work;
+
+		local_irq_disable();
+
+		/* Drivers must not modify the NAPI state if they
+		 * consume the entire weight.  In such cases this code
+		 * still "owns" the NAPI instance and therefore can
+		 * move the instance around on the list at-will.
+		 */
+		if (unlikely(work == weight)) {
+			if (unlikely(napi_disable_pending(n))) {
+				local_irq_enable();
+				napi_complete(n);
+				local_irq_disable();
+			} else {
+				if (n->gro_list) {
+					/* flush too old packets
+					 * If HZ < 1000, flush all packets.
+					 */
+					local_irq_enable();
+					napi_gro_flush(n, HZ >= 1000);
+					local_irq_disable();
+				}
+				list_move_tail(&n->poll_list, &sd->poll_list);
+			}
+		}
+
+		netpoll_poll_unlock(have);
+	}
+out:
+	net_rps_action_and_irq_enable(sd);
+
+#ifdef CONFIG_NET_DMA
+	/*
+	 * There may not be any more sk_buffs coming right now, so push
+	 * any pending DMA copies to hardware
+	 */
+	dma_issue_pending_all();
+#endif
+
+	return;
+
+softnet_break:
+	sd->time_squeeze++;
+	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+	goto out;
+}
+
+2.8 hotcpu_notifier(dev_cpu_callback, 0)
+================================================================================
+
+2.9 dst_init()
+================================================================================
+void __init dst_init(void)
+{
+	register_netdevice_notifier(&dst_dev_notifier);
+}
+
+2.9.1 register_netdevice_notifier()
+================================================================================
+int register_netdevice_notifier(struct notifier_block *nb)
+{
+	struct net_device *dev;
+	struct net_device *last;
+	struct net *net;
+	int err;
+
+	rtnl_lock();
+	err = raw_notifier_chain_register(&netdev_chain, nb);
+	if (err)
+		goto unlock;
+	if (dev_boot_phase)
+		goto unlock;
+	for_each_net(net) {
+		for_each_netdev(net, dev) {
+			err = nb->notifier_call(nb, NETDEV_REGISTER, dev);
+			err = notifier_to_errno(err);
+			if (err)
+				goto rollback;
+
+			if (!(dev->flags & IFF_UP))
+				continue;
+
+			nb->notifier_call(nb, NETDEV_UP, dev);
+		}
+	}
+
+unlock:
+	rtnl_unlock();
+	return err;
+
+rollback:
+	last = dev;
+	for_each_net(net) {
+		for_each_netdev(net, dev) {
+			if (dev == last)
+				goto outroll;
+
+			if (dev->flags & IFF_UP) {
+				nb->notifier_call(nb, NETDEV_GOING_DOWN, dev);
+				nb->notifier_call(nb, NETDEV_DOWN, dev);
+			}
+			nb->notifier_call(nb, NETDEV_UNREGISTER, dev);
+		}
+	}
+
+outroll:
+	raw_notifier_chain_unregister(&netdev_chain, nb);
+	goto unlock;
+}
+
+2.10 dev_mcast_init(), proc file for multicast
+================================================================================
+static struct pernet_operations __net_initdata dev_mc_net_ops = {
+	.init = dev_mc_net_init,
+	.exit = dev_mc_net_exit,
+};
+
+void __init dev_mcast_init(void)
+{
+	register_pernet_subsys(&dev_mc_net_ops);
+}
+
+2.10.1 dev_mc_net_init()
+================================================================================
+static int __net_init dev_mc_net_init(struct net *net)
+{
+	if (!proc_net_fops_create(net, "dev_mcast", 0, &dev_mc_seq_fops))
+		return -ENOMEM;
+	return 0;
+}
+
+3. pernet operations 
+================================================================================
+There are two important list in net subsystem:
+a. net_namespace_list: struct net {};
+	one entity represents one network namespace
+b. pernet_list: struct pernet_operations {};
+	one entity represents the operation on a network namespace
+
+Frontend API:
+a. register_pernet_subsys()
+b. register_pernet_device()
+
+Backend API:
+a. register_pernet_operations()
+
+3.1 register_pernet_subsys(struct pernet_operations *ops)
+================================================================================
+int register_pernet_subsys(struct pernet_operations *ops)
+{
+	int error;
+	mutex_lock(&net_mutex);
+	error =  register_pernet_operations(first_device, ops);
+	mutex_unlock(&net_mutex);
+	return error;
+}
+
+3.2 register_pernet_device(struct pernet_operations *ops)
+================================================================================
+int register_pernet_device(struct pernet_operations *ops)
+{
+	int error;
+	mutex_lock(&net_mutex);
+	error = register_pernet_operations(&pernet_list, ops);
+	if (!error && (first_device == &pernet_list))
+		first_device = &ops->list;
+	mutex_unlock(&net_mutex);
+	return error;
+}
+
+3.3 register_pernet_operations(struct list_head *list, struct pernet_operations *ops)
+================================================================================
+static int register_pernet_operations(struct list_head *list,
+				      struct pernet_operations *ops)
+{
+	int error;
+
+	if (ops->id) {
+again:
+		error = ida_get_new_above(&net_generic_ids, 1, ops->id);
+		if (error < 0) {
+			if (error == -EAGAIN) {
+				ida_pre_get(&net_generic_ids, GFP_KERNEL);
+				goto again;
+			}
+			return error;
+		}
+		max_gen_ptrs = max_t(unsigned int, max_gen_ptrs, *ops->id);
+	}
+	error = __register_pernet_operations(list, ops);
+	if (error) {
+		rcu_barrier();
+		if (ops->id)
+			ida_remove(&net_generic_ids, *ops->id);
+	}
+
+	return error;
+}
+
+3.3.1 __register_pernet_operations()
+================================================================================
+static int __register_pernet_operations(struct list_head *list,
+					struct pernet_operations *ops)
+{
+	struct net *net;
+	int error;
+	LIST_HEAD(net_exit_list);
+
+	list_add_tail(&ops->list, list);
+	if (ops->init || (ops->id && ops->size)) {
+		for_each_net(net) {
+			error = ops_init(ops, net);
+			if (error)
+				goto out_undo;
+			list_add_tail(&net->exit_list, &net_exit_list);
+		}
+	}
+	return 0;
+
+out_undo:
+	/* If I have an error cleanup all namespaces I initialized */
+	list_del(&ops->list);
+	ops_exit_list(ops, &net_exit_list);
+	ops_free_list(ops, &net_exit_list);
+	return error;
+}
+
+3.3.1.1 ops_init(const struct pernet_operations *ops, struct net *net)
+================================================================================
+static int ops_init(const struct pernet_operations *ops, struct net *net)
+{
+	int err = -ENOMEM;
+	void *data = NULL;
+
+	if (ops->id && ops->size) {
+		data = kzalloc(ops->size, GFP_KERNEL);
+		if (!data)
+			goto out;
+
+		err = net_assign_generic(net, *ops->id, data);
+		if (err)
+			goto cleanup;
+	}
+	err = 0;
+	if (ops->init)
+		err = ops->init(net);
+	if (!err)
+		return 0;
+
+cleanup:
+	kfree(data);
+
+out:
+	return err;
+}
