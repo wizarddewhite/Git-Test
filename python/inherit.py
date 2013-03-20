@@ -15,7 +15,7 @@ class SchoolMember(object):
 class Teacher(SchoolMember):
     '''Represents a teacher.'''
     def __init__(self, name, age, salary):
-        SchoolMember.__init__(self, name, age)
+        super(Teacher, self).__init__(name, age)
         self.salary = salary
         print '(Initialized Teacher: %s)' %self.name
     def tell(self):
@@ -24,7 +24,7 @@ class Teacher(SchoolMember):
 class Student(SchoolMember):
     '''Represents a Student.'''
     def __init__(self, name, age, marks):
-        SchoolMember.__init__(self, name, age)
+        super(Student, self).__init__(name, age)
         self.marks = marks
         print '(Initialized Student: %s)' %self.name
     def tell(self):
