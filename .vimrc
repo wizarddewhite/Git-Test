@@ -46,6 +46,11 @@ if has("autocmd")
     \| exe "normal! g'\"" | endif
 endif
 
+"set font
+if has("gui_running")
+	set guifont=Monospace\ 12
+endif
+
 "代码折叠
 "set fdm=indent or "set fdm=syntax
 "set fdc=4
