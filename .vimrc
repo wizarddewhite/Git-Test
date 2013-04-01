@@ -39,6 +39,7 @@ set nowrap
 set dictionary=/usr/share/dict/words
 set colorcolumn=80
 set textwidth=78
+set spell   "check spell
 
 "打开的文件，显示在上次打开的位置
 if has("autocmd")
