@@ -1,5 +1,11 @@
 .*
 *.d
+*.mod.c
+*.mod.o
+*.ko
+*.o
+Module.symvers
+*.order
 resource
 list_case
 !.gitignore
