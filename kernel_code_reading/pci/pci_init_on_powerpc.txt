@@ -1918,3 +1918,121 @@ DECLARE_PCI_FIXUP_HEADER(PCI_ANY_ID, PCI_ANY_ID, pcibios_fixup_resources);
 ===============================================================================
 eeh_check_failure()
 
+
+10. msi related
+===============================================================================
+msi_capability_init() and msix_capability_init() will call
+arch_setup_msi_irqs().
+
+10.1 arch_setup_msi_irqs()
+===============================================================================
+int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
+{
+	return ppc_md.setup_msi_irqs(dev, nvec, type);
+}
+
+10.1.1 setup_msi_irqs is pnv_setup_msi_irqs()
+===============================================================================
+static int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
+{
+	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct msi_desc *entry;
+	struct msi_msg msg;
+	unsigned int hwirq, virq;
+	int rc;
+
+	if (WARN_ON(!phb))
+		return -ENODEV;
+
+	list_for_each_entry(entry, &pdev->msi_list, list) {
+		if (!entry->msi_attrib.is_64 && !phb->msi32_support) {
+			pr_warn("%s: Supports only 64-bit MSIs\n",
+				pci_name(pdev));
+			return -ENXIO;
+		}
+		hwirq = pnv_get_one_msi(phb);
+		if (!hwirq) {
+			pr_warn("%s: Failed to find a free MSI\n",
+				pci_name(pdev));
+			return -ENOSPC;
+		}
+		virq = irq_create_mapping(NULL, hwirq);
+		if (virq == NO_IRQ) {
+			pr_warn("%s: Failed to map MSI to linux irq\n",
+				pci_name(pdev));
+			pnv_put_msi(phb, hwirq);
+			return -ENOMEM;
+		}
+		rc = phb->msi_setup(phb, pdev, hwirq, entry->msi_attrib.is_64,
+				    &msg);
+		if (rc) {
+			pr_warn("%s: Failed to setup MSI\n", pci_name(pdev));
+			irq_dispose_mapping(virq);
+			pnv_put_msi(phb, hwirq);
+			return rc;
+		}
+		irq_set_msi_desc(virq, entry);
+		write_msi_msg(virq, &msg);
+	}
+	return 0;
+}
+
+10.1.1.1 msi_setup is pnv_pci_ioda_msi_setup(), setup xive
+===============================================================================
+static int pnv_pci_ioda_msi_setup(struct pnv_phb *phb, struct pci_dev *dev,
+				  unsigned int hwirq, unsigned int is_64,
+				  struct msi_msg *msg)
+{
+	struct pnv_ioda_pe *pe = pnv_ioda_get_pe(dev);
+	unsigned int xive_num = hwirq - phb->msi_base;
+	uint64_t addr64;
+	uint32_t addr32, data;
+	int rc;
+
+	/* No PE assigned ? bail out ... no MSI for you ! */
+	if (pe == NULL)
+		return -ENXIO;
+
+	/* Check if we have an MVE */
+	if (pe->mve_number < 0)
+		return -ENXIO;
+
+	/* Assign XIVE to PE */
+	rc = opal_pci_set_xive_pe(phb->opal_id, pe->pe_number, xive_num);
+	if (rc) {
+		pr_warn("%s: OPAL error %d setting XIVE %d PE\n",
+			pci_name(dev), rc, xive_num);
+		return -EIO;
+	}
+
+	if (is_64) {
+		rc = opal_get_msi_64(phb->opal_id, pe->mve_number, xive_num, 1,
+				     &addr64, &data);
+		if (rc) {
+			pr_warn("%s: OPAL error %d getting 64-bit MSI data\n",
+				pci_name(dev), rc);
+			return -EIO;
+		}
+		msg->address_hi = addr64 >> 32;
+		msg->address_lo = addr64 & 0xfffffffful;
+	} else {
+		rc = opal_get_msi_32(phb->opal_id, pe->mve_number, xive_num, 1,
+				     &addr32, &data);
+		if (rc) {
+			pr_warn("%s: OPAL error %d getting 32-bit MSI data\n",
+				pci_name(dev), rc);
+			return -EIO;
+		}
+		msg->address_hi = 0;
+		msg->address_lo = addr32;
+	}
+	msg->data = data;
+
+	pr_devel("%s: %s-bit MSI on hwirq %x (xive #%d),"
+		 " address=%x_%08x data=%x PE# %d\n",
+		 pci_name(dev), is_64 ? "64" : "32", hwirq, xive_num,
+		 msg->address_hi, msg->address_lo, data, pe->pe_number);
+
+	return 0;
+}
