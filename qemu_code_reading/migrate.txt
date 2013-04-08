@@ -458,6 +458,7 @@ void migrate_fd_connect(MigrationState *s)
     s->buffer_size = 0;
     s->buffer_capacity = 0;
 
+                ; = (32<<20) / 10
     s->xfer_limit = s->bandwidth_limit / XFER_LIMIT_RATIO;
     s->complete = false;
 
@@ -517,11 +518,13 @@ static void *buffered_file_thread(void *opaque)
         uint64_t pending_size;
 
         qemu_mutex_lock_iothread();
+	; not in active state
         if (s->state != MIG_STATE_ACTIVE) {
             DPRINTF("put_ready returning because of non-active state\n");
             qemu_mutex_unlock_iothread();
             break;
         }
+	; migration complete
         if (s->complete) {
             qemu_mutex_unlock_iothread();
             break;
@@ -567,6 +570,7 @@ static void *buffered_file_thread(void *opaque)
             }
         }
         qemu_mutex_unlock_iothread();
+	; exceed some time limit
         if (current_time >= initial_time + BUFFER_DELAY) {
             uint64_t transferred_bytes = s->bytes_xfer;
             uint64_t time_spent = current_time - initial_time;
@@ -598,7 +602,7 @@ out:
     return NULL;
 }
 
-3.2.1 qemu_savevm_state_begin()
+3.2.1 qemu_savevm_state_begin(), save for each SaveStateEntry
 ================================================================================
 int qemu_savevm_state_begin(QEMUFile *f,
                             const MigrationParams *params)
@@ -606,6 +610,7 @@ int qemu_savevm_state_begin(QEMUFile *f,
     SaveStateEntry *se;
     int ret;
 
+    ; save the parameter
     QTAILQ_FOREACH(se, &savevm_handlers, entry) {
         if (!se->ops || !se->ops->set_params) {
             continue;
@@ -623,6 +628,7 @@ int qemu_savevm_state_begin(QEMUFile *f,
             continue;
         }
         if (se->ops && se->ops->is_active) {
+	    ; if not active, go to another one
             if (!se->ops->is_active(se->opaque)) {
                 continue;
             }
@@ -654,7 +660,35 @@ int qemu_savevm_state_begin(QEMUFile *f,
 
 }
 
-3.2.2 qemu_savevm_state_pending(), return pending amount
+3.2.1.1 SaveStateEntry->ops->save_live_setup
+================================================================================
+one instance for block device
+static int block_save_setup(QEMUFile *f, void *opaque)
+{
+    int ret;
+
+    DPRINTF("Enter save live setup submitted %d transferred %d\n",
+            block_mig_state.submitted, block_mig_state.transferred);
+
+    init_blk_migration(f);
+
+    /* start track dirty blocks */
+    set_dirty_tracking(1);
+
+    ret = flush_blks(f);
+    if (ret) {
+        blk_mig_cleanup();
+        return ret;
+    }
+
+    blk_mig_reset_dirty_cursor();
+
+    qemu_put_be64(f, BLK_MIG_FLAG_EOS);
+
+    return 0;
+}
+
+3.2.2 qemu_savevm_state_pending(), return remaining amount
 ================================================================================
 uint64_t qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size)
 {
@@ -675,7 +709,17 @@ uint64_t qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size)
     return ret;
 }
 
-3.2.2 qemu_savevm_state_iterate(), save status
+3.2.2.1 block_save_pending()
+================================================================================
+static uint64_t block_save_pending(QEMUFile *f, void *opaque, uint64_t max_size)
+{
+
+    DPRINTF("Enter save live pending  %ld\n", get_remaining_dirty());
+
+    return get_remaining_dirty();
+}
+
+3.2.3 qemu_savevm_state_iterate(), if we have a lot remains
 ================================================================================
 int qemu_savevm_state_iterate(QEMUFile *f)
 {
@@ -720,6 +764,154 @@ int qemu_savevm_state_iterate(QEMUFile *f)
     return ret;
 }
 
+3.2.3.1 save_live_iterate->block_save_iterate() 
+================================================================================
+static int block_save_iterate(QEMUFile *f, void *opaque)
+{
+    int ret;
+
+    DPRINTF("Enter save live iterate submitted %d transferred %d\n",
+            block_mig_state.submitted, block_mig_state.transferred);
+
+    ret = flush_blks(f);
+    if (ret) {
+        blk_mig_cleanup();
+        return ret;
+    }
+
+    blk_mig_reset_dirty_cursor();
+
+    /* control the rate of transfer */
+    while ((block_mig_state.submitted +
+            block_mig_state.read_done) * BLOCK_SIZE <
+           qemu_file_get_rate_limit(f)) {
+        if (block_mig_state.bulk_completed == 0) {
+            /* first finish the bulk phase */
+            if (blk_mig_save_bulked_block(f) == 0) {
+                /* finished saving bulk on all devices */
+                block_mig_state.bulk_completed = 1;
+            }
+        } else {
+            ret = blk_mig_save_dirty_block(f, 1);
+            if (ret != 0) {
+                /* no more dirty blocks */
+                break;
+            }
+        }
+    }
+    if (ret) {
+        blk_mig_cleanup();
+        return ret;
+    }
+
+    ret = flush_blks(f);
+    if (ret) {
+        blk_mig_cleanup();
+        return ret;
+    }
+
+    qemu_put_be64(f, BLK_MIG_FLAG_EOS);
+
+    return 0;
+}
+
+3.2.4 qemu_savevm_state_complete()
+================================================================================
+int qemu_savevm_state_complete(QEMUFile *f)
+{
+    SaveStateEntry *se;
+    int ret;
+
+    cpu_synchronize_all_states();
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        if (!se->ops || !se->ops->save_live_complete) {
+            continue;
+        }
+        if (se->ops && se->ops->is_active) {
+            if (!se->ops->is_active(se->opaque)) {
+                continue;
+            }
+        }
+        trace_savevm_section_start();
+        /* Section type */
+        qemu_put_byte(f, QEMU_VM_SECTION_END);
+        qemu_put_be32(f, se->section_id);
+
+        ret = se->ops->save_live_complete(f, se->opaque);
+        trace_savevm_section_end(se->section_id);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
+        int len;
+
+        if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
+	    continue;
+        }
+        trace_savevm_section_start();
+        /* Section type */
+        qemu_put_byte(f, QEMU_VM_SECTION_FULL);
+        qemu_put_be32(f, se->section_id);
+
+        /* ID string */
+        len = strlen(se->idstr);
+        qemu_put_byte(f, len);
+        qemu_put_buffer(f, (uint8_t *)se->idstr, len);
+
+        qemu_put_be32(f, se->instance_id);
+        qemu_put_be32(f, se->version_id);
+
+        vmstate_save(f, se);
+        trace_savevm_section_end(se->section_id);
+    }
+
+    qemu_put_byte(f, QEMU_VM_EOF);
+
+    return qemu_file_get_error(f);
+}
+
+3.2.4.1 save_live_complete->block_save_complete()
+================================================================================
+static int block_save_complete(QEMUFile *f, void *opaque)
+{
+    int ret;
+
+    DPRINTF("Enter save live complete submitted %d transferred %d\n",
+            block_mig_state.submitted, block_mig_state.transferred);
+
+    ret = flush_blks(f);
+    if (ret) {
+        blk_mig_cleanup();
+        return ret;
+    }
+
+    blk_mig_reset_dirty_cursor();
+
+    /* we know for sure that save bulk is completed and
+       all async read completed */
+    assert(block_mig_state.submitted == 0);
+
+    do {
+        ret = blk_mig_save_dirty_block(f, 0);
+    } while (ret == 0);
+
+    blk_mig_cleanup();
+    if (ret) {
+        return ret;
+    }
+    /* report completion */
+    qemu_put_be64(f, (100 << BDRV_SECTOR_BITS) | BLK_MIG_FLAG_PROGRESS);
+
+    DPRINTF("Block migration completed\n");
+
+    qemu_put_be64(f, BLK_MIG_FLAG_EOS);
+
+    return 0;
+}
+
 3.2.5 buffered_flush()
 ================================================================================
 static ssize_t buffered_flush(MigrationState *s)
@@ -743,6 +935,7 @@ static ssize_t buffered_flush(MigrationState *s)
     }
 
     DPRINTF("flushed %zu of %zu byte(s)\n", offset, s->buffer_size);
+    ; move untransfered data to the beginning
     memmove(s->buffer, s->buffer + offset, s->buffer_size - offset);
     s->buffer_size -= offset;
 
@@ -773,7 +966,60 @@ static ssize_t migrate_fd_put_buffer(MigrationState *s, const void *data,
     return ret;
 }
 
-4. Related Data Structures
+3.2.5.1.1 socket_write()
+================================================================================
+static int socket_write(MigrationState *s, const void * buf, size_t size)
+{
+    return send(s->fd, buf, size, 0);
+}
+
+4. buffered_file_ops
+================================================================================
+static const QEMUFileOps buffered_file_ops = {
+    .get_fd =         buffered_get_fd,
+    .put_buffer =     buffered_put_buffer,
+    .close =          buffered_close,
+    .rate_limit =     buffered_rate_limit,
+    .get_rate_limit = buffered_get_rate_limit,
+    .set_rate_limit = buffered_set_rate_limit,
+};
+
+4.1 buffered_put_buffer(), flush QEMUFile->buf to MigrationState->buf
+================================================================================
+static int buffered_put_buffer(void *opaque, const uint8_t *buf,
+                               int64_t pos, int size)
+{
+    MigrationState *s = opaque;
+    ssize_t error;
+
+    DPRINTF("putting %d bytes at %" PRId64 "\n", size, pos);
+
+    error = qemu_file_get_error(s->file);
+    if (error) {
+        DPRINTF("flush when error, bailing: %s\n", strerror(-error));
+        return error;
+    }
+
+    if (size <= 0) {
+        return size;
+    }
+
+    if (size > (s->buffer_capacity - s->buffer_size)) {
+        DPRINTF("increasing buffer capacity from %zu by %zu\n",
+                s->buffer_capacity, size + 1024);
+
+        s->buffer_capacity += size + 1024;
+
+        s->buffer = g_realloc(s->buffer, s->buffer_capacity);
+    }
+
+    memcpy(s->buffer + s->buffer_size, buf, size);
+    s->buffer_size += size;
+
+    return size;
+}
+
+5. Related Data Structures
 ================================================================================
 IOHandlerRecord
       +---------------------+
@@ -805,22 +1051,22 @@ ConnectState
    +-----------------------------------------+
    |
    v
-MigrationState
-      +---------------------+
-      |state                |
-      +---------------------+
-      |params               |
-      +---------------------+
-      |                     |
-      +---------------------+
-      |fd                   | socket fd
-      +---------------------+
-      |file                 | buffered_file_ops
-      +---------------------+
-      |thread               | buffered_file_thread
-      +---------------------+
-      |buffer               |
-      +---------------------+
+MigrationState                                       QEMUFile
+      +---------------------+<----------+    +------>+---------------------+
+      |state                |           |    |       |ops                  | buffered_file_ops 
+      +---------------------+           |    |       +---------------------+
+      |params               |           +----|-------|opaque               |
+      +---------------------+                |       +---------------------+
+      |                     |                |       |                     |
+      +---------------------+                |       +---------------------+
+      |fd                   | socket fd      |       |buf[32768]           |
+      +---------------------+                |       +---------------------+
+      |file                 |----------------+       |buf_size             |
+      +---------------------+                        +---------------------+
+      |thread               | buffered_file_thread   |buf_index            |
+      +---------------------+                        +---------------------+
+      |buffer               |                        |buf_offset           |
+      +---------------------+                        +---------------------+
       |buffer_size          |
       +---------------------+
       |buffer_capacity      |
