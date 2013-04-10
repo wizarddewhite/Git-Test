@@ -2,6 +2,9 @@
  * =====================================================================================
  * http://backreference.org/2010/03/26/tuntap-interface-tutorial/
  *
+ * 1. tap interface outputs (and must be given) full ethernet frames
+ * 2. tun interface outputs (and must be given) raw IP packets 
+ *    (and no ethernet headers are added by the kernel).
  * =====================================================================================
  */
 
