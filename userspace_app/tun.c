@@ -1,17 +1,6 @@
 /*
  * =====================================================================================
- *
- *       Filename:  tun.c
- *
- *    Description:  
- *
- *        Version:  1.0
- *        Created:  03/03/2013 12:20:51 PM
- *       Revision:  none
- *       Compiler:  gcc
- *
- *         Author:  YOUR NAME (), 
- *        Company:  
+ * http://backreference.org/2010/03/26/tuntap-interface-tutorial/
  *
  * =====================================================================================
  */
@@ -67,16 +56,16 @@ int main(int argc, char * argv[])
         while (1) { 
                 unsigned char ip[ 4] ; 
 
-                 ret = read (tun, buf, sizeof (buf) ) ; 
+                ret = read (tun, buf, sizeof (buf) ) ; 
                 if ( ret < 0) 
                         break ; 
                 memcpy (ip, & buf[12] , 4) ; 
                 memcpy (&buf[12], & buf[16] , 4) ; 
                 memcpy (&buf[16], ip, 4) ; 
-                 buf[20] = 0; 
+                buf[20] = 0; 
                 *((unsigned short*)&buf[22] ) += 8; 
                 printf ( "read %d bytes\n" , ret) ; 
-                 ret = write(tun, buf, ret) ; 
+                ret = write(tun, buf, ret) ; 
                 printf ( "write %d bytes\n" , ret) ; 
         } 
 
