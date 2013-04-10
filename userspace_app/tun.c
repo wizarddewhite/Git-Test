@@ -18,6 +18,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int tun_create( char* dev, int flags) 
 { 
@@ -42,14 +43,47 @@ int tun_create( char* dev, int flags)
     return fd; 
 } 
 
+void usage(char* argv[])
+{
+	printf("Usage: %s [-n name] [-t type]\n", argv[0]);
+	printf("       -t: tap tun\n");
+	return;
+}
+
 int main(int argc, char * argv[]) 
 { 
         int tun, ret; 
-        char tun_name[IFNAMSIZ] ; 
+        char tun_name[IFNAMSIZ]  = {0};
         unsigned char buf[4096] ; 
+	int opt;
+	int flags = IFF_TUN;
 
-        tun_name[0] = '\0' ; 
-        tun = tun_create(tun_name, IFF_TUN | IFF_NO_PI) ; 
+	while ((opt = getopt(argc, argv, "n:t:")) != -1) {
+		switch (opt) {
+		case 'n':
+			strncpy(tun_name, optarg, IFNAMSIZ) ;
+			break;
+		case 't':
+			if (!strcmp("tap", optarg))
+				flags = IFF_TAP;
+			else if (!strcmp("tun", optarg))
+				flags = IFF_TUN;
+			else {
+				fprintf(stderr, "Invalid option -%c %s\n",
+						opt, optarg);
+				usage(argv);
+				exit(EXIT_FAILURE);
+			}
+
+			break;
+		default:
+			fprintf(stderr, "Invalid option %c\n", opt);
+			usage(argv);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+        tun = tun_create(tun_name, flags | IFF_NO_PI) ;
         if ( tun < 0) { 
                 perror ( "tun_create" ) ; 
                 return 1; 
