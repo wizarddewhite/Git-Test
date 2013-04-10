@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int tun_create( char* dev, int flags) 
+int tun_create(char* dev, int flags) 
 { 
     struct ifreq ifr; 
     int fd, err; 
@@ -45,8 +45,12 @@ int tun_create( char* dev, int flags)
 
 void usage(char* argv[])
 {
-	printf("Usage: %s [-n name] [-t type]\n", argv[0]);
-	printf("       -t: tap tun\n");
+	printf("Usage: %s [-n name] [-t type] [-p]\n", argv[0]);
+	printf("       -t: tap or tun\n");
+	printf("       -p: persist\n");
+	printf("Example:       \n");
+	printf("        %s -n tun1 -t tap -p  create tap device tun1\n", argv[0]);
+	printf("        %s -n tun1 -t tap     remove tap device tun1\n", argv[0]);
 	return;
 }
 
@@ -57,8 +61,9 @@ int main(int argc, char * argv[])
         unsigned char buf[4096] ; 
 	int opt;
 	int flags = IFF_TUN;
+	int persist = 0;
 
-	while ((opt = getopt(argc, argv, "n:t:")) != -1) {
+	while ((opt = getopt(argc, argv, "n:t:p")) != -1) {
 		switch (opt) {
 		case 'n':
 			strncpy(tun_name, optarg, IFNAMSIZ) ;
@@ -76,6 +81,9 @@ int main(int argc, char * argv[])
 			}
 
 			break;
+		case 'p':
+			persist = 1;
+			break;
 		default:
 			fprintf(stderr, "Invalid option %c\n", opt);
 			usage(argv);
@@ -89,6 +97,11 @@ int main(int argc, char * argv[])
                 return 1; 
         } 
         printf ( "TUN name is %s\n" , tun_name) ; 
+
+	if (persist)
+		ioctl(tun, TUNSETPERSIST, 1);
+	else
+		ioctl(tun, TUNSETPERSIST, 0);
 
         while (1) { 
                 unsigned char ip[ 4] ; 
