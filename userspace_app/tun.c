@@ -60,7 +60,7 @@ int main(int argc, char * argv[])
         char tun_name[IFNAMSIZ]  = {0};
         unsigned char buf[4096] ; 
 	int opt;
-	int flags = IFF_TUN;
+	int flags = IFF_TAP;
 	int persist = 0;
 
 	while ((opt = getopt(argc, argv, "n:t:p")) != -1) {
