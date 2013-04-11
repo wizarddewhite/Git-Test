@@ -1,0 +1,328 @@
+1. how to use blkdebug
+================================================================================
+
+1.1 command line
+================================================================================
+i386-softmmu/qemu-system-i386 -enable-kvm \
+-drive file=blkdebug:../../kvm/default.conf:../../kvm/ubuntu.qcow2 \
+-boot dc -m 512 -monitor stdio \
+-netdev user,id=usernet -device rtl8139,netdev=usernet
+
+1.2 config file
+================================================================================
+[inject-error]
+state = "2"
+event = "read_aio"
+immediately = "off"
+once = "on"
+sector = "10"
+
+[set-state]
+state = "1"
+event = "read_aio"
+new_state = "2"
+
+[set-state]
+state = "2"
+event = "read_aio"
+new_state = "3"
+
+2. bdrv_blkdebug_init(), add to bdrv_drivers list
+================================================================================
+static void bdrv_blkdebug_init(void)
+{
+    bdrv_register(&bdrv_blkdebug);
+}
+
+3. bdrv_blkdebug 
+================================================================================
+static BlockDriver bdrv_blkdebug = {
+    .format_name        = "blkdebug",
+    .protocol_name      = "blkdebug",
+
+    .instance_size      = sizeof(BDRVBlkdebugState),
+
+    .bdrv_file_open     = blkdebug_open,
+    .bdrv_close         = blkdebug_close,
+    .bdrv_getlength     = blkdebug_getlength,
+
+    .bdrv_aio_readv     = blkdebug_aio_readv,
+    .bdrv_aio_writev    = blkdebug_aio_writev,
+
+    .bdrv_debug_event           = blkdebug_debug_event,
+    .bdrv_debug_breakpoint      = blkdebug_debug_breakpoint,
+    .bdrv_debug_resume          = blkdebug_debug_resume,
+    .bdrv_debug_is_suspended    = blkdebug_debug_is_suspended,
+};
+
+3.1 blkdebug_open()
+================================================================================
+static int blkdebug_open(BlockDriverState *bs, const char *filename, int flags)
+{
+    BDRVBlkdebugState *s = bs->opaque;
+    int ret;
+    char *config, *c;
+
+    /* Parse the blkdebug: prefix */
+    if (strncmp(filename, "blkdebug:", strlen("blkdebug:"))) {
+        return -EINVAL;
+    }
+    filename += strlen("blkdebug:");
+
+    /* Read rules from config file */
+    c = strchr(filename, ':');
+    if (c == NULL) {
+        return -EINVAL;
+    }
+
+    config = g_strdup(filename);
+    config[c - filename] = '\0';
+    ret = read_config(s, config);
+    g_free(config);
+    if (ret < 0) {
+        return ret;
+    }
+    filename = c + 1;
+
+    /* Set initial state */
+    s->state = 1;
+
+    /* Open the backing file */
+    ret = bdrv_file_open(&bs->file, filename, flags);
+    if (ret < 0) {
+        return ret;
+    }
+
+    return 0;
+}
+
+3.1.1 read_config()
+================================================================================
+static int read_config(BDRVBlkdebugState *s, const char *filename)
+{
+    FILE *f;
+    int ret;
+    struct add_rule_data d;
+
+    /* Allow usage without config file */
+    if (!*filename) {
+        return 0;
+    }
+
+    f = fopen(filename, "r");
+    if (f == NULL) {
+        return -errno;
+    }
+
+    ; parse the rules in config file
+    ret = qemu_config_parse(f, config_groups, filename);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    ; go through the rules and do proper action
+    d.s = s;
+    d.action = ACTION_INJECT_ERROR;
+    qemu_opts_foreach(&inject_error_opts, add_rule, &d, 0);
+
+    d.action = ACTION_SET_STATE;
+    qemu_opts_foreach(&set_state_opts, add_rule, &d, 0);
+
+    ret = 0;
+fail:
+    qemu_opts_reset(&inject_error_opts);
+    qemu_opts_reset(&set_state_opts);
+    fclose(f);
+    return ret;
+}
+
+3.1.1.1 add_rule(), parse rule and add it to BDRVBlkdebugState->rules[]
+================================================================================
+static int add_rule(QemuOpts *opts, void *opaque)
+{
+    struct add_rule_data *d = opaque;
+    BDRVBlkdebugState *s = d->s;
+    const char* event_name;
+    BlkDebugEvent event;
+    struct BlkdebugRule *rule;
+
+    /* Find the right event for the rule */
+    event_name = qemu_opt_get(opts, "event");
+    ; get event from name
+    if (!event_name || get_event_by_name(event_name, &event) < 0) {
+        return -1;
+    }
+
+    /* Set attributes common for all actions */
+    rule = g_malloc0(sizeof(*rule));
+    *rule = (struct BlkdebugRule) {
+        .event  = event,
+        .action = d->action,
+        .state  = qemu_opt_get_number(opts, "state", 0),
+    };
+
+    /* Parse action-specific options */
+    switch (d->action) {
+    case ACTION_INJECT_ERROR:
+        rule->options.inject.error = qemu_opt_get_number(opts, "errno", EIO);
+        rule->options.inject.once  = qemu_opt_get_bool(opts, "once", 0);
+        rule->options.inject.immediately =
+            qemu_opt_get_bool(opts, "immediately", 0);
+        rule->options.inject.sector = qemu_opt_get_number(opts, "sector", -1);
+        break;
+
+    case ACTION_SET_STATE:
+        rule->options.set_state.new_state =
+            qemu_opt_get_number(opts, "new_state", 0);
+        break;
+
+    case ACTION_SUSPEND:
+        rule->options.suspend.tag =
+            g_strdup(qemu_opt_get(opts, "tag"));
+        break;
+    };
+
+    /* Add the rule */
+    QLIST_INSERT_HEAD(&s->rules[event], rule, next);
+
+    return 0;
+}
+
+3.1.2 bdrv_file_open(), open the real image file
+================================================================================
+
+3.2 blkdebug_debug_event, event triggered at proper time
+================================================================================
+qcow2_co_readv 
+      BLKDBG_EVENT(bs->file, BLKDBG_READ_AIO);
+           bdrv_blkdebug->bdrv_debug_event
+
+static void blkdebug_debug_event(BlockDriverState *bs, BlkDebugEvent event)
+{
+    BDRVBlkdebugState *s = bs->opaque;
+    struct BlkdebugRule *rule, *next;
+    bool injected;
+
+    assert((int)event >= 0 && event < BLKDBG_EVENT_MAX);
+
+    injected = false;
+    s->new_state = s->state;
+    QLIST_FOREACH_SAFE(rule, &s->rules[event], next, next) {
+        injected = process_rule(bs, rule, injected);
+    }
+    s->state = s->new_state;
+}
+
+3.2.1 process_rule()
+================================================================================
+static bool process_rule(BlockDriverState *bs, struct BlkdebugRule *rule,
+    bool injected)
+{
+    BDRVBlkdebugState *s = bs->opaque;
+
+    /* Only process rules for the current state */
+    if (rule->state && rule->state != s->state) {
+        return injected;
+    }
+
+    /* Take the action */
+    switch (rule->action) {
+    case ACTION_INJECT_ERROR:
+        if (!injected) {
+            QSIMPLEQ_INIT(&s->active_rules);
+            injected = true;
+        }
+        QSIMPLEQ_INSERT_HEAD(&s->active_rules, rule, active_next);
+        break;
+
+    case ACTION_SET_STATE:
+        s->new_state = rule->options.set_state.new_state;
+        break;
+
+    case ACTION_SUSPEND:
+        suspend_request(bs, rule);
+        break;
+    }
+    return injected;
+}
+
+3.3 blkdebug_aio_readv(), inject error when condition is correct
+================================================================================
+bdrv_co_io_em
+        acb = bs->drv->bdrv_aio_readv(bs, sector_num, iov, nb_sectors,
+                                      bdrv_co_io_em_complete, &co);
+
+static BlockDriverAIOCB *blkdebug_aio_readv(BlockDriverState *bs,
+    int64_t sector_num, QEMUIOVector *qiov, int nb_sectors,
+    BlockDriverCompletionFunc *cb, void *opaque)
+{
+    BDRVBlkdebugState *s = bs->opaque;
+    BlkdebugRule *rule = NULL;
+
+    QSIMPLEQ_FOREACH(rule, &s->active_rules, active_next) {
+        if (rule->options.inject.sector == -1 ||
+            (rule->options.inject.sector >= sector_num &&
+             rule->options.inject.sector < sector_num + nb_sectors)) {
+            break;
+        }
+    }
+
+    if (rule && rule->options.inject.error) {
+        return inject_error(bs, cb, opaque, rule);
+    }
+
+    return bdrv_aio_readv(bs->file, sector_num, qiov, nb_sectors, cb, opaque);
+}
+
+
+3.3.1 inject_error(), 
+================================================================================
+static BlockDriverAIOCB *inject_error(BlockDriverState *bs,
+    BlockDriverCompletionFunc *cb, void *opaque, BlkdebugRule *rule)
+{
+    BDRVBlkdebugState *s = bs->opaque;
+    int error = rule->options.inject.error;
+    struct BlkdebugAIOCB *acb;
+    QEMUBH *bh;
+
+    if (rule->options.inject.once) {
+        QSIMPLEQ_INIT(&s->active_rules);
+    }
+
+    if (rule->options.inject.immediately) {
+        return NULL;
+    }
+
+    acb = qemu_aio_get(&blkdebug_aiocb_info, bs, cb, opaque);
+    acb->ret = -error;
+
+    bh = qemu_bh_new(error_callback_bh, acb);
+    acb->bh = bh;
+    qemu_bh_schedule(bh);
+
+    return &acb->common;
+}
+
+0. Data structure 
+================================================================================
+
+BlockDriverState             
++---------------------------+
+|device_name                |
++---------------------------+
+|filename                   | blkdebug:../../kvm/default.conf:../../kvm/ubuntu.qcow2
++---------------------------+
+|drv                        |----------------->BlockDriver(bdrv_blkdebug)
++---------------------------+
+|opaque                     |----->BDRVBlkdebugState
++---------------------------+      +---------------------------+
+|                           |      |state                      |
++---------------------------+      +---------------------------+
+|                           |      |new_state                  |
++---------------------------+      +---------------------------+
+                                   |rules                      |
+                                   +---------------------------+
+                                   |active_rules               |
+                                   +---------------------------+
+                                   |suspended_reqs             |
+                                   +---------------------------+
