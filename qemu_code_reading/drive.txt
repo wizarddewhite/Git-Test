@@ -696,9 +696,9 @@ free_and_fail:
      |  +---------------------------+
      +->|list                       |
         +---------------------------+
-        |format_name                |
+        |format_name                | blkdebug, qcow2, raw, vmdk
         +---------------------------+
-        |protocol_name              |
+        |protocol_name              | blkdebug, http, https, file, host_device
         +---------------------------+
         |                           |
         +---------------------------+
