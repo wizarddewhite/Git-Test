@@ -34,12 +34,11 @@ int main(void)
 {
 	getcontext(cp);
 	printf("Start from here--- x == %d\n", x);
-	if (!x) {
-		printf("getcontext has been called\n");
+	if (x <= 5) {
 		func();
 	}
 	else {
-		printf("setcontext has been called\n");
+		printf("ok, we are done\n");
 	}
 	return 0;
 }
