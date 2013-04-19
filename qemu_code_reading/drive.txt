@@ -1,4 +1,4 @@
-1. drive_init()
+1. drive_init(), parse the -drive parameter in command line
 ================================================================================
 DriveInfo *drive_init(QemuOpts *opts, BlockInterfaceType block_default_type)
 {
@@ -487,7 +487,7 @@ unlink_and_fail:
     return ret;
 }
 
-1.1.1 bdrv_file_open()
+1.1.1 bdrv_file_open(), open the image file specified by -drive
 ================================================================================
 int bdrv_file_open(BlockDriverState **pbs, const char *filename, int flags)
 {
@@ -529,14 +529,19 @@ BlockDriver *bdrv_find_protocol(const char *filename)
      * Thanks to the brain-dead persistent naming schemes on udev-
      * based Linux systems those actually are quite common.
      */
+    ; check the host device, cdrom, /dev/sda1, floppy
     drv1 = find_hdev_driver(filename);
     if (drv1) {
         return drv1;
     }
 
+    ; whether filename starts with <protocol:> ?
+    ; if not, it has format_name ==  "file"
     if (!path_has_protocol(filename)) {
         return bdrv_find_format("file");
     }
+
+    ; then search by protocol_name 
     p = strchr(filename, ':');
     assert(p != NULL);
     len = p - filename;
@@ -553,7 +558,7 @@ BlockDriver *bdrv_find_protocol(const char *filename)
     return NULL;
 }
 
-1.1.1.1 bdrv_open_common()
+1.1.1.1 bdrv_open_common(), call BlockDriver->bdrv_file_open
 ================================================================================
 static int bdrv_open_common(BlockDriverState *bs, BlockDriverState *file,
     const char *filename,
@@ -629,11 +634,64 @@ free_and_fail:
 1.1.1.1.1 BlockDriver->bdrv_file_open
 ================================================================================
 
-1.1.2 find_image_format()
+1.1.2 find_image_format(), call BlockDriver->bdrv_probe
 ================================================================================
+static int find_image_format(BlockDriverState *bs, const char *filename,
+                             BlockDriver **pdrv)
+{
+    int score, score_max;
+    BlockDriver *drv1, *drv;
+    uint8_t buf[2048];
+    int ret = 0;
+
+    /* Return the raw BlockDriver * to scsi-generic devices or empty drives */
+    if (bs->sg || !bdrv_is_inserted(bs) || bdrv_getlength(bs) == 0) {
+        drv = bdrv_find_format("raw");
+        if (!drv) {
+            ret = -ENOENT;
+        }
+        *pdrv = drv;
+        return ret;
+    }
+
+    ; read the first 2k
+    ret = bdrv_pread(bs, 0, buf, sizeof(buf));
+    if (ret < 0) {
+        *pdrv = NULL;
+        return ret;
+    }
+
+    ; call bdrv_probe, return the drv with highest score
+    score_max = 0;
+    drv = NULL;
+    QLIST_FOREACH(drv1, &bdrv_drivers, list) {
+        if (drv1->bdrv_probe) {
+            score = drv1->bdrv_probe(buf, ret, filename);
+            if (score > score_max) {
+                score_max = score;
+                drv = drv1;
+            }
+        }
+    }
+    if (!drv) {
+        ret = -ENOENT;
+    }
+    *pdrv = drv;
+    return ret;
+}
 
 1.1.3 bdrv_open_common
 ================================================================================
+
+1.1.3.1 BlockDriver->bdrv_file_open
+================================================================================
+
+2. Read a block
+================================================================================
+bdrv_rw_co
+	bdrv_rw_co_entry
+		bdrv_co_do_readv
+			drv->bdrv_co_readv()
 
 0. Related Data Structure
 ================================================================================
@@ -674,7 +732,7 @@ free_and_fail:
                     +---------------------------+
                     |drv                        |----->BlockDriver             
                     +---------------------------+      +---------------------------+
-                    |                           |      |                           |
+                    |                           |      |bdrv_file_open             |
                     +---------------------------+      +---------------------------+
                     |                           |      |                           |
                     +---------------------------+      +---------------------------+
