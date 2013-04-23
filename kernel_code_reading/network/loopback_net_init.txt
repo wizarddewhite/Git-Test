@@ -1,0 +1,450 @@
+1. loopback_net_init()
+================================================================================
+static __net_init int loopback_net_init(struct net *net)
+{
+	struct net_device *dev;
+	int err;
+
+	err = -ENOMEM;
+	dev = alloc_netdev(0, "lo", loopback_setup);
+	if (!dev)
+		goto out;
+
+	dev_net_set(dev, net);
+	err = register_netdev(dev);
+	if (err)
+		goto out_free_netdev;
+
+	BUG_ON(dev->ifindex != LOOPBACK_IFINDEX);
+	net->loopback_dev = dev;
+	return 0;
+
+
+out_free_netdev:
+	free_netdev(dev);
+out:
+	if (net_eq(net, &init_net))
+		panic("loopback: Failed to register netdevice: %d\n", err);
+	return err;
+}
+
+1.1 alloc_netdev(0, "lo", loopback_setup)
+================================================================================
+#define alloc_netdev(sizeof_priv, name, setup) \
+	alloc_netdev_mqs(sizeof_priv, name, setup, 1, 1)
+
+1.1.1 alloc_netdev_mqs()
+================================================================================
+struct net_device *alloc_netdev_mqs(int sizeof_priv, const char *name,
+		void (*setup)(struct net_device *),
+		unsigned int txqs, unsigned int rxqs)
+{
+	struct net_device *dev;
+	size_t alloc_size;
+	struct net_device *p;
+
+	BUG_ON(strlen(name) >= sizeof(dev->name));
+
+	if (txqs < 1) {
+		pr_err("alloc_netdev: Unable to allocate device with zero queues\n");
+		return NULL;
+	}
+
+#ifdef CONFIG_RPS
+	if (rxqs < 1) {
+		pr_err("alloc_netdev: Unable to allocate device with zero RX queues\n");
+		return NULL;
+	}
+#endif
+
+	alloc_size = sizeof(struct net_device);
+	if (sizeof_priv) {
+		/* ensure 32-byte alignment of private area */
+		alloc_size = ALIGN(alloc_size, NETDEV_ALIGN);
+		alloc_size += sizeof_priv;
+	}
+	/* ensure 32-byte alignment of whole construct */
+	alloc_size += NETDEV_ALIGN - 1;
+
+	p = kzalloc(alloc_size, GFP_KERNEL);
+	if (!p) {
+		pr_err("alloc_netdev: Unable to allocate device\n");
+		return NULL;
+	}
+
+	dev = PTR_ALIGN(p, NETDEV_ALIGN);
+	dev->padded = (char *)dev - (char *)p;
+
+	dev->pcpu_refcnt = alloc_percpu(int);
+	if (!dev->pcpu_refcnt)
+		goto free_p;
+
+	if (dev_addr_init(dev))
+		goto free_pcpu;
+
+	dev_mc_init(dev);
+	dev_uc_init(dev);
+
+	dev_net_set(dev, &init_net);
+
+	dev->gso_max_size = GSO_MAX_SIZE;
+	dev->gso_max_segs = GSO_MAX_SEGS;
+
+	INIT_LIST_HEAD(&dev->napi_list);
+	INIT_LIST_HEAD(&dev->unreg_list);
+	INIT_LIST_HEAD(&dev->link_watch_list);
+	dev->priv_flags = IFF_XMIT_DST_RELEASE;
+	setup(dev);
+
+	dev->num_tx_queues = txqs;
+	dev->real_num_tx_queues = txqs;
+	if (netif_alloc_netdev_queues(dev))
+		goto free_all;
+
+#ifdef CONFIG_RPS
+	dev->num_rx_queues = rxqs;
+	dev->real_num_rx_queues = rxqs;
+	if (netif_alloc_rx_queues(dev))
+		goto free_all;
+#endif
+
+	strcpy(dev->name, name);
+	dev->group = INIT_NETDEV_GROUP;
+	if (!dev->ethtool_ops)
+		dev->ethtool_ops = &default_ethtool_ops;
+	return dev;
+
+free_all:
+	free_netdev(dev);
+	return NULL;
+
+free_pcpu:
+	free_percpu(dev->pcpu_refcnt);
+	kfree(dev->_tx);
+#ifdef CONFIG_RPS
+	kfree(dev->_rx);
+#endif
+
+free_p:
+	kfree(p);
+	return NULL;
+}
+
+1.1.1.1 dev_addr_init(dev), init mac addr
+================================================================================
+
+1.1.1.2 setup(dev), loopback_setup(dev)
+================================================================================
+static void loopback_setup(struct net_device *dev)
+{
+	dev->mtu		= 64 * 1024;
+	dev->hard_header_len	= ETH_HLEN;	/* 14	*/
+	dev->addr_len		= ETH_ALEN;	/* 6	*/
+	dev->tx_queue_len	= 0;
+	dev->type		= ARPHRD_LOOPBACK;	/* 0x0001*/
+	dev->flags		= IFF_LOOPBACK;
+	dev->priv_flags	       &= ~IFF_XMIT_DST_RELEASE;
+	dev->hw_features	= NETIF_F_ALL_TSO | NETIF_F_UFO;
+	dev->features 		= NETIF_F_SG | NETIF_F_FRAGLIST
+		| NETIF_F_ALL_TSO
+		| NETIF_F_UFO
+		| NETIF_F_HW_CSUM
+		| NETIF_F_RXCSUM
+		| NETIF_F_HIGHDMA
+		| NETIF_F_LLTX
+		| NETIF_F_NETNS_LOCAL
+		| NETIF_F_VLAN_CHALLENGED
+		| NETIF_F_LOOPBACK;
+	dev->ethtool_ops	= &loopback_ethtool_ops;
+	dev->header_ops		= &eth_header_ops;
+	dev->netdev_ops		= &loopback_ops;
+	dev->destructor		= loopback_dev_free;
+}
+
+1.1.1.3 netif_alloc_netdev_queues(dev)
+================================================================================
+static int netif_alloc_netdev_queues(struct net_device *dev)
+{
+	unsigned int count = dev->num_tx_queues;
+	struct netdev_queue *tx;
+
+	BUG_ON(count < 1);
+
+	tx = kcalloc(count, sizeof(struct netdev_queue), GFP_KERNEL);
+	if (!tx) {
+		pr_err("netdev: Unable to allocate %u tx queues\n", count);
+		return -ENOMEM;
+	}
+	dev->_tx = tx;
+
+	netdev_for_each_tx_queue(dev, netdev_init_one_queue, NULL);
+	spin_lock_init(&dev->tx_global_lock);
+
+	return 0;
+}
+
+1.1.1.4 netif_alloc_rx_queues(dev)
+================================================================================
+static int netif_alloc_rx_queues(struct net_device *dev)
+{
+	unsigned int i, count = dev->num_rx_queues;
+	struct netdev_rx_queue *rx;
+
+	BUG_ON(count < 1);
+
+	rx = kcalloc(count, sizeof(struct netdev_rx_queue), GFP_KERNEL);
+	if (!rx) {
+		pr_err("netdev: Unable to allocate %u rx queues\n", count);
+		return -ENOMEM;
+	}
+	dev->_rx = rx;
+
+	for (i = 0; i < count; i++)
+		rx[i].dev = dev;
+	return 0;
+}
+
+1.2 register_netdev()
+================================================================================
+int register_netdev(struct net_device *dev)
+{
+	int err;
+
+	rtnl_lock();
+	err = register_netdevice(dev);
+	rtnl_unlock();
+	return err;
+}
+
+1.2.1 register_netdevice()
+================================================================================
+int register_netdevice(struct net_device *dev)
+{
+	int ret;
+	struct net *net = dev_net(dev);
+
+	BUG_ON(dev_boot_phase);
+	ASSERT_RTNL();
+
+	might_sleep();
+
+	/* When net_device's are persistent, this will be fatal. */
+	BUG_ON(dev->reg_state != NETREG_UNINITIALIZED);
+	BUG_ON(!net);
+
+	spin_lock_init(&dev->addr_list_lock);
+	netdev_set_addr_lockdep_class(dev);
+
+	dev->iflink = -1;
+
+	ret = dev_get_valid_name(net, dev, dev->name);
+	if (ret < 0)
+		goto out;
+
+	/* Init, if this function is available */
+	if (dev->netdev_ops->ndo_init) {
+		ret = dev->netdev_ops->ndo_init(dev);
+		if (ret) {
+			if (ret > 0)
+				ret = -EIO;
+			goto out;
+		}
+	}
+
+	ret = -EBUSY;
+	if (!dev->ifindex)
+		dev->ifindex = dev_new_index(net);
+	else if (__dev_get_by_index(net, dev->ifindex))
+		goto err_uninit;
+
+	if (dev->iflink == -1)
+		dev->iflink = dev->ifindex;
+
+	/* Transfer changeable features to wanted_features and enable
+	 * software offloads (GSO and GRO).
+	 */
+	dev->hw_features |= NETIF_F_SOFT_FEATURES;
+	dev->features |= NETIF_F_SOFT_FEATURES;
+	dev->wanted_features = dev->features & dev->hw_features;
+
+	/* Turn on no cache copy if HW is doing checksum */
+	if (!(dev->flags & IFF_LOOPBACK)) {
+		dev->hw_features |= NETIF_F_NOCACHE_COPY;
+		if (dev->features & NETIF_F_ALL_CSUM) {
+			dev->wanted_features |= NETIF_F_NOCACHE_COPY;
+			dev->features |= NETIF_F_NOCACHE_COPY;
+		}
+	}
+
+	/* Make NETIF_F_HIGHDMA inheritable to VLAN devices.
+	 */
+	dev->vlan_features |= NETIF_F_HIGHDMA;
+
+	ret = call_netdevice_notifiers(NETDEV_POST_INIT, dev);
+	ret = notifier_to_errno(ret);
+	if (ret)
+		goto err_uninit;
+
+	ret = netdev_register_kobject(dev);
+	if (ret)
+		goto err_uninit;
+	dev->reg_state = NETREG_REGISTERED;
+
+	__netdev_update_features(dev);
+
+	/*
+	 *	Default initial state at registry is that the
+	 *	device is present.
+	 */
+
+	set_bit(__LINK_STATE_PRESENT, &dev->state);
+
+	linkwatch_init_dev(dev);
+
+	dev_init_scheduler(dev);
+	dev_hold(dev);
+	list_netdevice(dev);
+	add_device_randomness(dev->dev_addr, dev->addr_len);
+
+	/* Notify protocols, that a new device appeared. */
+	ret = call_netdevice_notifiers(NETDEV_REGISTER, dev);
+	ret = notifier_to_errno(ret);
+	if (ret) {
+		rollback_registered(dev);
+		dev->reg_state = NETREG_UNREGISTERED;
+	}
+	/*
+	 *	Prevent userspace races by waiting until the network
+	 *	device is fully setup before sending notifications.
+	 */
+	if (!dev->rtnl_link_ops ||
+	    dev->rtnl_link_state == RTNL_LINK_INITIALIZED)
+		rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U);
+
+out:
+	return ret;
+
+err_uninit:
+	if (dev->netdev_ops->ndo_uninit)
+		dev->netdev_ops->ndo_uninit(dev);
+	goto out;
+}
+
+1.2.1.1 dev_get_valid_name(), assign a name for the device
+================================================================================
+static int dev_get_valid_name(struct net *net,
+			      struct net_device *dev,
+			      const char *name)
+{
+	BUG_ON(!net);
+
+	if (!dev_valid_name(name))
+		return -EINVAL;
+
+	if (strchr(name, '%'))
+		return dev_alloc_name_ns(net, dev, name);
+	else if (__dev_get_by_name(net, name))
+		return -EEXIST;
+	else if (dev->name != name)
+		strlcpy(dev->name, name, IFNAMSIZ);
+
+	return 0;
+}
+
+1.2.1.2 call_netdevice_notifiers(), netdev_chain NETDEV_POST_INIT
+================================================================================
+int call_netdevice_notifiers(unsigned long val, struct net_device *dev)
+{
+	ASSERT_RTNL();
+	return raw_notifier_call_chain(&netdev_chain, val, dev);
+}
+
+1.2.1.3 netdev_register_kobject()
+================================================================================
+int netdev_register_kobject(struct net_device *net)
+{
+	struct device *dev = &(net->dev);
+	const struct attribute_group **groups = net->sysfs_groups;
+	int error = 0;
+
+	device_initialize(dev);
+	dev->class = &net_class;
+	dev->platform_data = net;
+	dev->groups = groups;
+
+	dev_set_name(dev, "%s", net->name);
+
+#ifdef CONFIG_SYSFS
+	/* Allow for a device specific group */
+	if (*groups)
+		groups++;
+
+	*groups++ = &netstat_group;
+
+#if IS_ENABLED(CONFIG_WIRELESS_EXT) || IS_ENABLED(CONFIG_CFG80211)
+	if (net->ieee80211_ptr)
+		*groups++ = &wireless_group;
+#if IS_ENABLED(CONFIG_WIRELESS_EXT)
+	else if (net->wireless_handlers)
+		*groups++ = &wireless_group;
+#endif
+#endif
+#endif /* CONFIG_SYSFS */
+
+	error = device_add(dev);
+	if (error)
+		return error;
+
+	error = register_queue_kobjects(net);
+	if (error) {
+		device_del(dev);
+		return error;
+	}
+
+	return error;
+}
+
+1.2.1.4 linkwatch_init_dev()
+================================================================================
+void linkwatch_init_dev(struct net_device *dev)
+{
+	/* Handle pre-registration link state changes */
+	if (!netif_carrier_ok(dev) || netif_dormant(dev))
+		rfc2863_policy(dev);
+}
+
+1.2.1.5 dev_init_scheduler(), tx queue and timer setup
+================================================================================
+void dev_init_scheduler(struct net_device *dev)
+{
+	dev->qdisc = &noop_qdisc;
+	netdev_for_each_tx_queue(dev, dev_init_scheduler_queue, &noop_qdisc);
+	if (dev_ingress_queue(dev))
+		dev_init_scheduler_queue(dev, dev_ingress_queue(dev), &noop_qdisc);
+
+	setup_timer(&dev->watchdog_timer, dev_watchdog, (unsigned long)dev);
+}
+
+1.2.1.6 list_netdevice(), insert netdev to list
+================================================================================
+static int list_netdevice(struct net_device *dev)
+{
+	struct net *net = dev_net(dev);
+
+	ASSERT_RTNL();
+
+	write_lock_bh(&dev_base_lock);
+	list_add_tail_rcu(&dev->dev_list, &net->dev_base_head);
+	hlist_add_head_rcu(&dev->name_hlist, dev_name_hash(net, dev->name));
+	hlist_add_head_rcu(&dev->index_hlist,
+			   dev_index_hash(net, dev->ifindex));
+	write_unlock_bh(&dev_base_lock);
+
+	dev_base_seq_inc(net);
+
+	return 0;
+}
+
+1.2.1.6 call_netdevice_notifiers(NETDEV_REGISTER, dev)
+================================================================================
+
