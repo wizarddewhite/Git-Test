@@ -688,10 +688,129 @@ static int find_image_format(BlockDriverState *bs, const char *filename,
 
 2. Read a block
 ================================================================================
-bdrv_rw_co
-	bdrv_rw_co_entry
-		bdrv_co_do_readv
-			drv->bdrv_co_readv()
+static int bdrv_rw_co(BlockDriverState *bs, int64_t sector_num, uint8_t *buf,
+                      int nb_sectors, bool is_write)
+{
+    QEMUIOVector qiov;
+    struct iovec iov = {
+        .iov_base = (void *)buf,
+        .iov_len = nb_sectors * BDRV_SECTOR_SIZE,
+    };
+    Coroutine *co;
+    RwCo rwco = {
+        .bs = bs,
+        .sector_num = sector_num,
+        .nb_sectors = nb_sectors,
+        .qiov = &qiov,
+        .is_write = is_write,
+        .ret = NOT_DONE,
+    };
+
+    qemu_iovec_init_external(&qiov, &iov, 1);
+
+    /**
+     * In sync call context, when the vcpu is blocked, this throttling timer
+     * will not fire; so the I/O throttling function has to be disabled here
+     * if it has been enabled.
+     */
+    if (bs->io_limits_enabled) {
+        fprintf(stderr, "Disabling I/O throttling on '%s' due "
+                        "to synchronous I/O.\n", bdrv_get_device_name(bs));
+        bdrv_io_limits_disable(bs);
+    }
+
+    if (qemu_in_coroutine()) {
+        /* Fast-path if already in coroutine context */
+        bdrv_rw_co_entry(&rwco);
+    } else {
+        co = qemu_coroutine_create(bdrv_rw_co_entry);
+        qemu_coroutine_enter(co, &rwco);
+        while (rwco.ret == NOT_DONE) {
+            qemu_aio_wait();
+        }
+    }
+    return rwco.ret;
+}
+
+
+2.1 bdrv_rw_co_entry()
+================================================================================
+static void coroutine_fn bdrv_rw_co_entry(void *opaque)
+{
+    RwCo *rwco = opaque;
+
+    if (!rwco->is_write) {
+        rwco->ret = bdrv_co_do_readv(rwco->bs, rwco->sector_num,
+                                     rwco->nb_sectors, rwco->qiov, 0);
+    } else {
+        rwco->ret = bdrv_co_do_writev(rwco->bs, rwco->sector_num,
+                                      rwco->nb_sectors, rwco->qiov, 0);
+    }
+}
+
+2.1.1 bdrv_co_do_readv
+================================================================================
+static int coroutine_fn bdrv_co_do_readv(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors, QEMUIOVector *qiov,
+    BdrvRequestFlags flags)
+{
+    BlockDriver *drv = bs->drv;
+    BdrvTrackedRequest req;
+    int ret;
+
+    if (!drv) {
+        return -ENOMEDIUM;
+    }
+    if (bdrv_check_request(bs, sector_num, nb_sectors)) {
+        return -EIO;
+    }
+
+    /* throttling disk read I/O */
+    if (bs->io_limits_enabled) {
+        bdrv_io_limits_intercept(bs, false, nb_sectors);
+    }
+
+    if (bs->copy_on_read) {
+        flags |= BDRV_REQ_COPY_ON_READ;
+    }
+    if (flags & BDRV_REQ_COPY_ON_READ) {
+        bs->copy_on_read_in_flight++;
+    }
+
+    if (bs->copy_on_read_in_flight) {
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors);
+    }
+
+    tracked_request_begin(&req, bs, sector_num, nb_sectors, false);
+
+    if (flags & BDRV_REQ_COPY_ON_READ) {
+        int pnum;
+
+        ret = bdrv_co_is_allocated(bs, sector_num, nb_sectors, &pnum);
+        if (ret < 0) {
+            goto out;
+        }
+
+        if (!ret || pnum != nb_sectors) {
+            ret = bdrv_co_do_copy_on_readv(bs, sector_num, nb_sectors, qiov);
+            goto out;
+        }
+    }
+
+    ret = drv->bdrv_co_readv(bs, sector_num, nb_sectors, qiov);
+
+out:
+    tracked_request_end(&req);
+
+    if (flags & BDRV_REQ_COPY_ON_READ) {
+        bs->copy_on_read_in_flight--;
+    }
+
+    return ret;
+}
+
+2.1.1.1 BlockDriver->bdrv_co_readv()
+================================================================================
 
 0. Related Data Structure
 ================================================================================
