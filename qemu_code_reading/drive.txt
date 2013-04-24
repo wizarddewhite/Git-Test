@@ -511,8 +511,10 @@ int bdrv_file_open(BlockDriverState **pbs, const char *filename, int flags)
     return 0;
 }
 
-1.1.1.1 bdrv_find_protocol(), get proper BlockDriver from the filename
+1.1.1.1 bdrv_find_protocol(), get proper BlockDriver based on protocol
 ================================================================================
+; protocol could be file, http
+
 BlockDriver *bdrv_find_protocol(const char *filename)
 {
     BlockDriver *drv1;
