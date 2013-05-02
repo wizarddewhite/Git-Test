@@ -1,75 +1,123 @@
-
-1. Qemu command line option
+1. define the qemu options
 ===============================================================
-This structure defines valid options for Qemu.
-Will be searched by lookup_opt().
-Every entry represent one option, which defines
-    option name, has arg or not, enum number, architecture info
-    static const QEMUOption qemu_options[] = {
-        { "h", 0, QEMU_OPTION_h, QEMU_ARCH_ALL },
-    #define QEMU_OPTIONS_GENERATE_OPTIONS
-    #include "qemu-options-wrapper.h"
-        { NULL },
-    };
 
-This structure defines those categories of options valid in Qemu.
-This list is manipulated in qemu-config.c
-static QemuOptsList *vm_config_groups[32] = {
-    &qemu_drive_opts,
-    &qemu_chardev_opts,
-    &qemu_device_opts,
-    &qemu_netdev_opts,
-    &qemu_net_opts,
-    &qemu_rtc_opts,
-    &qemu_global_opts,
-    &qemu_mon_opts,
-    &qemu_cpudef_opts,
-    &qemu_trace_opts,
-    &qemu_option_rom_opts,
-    &qemu_machine_opts,
-    &qemu_boot_opts,
-    NULL,
+1.1 qemu-options.def
+===============================================================
+DEF("kernel", HAS_ARG, QEMU_OPTION_kernel, \
+"-kernel bzImage use 'bzImage' as kernel image\n", QEMU_ARCH_ALL)
+
+This definition is interpretered in three different situations. 
+Look at file *qemu-options-wrapper.h*.
+* generate enum
+* generate help
+* generate option
+
+1.1.1 qemu_options[], an options list generated from qemu-options.def
+===============================================================
+static const QEMUOption qemu_options[] = {
+    { "h", 0, QEMU_OPTION_h, QEMU_ARCH_ALL },
+#define QEMU_OPTIONS_GENERATE_OPTIONS
+#include "qemu-options-wrapper.h"
+    { NULL },
 };
 
-typedef struct QemuOptDesc {
-    const char *name;
-    enum QemuOptType type;
-    const char *help;
-} QemuOptDesc;
+1.2 QemuOptList
+===============================================================
+Each option is defined in QemuOptList structure.
 
 struct QemuOptsList {
     const char *name;
     const char *implied_opt_name;
-    QTAILQ_HEAD(, QemuOpts) head;     // here is the real opts at run time
-    QemuOptDesc desc[];               // here lists valid opts
+    bool merge_lists;  /* Merge multiple uses of option into a single list? */
+    QTAILQ_HEAD(, QemuOpts) head;
+    QemuOptDesc desc[];
 };
 
-We can take a look at qemu_drive_opts for an example.
+The field desc is used to describe the sub-command in this option.
 
-struct QemuOpt {                      // this is an instance of QemuOptDesc
-    const char   *name;               // name
-    const char   *str;                // raw value
-
-    const QemuOptDesc *desc;
-    union {
-        bool boolean;
-        uint64_t uint;
-    } value;                          // value transformed according to its type
-
-    QemuOpts     *opts;
-    QTAILQ_ENTRY(QemuOpt) next;
+1.2.2 one example of QemuOptList
+===============================================================
+QemuOptsList qemu_device_opts = {
+    .name = "device",
+    .implied_opt_name = "driver",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_device_opts.head),
+    .desc = {
+        /*
+         * no elements => accept any
+         * sanity checking will happen later
+         * when setting device properties
+         */
+        { /* end of list */ }
+    },
 };
 
-struct QemuOpts {
-    char *id;                     // QemuOpts contains the QemuOpt with the same id
-                                  // you can see the command help and qemu_opts_parse()
-                                  // they are based on the id and id is unique for each
-                                  // option
-                                  // and you can see the format of id in id_wellformed()
-                                  // finally, in qemu_opts_do_parse() will fill the
-                                  // QemuOpts->head list.
-    QemuOptsList *list;
-    Location loc;
-    QTAILQ_HEAD(QemuOptHead, QemuOpt) head;
-    QTAILQ_ENTRY(QemuOpts) next;
-};
+2. Register the options
+===============================================================
+
+2.1 qemu_add_opts(), register the opt list to vm_config_groups
+===============================================================
+void qemu_add_opts(QemuOptsList *list)
+{
+    int entries, i;
+
+    entries = ARRAY_SIZE(vm_config_groups);
+    entries--; /* keep list NULL terminated */
+    for (i = 0; i < entries; i++) {
+        if (vm_config_groups[i] == NULL) {
+            vm_config_groups[i] = list;
+            return;
+        }
+    }
+    fprintf(stderr, "ran out of space in vm_config_groups");
+    abort();
+}
+
+3. parse options
+===============================================================
+
+3.1 lookup_opt(), search the qemu_options return with the same name
+===============================================================
+static const QEMUOption *lookup_opt(int argc, char **argv,
+                                    const char **poptarg, int *poptind)
+{
+    const QEMUOption *popt;
+    int optind = *poptind;
+    char *r = argv[optind];
+    const char *optarg;
+
+    loc_set_cmdline(argv, optind, 1);
+    optind++;
+    /* Treat --foo the same as -foo.  */
+    if (r[1] == '-')
+        r++;
+    popt = qemu_options;
+    for(;;) {
+        if (!popt->name) {
+            error_report("invalid option");
+            exit(1);
+        }
+        if (!strcmp(popt->name, r + 1))
+            break;
+        popt++;
+    }
+    if (popt->flags & HAS_ARG) {
+        if (optind >= argc) {
+            error_report("requires an argument");
+            exit(1);
+        }
+        optarg = argv[optind++];
+        loc_set_cmdline(argv, optind - 2, 2);
+    } else {
+        optarg = NULL;
+    }
+
+    *poptarg = optarg;
+    *poptind = optind;
+
+    return popt;
+}
+
+3.2 do proper action based on the option type
+===============================================================
+such as QEMU_OPTION_net, QEMU_OPTION_kernel
+
