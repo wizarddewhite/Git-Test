@@ -19,6 +19,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <pcap.h>
+#include <sys/time.h>
 
 int tun_create(char* dev, int flags) 
 { 
@@ -45,12 +47,14 @@ int tun_create(char* dev, int flags)
 
 void usage(char* argv[])
 {
-	printf("Usage: %s [-n name] [-t type] [-p]\n", argv[0]);
+	printf("Usage: %s [-n name] [-t type] [-p] [-r file]\n", argv[0]);
 	printf("       -t: tap or tun\n");
 	printf("       -p: persist\n");
+	printf("       -r: record packet to file\n");
 	printf("Example:       \n");
 	printf("        %s -n tun1 -t tap -p  create tap device tun1\n", argv[0]);
 	printf("        %s -n tun1 -t tap     remove tap device tun1\n", argv[0]);
+	printf("        %s -n tun1 -r file    capture packet to file\n", argv[0]);
 	return;
 }
 
@@ -62,8 +66,13 @@ int main(int argc, char * argv[])
 	int opt;
 	int flags = IFF_TAP;
 	int persist = 0;
+	char *record_file = NULL;
+	int fd_record = -1;
+	struct pcap_file_header hdr;
+	struct pcap_pkthdr      pkthdr;
+	struct timeval t;
 
-	while ((opt = getopt(argc, argv, "n:t:p")) != -1) {
+	while ((opt = getopt(argc, argv, "n:t:r:p")) != -1) {
 		switch (opt) {
 		case 'n':
 			strncpy(tun_name, optarg, IFNAMSIZ) ;
@@ -84,6 +93,9 @@ int main(int argc, char * argv[])
 		case 'p':
 			persist = 1;
 			break;
+		case 'r':
+			record_file = optarg;
+			break;
 		default:
 			fprintf(stderr, "Invalid option %c\n", opt);
 			usage(argv);
@@ -103,12 +115,41 @@ int main(int argc, char * argv[])
 	else
 		ioctl(tun, TUNSETPERSIST, 0);
 
+	if (record_file) {
+		printf("record to file: %s\n", record_file);
+		fd_record = open(record_file, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+
+		hdr.magic = 0xa1b2c3d4;
+		hdr.version_major = 2;
+		hdr.version_minor = 4;
+		hdr.thiszone = 0;
+		hdr.sigfigs = 0;
+		hdr.snaplen = 65536;
+		hdr.linktype = 1;
+
+		write(fd_record, &hdr, sizeof(hdr));
+	}
+
         while (1) { 
                 unsigned char ip[ 4] ; 
 
                 ret = read (tun, buf, sizeof (buf) ) ; 
                 if ( ret < 0) 
                         break ; 
+
+		if (fd_record >= 0) {
+			gettimeofday(&t, NULL);
+
+			pkthdr.ts.tv_sec = t.tv_sec;
+			pkthdr.ts.tv_usec = t.tv_usec;
+			pkthdr.caplen = ret;
+			pkthdr.len = ret;
+
+			write(fd_record, &pkthdr, sizeof(pkthdr));
+
+			write(fd_record, buf, ret);
+		}
+
                 memcpy (ip, & buf[12] , 4) ; 
                 memcpy (&buf[12], & buf[16] , 4) ; 
                 memcpy (&buf[16], ip, 4) ; 
