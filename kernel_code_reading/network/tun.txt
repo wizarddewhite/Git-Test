@@ -292,7 +292,7 @@ static int tun_chr_open(struct inode *inode, struct file * file)
 	return 0;
 }
 
-3.2 tun_chr_ioctl
+3.2 tun_chr_ioctl(), userspace ioctl interface will call here
 ================================================================================
 static long tun_chr_ioctl(struct file *file,
 			  unsigned int cmd, unsigned long arg)
@@ -525,7 +525,7 @@ unlock:
 	return ret;
 }
 
-3.2.1 tun_set_iff()
+3.2.1 tun_set_iff(), when cmd == TUNSETIFF this is called
 ================================================================================
 static int tun_set_iff(struct net *net, struct file *file, struct ifreq *ifr)
 {
