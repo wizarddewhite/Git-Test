@@ -800,3 +800,159 @@ cleanup:
 out:
 	return err;
 }
+
+4. net_rx_action(), working thread for rx packet
+================================================================================
+; each time go through the poll_list, which contains the napi_struct
+; and run napi_struct->poll
+static void net_rx_action(struct softirq_action *h)
+{
+	struct softnet_data *sd = &__get_cpu_var(softnet_data); a per-cpu variable
+	unsigned long time_limit = jiffies + 2;               ; 2 time tick
+	int budget = netdev_budget;                           ; 300
+	void *have;
+
+	local_irq_disable();
+
+	while (!list_empty(&sd->poll_list)) {
+		struct napi_struct *n;
+		int work, weight;
+
+		/* If softirq window is exhuasted then punt.
+		 * Allow this to run for 2 jiffies since which will allow
+		 * an average latency of 1.5/HZ.
+		 */
+		if (unlikely(budget <= 0 || time_after(jiffies, time_limit)))
+			goto softnet_break;
+
+		local_irq_enable();
+
+		/* Even though interrupts have been re-enabled, this
+		 * access is safe because interrupts can only add new
+		 * entries to the tail of this list, and only ->poll()
+		 * calls can remove this head entry from the list.
+		 */
+		n = list_first_entry(&sd->poll_list, struct napi_struct, poll_list);
+
+		have = netpoll_poll_lock(n);
+
+		weight = n->weight;
+
+		/* This NAPI_STATE_SCHED test is for avoiding a race
+		 * with netpoll's poll_napi().  Only the entity which
+		 * obtains the lock and sees NAPI_STATE_SCHED set will
+		 * actually make the ->poll() call.  Therefore we avoid
+		 * accidentally calling ->poll() when NAPI is not scheduled.
+		 */
+		work = 0;
+		if (test_bit(NAPI_STATE_SCHED, &n->state)) {
+			work = n->poll(n, weight);
+			trace_napi_poll(n);
+		}
+
+		WARN_ON_ONCE(work > weight);
+
+		budget -= work;
+
+		local_irq_disable();
+
+		/* Drivers must not modify the NAPI state if they
+		 * consume the entire weight.  In such cases this code
+		 * still "owns" the NAPI instance and therefore can
+		 * move the instance around on the list at-will.
+		 */
+		if (unlikely(work == weight)) {
+			if (unlikely(napi_disable_pending(n))) {
+				local_irq_enable();
+				napi_complete(n);               ;remove this
+				local_irq_disable();
+			} else {
+				if (n->gro_list) {
+					/* flush too old packets
+					 * If HZ < 1000, flush all packets.
+					 */
+					local_irq_enable();
+					napi_gro_flush(n, HZ >= 1000);
+					local_irq_disable();
+				}
+				;                              ; move to tail
+				list_move_tail(&n->poll_list, &sd->poll_list);
+			}
+		}
+
+		netpoll_poll_unlock(have);
+	}
+out:
+	net_rps_action_and_irq_enable(sd);
+
+#ifdef CONFIG_NET_DMA
+	/*
+	 * There may not be any more sk_buffs coming right now, so push
+	 * any pending DMA copies to hardware
+	 */
+	dma_issue_pending_all();
+#endif
+
+	return;
+
+softnet_break:
+	sd->time_squeeze++;
+	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+	goto out;
+}
+
+
+4.1 __napi_schedule(), who put napi_struct on the poll_list
+================================================================================
+; this function is called in the irq handler of a nic driver
+void __napi_schedule(struct napi_struct *n)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	____napi_schedule(&__get_cpu_var(softnet_data), n);
+	local_irq_restore(flags);
+}
+
+4.1.1 ____napi_schedule()
+================================================================================
+static inline void ____napi_schedule(struct softnet_data *sd,
+				     struct napi_struct *napi)
+{
+	list_add_tail(&napi->poll_list, &sd->poll_list);
+	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+}
+
+4.2 napi_complete(), who remove the napi_struct from the poll_list
+================================================================================
+; this function is called in two places:
+; 1. in the napi_struct->poll function
+; 2. in the net_rx_action()
+void napi_complete(struct napi_struct *n)
+{
+	unsigned long flags;
+
+	/*
+	 * don't let napi dequeue from the cpu poll list
+	 * just in case its running on a different cpu
+	 */
+	if (unlikely(test_bit(NAPI_STATE_NPSVC, &n->state)))
+		return;
+
+	napi_gro_flush(n, false);
+	local_irq_save(flags);
+	__napi_complete(n);
+	local_irq_restore(flags);
+}
+
+4.2.1 __napi_complete()
+================================================================================
+void __napi_complete(struct napi_struct *n)
+{
+	BUG_ON(!test_bit(NAPI_STATE_SCHED, &n->state));
+	BUG_ON(n->gro_list);
+
+	list_del(&n->poll_list);
+	smp_mb__before_clear_bit();
+	clear_bit(NAPI_STATE_SCHED, &n->state);
+}
