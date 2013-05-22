@@ -62,7 +62,7 @@ autocmd FileType c,cpp  setl fdm=syntax | setl fen | setl fdc=6 | setl fdl=10
 "abbreviation
 iabbrev #b /*************************************
 iabbrev #e <Space>*************************************/
-iabbrev /* */
+iabbrev /* /* */
 
 """""""""""Taglist Options"""""""""""""""
 let Tlist_Show_One_File = 1
