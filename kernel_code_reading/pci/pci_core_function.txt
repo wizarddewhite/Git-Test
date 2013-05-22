@@ -2393,6 +2393,7 @@ found:
 			rc = -EIO;
 			goto failed;
 		}
+		; for PF, it will see the needs from all VFs
 		res->end = res->start + resource_size(res) * total - 1;
 		nres++;
 	}
