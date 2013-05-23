@@ -6,6 +6,16 @@ map <silent><leader>ee :e ~/.vimrc<cr>
 "short cut for make
 map <silent><leader>rm :make<cr>
 
+"short cut for vsplit
+map <silent><leader>vs :vsplit<cr>
+
+"short cut for maximize the window
+function Max_window()
+	set columns=999
+	set lines=999
+endfunction
+map <silent><leader>mw :call Max_window()<cr>
+
 "color scheme
 color desert
 
