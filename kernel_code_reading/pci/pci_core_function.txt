@@ -553,6 +553,17 @@ pci_fixup_parent_subordinate_busnr(struct pci_bus *child, int max)
 
 3. pci_assign_unassigned_resources(), go throught the resources and assign them
 ===============================================================================
+; Questions:
+; 1. why pci_try_num == max_depth + 1;
+; 2. why the mem resource alignment is calculated in this way?
+; 3. why the add_list is used in the last round?
+; 4. why till the third time, rel_type is set to whole_subtree?
+; 5. how many situations when failure happens?
+; 6. Is it possible, when allocate resource from parent, the parent is not
+	allocated? pci_bus_alloc_resource()
+     All the failed assigned resource will be reset in
+     assign_requested_resources_sorted().
+; 7. how the next round start/prepare?
 pci_assign_unassigned_resources(void)
 	struct pci_bus *bus;
 	LIST_HEAD(realloc_head); 
