@@ -42,12 +42,18 @@ static void my_wq_function( struct work_struct *work)
 static void my_delay_wq_function(struct work_struct *work)
 {
 	my_delay_work_t *wk;
+	static int i = 0;
 
 	wk = container_of(work, my_delay_work_t, delay_work.work);
 
 	printk("my_delay_work.x %d\n", wk->x);
 
-	kfree(wk);
+	if (i < 5) {
+		queue_delayed_work(my_wq, &work_d->delay_work, 2*HZ);
+		i++;
+	}
+	else
+		kfree(wk);
 
 	return;
 }
@@ -56,6 +62,7 @@ int workqueue_init( void )
 {
 	int ret;
 
+	printk(KERN_ERR "workqueue test\n");
 	my_wq = create_workqueue("my_queue");
 	if (my_wq) {
 		/* Queue some work (item 1) */
