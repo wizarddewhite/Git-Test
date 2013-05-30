@@ -29,6 +29,10 @@
 #define IORESOURCE_BUSY 	0x80000000
 #define IORESOURCE_MUXED	0x00400000
 
+#define IORESOURCE_IO		0x00000100	/* PCI/ISA I/O ports */
+#define IORESOURCE_MEM		0x00000200
+#define IORESOURCE_PREFETCH	0x00002000	/* No side effects */
+
 typedef unsigned long resource_size_t;
 
 struct resource {

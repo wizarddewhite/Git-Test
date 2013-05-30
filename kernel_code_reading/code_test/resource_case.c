@@ -17,6 +17,7 @@
  */
 #include "resource.h"
 #include "resource_case.h"
+#include "resource_request_simulation.h"
 
 struct resource root;
 struct resource res[10];
@@ -486,6 +487,7 @@ void request_region_test()
 
 int main()
 {
-	find_resource_test();
+	pci_init();
+
 	return 0;
 }
