@@ -564,6 +564,25 @@ pci_fixup_parent_subordinate_busnr(struct pci_bus *child, int max)
      All the failed assigned resource will be reset in
      assign_requested_resources_sorted().
 ; 7. how the next round start/prepare?
+
+; Potential Problems:
+; 1. If one bridge resource is failed to be assigned, it will be disabled.
+     This behavior will lead to its children couldn't get resource from this
+     window. 
+     When this window is a pre-fetchable window, then all pre-fetchable
+     resource will try to request from non-prefetchable window.
+; 2. There would be gap between bus resources. 
+     When we assign resource for a bridge, the resource alignment is based on
+     the biggest alignment from its children. This introduce some resource gap
+     between bridge windows.
+; 3. Resource for one individual device is not allocate/release as a whole.
+     When trying to allocate RESOURCE_MEM, we order then by their alignment.
+     And we assign the resource based on this order. 
+     For one device, some of its resource may be allocated, while some of them
+     may not be given resource. And maybe there are two devices, neither of
+     them could be enabled since both of them have one resource not allocated.
+     But if the code could notice this and give all resource to one of it,
+     then one device could be enabled.
 pci_assign_unassigned_resources(void)
 	struct pci_bus *bus;
 	LIST_HEAD(realloc_head); 
