@@ -41,6 +41,14 @@ struct pci_bus {
 	char   name[20];
 };
 
+struct pci_depth {
+	struct list_head node;
+	int dep;
+	struct pci_bus *bus;
+};
+
 void pci_init();
+
+int pci_get_max_depth();
 
 #endif//_RESOURCE_REQUEST_H_

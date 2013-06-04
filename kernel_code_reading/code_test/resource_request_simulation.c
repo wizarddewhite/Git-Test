@@ -204,5 +204,81 @@ void pci_init()
 	pci_hierachy_setup();
 	random_resource_size();
 
-	dump_pci_hierachy(root_bus, 0, true);
+	dump_pci_hierachy(root_bus, 0, false);
+}
+
+struct pci_depth* pci_depth_setup(struct pci_bus *bus, int dep)
+{
+	struct pci_depth *bus_node;
+	if (!bus)
+		return NULL;
+
+	bus_node = (struct pci_depth*)malloc(sizeof(*bus_node));
+	INIT_LIST_HEAD(&bus_node->node);
+
+	bus_node->bus = bus;
+	bus_node->dep = dep;
+
+	return bus_node;
+}
+
+void pci_depth_release(struct pci_depth *bus_node)
+{
+	free(bus_node);
+}
+
+static int pci_bus_get_depth1(struct pci_bus *bus)
+{
+	int depth = 0;
+	struct pci_bus *child_bus;
+	struct pci_depth *bus_node, *bus_node1;
+	LIST_HEAD(buses);
+
+	if (!bus)
+		return 0;
+
+	bus_node = pci_depth_setup(root_bus, 0);
+
+	list_add_tail(&bus_node->node, &buses);
+
+	while(!list_empty(&buses)) {
+		bus_node = list_first_entry(&buses, struct pci_depth, node);
+		list_del(&bus_node->node);
+
+		if (depth < bus_node->dep)
+			depth = bus_node->dep;
+
+		list_for_each_entry(child_bus, &bus_node->bus->children, node){
+			bus_node1 = pci_depth_setup(child_bus, bus_node->dep + 1);
+
+			list_add_tail(&bus_node1->node, &buses);
+		}
+
+		pci_depth_release(bus_node);
+	}
+
+	return depth;
+}
+
+static int pci_bus_get_depth(struct pci_bus *bus)
+{
+	int depth = 0;
+	struct pci_bus *child_bus;
+
+	list_for_each_entry(child_bus, &bus->children, node){
+		int ret;
+
+		ret = pci_bus_get_depth(child_bus);
+		if (ret + 1 > depth)
+			depth = ret + 1;
+	}
+
+	return depth;
+}
+
+int pci_get_max_depth(void)
+{
+	printf("depth is %d \n ", pci_bus_get_depth1(root_bus));
+
+	return pci_bus_get_depth(root_bus);
 }
