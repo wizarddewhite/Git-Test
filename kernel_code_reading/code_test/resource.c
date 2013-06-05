@@ -852,3 +852,67 @@ struct resource * __request_region(struct resource *parent,
 	//write_unlock(&resource_lock);
 	return res;
 }
+
+static void __reserve_region_with_split(struct resource *root,
+		resource_size_t start, resource_size_t end,
+		const char *name)
+{
+	struct resource *parent = root;
+	struct resource *conflict;
+	struct resource *res = malloc(sizeof(*res));
+
+	if (!res)
+		return;
+
+	memset(res, 0, sizeof(*res));
+	res->name = name;
+	res->start = start;
+	res->end = end;
+	res->flags = IORESOURCE_BUSY;
+
+	conflict = __request_resource(parent, res);
+	if (!conflict)
+		return;
+
+	/* failed, split and try again */
+	free(res);
+
+	/* conflict covered whole area */
+	if (conflict->start <= start && conflict->end >= end)
+		return;
+
+	if (conflict->start > start)
+		__reserve_region_with_split(root, start, conflict->start-1, name);
+	if (conflict->end < end)
+		__reserve_region_with_split(root, conflict->end+1, end, name);
+}
+
+void reserve_region_with_split(struct resource *root,
+		resource_size_t start, resource_size_t end,
+		const char *name)
+{
+	int abort = 0;
+
+	//write_lock(&resource_lock);
+	if (root->start > start || root->end < end) {
+		printf("requested range [0x%llx-0x%llx] not in root %pr\n",
+		       (unsigned long long)start, (unsigned long long)end,
+		       root);
+		if (start > root->end || end < root->start)
+			abort = 1;
+		else {
+			if (end > root->end)
+				end = root->end;
+			if (start < root->start)
+				start = root->start;
+			printf("fixing request to [0x%llx-0x%llx]\n",
+			       (unsigned long long)start,
+			       (unsigned long long)end);
+		}
+		//dump_stack();
+	}
+	if (!abort)
+		__reserve_region_with_split(root, start, end, name);
+	//write_unlock(&resource_lock);
+}
+
