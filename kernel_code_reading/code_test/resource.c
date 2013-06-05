@@ -31,7 +31,8 @@ void dump(struct resource *root, int level)
 		return;
 
 	/* print itself first */
-	printf("%*c%lu-%lu\n",level*3, ' ', root->start, root->end);
+	printf("%*c%lu-%lu  %s\n",level*3, ' ', root->start, root->end,
+			root->flags|IORESOURCE_BUSY?"busy":"none");
 
 	/* depth first */
 	dump(root->child, level+1);
