@@ -351,16 +351,21 @@ static struct resource * __request_resource(struct resource *root, struct resour
 	resource_size_t end = new->end;
 	struct resource *tmp, **p;
 
+	/* check whether the request is reasonable */
 	if (end < start)
 		return root;
+	/* check whether the request is out of the root */
 	if (start < root->start)
 		return root;
 	if (end > root->end)
 		return root;
+
+	/* go though the children */
 	p = &root->child;
 	for (;;) {
 		tmp = *p;
 		if (!tmp || tmp->start > end) {
+			/* insert new before tmp */
 			new->sibling = tmp;
 			*p = new;
 			new->parent = root;
