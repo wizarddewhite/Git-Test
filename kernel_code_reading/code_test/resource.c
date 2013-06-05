@@ -854,6 +854,95 @@ struct resource * __request_region(struct resource *parent,
 	return res;
 }
 
+static void __reserve_region_with_split1(struct resource *root,
+		resource_size_t start, resource_size_t end,
+		const char *name)
+{
+	struct resource *parent = root;
+	struct resource *conflict;
+	struct resource *res = malloc(sizeof(*res));
+	struct resource *next_res = NULL;
+
+	if (!res)
+		return;
+
+	memset(res, 0, sizeof(*res));
+	res->name = name;
+	res->start = start;
+	res->end = end;
+	res->flags = IORESOURCE_BUSY;
+
+	while (1) {
+
+		conflict = __request_resource(parent, res);
+		if (!conflict) {
+			if (!next_res)
+				break;
+			res = next_res;
+			next_res = NULL;
+			continue;
+		}
+
+		/* conflict covered whole area */
+		if (conflict->start <= res->start &&
+				conflict->end >= res->end) {
+			free(res);
+			//WARN_ON(next_res);
+			break;
+		}
+
+		/* failed, split and try again */
+		if (conflict->start > res->start) {
+			end = res->end;
+			res->end = conflict->start - 1;
+			if (conflict->end < end) {
+				next_res = malloc(sizeof(*res));
+				if (!next_res) {
+					free(res);
+					break;
+				}
+				memset(res, 0, sizeof(*next_res));
+				next_res->name = name;
+				next_res->start = conflict->end + 1;
+				next_res->end = end;
+				next_res->flags = IORESOURCE_BUSY;
+			}
+		} else {
+			res->start = conflict->end + 1;
+		}
+	}
+
+}
+
+void reserve_region_with_split1(struct resource *root,
+		resource_size_t start, resource_size_t end,
+		const char *name)
+{
+	int abort = 0;
+
+	//write_lock(&resource_lock);
+	if (root->start > start || root->end < end) {
+		printf("requested range [0x%llx-0x%llx] not in root %pr\n",
+		       (unsigned long long)start, (unsigned long long)end,
+		       root);
+		if (start > root->end || end < root->start)
+			abort = 1;
+		else {
+			if (end > root->end)
+				end = root->end;
+			if (start < root->start)
+				start = root->start;
+			printf("fixing request to [0x%llx-0x%llx]\n",
+			       (unsigned long long)start,
+			       (unsigned long long)end);
+		}
+		//dump_stack();
+	}
+	if (!abort)
+		__reserve_region_with_split1(root, start, end, name);
+	//write_unlock(&resource_lock);
+}
+
 static void __reserve_region_with_split(struct resource *root,
 		resource_size_t start, resource_size_t end,
 		const char *name)

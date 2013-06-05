@@ -495,6 +495,16 @@ void reserve_region_with_split_test()
 	dump(&root, 0);
 }
 
+void reserve_region_with_split_test1()
+{
+	init2();
+
+	reserve_region_with_split1(&root, 51, 80, "reserve_split");
+
+	printf("after request 51-80 from root\n");
+	dump(&root, 0);
+}
+
 int main()
 {
 	pci_init();
