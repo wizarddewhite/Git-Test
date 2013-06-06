@@ -38,6 +38,21 @@ void islast_test()
 		printf("list is non last\n");
 }
 
+void isfirst_test()
+{
+	struct list_dummy *elem;
+
+	list_add_tail_test();
+
+	elem = list_first_entry(&test_list, struct list_dummy, list_node);
+	printf("index of first node is %d\n", elem->index);
+
+	if (list_is_first(&elem->list_node, &test_list))
+		printf("list is first\n");
+	else
+		printf("list is non first\n");
+}
+
 void list_add_test()
 {
 	int i;
