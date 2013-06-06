@@ -64,6 +64,32 @@ struct pci_bus* create_pci_bus(struct pci_bus *p_bus, int num)
 	return bus;
 }
                       
+void dump_pci_hierachy(struct pci_bus *bus, int level, bool with_res)
+{
+	struct pci_dev *pdev;
+	/* print the bus information */
+	printf("%*c BUS %s\n", level*3, ' ', bus->name);
+
+	/* print its children */
+	list_for_each_entry(pdev, &bus->devices, bus_list) {
+		printf("%*c* DEV %s\n", level*3+2, ' ', pdev->name);
+		if (with_res) {
+			printf("%*c      res[0] %05llx-%05llx\n", level*3+2, ' ', 
+				(unsigned long long)pdev->resource[0].start, 
+				(unsigned long long)pdev->resource[0].end);
+			printf("%*c      res[1] %08llx-%08llx\n", level*3+2, ' ', 
+				(unsigned long long)pdev->resource[1].start, 
+				(unsigned long long)pdev->resource[1].end);
+			printf("%*c      res[2] %08llx-%08llx\n", level*3+2, ' ', 
+				(unsigned long long)pdev->resource[2].start, 
+				(unsigned long long)pdev->resource[2].end);
+		}
+
+		if (pdev->subordinate)
+			dump_pci_hierachy(pdev->subordinate, level+1, with_res);
+	}
+}
+
 /*                               
  *                               
  *                               
@@ -90,32 +116,6 @@ struct pci_bus* create_pci_bus(struct pci_bus *p_bus, int num)
  *
  *
  * */
-
-void dump_pci_hierachy(struct pci_bus *bus, int level, bool with_res)
-{
-	struct pci_dev *pdev;
-	/* print the bus information */
-	printf("%*c BUS %s\n", level*3, ' ', bus->name);
-
-	/* print its children */
-	list_for_each_entry(pdev, &bus->devices, bus_list) {
-		printf("%*c* DEV %s\n", level*3+2, ' ', pdev->name);
-		if (with_res) {
-			printf("%*c      res[0] %05llx-%05llx\n", level*3+2, ' ', 
-				(unsigned long long)pdev->resource[0].start, 
-				(unsigned long long)pdev->resource[0].end);
-			printf("%*c      res[1] %08llx-%08llx\n", level*3+2, ' ', 
-				(unsigned long long)pdev->resource[1].start, 
-				(unsigned long long)pdev->resource[1].end);
-			printf("%*c      res[2] %08llx-%08llx\n", level*3+2, ' ', 
-				(unsigned long long)pdev->resource[2].start, 
-				(unsigned long long)pdev->resource[2].end);
-		}
-
-		if (pdev->subordinate)
-			dump_pci_hierachy(pdev->subordinate, level+1, with_res);
-	}
-}
 
 int pci_hierachy_setup()
 {
