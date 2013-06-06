@@ -129,11 +129,22 @@ void list_next_entry_test()
 	iter = list_first_entry(&test_list, struct list_dummy, list_node);
 	printf("index of first node is %d\n", iter->index);
 
-	iter = list_next_entry(iter, struct list_dummy, list_node);
-	printf("index of second node is %d\n", iter->index);
 
-	iter = list_next_entry(iter, struct list_dummy, list_node);
-	printf("index of third node is %d\n", iter->index);
+	while(1) {
+
+		iter = list_next_entry(iter, struct list_dummy, list_node);
+		printf("index of third node is %d\n", iter->index);
+
+		if (iter->list_node.next == &test_list) {
+			printf("The end of the list, no more entry\n");
+			break;
+		}
+		else {
+			iter = list_next_entry(iter, struct list_dummy, list_node);
+			printf("index of forth node is %d\n", iter->index);
+		}
+	}
+
 }
 
 void list_for_each_entry_reverse_test()
