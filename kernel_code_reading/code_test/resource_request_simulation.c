@@ -295,28 +295,22 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 	struct pci_bus *parent, *curr;
 	struct list_head *node;
 	int met_root;
-	int revisit;
 
 	met_root = 0;
-	revisit = 0;
 
 	max_depth = depth = 0;
 	parent = NULL, curr = bus;
 
 	while(1) {
 		if (parent) {
-			/* revisit the first, go back to parent level */
-			if (revisit) {
-				revisit = 0;
-				if (node == &parent->children) {
-				//if (list_is_first(&curr->node, &parent->children)) {
-					node = parent->node.next;
-					//curr = list_next_entry(parent, struct pci_bus, node);
-					parent = parent->parent;
-					depth--;
-					revisit = 1;
-					continue;
-				}
+			/* hit the head, go back to parent level */
+			if (node == &parent->children) {
+			//if (list_is_first(&curr->node, &parent->children)) {
+				node = parent->node.next;
+				//curr = list_next_entry(parent, struct pci_bus, node);
+				parent = parent->parent;
+				depth--;
+				continue;
 			}
 			curr = list_entry(node, struct pci_bus, node);
 			/* depth first */
@@ -334,14 +328,13 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 				node = curr->node.next;
 				/* hit the head, go back to parent level */
 				if (node == &parent->children) {
-					/* instead of go back to the direct
-					 * parent, we go back to the parent
-					 * sibling */
+					/* instead of go back to the direct parent, 
+					 * we go back to the parent sibling 
+					 */
 					node = parent->node.next;
 					//curr = list_next_entry(parent, struct pci_bus, node);
 					parent = parent->parent;
 					depth--;
-					revisit = 1;
 				}
 				//curr = list_next_entry(curr, struct pci_bus, node);
 				continue;
