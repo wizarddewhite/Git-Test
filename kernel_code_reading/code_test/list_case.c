@@ -105,6 +105,22 @@ void list_first_entry_test()
 	printf("index of first node is %d\n", iter->index);
 }
 
+void list_next_entry_test()
+{
+	struct list_dummy *iter;
+
+	list_add_tail_test();
+
+	iter = list_first_entry(&test_list, struct list_dummy, list_node);
+	printf("index of first node is %d\n", iter->index);
+
+	iter = list_next_entry(iter, struct list_dummy, list_node);
+	printf("index of second node is %d\n", iter->index);
+
+	iter = list_next_entry(iter, struct list_dummy, list_node);
+	printf("index of third node is %d\n", iter->index);
+}
+
 void list_for_each_entry_reverse_test()
 {
 	struct list_dummy *iter;
