@@ -25,11 +25,11 @@ struct pci_dev ;
 struct pci_bus ;
 
 struct pci_dev {
+	struct list_head bus_list;
 	struct pci_dev  *parent;
 	struct pci_bus  *subordinate;
 	char   name[20];
 	struct resource resource[4];
-	struct list_head bus_list;
 };
 
 struct pci_bus {

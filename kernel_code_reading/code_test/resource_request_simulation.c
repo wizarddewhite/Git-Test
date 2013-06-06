@@ -227,6 +227,88 @@ void pci_depth_release(struct pci_depth *bus_node)
 	free(bus_node);
 }
 
+static int pci_bus_get_depth2(struct pci_bus *bus)
+{
+	int max_depth, depth;
+	struct pci_bus *parent, *curr;
+	struct list_head *node;
+	int met_root;
+	int revisit;
+
+	met_root = 0;
+	revisit = 0;
+
+	max_depth = depth = 0;
+	parent = NULL, curr = bus;
+
+	while(1) {
+		if (parent) {
+			/* revisit the first, go back to parent level */
+			if (revisit) {
+				revisit = 0;
+				if (node == &parent->children) {
+				//if (list_is_first(&curr->node, &parent->children)) {
+					node = parent->node.next;
+					//curr = list_next_entry(parent, struct pci_bus, node);
+					parent = parent->parent;
+					depth--;
+					revisit = 1;
+					continue;
+				}
+			}
+			curr = list_entry(node, struct pci_bus, node);
+			/* depth first */
+			if (!list_empty(&curr->children)) {
+				parent = curr;
+				//curr = list_first_entry(&parent->children, struct pci_bus, node);
+				node = parent->children.next;
+				depth++;
+				if (max_depth < depth)
+					max_depth = depth;
+				continue;
+			}
+			/* no child, go to the sibling */
+			else {
+				node = curr->node.next;
+				/* hit the head, go back to parent level */
+				if (node == &parent->children) {
+					/* instead of go back to the direct
+					 * parent, we go back to the parent
+					 * sibling */
+					node = parent->node.next;
+					//curr = list_next_entry(parent, struct pci_bus, node);
+					parent = parent->parent;
+					depth--;
+					revisit = 1;
+				}
+				//curr = list_next_entry(curr, struct pci_bus, node);
+				continue;
+			}
+		}
+		/* no parent, root level */
+		else {
+			/* the second time met root? 
+			 * ok, you have finished you job
+			 */
+			if (met_root)
+				break;
+			met_root = 1;
+			parent = curr;
+			/* first child */
+			if (list_empty(&parent->children))
+				return 0;
+			node = parent->children.next;
+			//curr = list_first_entry(&parent->children, struct pci_bus, node);
+			depth++;
+			if (max_depth < depth)
+				max_depth = depth;
+			continue;
+		}
+	}
+
+	return max_depth;
+}
+
 static int pci_bus_get_depth1(struct pci_bus *bus)
 {
 	int depth = 0;
@@ -248,7 +330,7 @@ static int pci_bus_get_depth1(struct pci_bus *bus)
 		if (depth < bus_node->dep)
 			depth = bus_node->dep;
 
-		list_for_each_entry(child_bus, &bus_node->bus->children, node){
+		list_for_each_entry(child_bus, &bus_node->bus->children, node) {
 			bus_node1 = pci_depth_setup(child_bus, bus_node->dep + 1);
 
 			list_add_tail(&bus_node1->node, &buses);
@@ -278,7 +360,9 @@ static int pci_bus_get_depth(struct pci_bus *bus)
 
 int pci_get_max_depth(void)
 {
-	printf("depth is %d \n ", pci_bus_get_depth1(root_bus));
+	printf("depth is %d \n", pci_bus_get_depth2(root_bus));
 
-	return pci_bus_get_depth(root_bus);
+	printf("depth is %d \n", pci_bus_get_depth(root_bus));
+
+	return 0;
 }
