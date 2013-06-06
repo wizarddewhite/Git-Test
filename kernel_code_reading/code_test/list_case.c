@@ -68,7 +68,7 @@ void list_add_tail_test()
 
 	INIT_LIST_HEAD(&elem[0].list_node);
 
-	for (i = 0; i < 10; i++)
+	for (i = 1; i < 11; i++)
 	{
 		elem[i].index = i;
 		list_add_tail(&elem[i].list_node, &test_list);
@@ -97,6 +97,8 @@ void list_for_each_entry_test()
 void list_first_entry_test()
 {
 	struct list_dummy *iter;
+
+	list_add_tail_test();
 
 	iter = list_first_entry(&test_list, struct list_dummy, list_node);
 
