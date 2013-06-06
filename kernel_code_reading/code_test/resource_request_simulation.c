@@ -272,6 +272,105 @@ int pci_hierachy_setup2()
 
 	return 0;
 }
+
+/*
+ *
+ *
+ *
+ *                         Bus 0
+ *          -------+-------+------------------+-----
+ *                 | 0000:0.0                 | 0000:0.1
+ *           +-----+----+                +----+----+
+ *           |          |                |         |
+ *           +----+-----+                +----+----+
+ *                |                            
+ *                |Bus 1
+ *           -----+---+---------------+-------------------+------
+ *                    |0000:1.0       |0000:1.1           |0000:1.2
+ *                +---+----+      +---+----+           +--+----+
+ *                |        |      |        |           |       |
+ *                +---+----+      +--------+           +--+----+
+ *                    |  Bus 2                            |Bus 3
+ *        --+---------+---------+--               --------+----------------
+ *          |0000:2.0           |0000:2.1                 |0000:3.0
+ *     +----+-----+       +-----+----+            +-------+--------+
+ *     |          |       |          |            |                |
+ *     +----------+       +----------+            +-------+--------+
+ *                                                        |
+ *                                                        | Bus 4
+ *                                                 -------+---------------
+ *                                                        |0000:4.0
+ *                                                 +------+-------+
+ *                                                 |              |
+ *                                                 +------+-------+
+ *                                                        |
+ *                                                        | Bus 5
+ *                                                 -------+--------------
+ *                                                        |0000:5.0
+ *                                                 +------+-------+
+ *                                                 |              |
+ *                                                 +--------------+
+ *
+ *
+ * */
+
+int pci_hierachy_setup3()
+{
+	struct pci_bus *bus, *bus1;
+	struct pci_dev *dev, *dev1;
+	int bus_num = 0;
+	int dev_num = 0;
+
+	root_bus = create_pci_bus(NULL, bus_num++);
+	bus = root_bus;
+
+	/* create two device under root bus */
+	dev = create_pci_dev(root_bus, NULL, dev_num++);
+	create_pci_dev(root_bus, NULL, dev_num++);
+
+	/* one bus below the second the device */
+	bus = create_pci_bus(root_bus, bus_num++);
+	dev->subordinate = bus;
+	/* and there are three devices under the bus */
+	dev_num = 0;
+	create_pci_dev(bus, dev, dev_num++);
+	create_pci_dev(bus, dev, dev_num++);
+	dev1 = create_pci_dev(bus, dev, dev_num++);
+	bus1 = bus;
+
+	/* one bus below the first device */
+	dev = list_first_entry(&bus->devices, struct pci_dev, bus_list);
+	bus = create_pci_bus(bus, bus_num++);
+	dev->subordinate = bus;
+	/* two devices of this bus */
+	dev_num = 0;
+	create_pci_dev(bus, dev, dev_num++);
+	create_pci_dev(bus, dev, dev_num++);
+
+	/* one bus under dev 0000:1.2 */
+	bus = create_pci_bus(bus1, bus_num++);
+	dev1->subordinate = bus;
+	/* one devices of this bus */
+	dev_num = 0;
+	dev = create_pci_dev(bus, dev1, dev_num++);
+
+	/* one bus under this dev */
+	bus = create_pci_bus(bus, bus_num++);
+	dev->subordinate = bus;
+	/* one devices of this bus */
+	dev_num = 0;
+	dev = create_pci_dev(bus, dev, dev_num++);
+
+	/* one bus under this dev */
+	bus = create_pci_bus(bus, bus_num++);
+	dev->subordinate = bus;
+	/* one devices of this bus */
+	dev_num = 0;
+	dev = create_pci_dev(bus, dev, dev_num++);
+
+	return 0;
+}
+
 void __random_resource_size(struct pci_bus *bus)
 {
 	struct pci_dev *pdev;
@@ -321,7 +420,7 @@ void random_resource_size()
 
 void pci_init()
 {
-	pci_hierachy_setup1();
+	pci_hierachy_setup3();
 	random_resource_size();
 
 	dump_pci_hierachy(root_bus, 0, false);
