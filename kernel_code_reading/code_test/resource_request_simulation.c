@@ -214,6 +214,64 @@ int pci_hierachy_setup1()
 	return 0;
 }
 
+/*
+ *
+ *
+ *
+ *                         Bus 0
+ *          -------+-------+-----
+ *                 | 0000:0.0
+ *           +-----+----+ 
+ *           |          |
+ *           +----+-----+
+ *                |
+ *                |Bus 1
+ *           -----+---+----------
+ *                    |0000:1.0 
+ *                +---+----+   
+ *                |        |  
+ *                +---+----+  
+ *                    |  Bus 2
+ *        --+---------+---------+--
+ *          |0000:2.0           |0000:2.1
+ *     +----+-----+       +-----+----+
+ *     |          |       |          |
+ *     +----------+       +----------+
+ *
+ *
+ * */
+
+int pci_hierachy_setup2()
+{
+	struct pci_bus *bus;
+	struct pci_dev *dev;
+	int bus_num = 0;
+	int dev_num = 0;
+
+	root_bus = create_pci_bus(NULL, bus_num++);
+	bus = root_bus;
+
+	/* create one device under root bus */
+	dev = create_pci_dev(root_bus, NULL, dev_num++);
+
+	/* one bus below the device */
+	bus = create_pci_bus(root_bus, bus_num++);
+	dev->subordinate = bus;
+	/* and there are one device under the bus */
+	dev_num = 0;
+	create_pci_dev(bus, dev, dev_num++);
+
+	/* one bus below the first device */
+	dev = list_first_entry(&bus->devices, struct pci_dev, bus_list);
+	bus = create_pci_bus(bus, bus_num++);
+	dev->subordinate = bus;
+	/* two devices of this bus */
+	dev_num = 0;
+	create_pci_dev(bus, dev, dev_num++);
+	create_pci_dev(bus, dev, dev_num++);
+
+	return 0;
+}
 void __random_resource_size(struct pci_bus *bus)
 {
 	struct pci_dev *pdev;
