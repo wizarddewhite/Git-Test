@@ -480,30 +480,22 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 			/* no child, go to the sibling */
 			else {
 				node = curr->node.next;
-				/* hit the head, go back to parent level */
-				if (node == &parent->children) {
-					/* instead of go back to the direct parent, 
-					 * we go back to the parent sibling 
-					 */
-					node = parent->node.next;
-					parent = parent->parent;
-					depth--;
-				}
 				continue;
 			}
 		}
 		/* no parent, root level */
 		else {
 			/* the second time met root? 
-			 * ok, you have finished you job
+			 * ok, you have finished your job
 			 */
 			if (met_root)
 				break;
 			met_root = 1;
 			parent = curr;
-			/* first child */
+			/* no child? */
 			if (list_empty(&parent->children))
 				return 0;
+			/* first child */
 			node = parent->children.next;
 			depth++;
 			if (max_depth < depth)
