@@ -475,13 +475,10 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 				depth++;
 				if (max_depth < depth)
 					max_depth = depth;
-				continue;
 			}
 			/* no child, go to the sibling */
-			else {
+			else
 				node = curr->node.next;
-				continue;
-			}
 		}
 		/* no parent, root level */
 		else {
@@ -500,7 +497,6 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 			depth++;
 			if (max_depth < depth)
 				max_depth = depth;
-			continue;
 		}
 	}
 
