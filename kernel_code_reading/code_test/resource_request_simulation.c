@@ -451,53 +451,35 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 	int max_depth, depth;
 	struct pci_bus *parent, *curr;
 	struct list_head *node;
-	int met_root;
 
-	met_root = 0;
+	/* no child? */
+	if (list_empty(&bus->children))
+		return 0;
 
-	max_depth = depth = 0;
-	parent = NULL, curr = bus;
+	node = bus->children.next;
+	parent = bus;
+	max_depth = depth = 1;
 
-	while(1) {
-		if (parent) {
-			/* hit the head, go back to parent level */
-			if (node == &parent->children) {
-				node = parent->node.next;
-				parent = parent->parent;
-				depth--;
-				continue;
-			}
-			curr = list_entry(node, struct pci_bus, node);
-			/* depth first */
-			if (!list_empty(&curr->children)) {
-				parent = curr;
-				node = parent->children.next;
-				depth++;
-				if (max_depth < depth)
-					max_depth = depth;
-			}
-			/* no child, go to the sibling */
-			else
-				node = curr->node.next;
+	while(parent) {
+		/* hit the head, go back to parent level */
+		if (node == &parent->children) {
+			node = parent->node.next;
+			parent = parent->parent;
+			depth--;
+			continue;
 		}
-		/* no parent, root level */
-		else {
-			/* the second time met root? 
-			 * ok, you have finished your job
-			 */
-			if (met_root)
-				break;
-			met_root = 1;
+		curr = list_entry(node, struct pci_bus, node);
+		/* depth first */
+		if (!list_empty(&curr->children)) {
+			node = curr->children.next;
 			parent = curr;
-			/* no child? */
-			if (list_empty(&parent->children))
-				return 0;
-			/* first child */
-			node = parent->children.next;
 			depth++;
 			if (max_depth < depth)
 				max_depth = depth;
 		}
+		/* no child, go to the sibling */
+		else
+			node = curr->node.next;
 	}
 
 	return max_depth;
