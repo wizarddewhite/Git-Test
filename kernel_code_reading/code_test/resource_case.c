@@ -224,6 +224,7 @@ void find_resource_test()
 {
 	struct resource_constraint constraint;
 	int ret;
+	int size;
 
 	init2();
 
@@ -238,7 +239,7 @@ void find_resource_test()
 
 	if (ret == 0)
 	{
-		printf("We find a size %d free slot under root at %lu-%lu\n",
+		printf("We find a size %d free slot under root at %lu-%lu aligned by 1\n",
 			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
 		//request_resource_conflict(&root, &res[6]);
 		dump(&root, 0);
@@ -252,7 +253,7 @@ void find_resource_test()
 
 	if (ret == 0)
 	{
-		printf("We find a size %d free slot under root at %lu-%lu\n",
+		printf("We find a size %d free slot under root at %lu-%lu aligned by 4\n",
 			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
 		//request_resource_conflict(&root, &res[6]);
 		dump(&root, 0);
@@ -265,14 +266,14 @@ void find_resource_test()
 	ret = find_resource(&root, &res[7], 90, &constraint);
 
 	if (ret == 0)
-		printf("We find a size %d free slot under root at %lu-%lu\n",
+		printf("We find a size %d free slot under root at %lu-%lu aligned by 4\n",
 			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
 	else
-		printf("We don't find a free slot under root for size 90\n");
+		printf("We don't find a free slot under root for size 90 aligned by 4 between 0-400\n");
 
-	/* find biggest size */
+	/* find biggest size aligned by 4*/
 	constraint.max = root.end; // find it to the end of root
-	int size = resource_size(&root);
+	size = resource_size(&root);
 	while(size > 0)
 	{
 		ret = find_resource(&root, &res[8], size, &constraint);
@@ -285,7 +286,31 @@ void find_resource_test()
 
 	if (ret == 0)
 	{
-		printf("We find a size %d free slot under root at %lu-%lu\n",
+		printf("We find a size %d free slot under root at %lu-%lu aligned by 4\n",
+			(int)resource_size(&res[8]), (long)res[8].start, (long)res[8].end);
+
+		dump(&root, 0);
+	}
+	else
+		printf("No free space?\n");
+
+	/* find biggest size aligned by 1*/
+	constraint.max = root.end; // find it to the end of root
+	constraint.align = 1;
+	size = resource_size(&root);
+	while(size > 0)
+	{
+		ret = find_resource(&root, &res[8], size, &constraint);
+
+		if (!ret)
+			break;
+
+		size -= 1;
+	}
+
+	if (ret == 0)
+	{
+		printf("We find a size %d free slot under root at %lu-%lu aligned by 1\n",
 			(int)resource_size(&res[8]), (long)res[8].start, (long)res[8].end);
 
 		dump(&root, 0);
