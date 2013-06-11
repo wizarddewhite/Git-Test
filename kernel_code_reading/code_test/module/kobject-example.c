@@ -165,6 +165,9 @@ static int __init example_init(void)
 	if (!example_kobj)
 		return -ENOMEM;
 
+	kobject_set_name(example_kobj, "kobject_example_%d", 1);
+	printk("the name of example_kobj is %s\n", kobject_name(example_kobj));
+
 	/* Create the files associated with this kobject */
 	retval = sysfs_create_group(example_kobj, &attr_group);
 	if (retval)
