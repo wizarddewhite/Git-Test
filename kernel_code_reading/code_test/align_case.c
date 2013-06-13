@@ -107,11 +107,35 @@ void pci_size_test()
 	printf("size_clip of 0x10100 is %llx\n", size_clip(0x10100));
 }
 
+int num_of_ones(unsigned long long value)
+{
+	int num, i;
+
+	for (i = 0, num = 0; i < 32; i++) {
+		if ((value & ~(value-1)) & 0x1)
+			num++;
+
+		value >>= 1;
+	}
+
+	return num;
+}
+
+void num_of_ones_test()
+{
+	printf("number of ones 0x10000 is %d\n", num_of_ones(0x10000));
+	printf("number of ones 0x10001 is %d\n", num_of_ones(0x10001));
+	printf("number of ones 0x10010 is %d\n", num_of_ones(0x10010));
+	printf("number of ones 0x10100 is %d\n", num_of_ones(0x10100));
+	printf("number of ones 0x11000 is %d\n", num_of_ones(0x11000));
+	printf("number of ones 0x11001 is %d\n", num_of_ones(0x11001));
+}
+
 int main()
 {
 	common_test();
 
-	pci_size_test();
+	num_of_ones_test();
 
 	return 0;
 }
