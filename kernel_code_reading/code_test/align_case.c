@@ -71,8 +71,47 @@ void calculate_mem_align()
 	}
 }
 
+unsigned long long pci_size(unsigned long long base, 
+		unsigned long long maxbase, 
+		unsigned long long mask)
+{
+	unsigned long long size = mask & maxbase;	/* Find the significant bits */
+	if (!size)
+		return 0;
+
+	/* Get the lowest of them to find the decode size, and
+	   from that the extent.  */
+	size = (size & ~(size-1)) - 1;
+
+	/* base == maxbase can be valid only if the BAR has
+	   already been programmed with all 1s.  */
+	if (base == maxbase && ((base | size) & mask) != mask)
+		return 0;
+
+	return size;
+}
+
+unsigned long long size_clip(unsigned long long size)
+{
+	size = (size & ~(size-1)) - 1;
+
+	return size;
+}
+
+/* this case verified the pci bar size must be power of 2 */
+void pci_size_test()
+{
+	printf("size_clip of 0x10000 is %llx\n", size_clip(0x10000));
+	printf("size_clip of 0x10001 is %llx\n", size_clip(0x10001));
+	printf("size_clip of 0x10010 is %llx\n", size_clip(0x10010));
+	printf("size_clip of 0x10100 is %llx\n", size_clip(0x10100));
+}
+
 int main()
 {
 	common_test();
+
+	pci_size_test();
+
 	return 0;
 }
