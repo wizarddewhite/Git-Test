@@ -51,4 +51,7 @@ void pci_init();
 
 int pci_get_max_depth();
 
+resource_size_t calculate_mem_align(resource_size_t *aligns,
+						  int max_order);
+
 #endif//_RESOURCE_REQUEST_H_

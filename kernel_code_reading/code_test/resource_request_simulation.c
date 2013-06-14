@@ -24,6 +24,26 @@
 struct pci_bus *root_bus;
 struct resource root_res[3];
 
+void dump2(struct resource *root, int level)
+{
+	struct resource *tmp    = NULL;
+
+	if (!root)
+		return;
+
+	/* print itself first */
+	printf("%*c%08lx-%08lx  %s\n",level*3, ' ', root->start, root->end,
+			root->flags|IORESOURCE_BUSY?"busy":"none");
+
+	/* depth first */
+	dump2(root->child, level+1);
+
+	/* then brothers */
+	dump2(root->sibling, level);
+
+	return;
+}
+
 struct pci_dev* create_pci_dev(struct pci_bus *p_bus, 
 		struct pci_dev *p_dev,
 		int index)
@@ -541,4 +561,27 @@ int pci_get_max_depth(void)
 	printf("depth is %d \n", pci_bus_get_depth(root_bus));
 
 	return 0;
+}
+
+
+resource_size_t calculate_mem_align(resource_size_t *aligns,
+						  int max_order)
+{
+	resource_size_t align = 0;
+	resource_size_t min_align = 0;
+	int order;
+
+	for (order = 0; order <= max_order; order++) {
+		resource_size_t align1 = 1;
+
+		align1 <<= (order + 20);
+
+		if (!align)
+			min_align = align1;
+		else if (ALIGN(align + min_align, min_align) < align1)
+			min_align = align1 >> 1;
+		align += aligns[order];
+	}
+
+	return min_align;
 }
