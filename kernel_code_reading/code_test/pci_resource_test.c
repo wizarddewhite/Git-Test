@@ -22,6 +22,7 @@
 #include "resource_request_simulation.h"
 #include "__ffs.h"
 
+#define LAST_CHILD_INDEX 4
 
 struct resource root;
 struct resource res[10];
@@ -35,12 +36,14 @@ void init3()
     res[0].start = 0;
     res[0].end   = 1*(1<<20);
 
-    res[2].start = 0; //1M
-    res[2].end = (1<<20)-1;
+    /* res[1] is sibling of res[0], parent of all children*/
+    /* Assign res from 2-9, and from big to small */
+    res[2].start = 0;
+    res[2].end = 8*(1<<20)-1; //8M
     res[3].start = 0;
     res[3].end = 4*(1<<20)-1; //4M
-    res[4].start = 0;
-    res[4].end = 8*(1<<20)-1; //8M
+    res[4].start = 0; //1M
+    res[4].end = (1<<20)-1;
 
     insert_resource_conflict(&root, &res[0]);
 
@@ -56,26 +59,26 @@ void mem_align_test()
 	resource_size_t aligns[12]; /* Alignments from 1Mb to 2Gb */
 	resource_size_t min_align;
 	resource_size_t size;
-	int ret;
+	int ret, i;
 
 	init3();
 
 	memset(aligns, 0, sizeof(aligns));
 	max_order = 0;
 
-	aligns[__ffs(resource_size(&res[2]))-20] += resource_size(&res[2]);
-	aligns[__ffs(resource_size(&res[3]))-20] += resource_size(&res[3]);
-	aligns[__ffs(resource_size(&res[4]))-20] += resource_size(&res[4]);
+	for (i = 2; i <= LAST_CHILD_INDEX; i++) {
+		aligns[__ffs(resource_size(&res[i]))-20] += resource_size(&res[i]);
+	}
 
-	max_order = __ffs(resource_size(&res[4])) - 20;
+	max_order = __ffs(resource_size(&res[2])) - 20;
 	printf("max_order is %d\n", max_order);
 
 	min_align = calculate_mem_align(aligns, max_order);
 	printf("min_align is %08llx\n", (unsigned long long)min_align);
 
-	size = resource_size(&res[2]) + 
-		resource_size(&res[3]) + 
-		resource_size(&res[4]); 
+	for (i = 2, size = 0; i<= LAST_CHILD_INDEX; i++) {
+		size += resource_size(&res[i]);
+	}
 	size = ALIGN(size, min_align);
 	printf("size is %08llx\n", (unsigned long long)size);
 
@@ -85,6 +88,7 @@ void mem_align_test()
 	constraint.alignf = simple_align_resource;
 	constraint.alignf_data = NULL;
 
+	/* Allocate the parent resource as res[1] */
 	ret = find_resource(&root, &res[1], size, &constraint);
 	if (ret == 0)
 	{
@@ -100,55 +104,24 @@ void mem_align_test()
 		return;
 	}
 
-	/* allocate biggest first */
-	constraint.align = resource_size(&res[4]);
-	ret = find_resource(&res[1], &res[4], resource_size(&res[4]), &constraint);
-	if (ret == 0)
-	{
-		printf("We find a size %08llx free slot under root at %08llx-%08llx\n",
-			(unsigned long long)resource_size(&res[4]), 
-			(unsigned long long)res[4].start, 
-			(unsigned long long)res[4].end);
-		request_resource_conflict(&res[1], &res[4]);
-		dump2(&root, 0);
-	}
-	else {
-		printf("We don't find a free slot under root for size 8M\n");
-		return;
-	}
-
-	constraint.align = resource_size(&res[3]);
-	ret = find_resource(&res[1], &res[3], resource_size(&res[3]), &constraint);
-	if (ret == 0)
-	{
-		printf("We find a size %08llx free slot under root at %08llx-%08llx\n",
-			(unsigned long long)resource_size(&res[3]), 
-			(unsigned long long)res[3].start, 
-			(unsigned long long)res[3].end);
-		request_resource_conflict(&res[1], &res[3]);
-		dump2(&root, 0);
-	}
-	else {
-		printf("We don't find a free slot under root for size %08llx\n",
-				(unsigned long long)resource_size(&res[3]));
-		return;
-	}
-
-	constraint.align = resource_size(&res[2]);
-	ret = find_resource(&res[1], &res[2], resource_size(&res[2]), &constraint);
-	if (ret == 0)
-	{
-		printf("We find a size %08llx free slot under root at %08llx-%08llx\n",
-			(unsigned long long)resource_size(&res[2]), 
-			(unsigned long long)res[2].start, 
-			(unsigned long long)res[2].end);
-		request_resource_conflict(&res[1], &res[2]);
-		dump2(&root, 0);
-	}
-	else {
-		printf("We don't find a free slot under root for size %08llx\n",
-				(unsigned long long)resource_size(&res[3]));
-		return;
+	/* allocate from big to small */
+	for (i = 2; i <= LAST_CHILD_INDEX; i++) {
+		constraint.align = resource_size(&res[i]);
+		ret = find_resource(&res[1], &res[i], resource_size(&res[i]), &constraint);
+		if (ret == 0)
+		{
+			printf("We find a size %08llx free slot under root at %08llx-%08llx\n",
+				(unsigned long long)resource_size(&res[i]), 
+				(unsigned long long)res[i].start, 
+				(unsigned long long)res[i].end);
+			request_resource_conflict(&res[1], &res[i]);
+			dump2(&root, 0);
+		}
+		else {
+			printf("We don't find a free slot under root for size %08llx\n",
+					(unsigned long long)resource_size(&res[i]));
+			return;
+		}
 	}
 
 	return;
