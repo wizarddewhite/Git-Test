@@ -81,3 +81,5 @@ PS1="[\u@\w]\n$"
 export PATH=${PATH}:/media/Study/Project/Android/android-sdk-linux_86/tools:/usr/local/arm/4.4.1/bin
 #export LC_ALL="zh.CN_UTF-8"
 
+#super proxy
+#http_proxy=http://autoproxy.au.ibm.com/hk1.pac
