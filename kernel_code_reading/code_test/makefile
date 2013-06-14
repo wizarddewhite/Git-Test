@@ -7,12 +7,16 @@ CFLAGS = -g
 
 .PHONY: all clean cscope
 all: resource list_case align_case queue_case cscope \
-	map_case hlist_case
+	map_case hlist_case \
+	pci_resource_test
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure
-resource: resource.c resource_case.o resource_request_simulation.o
-	gcc -o resource -g resource.c resource_case.o resource_request_simulation.o
+resource: resource.c resource_case.o
+	gcc -o resource -g resource.c resource_case.o
+
+pci_resource_test: resource.o pci_resource_test.o resource_request_simulation.o
+	gcc -o $@ -g $^
 
 queue_case: queue_case.c kfifo.c
 	gcc -o $@ -g $^

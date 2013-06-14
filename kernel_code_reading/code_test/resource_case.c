@@ -532,7 +532,7 @@ void reserve_region_with_split_test1()
 
 int main()
 {
-	pci_init();
+	allocate_resource_test();
 
 	return 0;
 }
