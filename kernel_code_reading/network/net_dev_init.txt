@@ -432,165 +432,8 @@ void open_softirq(int nr, void (*action)(struct softirq_action *))
 	softirq_vec[nr].action = action;
 }
 
-2.6.1 net_tx_action()
-================================================================================
-static void net_tx_action(struct softirq_action *h)
-{
-	struct softnet_data *sd = &__get_cpu_var(softnet_data);
-
-	if (sd->completion_queue) {
-		struct sk_buff *clist;
-
-		local_irq_disable();
-		clist = sd->completion_queue;
-		sd->completion_queue = NULL;
-		local_irq_enable();
-
-		while (clist) {
-			struct sk_buff *skb = clist;
-			clist = clist->next;
-
-			WARN_ON(atomic_read(&skb->users));
-			trace_kfree_skb(skb, net_tx_action);
-			__kfree_skb(skb);
-		}
-	}
-
-	if (sd->output_queue) {
-		struct Qdisc *head;
-
-		local_irq_disable();
-		head = sd->output_queue;
-		sd->output_queue = NULL;
-		sd->output_queue_tailp = &sd->output_queue;
-		local_irq_enable();
-
-		while (head) {
-			struct Qdisc *q = head;
-			spinlock_t *root_lock;
-
-			head = head->next_sched;
-
-			root_lock = qdisc_lock(q);
-			if (spin_trylock(root_lock)) {
-				smp_mb__before_clear_bit();
-				clear_bit(__QDISC_STATE_SCHED,
-					  &q->state);
-				qdisc_run(q);
-				spin_unlock(root_lock);
-			} else {
-				if (!test_bit(__QDISC_STATE_DEACTIVATED,
-					      &q->state)) {
-					__netif_reschedule(q);
-				} else {
-					smp_mb__before_clear_bit();
-					clear_bit(__QDISC_STATE_SCHED,
-						  &q->state);
-				}
-			}
-		}
-	}
-}
-
 2.7 open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 ================================================================================
-
-2.7.1 net_rx_action()
-================================================================================
-static void net_rx_action(struct softirq_action *h)
-{
-	struct softnet_data *sd = &__get_cpu_var(softnet_data);
-	unsigned long time_limit = jiffies + 2;
-	int budget = netdev_budget;
-	void *have;
-
-	local_irq_disable();
-
-	while (!list_empty(&sd->poll_list)) {
-		struct napi_struct *n;
-		int work, weight;
-
-		/* If softirq window is exhuasted then punt.
-		 * Allow this to run for 2 jiffies since which will allow
-		 * an average latency of 1.5/HZ.
-		 */
-		if (unlikely(budget <= 0 || time_after(jiffies, time_limit)))
-			goto softnet_break;
-
-		local_irq_enable();
-
-		/* Even though interrupts have been re-enabled, this
-		 * access is safe because interrupts can only add new
-		 * entries to the tail of this list, and only ->poll()
-		 * calls can remove this head entry from the list.
-		 */
-		n = list_first_entry(&sd->poll_list, struct napi_struct, poll_list);
-
-		have = netpoll_poll_lock(n);
-
-		weight = n->weight;
-
-		/* This NAPI_STATE_SCHED test is for avoiding a race
-		 * with netpoll's poll_napi().  Only the entity which
-		 * obtains the lock and sees NAPI_STATE_SCHED set will
-		 * actually make the ->poll() call.  Therefore we avoid
-		 * accidentally calling ->poll() when NAPI is not scheduled.
-		 */
-		work = 0;
-		if (test_bit(NAPI_STATE_SCHED, &n->state)) {
-			work = n->poll(n, weight);
-			trace_napi_poll(n);
-		}
-
-		WARN_ON_ONCE(work > weight);
-
-		budget -= work;
-
-		local_irq_disable();
-
-		/* Drivers must not modify the NAPI state if they
-		 * consume the entire weight.  In such cases this code
-		 * still "owns" the NAPI instance and therefore can
-		 * move the instance around on the list at-will.
-		 */
-		if (unlikely(work == weight)) {
-			if (unlikely(napi_disable_pending(n))) {
-				local_irq_enable();
-				napi_complete(n);
-				local_irq_disable();
-			} else {
-				if (n->gro_list) {
-					/* flush too old packets
-					 * If HZ < 1000, flush all packets.
-					 */
-					local_irq_enable();
-					napi_gro_flush(n, HZ >= 1000);
-					local_irq_disable();
-				}
-				list_move_tail(&n->poll_list, &sd->poll_list);
-			}
-		}
-
-		netpoll_poll_unlock(have);
-	}
-out:
-	net_rps_action_and_irq_enable(sd);
-
-#ifdef CONFIG_NET_DMA
-	/*
-	 * There may not be any more sk_buffs coming right now, so push
-	 * any pending DMA copies to hardware
-	 */
-	dma_issue_pending_all();
-#endif
-
-	return;
-
-softnet_break:
-	sd->time_squeeze++;
-	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
-	goto out;
-}
 
 2.8 hotcpu_notifier(dev_cpu_callback, 0)
 ================================================================================
@@ -955,4 +798,196 @@ void __napi_complete(struct napi_struct *n)
 	list_del(&n->poll_list);
 	smp_mb__before_clear_bit();
 	clear_bit(NAPI_STATE_SCHED, &n->state);
+}
+
+5. net_tx_action()
+================================================================================
+static void net_tx_action(struct softirq_action *h)
+{
+	struct softnet_data *sd = &__get_cpu_var(softnet_data);
+
+	; process the completion_queue 
+	if (sd->completion_queue) {
+		struct sk_buff *clist;
+
+		; remove the list
+		local_irq_disable();
+		clist = sd->completion_queue;
+		sd->completion_queue = NULL;
+		local_irq_enable();
+
+		; go though the list and free skb
+		while (clist) {
+			struct sk_buff *skb = clist;
+			clist = clist->next;
+
+			WARN_ON(atomic_read(&skb->users));
+			trace_kfree_skb(skb, net_tx_action);
+			__kfree_skb(skb);
+		}
+	}
+
+	if (sd->output_queue) {
+		struct Qdisc *head;
+
+		; remove the output_queue
+		local_irq_disable();
+		head = sd->output_queue;
+		sd->output_queue = NULL;
+		sd->output_queue_tailp = &sd->output_queue;
+		local_irq_enable();
+
+		while (head) {
+			struct Qdisc *q = head;
+			spinlock_t *root_lock;
+
+			head = head->next_sched;
+
+			root_lock = qdisc_lock(q);
+			if (spin_trylock(root_lock)) {
+				smp_mb__before_clear_bit();
+				clear_bit(__QDISC_STATE_SCHED,
+					  &q->state);
+				qdisc_run(q);
+				spin_unlock(root_lock);
+			} else {
+				if (!test_bit(__QDISC_STATE_DEACTIVATED,
+					      &q->state)) {
+					__netif_reschedule(q);
+				} else {
+					smp_mb__before_clear_bit();
+					clear_bit(__QDISC_STATE_SCHED,
+						  &q->state);
+				}
+			}
+		}
+	}
+}
+
+
+5.1 __kfree_skb()
+================================================================================
+void __kfree_skb(struct sk_buff *skb)
+{
+	skb_release_all(skb);
+	kfree_skbmem(skb);
+}
+
+5.1.1 skb_release_all()
+================================================================================
+static void skb_release_all(struct sk_buff *skb)
+{
+	skb_release_head_state(skb);
+	skb_release_data(skb);
+}
+
+5.1.1.1 skb_release_head_state()
+================================================================================
+static void skb_release_head_state(struct sk_buff *skb)
+{
+	skb_dst_drop(skb);
+#ifdef CONFIG_XFRM
+	secpath_put(skb->sp);
+#endif
+	if (skb->destructor) {
+		WARN_ON(in_irq());
+		skb->destructor(skb);
+	}
+#if IS_ENABLED(CONFIG_NF_CONNTRACK)
+	nf_conntrack_put(skb->nfct);
+#endif
+#ifdef NET_SKBUFF_NF_DEFRAG_NEEDED
+	nf_conntrack_put_reasm(skb->nfct_reasm);
+#endif
+#ifdef CONFIG_BRIDGE_NETFILTER
+	nf_bridge_put(skb->nf_bridge);
+#endif
+/* XXX: IS this still necessary? - JHS */
+#ifdef CONFIG_NET_SCHED
+	skb->tc_index = 0;
+#ifdef CONFIG_NET_CLS_ACT
+	skb->tc_verd = 0;
+#endif
+#endif
+}
+
+5.1.1.2 skb_release_data()
+================================================================================
+static void skb_release_data(struct sk_buff *skb)
+{
+	if (!skb->cloned ||
+	    !atomic_sub_return(skb->nohdr ? (1 << SKB_DATAREF_SHIFT) + 1 : 1,
+			       &skb_shinfo(skb)->dataref)) {
+		if (skb_shinfo(skb)->nr_frags) {
+			int i;
+			for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
+				skb_frag_unref(skb, i);
+		}
+
+		/*
+		 * If skb buf is from userspace, we need to notify the caller
+		 * the lower device DMA has done;
+		 */
+		if (skb_shinfo(skb)->tx_flags & SKBTX_DEV_ZEROCOPY) {
+			struct ubuf_info *uarg;
+
+			uarg = skb_shinfo(skb)->destructor_arg;
+			if (uarg->callback)
+				uarg->callback(uarg, true);
+		}
+
+		if (skb_has_frag_list(skb))
+			skb_drop_fraglist(skb);
+
+		skb_free_head(skb);
+	}
+}
+
+5.1.2 kfree_skbmem(), kmem_cache_free()
+================================================================================
+static void kfree_skbmem(struct sk_buff *skb)
+{
+	struct sk_buff *other;
+	atomic_t *fclone_ref;
+
+	switch (skb->fclone) {
+	case SKB_FCLONE_UNAVAILABLE:
+		kmem_cache_free(skbuff_head_cache, skb);
+		break;
+
+	case SKB_FCLONE_ORIG:
+		fclone_ref = (atomic_t *) (skb + 2);
+		if (atomic_dec_and_test(fclone_ref))
+			kmem_cache_free(skbuff_fclone_cache, skb);
+		break;
+
+	case SKB_FCLONE_CLONE:
+		fclone_ref = (atomic_t *) (skb + 1);
+		other = skb - 1;
+
+		/* The clone portion is available for
+		 * fast-cloning again.
+		 */
+		skb->fclone = SKB_FCLONE_UNAVAILABLE;
+
+		if (atomic_dec_and_test(fclone_ref))
+			kmem_cache_free(skbuff_fclone_cache, other);
+		break;
+	}
+}
+
+5.2 __netif_reschedule(), link to output_queue_tailp again
+================================================================================
+static inline void __netif_reschedule(struct Qdisc *q)
+{
+	struct softnet_data *sd;
+	unsigned long flags;
+
+	local_irq_save(flags);
+	sd = &__get_cpu_var(softnet_data);
+	q->next_sched = NULL;
+	*sd->output_queue_tailp = q;
+	sd->output_queue_tailp = &q->next_sched;
+	raise_softirq_irqoff(NET_TX_SOFTIRQ);
+	local_irq_restore(flags);
 }
