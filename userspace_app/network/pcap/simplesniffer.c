@@ -14,6 +14,12 @@
 #include <string.h> 
 #include <stdlib.h> 
 #include <ctype.h>
+#include <net/ethernet.h>
+#include <netinet/ip.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #define MAXBYTES2CAPTURE 2048 
 
@@ -23,10 +29,18 @@
 void processPacket(u_char *arg, const struct pcap_pkthdr* pkthdr, const u_char * packet)
 { 
  int i=0, *counter = (int *)arg; 
+ struct ether_header *ethernet;
+ struct ip *ip;
+
+ ethernet = (struct ether_header *)packet;
+ ip = (struct ip*)(packet + ETHER_HDR_LEN);
+
 
  printf("Packet Count: %d\n", ++(*counter)); 
  printf("Received Packet Size: %d\n", pkthdr->len); 
  printf("Payload:\n"); 
+ printf("SRC: %s\n", inet_ntoa(ip->ip_src));
+ printf("DST: %s\n", inet_ntoa(ip->ip_dst));
  for (i=0; i<pkthdr->len; i++){ 
 
     if ( isprint(packet[i]) ) /* If it is a printable character, print it */
