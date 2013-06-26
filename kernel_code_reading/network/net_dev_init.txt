@@ -1,5 +1,8 @@
 1. net_ns_init(), initialize the first namespace(init_net), ops(net_ns_ops) 
 ================================================================================
+; this function is defined by pure_initcall(net_ns_init);
+; #define pure_initcall(fn)		__define_initcall(fn, 0)
+
 struct net init_net = {
 	.dev_base_head = LIST_HEAD_INIT(init_net.dev_base_head),
 };
@@ -40,7 +43,7 @@ static int __init net_ns_init(void)
 	return 0;
 }
 
-1.1 setup_net(&init_net, &init_user_ns)
+1.1 setup_net(&init_net, &init_user_ns); assign user_ns, iterate on pernet_list
 ================================================================================
 struct user_namespace init_user_ns = {
 	.uid_map = {
@@ -118,6 +121,7 @@ out_undo:
 
 1.2 register_pernet_subsys(&net_ns_ops), wired, it is a subsys or an operation?
 ================================================================================
+;see 3.1 for detailed explanation of this function
 static struct pernet_operations __net_initdata net_ns_ops = {
 	.init = net_ns_net_init,
 	.exit = net_ns_net_exit,
@@ -132,6 +136,8 @@ static __net_init int net_ns_net_init(struct net *net)
 
 2. net_dev_init(), init net subsystem
 ================================================================================
+; this function is defined like subsys_initcall(net_dev_init);
+; #define subsys_initcall(fn)		__define_initcall(fn, 4)
 static int __init net_dev_init(void)
 {
 	int i, rc = -ENOMEM;
@@ -545,6 +551,9 @@ int register_pernet_subsys(struct pernet_operations *ops)
 	return error;
 }
 
+3.1.1 register_pernet_operations()
+================================================================================
+
 3.2 register_pernet_device(struct pernet_operations *ops)
 ================================================================================
 int register_pernet_device(struct pernet_operations *ops)
@@ -557,6 +566,9 @@ int register_pernet_device(struct pernet_operations *ops)
 	mutex_unlock(&net_mutex);
 	return error;
 }
+
+3.2.1 register_pernet_operations()
+================================================================================
 
 3.3 register_pernet_operations(struct list_head *list, struct pernet_operations *ops)
 ================================================================================
@@ -991,3 +1003,28 @@ static inline void __netif_reschedule(struct Qdisc *q)
 	raise_softirq_irqoff(NET_TX_SOFTIRQ);
 	local_irq_restore(flags);
 }
+
+0. data structure
+================================================================================
+init_net(struct net)
+   +------------------------+
+   |                        |
+   |                        |
+   +------------------------+
+   |gen(struct net_generic) |------------->+-------------------+
+   |                        |              |len                |
+   +------------------------+              |rcu(rcu_head)      |
+   |                        |              |ptr                |
+   |                        |              +-------------------+
+   |                        |
+   +------------------------+              init_user_ns
+   |user_ns(user_namespace) |--------------+-------------------+
+   |                        |              |uid_map            |
+   +------------------------+              |gid_map            |
+   |                        |              |projid_map         |
+   |                        |              |                   |
+   |                        |              |owner              |
+   |                        |              |group              |
+   +------------------------+              |                   |
+                                           |                   |
+                                           +-------------------+
