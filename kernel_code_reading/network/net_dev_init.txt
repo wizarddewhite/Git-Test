@@ -1,140 +1,4 @@
-1. net_ns_init(), initialize the first namespace(init_net), ops(net_ns_ops) 
-================================================================================
-; this function is defined by pure_initcall(net_ns_init);
-; #define pure_initcall(fn)		__define_initcall(fn, 0)
-
-struct net init_net = {
-	.dev_base_head = LIST_HEAD_INIT(init_net.dev_base_head),
-};
-
-static int __init net_ns_init(void)
-{
-	struct net_generic *ng;
-
-#ifdef CONFIG_NET_NS
-	net_cachep = kmem_cache_create("net_namespace", sizeof(struct net),
-					SMP_CACHE_BYTES,
-					SLAB_PANIC, NULL);
-
-	/* Create workqueue for cleanup */
-	netns_wq = create_singlethread_workqueue("netns");
-	if (!netns_wq)
-		panic("Could not create netns workq");
-#endif
-
-	ng = net_alloc_generic();
-	if (!ng)
-		panic("Could not allocate generic netns");
-
-	rcu_assign_pointer(init_net.gen, ng);
-
-	mutex_lock(&net_mutex);
-	if (setup_net(&init_net, &init_user_ns))
-		panic("Could not setup the initial network namespace");
-
-	rtnl_lock();
-	list_add_tail_rcu(&init_net.list, &net_namespace_list);
-	rtnl_unlock();
-
-	mutex_unlock(&net_mutex);
-
-	register_pernet_subsys(&net_ns_ops);
-
-	return 0;
-}
-
-1.1 setup_net(&init_net, &init_user_ns); assign user_ns, iterate on pernet_list
-================================================================================
-struct user_namespace init_user_ns = {
-	.uid_map = {
-		.nr_extents = 1,
-		.extent[0] = {
-			.first = 0,
-			.lower_first = 0,
-			.count = 4294967295U,
-		},
-	},
-	.gid_map = {
-		.nr_extents = 1,
-		.extent[0] = {
-			.first = 0,
-			.lower_first = 0,
-			.count = 4294967295U,
-		},
-	},
-	.projid_map = {
-		.nr_extents = 1,
-		.extent[0] = {
-			.first = 0,
-			.lower_first = 0,
-			.count = 4294967295U,
-		},
-	},
-	.kref = {
-		.refcount	= ATOMIC_INIT(3),
-	},
-	.owner = GLOBAL_ROOT_UID,
-	.group = GLOBAL_ROOT_GID,
-	.proc_inum = PROC_USER_INIT_INO,
-};
-
-static __net_init int setup_net(struct net *net, struct user_namespace *user_ns)
-{
-	/* Must be called with net_mutex held */
-	const struct pernet_operations *ops, *saved_ops;
-	int error = 0;
-	LIST_HEAD(net_exit_list);
-
-	atomic_set(&net->count, 1);
-	atomic_set(&net->passive, 1);
-	net->dev_base_seq = 1;
-	net->user_ns = user_ns;
-
-#ifdef NETNS_REFCNT_DEBUG
-	atomic_set(&net->use_count, 0);
-#endif
-
-	list_for_each_entry(ops, &pernet_list, list) {
-		error = ops_init(ops, net);
-		if (error < 0)
-			goto out_undo;
-	}
-out:
-	return error;
-
-out_undo:
-	/* Walk through the list backwards calling the exit functions
-	 * for the pernet modules whose init functions did not fail.
-	 */
-	list_add(&net->exit_list, &net_exit_list);
-	saved_ops = ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
-		ops_exit_list(ops, &net_exit_list);
-
-	ops = saved_ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
-		ops_free_list(ops, &net_exit_list);
-
-	rcu_barrier();
-	goto out;
-}
-
-1.2 register_pernet_subsys(&net_ns_ops), wired, it is a subsys or an operation?
-================================================================================
-;see 3.1 for detailed explanation of this function
-static struct pernet_operations __net_initdata net_ns_ops = {
-	.init = net_ns_net_init,
-	.exit = net_ns_net_exit,
-};
-
-1.2.1 net_ns_net_init(), ops: proc number
-================================================================================
-static __net_init int net_ns_net_init(struct net *net)
-{
-	return proc_alloc_inum(&net->proc_inum);
-}
-
-2. net_dev_init(), init net subsystem
+1. net_dev_init(), init net subsystem
 ================================================================================
 ; this function is defined like subsys_initcall(net_dev_init);
 ; #define subsys_initcall(fn)		__define_initcall(fn, 4)
@@ -212,7 +76,7 @@ out:
 	return rc;
 }
 
-2.1 dev_proc_init(), create proc file 
+1.1 dev_proc_init(), create proc file 
 ================================================================================
 static struct pernet_operations __net_initdata dev_proc_ops = {
 	.init = dev_proc_net_init,
@@ -224,10 +88,10 @@ static int __init dev_proc_init(void)
 	return register_pernet_subsys(&dev_proc_ops);
 }
 
-2.1.1 register_pernet_subsys(&dev_proc_ops);
+1.1.1 register_pernet_subsys(&dev_proc_ops);
 ================================================================================
 
-2.1.1.1 dev_proc_net_init(&dev_proc_ops), under /proc/pic/net
+1.1.1.1 dev_proc_net_init(&dev_proc_ops), under /proc/pic/net
 ================================================================================
 static int __net_init dev_proc_net_init(struct net *net)
 {
@@ -254,7 +118,7 @@ out_dev:
 	goto out;
 }
 
-2.1.1.1.1 proc_net_fops_create()
+1.1.1.1.1 proc_net_fops_create()
 ================================================================================
 struct proc_dir_entry *proc_net_fops_create(struct net *net,
 	const char *name, umode_t mode, const struct file_operations *fops)
@@ -262,7 +126,7 @@ struct proc_dir_entry *proc_net_fops_create(struct net *net,
 	return proc_create(name, mode, net->proc_net, fops);
 }
 
-2.2 netdev_kobject_init()
+1.2 netdev_kobject_init()
 ================================================================================
 int netdev_kobject_init(void)
 {
@@ -270,7 +134,7 @@ int netdev_kobject_init(void)
 	return class_register(&net_class);
 }
 
-2.2.1 kobj_ns_type_register(&net_ns_type_operations), register namespace of net
+1.2.1 kobj_ns_type_register(&net_ns_type_operations), register namespace of net
 ================================================================================
 ; there is an array for kobject namespace, 
 ; register one for network
@@ -309,7 +173,7 @@ out:
 	return error;
 }
 
-2.2.2 class_register(&net_class), register a class for net, /sys/class/net
+1.2.2 class_register(&net_class), register a class for net, /sys/class/net
 ================================================================================
 static struct class net_class = {
 	.name = "net",
@@ -324,14 +188,14 @@ static struct class net_class = {
 	.namespace = net_namespace,
 };
 
-2.3 register_pernet_subsys(&netdev_net_ops)
+1.3 register_pernet_subsys(&netdev_net_ops)
 ================================================================================
 static struct pernet_operations __net_initdata netdev_net_ops = {
 	.init = netdev_init,
 	.exit = netdev_exit,
 };
 
-2.3.1 netdev_init(), ops: netdev_init, init hash talbe of dev name/index
+1.3.1 netdev_init(), ops: netdev_init, init hash talbe of dev name/index
 ================================================================================
 static int __net_init netdev_init(struct net *net)
 {
@@ -354,13 +218,13 @@ err_name:
 	return -ENOMEM;
 }
 
-2.4 register_pernet_device(&loopback_net_ops)
+1.4 register_pernet_device(&loopback_net_ops)
 ================================================================================
 struct pernet_operations __net_initdata loopback_net_ops = {
        .init = loopback_net_init,
 };
 
-2.4.1 loopback_net_init(), create loopback net device in every namespace
+1.4.1 loopback_net_init(), create loopback net device in every namespace
 ================================================================================
 static __net_init int loopback_net_init(struct net *net)
 {
@@ -390,14 +254,14 @@ out:
 	return err;
 }
 
-2.5 register_pernet_device(&default_device_ops)
+1.5 register_pernet_device(&default_device_ops)
 ================================================================================
 static struct pernet_operations __net_initdata default_device_ops = {
 	.exit = default_device_exit,
 	.exit_batch = default_device_exit_batch,
 };
 
-2.5.1 default_device_exit()
+1.5.1 default_device_exit()
 ================================================================================
 static void __net_exit default_device_exit(struct net *net)
 {
@@ -431,27 +295,27 @@ static void __net_exit default_device_exit(struct net *net)
 	rtnl_unlock();
 }
 
-2.6 open_softirq(NET_TX_SOFTIRQ, net_tx_action);
+1.6 open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 ================================================================================
 void open_softirq(int nr, void (*action)(struct softirq_action *))
 {
 	softirq_vec[nr].action = action;
 }
 
-2.7 open_softirq(NET_RX_SOFTIRQ, net_rx_action);
+1.7 open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 ================================================================================
 
-2.8 hotcpu_notifier(dev_cpu_callback, 0)
+1.8 hotcpu_notifier(dev_cpu_callback, 0)
 ================================================================================
 
-2.9 dst_init()
+1.9 dst_init()
 ================================================================================
 void __init dst_init(void)
 {
 	register_netdevice_notifier(&dst_dev_notifier);
 }
 
-2.9.1 register_netdevice_notifier()
+1.9.1 register_netdevice_notifier()
 ================================================================================
 int register_netdevice_notifier(struct notifier_block *nb)
 {
@@ -504,7 +368,7 @@ outroll:
 	goto unlock;
 }
 
-2.10 dev_mcast_init(), proc file for multicast
+1.10 dev_mcast_init(), proc file for multicast
 ================================================================================
 static struct pernet_operations __net_initdata dev_mc_net_ops = {
 	.init = dev_mc_net_init,
@@ -516,7 +380,7 @@ void __init dev_mcast_init(void)
 	register_pernet_subsys(&dev_mc_net_ops);
 }
 
-2.10.1 dev_mc_net_init()
+1.10.1 dev_mc_net_init()
 ================================================================================
 static int __net_init dev_mc_net_init(struct net *net)
 {
@@ -525,138 +389,8 @@ static int __net_init dev_mc_net_init(struct net *net)
 	return 0;
 }
 
-3. pernet operations 
-================================================================================
-There are two important list in net subsystem:
-a. net_namespace_list: struct net {};
-	one entity represents one network namespace
-b. pernet_list: struct pernet_operations {};
-	one entity represents the operation on a network namespace
 
-Frontend API:
-a. register_pernet_subsys()
-b. register_pernet_device()
-
-Backend API:
-a. register_pernet_operations()
-
-3.1 register_pernet_subsys(struct pernet_operations *ops)
-================================================================================
-int register_pernet_subsys(struct pernet_operations *ops)
-{
-	int error;
-	mutex_lock(&net_mutex);
-	error =  register_pernet_operations(first_device, ops);
-	mutex_unlock(&net_mutex);
-	return error;
-}
-
-3.1.1 register_pernet_operations()
-================================================================================
-
-3.2 register_pernet_device(struct pernet_operations *ops)
-================================================================================
-int register_pernet_device(struct pernet_operations *ops)
-{
-	int error;
-	mutex_lock(&net_mutex);
-	error = register_pernet_operations(&pernet_list, ops);
-	if (!error && (first_device == &pernet_list))
-		first_device = &ops->list;
-	mutex_unlock(&net_mutex);
-	return error;
-}
-
-3.2.1 register_pernet_operations()
-================================================================================
-
-3.3 register_pernet_operations(struct list_head *list, struct pernet_operations *ops)
-================================================================================
-static int register_pernet_operations(struct list_head *list,
-				      struct pernet_operations *ops)
-{
-	int error;
-
-	if (ops->id) {
-again:
-		error = ida_get_new_above(&net_generic_ids, 1, ops->id);
-		if (error < 0) {
-			if (error == -EAGAIN) {
-				ida_pre_get(&net_generic_ids, GFP_KERNEL);
-				goto again;
-			}
-			return error;
-		}
-		max_gen_ptrs = max_t(unsigned int, max_gen_ptrs, *ops->id);
-	}
-	error = __register_pernet_operations(list, ops);
-	if (error) {
-		rcu_barrier();
-		if (ops->id)
-			ida_remove(&net_generic_ids, *ops->id);
-	}
-
-	return error;
-}
-
-3.3.1 __register_pernet_operations()
-================================================================================
-static int __register_pernet_operations(struct list_head *list,
-					struct pernet_operations *ops)
-{
-	struct net *net;
-	int error;
-	LIST_HEAD(net_exit_list);
-
-	list_add_tail(&ops->list, list);
-	if (ops->init || (ops->id && ops->size)) {
-		for_each_net(net) {
-			error = ops_init(ops, net);
-			if (error)
-				goto out_undo;
-			list_add_tail(&net->exit_list, &net_exit_list);
-		}
-	}
-	return 0;
-
-out_undo:
-	/* If I have an error cleanup all namespaces I initialized */
-	list_del(&ops->list);
-	ops_exit_list(ops, &net_exit_list);
-	ops_free_list(ops, &net_exit_list);
-	return error;
-}
-
-3.3.1.1 ops_init(const struct pernet_operations *ops, struct net *net)
-================================================================================
-static int ops_init(const struct pernet_operations *ops, struct net *net)
-{
-	int err = -ENOMEM;
-	void *data = NULL;
-
-	if (ops->id && ops->size) {
-		data = kzalloc(ops->size, GFP_KERNEL);
-		if (!data)
-			goto out;
-
-		err = net_assign_generic(net, *ops->id, data);
-		if (err)
-			goto cleanup;
-	}
-	err = 0;
-	if (ops->init)
-		err = ops->init(net);
-	if (!err)
-		return 0;
-
-cleanup:
-	kfree(data);
-
-out:
-	return err;
-}
-
-4. net_rx_action(), working thread for rx packet
+2. net_rx_action(), working thread for rx packet
 ================================================================================
 ; each time go through the poll_list, which contains the napi_struct
 ; and run napi_struct->poll
@@ -757,7 +491,7 @@ softnet_break:
 }
 
 
-4.1 __napi_schedule(), who put napi_struct on the poll_list
+2.1 __napi_schedule(), who put napi_struct on the poll_list
 ================================================================================
 ; this function is called in the irq handler of a nic driver
 void __napi_schedule(struct napi_struct *n)
@@ -769,7 +503,7 @@ void __napi_schedule(struct napi_struct *n)
 	local_irq_restore(flags);
 }
 
-4.1.1 ____napi_schedule()
+2.1.1 ____napi_schedule()
 ================================================================================
 static inline void ____napi_schedule(struct softnet_data *sd,
 				     struct napi_struct *napi)
@@ -778,7 +512,7 @@ static inline void ____napi_schedule(struct softnet_data *sd,
 	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
 }
 
-4.2 napi_complete(), who remove the napi_struct from the poll_list
+2.2 napi_complete(), who remove the napi_struct from the poll_list
 ================================================================================
 ; this function is called in two places:
 ; 1. in the napi_struct->poll function
@@ -800,7 +534,7 @@ void napi_complete(struct napi_struct *n)
 	local_irq_restore(flags);
 }
 
-4.2.1 __napi_complete()
+2.2.1 __napi_complete()
 ================================================================================
 void __napi_complete(struct napi_struct *n)
 {
@@ -812,7 +546,7 @@ void __napi_complete(struct napi_struct *n)
 	clear_bit(NAPI_STATE_SCHED, &n->state);
 }
 
-5. net_tx_action()
+3. net_tx_action()
 ================================================================================
 static void net_tx_action(struct softirq_action *h)
 {
@@ -877,7 +611,7 @@ static void net_tx_action(struct softirq_action *h)
 }
 
 
-5.1 __kfree_skb()
+3.1 __kfree_skb()
 ================================================================================
 void __kfree_skb(struct sk_buff *skb)
 {
@@ -885,7 +619,7 @@ void __kfree_skb(struct sk_buff *skb)
 	kfree_skbmem(skb);
 }
 
-5.1.1 skb_release_all()
+3.1.1 skb_release_all()
 ================================================================================
 static void skb_release_all(struct sk_buff *skb)
 {
@@ -893,7 +627,7 @@ static void skb_release_all(struct sk_buff *skb)
 	skb_release_data(skb);
 }
 
-5.1.1.1 skb_release_head_state()
+3.1.1.1 skb_release_head_state()
 ================================================================================
 static void skb_release_head_state(struct sk_buff *skb)
 {
@@ -923,7 +657,7 @@ static void skb_release_head_state(struct sk_buff *skb)
 #endif
 }
 
-5.1.1.2 skb_release_data()
+3.1.1.2 skb_release_data()
 ================================================================================
 static void skb_release_data(struct sk_buff *skb)
 {
@@ -955,7 +689,7 @@ static void skb_release_data(struct sk_buff *skb)
 	}
 }
 
-5.1.2 kfree_skbmem(), kmem_cache_free()
+3.1.2 kfree_skbmem(), kmem_cache_free()
 ================================================================================
 static void kfree_skbmem(struct sk_buff *skb)
 {
@@ -988,7 +722,7 @@ static void kfree_skbmem(struct sk_buff *skb)
 	}
 }
 
-5.2 __netif_reschedule(), link to output_queue_tailp again
+3.2 __netif_reschedule(), link to output_queue_tailp again
 ================================================================================
 static inline void __netif_reschedule(struct Qdisc *q)
 {
@@ -1004,27 +738,3 @@ static inline void __netif_reschedule(struct Qdisc *q)
 	local_irq_restore(flags);
 }
 
-0. data structure
-================================================================================
-init_net(struct net)
-   +------------------------+
-   |                        |
-   |                        |
-   +------------------------+
-   |gen(struct net_generic) |------------->+-------------------+
-   |                        |              |len                |
-   +------------------------+              |rcu(rcu_head)      |
-   |                        |              |ptr                |
-   |                        |              +-------------------+
-   |                        |
-   +------------------------+              init_user_ns
-   |user_ns(user_namespace) |--------------+-------------------+
-   |                        |              |uid_map            |
-   +------------------------+              |gid_map            |
-   |                        |              |projid_map         |
-   |                        |              |                   |
-   |                        |              |owner              |
-   |                        |              |group              |
-   +------------------------+              |                   |
-                                           |                   |
-                                           +-------------------+
