@@ -1,0 +1,25 @@
+1. net_init_client(), initialize the network
+=======================================================================
+int net_init_clients(void)
+{
+    QemuOptsList *net = qemu_find_opts("net");
+
+    if (default_net) {
+        /* if no clients, we use a default config */
+        qemu_opts_set(net, NULL, "type", "nic");
+#ifdef CONFIG_SLIRP
+        qemu_opts_set(net, NULL, "type", "user");
+#endif
+    }
+
+    QTAILQ_INIT(&net_clients);
+
+    if (qemu_opts_foreach(qemu_find_opts("netdev"), net_init_netdev, NULL, 1) == -1)
+        return -1;
+
+    if (qemu_opts_foreach(net, net_init_client, NULL, 1) == -1) {
+        return -1;
+    }
+
+    return 0;
+}
