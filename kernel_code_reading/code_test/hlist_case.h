@@ -22,4 +22,10 @@
 
 #define HASHENTRIES 32
 
+struct dummy_struct {
+	int index;
+	char name[12];
+	struct hlist_node name_hlist;
+};
+
 #endif
