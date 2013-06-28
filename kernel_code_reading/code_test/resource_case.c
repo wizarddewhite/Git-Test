@@ -267,7 +267,7 @@ void find_resource_test()
 
 	if (ret == 0)
 		printf("We find a size %d free slot under root at %lu-%lu aligned by 4\n",
-			(int)resource_size(&res[6]), (long)res[6].start, (long)res[6].end);
+			(int)resource_size(&res[7]), (long)res[7].start, (long)res[7].end);
 	else
 		printf("We don't find a free slot under root for size 90 aligned by 4 between 0-400\n");
 
