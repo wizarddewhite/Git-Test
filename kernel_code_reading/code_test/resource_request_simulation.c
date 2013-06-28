@@ -466,7 +466,7 @@ void pci_depth_release(struct pci_depth *bus_node)
 	free(bus_node);
 }
 
-static int pci_bus_get_depth2(struct pci_bus *bus)
+int pci_bus_get_depth2(struct pci_bus *bus)
 {
 	int max_depth, depth;
 	struct pci_bus *parent, *curr;
@@ -505,7 +505,7 @@ static int pci_bus_get_depth2(struct pci_bus *bus)
 	return max_depth;
 }
 
-static int pci_bus_get_depth1(struct pci_bus *bus)
+int pci_bus_get_depth1(struct pci_bus *bus)
 {
 	int depth = 0;
 	struct pci_bus *child_bus;
@@ -538,7 +538,7 @@ static int pci_bus_get_depth1(struct pci_bus *bus)
 	return depth;
 }
 
-static int pci_bus_get_depth(struct pci_bus *bus)
+int pci_bus_get_depth(struct pci_bus *bus)
 {
 	int depth = 0;
 	struct pci_bus *child_bus;
@@ -552,15 +552,6 @@ static int pci_bus_get_depth(struct pci_bus *bus)
 	}
 
 	return depth;
-}
-
-int pci_get_max_depth(void)
-{
-	printf("depth is %d \n", pci_bus_get_depth2(root_bus));
-
-	printf("depth is %d \n", pci_bus_get_depth(root_bus));
-
-	return 0;
 }
 
 

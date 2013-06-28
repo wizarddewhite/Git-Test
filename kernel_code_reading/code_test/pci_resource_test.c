@@ -127,6 +127,15 @@ void mem_align_test()
 	return;
 }
 
+int pci_get_max_depth(void)
+{
+	printf("depth is %d \n", pci_bus_get_depth2(root_bus));
+
+	printf("depth is %d \n", pci_bus_get_depth(root_bus));
+
+	return 0;
+}
+
 int main()
 {
 	mem_align_test();
