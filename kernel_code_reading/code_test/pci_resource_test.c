@@ -40,7 +40,7 @@ void init3()
     /* Assign res from 2-9, and from big to small */
     res[2].start = 0;
     res[2].end = 8*(1<<20)-1; //8M
-    res[3].start = 0x300000;
+    res[3].start = 0x500000;
     res[3].end = res[3].start + 4*(1<<20)-1; //4M
     res[4].start = 0; //1M
     res[4].end = (1<<20)-1;
