@@ -1,0 +1,201 @@
+1. netlink_proto_init()
+================================================================================
+; core_initcall(netlink_proto_init);
+
+static int __init netlink_proto_init(void)
+{
+	int i;
+	unsigned long limit;
+	unsigned int order;
+	int err = proto_register(&netlink_proto, 0);
+
+	if (err != 0)
+		goto out;
+
+	BUILD_BUG_ON(sizeof(struct netlink_skb_parms) > FIELD_SIZEOF(struct sk_buff, cb));
+
+	nl_table = kcalloc(MAX_LINKS, sizeof(*nl_table), GFP_KERNEL);
+	if (!nl_table)
+		goto panic;
+
+	if (totalram_pages >= (128 * 1024))
+		limit = totalram_pages >> (21 - PAGE_SHIFT);
+	else
+		limit = totalram_pages >> (23 - PAGE_SHIFT);
+
+	order = get_bitmask_order(limit) - 1 + PAGE_SHIFT;
+	limit = (1UL << order) / sizeof(struct hlist_head);
+	order = get_bitmask_order(min(limit, (unsigned long)UINT_MAX)) - 1;
+
+	for (i = 0; i < MAX_LINKS; i++) {
+		struct nl_portid_hash *hash = &nl_table[i].hash;
+
+		hash->table = nl_portid_hash_zalloc(1 * sizeof(*hash->table));
+		if (!hash->table) {
+			while (i-- > 0)
+				nl_portid_hash_free(nl_table[i].hash.table,
+						 1 * sizeof(*hash->table));
+			kfree(nl_table);
+			goto panic;
+		}
+		hash->max_shift = order;
+		hash->shift = 0;
+		hash->mask = 0;
+		hash->rehash_time = jiffies;
+	}
+
+	netlink_add_usersock_entry();
+
+	sock_register(&netlink_family_ops);
+	register_pernet_subsys(&netlink_net_ops);
+	/* The netlink device handler may be needed early. */
+	rtnetlink_init();
+out:
+	return err;
+panic:
+	panic("netlink_init: Cannot allocate nl_table\n");
+}
+
+1.1 proto_register()
+================================================================================
+1.2 netlink_add_usersock_entry()
+================================================================================
+1.3 sock_register()
+================================================================================
+1.4 rtnetlink_init()
+================================================================================
+void __init rtnetlink_init(void)
+{
+	if (register_pernet_subsys(&rtnetlink_net_ops))
+		panic("rtnetlink_init: cannot initialize rtnetlink\n");
+
+	register_netdevice_notifier(&rtnetlink_dev_notifier);
+
+	rtnl_register(PF_UNSPEC, RTM_GETLINK, rtnl_getlink,
+		      rtnl_dump_ifinfo, rtnl_calcit);
+	rtnl_register(PF_UNSPEC, RTM_SETLINK, rtnl_setlink, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_NEWLINK, rtnl_newlink, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_DELLINK, rtnl_dellink, NULL, NULL);
+
+	rtnl_register(PF_UNSPEC, RTM_GETADDR, NULL, rtnl_dump_all, NULL);
+	rtnl_register(PF_UNSPEC, RTM_GETROUTE, NULL, rtnl_dump_all, NULL);
+
+	rtnl_register(PF_BRIDGE, RTM_NEWNEIGH, rtnl_fdb_add, NULL, NULL);
+	rtnl_register(PF_BRIDGE, RTM_DELNEIGH, rtnl_fdb_del, NULL, NULL);
+	rtnl_register(PF_BRIDGE, RTM_GETNEIGH, NULL, rtnl_fdb_dump, NULL);
+
+	rtnl_register(PF_BRIDGE, RTM_GETLINK, NULL, rtnl_bridge_getlink, NULL);
+	rtnl_register(PF_BRIDGE, RTM_DELLINK, rtnl_bridge_dellink, NULL, NULL);
+	rtnl_register(PF_BRIDGE, RTM_SETLINK, rtnl_bridge_setlink, NULL, NULL);
+}
+
+1.4.1 rtnetlink_net_ops()
+================================================================================
+static struct pernet_operations rtnetlink_net_ops = {
+	.init = rtnetlink_net_init,
+	.exit = rtnetlink_net_exit,
+};
+
+1.4.1.1 rtnetlink_net_init()
+================================================================================
+static int __net_init rtnetlink_net_init(struct net *net)
+{
+	struct sock *sk;
+	struct netlink_kernel_cfg cfg = {
+		.groups		= RTNLGRP_MAX,
+		.input		= rtnetlink_rcv,
+		.cb_mutex	= &rtnl_mutex,
+		.flags		= NL_CFG_F_NONROOT_RECV,
+	};
+
+	sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);
+	if (!sk)
+		return -ENOMEM;
+	net->rtnl = sk;
+	return 0;
+}
+
+1.4.1.1.1 netlink_kernel_create()
+================================================================================
+netlink_kernel_create(struct net *net, int unit, struct netlink_kernel_cfg *cfg)
+{
+	return __netlink_kernel_create(net, unit, THIS_MODULE, cfg);
+}
+
+struct sock *
+__netlink_kernel_create(struct net *net, int unit, struct module *module,
+			struct netlink_kernel_cfg *cfg)
+{
+	struct socket *sock;
+	struct sock *sk;
+	struct netlink_sock *nlk;
+	struct listeners *listeners = NULL;
+	struct mutex *cb_mutex = cfg ? cfg->cb_mutex : NULL;
+	unsigned int groups;
+
+	BUG_ON(!nl_table);
+
+	if (unit < 0 || unit >= MAX_LINKS)
+		return NULL;
+
+	if (sock_create_lite(PF_NETLINK, SOCK_DGRAM, unit, &sock))
+		return NULL;
+
+	/*
+	 * We have to just have a reference on the net from sk, but don't
+	 * get_net it. Besides, we cannot get and then put the net here.
+	 * So we create one inside init_net and the move it to net.
+	 */
+
+	if (__netlink_create(&init_net, sock, cb_mutex, unit) < 0)
+		goto out_sock_release_nosk;
+
+	sk = sock->sk;
+	sk_change_net(sk, net);
+
+	if (!cfg || cfg->groups < 32)
+		groups = 32;
+	else
+		groups = cfg->groups;
+
+	listeners = kzalloc(sizeof(*listeners) + NLGRPSZ(groups), GFP_KERNEL);
+	if (!listeners)
+		goto out_sock_release;
+
+	sk->sk_data_ready = netlink_data_ready;
+	if (cfg && cfg->input)
+		nlk_sk(sk)->netlink_rcv = cfg->input;
+
+	if (netlink_insert(sk, net, 0))
+		goto out_sock_release;
+
+	nlk = nlk_sk(sk);
+	nlk->flags |= NETLINK_KERNEL_SOCKET;
+
+	netlink_table_grab();
+	if (!nl_table[unit].registered) {
+		nl_table[unit].groups = groups;
+		rcu_assign_pointer(nl_table[unit].listeners, listeners);
+		nl_table[unit].cb_mutex = cb_mutex;
+		nl_table[unit].module = module;
+		if (cfg) {
+			nl_table[unit].bind = cfg->bind;
+			nl_table[unit].flags = cfg->flags;
+		}
+		nl_table[unit].registered = 1;
+	} else {
+		kfree(listeners);
+		nl_table[unit].registered++;
+	}
+	netlink_table_ungrab();
+	return sk;
+
+out_sock_release:
+	kfree(listeners);
+	netlink_kernel_release(sk);
+	return NULL;
+
+out_sock_release_nosk:
+	sock_release(sock);
+	return NULL;
+}
