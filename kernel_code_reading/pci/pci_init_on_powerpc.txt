@@ -1,6 +1,6 @@
 0. pci initialization related code on powernv
 ===============================================================================
-pnv_pci_init();    called in start_kernel()->setup_arch()
+pnv_pci_init();    called in start_kernel()->setup_arch()->pnv_setup_arch()
 pcibios_init();    called in start_kernel()->res_init()->kernel_init()->
                              do_basic_setup()->do_initcalls()
 
@@ -290,7 +290,7 @@ pci_devs_phb_init_dynamic(struct pci_controller *phb)
 	/* Update dn->phb ptrs for new phb and children devices */
 	traverse_pci_devices(dn, update_dn_pci_info, phb);
 
-1.2.1.1 update_dn_pci_info, allocate dn for phb and set busno/devfn from FDT
+1.2.1.1 update_dn_pci_info, allocate pci_dn for a device node
 ===============================================================================
 update_dn_pci_info(struct device_node *dn, void *data)
 	struct pci_controller *phb = data;
