@@ -1,6 +1,7 @@
 1. netlink_proto_init()
 ================================================================================
 ; core_initcall(netlink_proto_init);
+; #define core_initcall(fn)		__define_initcall(fn, 1)
 
 static int __init netlink_proto_init(void)
 {
@@ -56,13 +57,194 @@ panic:
 	panic("netlink_init: Cannot allocate nl_table\n");
 }
 
-1.1 proto_register()
+1.1 proto_register(), for netlink protocol, it just add to proto_list
 ================================================================================
-1.2 netlink_add_usersock_entry()
+int proto_register(struct proto *prot, int alloc_slab)
+{
+	if (alloc_slab) {
+		prot->slab = kmem_cache_create(prot->name, prot->obj_size, 0,
+					SLAB_HWCACHE_ALIGN | prot->slab_flags,
+					NULL);
+
+		if (prot->slab == NULL) {
+			pr_crit("%s: Can't create sock SLAB cache!\n",
+				prot->name);
+			goto out;
+		}
+
+		if (prot->rsk_prot != NULL) {
+			prot->rsk_prot->slab_name = kasprintf(GFP_KERNEL, "request_sock_%s", prot->name);
+			if (prot->rsk_prot->slab_name == NULL)
+				goto out_free_sock_slab;
+
+			prot->rsk_prot->slab = kmem_cache_create(prot->rsk_prot->slab_name,
+								 prot->rsk_prot->obj_size, 0,
+								 SLAB_HWCACHE_ALIGN, NULL);
+
+			if (prot->rsk_prot->slab == NULL) {
+				pr_crit("%s: Can't create request sock SLAB cache!\n",
+					prot->name);
+				goto out_free_request_sock_slab_name;
+			}
+		}
+
+		if (prot->twsk_prot != NULL) {
+			prot->twsk_prot->twsk_slab_name = kasprintf(GFP_KERNEL, "tw_sock_%s", prot->name);
+
+			if (prot->twsk_prot->twsk_slab_name == NULL)
+				goto out_free_request_sock_slab;
+
+			prot->twsk_prot->twsk_slab =
+				kmem_cache_create(prot->twsk_prot->twsk_slab_name,
+						  prot->twsk_prot->twsk_obj_size,
+						  0,
+						  SLAB_HWCACHE_ALIGN |
+							prot->slab_flags,
+						  NULL);
+			if (prot->twsk_prot->twsk_slab == NULL)
+				goto out_free_timewait_sock_slab_name;
+		}
+	}
+
+	mutex_lock(&proto_list_mutex);
+	list_add(&prot->node, &proto_list);
+	assign_proto_idx(prot);
+	mutex_unlock(&proto_list_mutex);
+	return 0;
+
+out_free_timewait_sock_slab_name:
+	kfree(prot->twsk_prot->twsk_slab_name);
+out_free_request_sock_slab:
+	if (prot->rsk_prot && prot->rsk_prot->slab) {
+		kmem_cache_destroy(prot->rsk_prot->slab);
+		prot->rsk_prot->slab = NULL;
+	}
+out_free_request_sock_slab_name:
+	if (prot->rsk_prot)
+		kfree(prot->rsk_prot->slab_name);
+out_free_sock_slab:
+	kmem_cache_destroy(prot->slab);
+	prot->slab = NULL;
+out:
+	return -ENOBUFS;
+}
+
+1.1.1 assign_proto_idx(), assign an index, a bitmap of protocol index
 ================================================================================
-1.3 sock_register()
+#define DECLARE_BITMAP(name,bits) \
+	unsigned long name[BITS_TO_LONGS(bits)]
+
+static DECLARE_BITMAP(proto_inuse_idx, PROTO_INUSE_NR);
+
+static void assign_proto_idx(struct proto *prot)
+{
+	prot->inuse_idx = find_first_zero_bit(proto_inuse_idx, PROTO_INUSE_NR);
+
+	if (unlikely(prot->inuse_idx == PROTO_INUSE_NR - 1)) {
+		pr_err("PROTO_INUSE_NR exhausted\n");
+		return;
+	}
+
+	set_bit(prot->inuse_idx, proto_inuse_idx);
+}
+
+1.1.1.1 find_first_zero_bit()
 ================================================================================
-1.4 rtnetlink_init()
+unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)
+{
+	const unsigned long *p = addr;
+	unsigned long result = 0;
+	unsigned long tmp;
+
+	while (size & ~(BITS_PER_LONG-1)) {
+		if (~(tmp = *(p++)))
+			goto found;
+		result += BITS_PER_LONG;
+		size -= BITS_PER_LONG;
+	}
+	if (!size)
+		return result;
+
+	tmp = (*p) | (~0UL << size);
+	if (tmp == ~0UL)	/* Are any bits zero? */
+		return result + size;	/* Nope. */
+found:
+	return result + ffz(tmp);
+}
+
+1.2 netlink_add_usersock_entry(), set nl_table[NETLINK_USERSOCK]
+================================================================================
+static void __init netlink_add_usersock_entry(void)
+{
+	struct listeners *listeners;
+	int groups = 32;
+
+	listeners = kzalloc(sizeof(*listeners) + NLGRPSZ(groups), GFP_KERNEL);
+	if (!listeners)
+		panic("netlink_add_usersock_entry: Cannot allocate listeners\n");
+
+	netlink_table_grab();
+
+	nl_table[NETLINK_USERSOCK].groups = groups;
+	rcu_assign_pointer(nl_table[NETLINK_USERSOCK].listeners, listeners);
+	nl_table[NETLINK_USERSOCK].module = THIS_MODULE;
+	nl_table[NETLINK_USERSOCK].registered = 1;
+	nl_table[NETLINK_USERSOCK].flags = NL_CFG_F_NONROOT_SEND;
+
+	netlink_table_ungrab();
+}
+
+1.3 sock_register(), assign ops to net_families[]
+================================================================================
+static const struct net_proto_family netlink_family_ops = {
+	.family = PF_NETLINK,
+	.create = netlink_create,
+	.owner	= THIS_MODULE,	/* for consistency 8) */
+};
+
+int sock_register(const struct net_proto_family *ops)
+{
+	int err;
+
+	if (ops->family >= NPROTO) {
+		printk(KERN_CRIT "protocol %d >= NPROTO(%d)\n", ops->family,
+		       NPROTO);
+		return -ENOBUFS;
+	}
+
+	spin_lock(&net_family_lock);
+	if (rcu_dereference_protected(net_families[ops->family],
+				      lockdep_is_held(&net_family_lock)))
+		err = -EEXIST;
+	else {
+		rcu_assign_pointer(net_families[ops->family], ops);
+		err = 0;
+	}
+	spin_unlock(&net_family_lock);
+
+	printk(KERN_INFO "NET: Registered protocol family %d\n", ops->family);
+	return err;
+}
+
+1.4 register_pernet_subsys(netlink_net_ops)
+================================================================================
+static struct pernet_operations __net_initdata netlink_net_ops = {
+	.init = netlink_net_init,
+	.exit = netlink_net_exit,
+};
+
+1.4.1 netlink_net_init(), create proc file "netlink" under /proc/pid/net
+================================================================================
+static int __net_init netlink_net_init(struct net *net)
+{
+#ifdef CONFIG_PROC_FS
+	if (!proc_create("netlink", 0, net->proc_net, &netlink_seq_fops))
+		return -ENOMEM;
+#endif
+	return 0;
+}
+
+1.5 rtnetlink_init()
 ================================================================================
 void __init rtnetlink_init(void)
 {
@@ -89,14 +271,14 @@ void __init rtnetlink_init(void)
 	rtnl_register(PF_BRIDGE, RTM_SETLINK, rtnl_bridge_setlink, NULL, NULL);
 }
 
-1.4.1 rtnetlink_net_ops()
+1.5.1 rtnetlink_net_ops()
 ================================================================================
 static struct pernet_operations rtnetlink_net_ops = {
 	.init = rtnetlink_net_init,
 	.exit = rtnetlink_net_exit,
 };
 
-1.4.1.1 rtnetlink_net_init()
+1.5.1.1 rtnetlink_net_init()
 ================================================================================
 static int __net_init rtnetlink_net_init(struct net *net)
 {
@@ -115,7 +297,7 @@ static int __net_init rtnetlink_net_init(struct net *net)
 	return 0;
 }
 
-1.4.1.1.1 netlink_kernel_create()
+1.5.1.1.1 netlink_kernel_create()
 ================================================================================
 netlink_kernel_create(struct net *net, int unit, struct netlink_kernel_cfg *cfg)
 {
@@ -199,3 +381,31 @@ out_sock_release_nosk:
 	sock_release(sock);
 	return NULL;
 }
+
+2. netlink_table, max number of netlink in system
+================================================================================
+#define MAX_LINKS 32		
+
+nl_table = kcalloc(MAX_LINKS, sizeof(*nl_table), GFP_KERNEL);
+
+netlink_table
+    +---------------------+
+    |hash                 |-------->+--------------------+
+    |   (nl_portid_hash)  |         |table               |
+    +---------------------+         |    (hlist_head)    |
+    |listeners            |         +--------------------+
+    |   (listerners)      |         |                    |
+    +---------------------+         |                    |
+    |                     |         |                    |
+    |                     |         |                    |
+    |                     |         |                    |
+    |                     |         |                    |
+    |                     |         |                    |
+    |                     |         +--------------------+
+    +---------------------+
+    |mc_list              |
+    |   (hlist_head)      |
+    +---------------------+
+
+
+
