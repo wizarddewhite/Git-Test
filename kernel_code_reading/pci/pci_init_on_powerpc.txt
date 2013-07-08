@@ -163,9 +163,13 @@ pnv_pci_init_ioda1_phb();
                             +---------------------------------+     |
                             |last_busno(int)                  |     |
                             +---------------------------------+     |
-                            |io_resource                      |     |
+                            |io_resource(struct resource)     |     |
+                            |pci_io_size(resource_size_t)     |     |
+                            |io_base_phys(resource_size_t)    |     |
+                            |                                 |     |
                             +---------------------------------+     |
                             |mem_resources[](struct resource) |     |
+                            |mem_offset[] = cpu_addr-pci_addr |     |
                             +---------------------------------+     |
                             |ops(struct pci_ops*)             |     |
                             +---------------------------------+     |
@@ -183,10 +187,20 @@ pnv_pci_init_ioda1_phb();
                            +---------------------------------+
                            |ioda                             |
                            |    total_pe                     |
-                           |    io_size                      |
-                           |    io_segsize                   |
-                           |    m32_size                     |
-                           |    m32_segsize                  | 
+                           |    pe_array(struct pnv_ioda_pe*)|
+                           |    pe_alloc(unsigned long*)     |
+                           |                                 |
+                           |    io_size(unsigned int)        |
+                           |    io_segsize(unsigend int)     |
+                           |    io_pci_base(unsigned int)    |
+                           |    io_segmap(unsigned int*)     |
+                           |                                 |
+                           |    m32_size(unsigned int)       |
+                           |    m32_segsize(unsigned int)    | 
+                           |    m32_pci_base(unsigned int)   | 
+                           |    m32_segmap(unsigned int*)    |
+                           |                                 |
+                           |                                 |
                            +---------------------------------+ 
           
               Figure 1.2 Relationship between phb and pci_controller
@@ -1065,7 +1079,7 @@ pci_bus_add_devices(struct pci_bus *bus)
 			dev_err(&dev->dev, "Error adding bus, continuing\n");
 	}
 
-2.3 pcibios_resource_survey()
+2.3 pcibios_resource_survey(), allocate resources
 ===============================================================================
 pcibios_resource_survey()
 	struct pci_bus *b;
@@ -1217,7 +1231,7 @@ pcibios_allocate_resources(int pass)
 ===============================================================================
 this function will be called depends on the pci_flags
 
-2.3.4 pnv_pci_ioda_fixup(), resouce assignment
+2.3.4 pnv_pci_ioda_fixup(), assign PE/MEMIO/DMA
 ===============================================================================
 pnv_pci_ioda_fixup(void)
 	pnv_pci_ioda_setup_PEs();
