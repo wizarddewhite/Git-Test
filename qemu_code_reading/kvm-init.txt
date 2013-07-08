@@ -1,0 +1,244 @@
+1. kvm_init()
+================================================================================
+int kvm_init(void)
+{
+    static const char upgrade_note[] =
+        "Please upgrade to at least kernel 2.6.29 or recent kvm-kmod\n"
+        "(see http://sourceforge.net/projects/kvm).\n";
+    KVMState *s;
+    const KVMCapabilityInfo *missing_cap;
+    int ret;
+    int i;
+    int max_vcpus;
+
+    s = g_malloc0(sizeof(KVMState));
+
+    /*
+     * On systems where the kernel can support different base page
+     * sizes, host page size may be different from TARGET_PAGE_SIZE,
+     * even with KVM.  TARGET_PAGE_SIZE is assumed to be the minimum
+     * page size for the system though.
+     */
+    assert(TARGET_PAGE_SIZE <= getpagesize());
+
+#ifdef KVM_CAP_SET_GUEST_DEBUG
+    QTAILQ_INIT(&s->kvm_sw_breakpoints);
+#endif
+    for (i = 0; i < ARRAY_SIZE(s->slots); i++) {
+        s->slots[i].slot = i;
+    }
+    s->vmfd = -1;
+    s->fd = qemu_open("/dev/kvm", O_RDWR);
+    if (s->fd == -1) {
+        fprintf(stderr, "Could not access KVM kernel module: %m\n");
+        ret = -errno;
+        goto err;
+    }
+
+    ret = kvm_ioctl(s, KVM_GET_API_VERSION, 0);
+    if (ret < KVM_API_VERSION) {
+        if (ret > 0) {
+            ret = -EINVAL;
+        }
+        fprintf(stderr, "kvm version too old\n");
+        goto err;
+    }
+
+    if (ret > KVM_API_VERSION) {
+        ret = -EINVAL;
+        fprintf(stderr, "kvm version not supported\n");
+        goto err;
+    }
+
+    max_vcpus = kvm_max_vcpus(s);
+    if (smp_cpus > max_vcpus) {
+        ret = -EINVAL;
+        fprintf(stderr, "Number of SMP cpus requested (%d) exceeds max cpus "
+                "supported by KVM (%d)\n", smp_cpus, max_vcpus);
+        goto err;
+    }
+
+    s->vmfd = kvm_ioctl(s, KVM_CREATE_VM, 0);
+    if (s->vmfd < 0) {
+#ifdef TARGET_S390X
+        fprintf(stderr, "Please add the 'switch_amode' kernel parameter to "
+                        "your host kernel command line\n");
+#endif
+        ret = s->vmfd;
+        goto err;
+    }
+
+    missing_cap = kvm_check_extension_list(s, kvm_required_capabilites);
+    if (!missing_cap) {
+        missing_cap =
+            kvm_check_extension_list(s, kvm_arch_required_capabilities);
+    }
+    if (missing_cap) {
+        ret = -EINVAL;
+        fprintf(stderr, "kvm does not support %s\n%s",
+                missing_cap->name, upgrade_note);
+        goto err;
+    }
+
+    s->coalesced_mmio = kvm_check_extension(s, KVM_CAP_COALESCED_MMIO);
+
+    s->broken_set_mem_region = 1;
+    ret = kvm_check_extension(s, KVM_CAP_JOIN_MEMORY_REGIONS_WORKS);
+    if (ret > 0) {
+        s->broken_set_mem_region = 0;
+    }
+
+#ifdef KVM_CAP_VCPU_EVENTS
+    s->vcpu_events = kvm_check_extension(s, KVM_CAP_VCPU_EVENTS);
+#endif
+
+    s->robust_singlestep =
+        kvm_check_extension(s, KVM_CAP_X86_ROBUST_SINGLESTEP);
+
+#ifdef KVM_CAP_DEBUGREGS
+    s->debugregs = kvm_check_extension(s, KVM_CAP_DEBUGREGS);
+#endif
+
+#ifdef KVM_CAP_XSAVE
+    s->xsave = kvm_check_extension(s, KVM_CAP_XSAVE);
+#endif
+
+#ifdef KVM_CAP_XCRS
+    s->xcrs = kvm_check_extension(s, KVM_CAP_XCRS);
+#endif
+
+#ifdef KVM_CAP_PIT_STATE2
+    s->pit_state2 = kvm_check_extension(s, KVM_CAP_PIT_STATE2);
+#endif
+
+#ifdef KVM_CAP_IRQ_ROUTING
+    s->direct_msi = (kvm_check_extension(s, KVM_CAP_SIGNAL_MSI) > 0);
+#endif
+
+    s->intx_set_mask = kvm_check_extension(s, KVM_CAP_PCI_2_3);
+
+    s->irq_set_ioctl = KVM_IRQ_LINE;
+    if (kvm_check_extension(s, KVM_CAP_IRQ_INJECT_STATUS)) {
+        s->irq_set_ioctl = KVM_IRQ_LINE_STATUS;
+    }
+
+    ret = kvm_arch_init(s);
+    if (ret < 0) {
+        goto err;
+    }
+
+    ret = kvm_irqchip_create(s);
+    if (ret < 0) {
+        goto err;
+    }
+
+    kvm_state = s;
+    memory_listener_register(&kvm_memory_listener, &address_space_memory);
+    memory_listener_register(&kvm_io_listener, &address_space_io);
+
+    s->many_ioeventfds = kvm_check_many_ioeventfds();
+
+    cpu_interrupt_handler = kvm_handle_interrupt;
+
+    return 0;
+
+err:
+    if (s->vmfd >= 0) {
+        close(s->vmfd);
+    }
+    if (s->fd != -1) {
+        close(s->fd);
+    }
+    g_free(s);
+
+    return ret;
+}
+
+1.5 kvm_irqchip_create()
+================================================================================
+static int kvm_irqchip_create(KVMState *s)
+{
+    QemuOptsList *list = qemu_find_opts("machine");
+    int ret;
+
+    if (QTAILQ_EMPTY(&list->head) ||
+        !qemu_opt_get_bool(QTAILQ_FIRST(&list->head),
+                           "kernel_irqchip", true) ||
+        !kvm_check_extension(s, KVM_CAP_IRQCHIP)) {
+        return 0;
+    }
+
+    ret = kvm_vm_ioctl(s, KVM_CREATE_IRQCHIP);
+    if (ret < 0) {
+        fprintf(stderr, "Create kernel irqchip failed\n");
+        return ret;
+    }
+
+    kvm_kernel_irqchip = true;
+    /* If we have an in-kernel IRQ chip then we must have asynchronous
+     * interrupt delivery (though the reverse is not necessarily true)
+     */
+    kvm_async_interrupts_allowed = true;
+
+    kvm_init_irq_routing(s);
+
+    return 0;
+}
+
+1.5.1 kvm_vm_ioctl(s, KVM_CREATE_IRQCHIP)
+================================================================================
+
+1.5.2 kvm_init_irq_routing()
+================================================================================
+; retrieve the number of irqs supported
+; create a bitmap to trace this
+static void kvm_init_irq_routing(KVMState *s)
+{
+    int gsi_count, i;
+
+    gsi_count = kvm_check_extension(s, KVM_CAP_IRQ_ROUTING);
+    if (gsi_count > 0) {
+        unsigned int gsi_bits, i;
+
+        /* Round up so we can search ints using ffs */
+        gsi_bits = ALIGN(gsi_count, 32);
+        s->used_gsi_bitmap = g_malloc0(gsi_bits / 8);
+        s->gsi_count = gsi_count;
+
+        /* Mark any over-allocated bits as already in use */
+        for (i = gsi_count; i < gsi_bits; i++) {
+            set_gsi(s, i);
+        }
+    }
+
+    s->irq_routes = g_malloc0(sizeof(*s->irq_routes));
+    s->nr_allocated_irq_routes = 0;
+
+    if (!s->direct_msi) {
+        for (i = 0; i < KVM_MSI_HASHTAB_SIZE; i++) {
+            QTAILQ_INIT(&s->msi_hashtab[i]);
+        }
+    }
+
+    kvm_arch_init_irq_routing(s);
+}
+
+1.5.2.1 kvm_arch_init_irq_routing()
+================================================================================
+void kvm_arch_init_irq_routing(KVMState *s)
+{
+    if (!kvm_check_extension(s, KVM_CAP_IRQ_ROUTING)) {
+        /* If kernel can't do irq routing, interrupt source
+         * override 0->2 cannot be set up as required by HPET.
+         * So we have to disable it.
+         */
+        no_hpet = 1;
+    }
+    /* We know at this point that we're using the in-kernel
+     * irqchip, so we can use irqfds, and on x86 we know
+     * we can use msi via irqfd and GSI routing.
+     */
+    kvm_irqfds_allowed = true;
+    kvm_msi_via_irqfd_allowed = true;
+    kvm_gsi_routing_allowed = true;
+}
