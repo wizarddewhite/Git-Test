@@ -1,0 +1,9 @@
+1. protocol list
+================================================================================
+proto_list 
+   ------> netlink_proto ------> tcp_prot ------> udp_prot ------> ping_prot
+
+2. net_proto_family array
+================================================================================
+net_families
+   ------> netlink_family_ops ------> inet_family_ops ------> inet6_family_ops
