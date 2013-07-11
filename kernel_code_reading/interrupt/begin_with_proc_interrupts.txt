@@ -1,6 +1,7 @@
 1. Begin of the story, how to view the information of interrupts
 --------------------------------------------------------------------------------
 1.1 cat /proc/interrupts to view the usage of interrupts
+irq,   number of interrupts on each cpu,           APIC,            device name
 $ cat /proc/interrupts 
            CPU0       CPU1       CPU2       CPU3       
   0:         43          0          0          0   IO-APIC-edge      timer
@@ -33,7 +34,7 @@ MCP:         11         11         11         11   Machine check polls
 ERR:          0
 MIS:          0
 
-1.2 cat /proc/stat also contain oneline of the statistics of interrupts
+1.2 cat /proc/stat also contain one line of the statistics of interrupts
 --------------------------------------------------------------------------------
 $ cat /proc/stat
 cpu  80331 1472 28528 936286 63543 0 315 0 0 0
@@ -76,7 +77,60 @@ macro. And this function is assigned in file fs/proc/interrupts.c.
 
 Finally, this is the file we are looking for and here we start the journey.
 
-3. show_interrupts()
+3. proc_interrupts_init(), create interrupts file in /proc
+--------------------------------------------------------------------------------
+static const struct file_operations proc_interrupts_operations = {
+	.open		= interrupts_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
+};
+
+static int __init proc_interrupts_init(void)
+{
+	proc_create("interrupts", 0, NULL, &proc_interrupts_operations);
+	return 0;
+}
+
+3.1 interrupts_open()
+--------------------------------------------------------------------------------
+static const struct seq_operations int_seq_ops = {
+	.start = int_seq_start,
+	.next  = int_seq_next,
+	.stop  = int_seq_stop,
+	.show  = show_interrupts
+};
+
+static int interrupts_open(struct inode *inode, struct file *filp)
+{
+	return seq_open(filp, &int_seq_ops);
+}
+
+3.1.1 int_seq_start()
+--------------------------------------------------------------------------------
+static void *int_seq_start(struct seq_file *f, loff_t *pos)
+{
+	return (*pos <= nr_irqs) ? pos : NULL;
+}
+
+3.1.2 int_seq_next()
+--------------------------------------------------------------------------------
+static void *int_seq_next(struct seq_file *f, void *v, loff_t *pos)
+{
+	(*pos)++;
+	if (*pos > nr_irqs)
+		return NULL;
+	return pos;
+}
+
+3.1.3 int_seq_next()
+--------------------------------------------------------------------------------
+static void int_seq_stop(struct seq_file *f, void *v)
+{
+	/* Nothing to do */
+}
+
+3.1.4 show_interrupts()
 --------------------------------------------------------------------------------
 Each time this function is called, the v contains the irq number and this
 function will output the information of the irq with this number.
@@ -149,3 +203,53 @@ out:
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
 	return 0;
 }
+
+3.1.4.1 irq_to_desc(), irq number to desc
+--------------------------------------------------------------------------------
+; there are three implementations of this function.
+; two of them use array and one of them use radix tree.
+
+#define irq_to_desc(irq)	(&irq_desc[irq])
+
+struct irq_desc *irq_to_desc(unsigned int irq)
+{
+	return (irq < NR_IRQS) ? irq_desc + irq : NULL;
+}
+
+struct irq_desc *irq_to_desc(unsigned int irq)
+{
+	return radix_tree_lookup(&irq_desc_tree, irq);
+}
+
+3.1.4.2 kstat_irqs_cpu(), hit times on each cpu for one irq
+--------------------------------------------------------------------------------
+static inline unsigned int kstat_irqs_cpu(unsigned int irq, int cpu)
+{
+       return kstat_cpu(cpu).irqs[irq];
+}
+
+4. data structure
+--------------------------------------------------------------------------------
+
+4.1 irq_desc
+--------------------------------------------------------------------------------
+
+irq_desc
+        +-----------------------+           +--------------------+
+        |irq_data               |-----------+irq                 |
+        |   (struct irq_data)   |           |                    |
+        |                       |           +--------------------+
+        +-----------------------+           |chip                |
+        |                       |           |   (struct irq_chip)|
+        |                       |           +--------------------+
+        |                       |           |                    |
+        |                       |           |                    |
+        |                       |           |                    |
+        |                       |           |                    |
+        |                       |           +--------------------+
+        |                       |
+        |                       |
+        |                       |
+        |                       |
+        |                       |
+        +-----------------------+
