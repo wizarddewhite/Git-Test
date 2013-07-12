@@ -1,5 +1,5 @@
 1. pci_read_irq_line(), register an irq in the system
---------------------------------------------------------------------------------
+================================================================================
 ; this function is called on power platform, while this is useful to
 ; understand the general idea
 pci_read_irq_line(struct pci_dev *pci_dev)
@@ -57,8 +57,8 @@ pci_read_irq_line(struct pci_dev *pci_dev)
 	return 0;
 }
 
-1.1 irq_create_mapping
---------------------------------------------------------------------------------
+1.1 irq_create_mapping()
+================================================================================
 irq_create_mapping(struct irq_domain *domain,
 				irq_hw_number_t hwirq)
 {
@@ -112,8 +112,43 @@ irq_create_mapping(struct irq_domain *domain,
 	return virq;
 }
 
+1.1.1 irq_find_mapping()
+================================================================================
+unsigned int irq_find_mapping(struct irq_domain *domain,
+			      irq_hw_number_t hwirq)
+{
+	struct irq_data *data;
+
+	/* Look for default domain if nececssary */
+	if (domain == NULL)
+		domain = irq_default_domain;
+	if (domain == NULL)
+		return 0;
+
+	switch (domain->revmap_type) {
+	case IRQ_DOMAIN_MAP_LEGACY:
+		return irq_domain_legacy_revmap(domain, hwirq);
+	case IRQ_DOMAIN_MAP_LINEAR:
+		return irq_linear_revmap(domain, hwirq);
+	case IRQ_DOMAIN_MAP_TREE:
+		rcu_read_lock();
+		data = radix_tree_lookup(&domain->revmap_data.tree, hwirq);
+		rcu_read_unlock();
+		if (data)
+			return data->irq;
+		break;
+	case IRQ_DOMAIN_MAP_NOMAP:
+		data = irq_get_irq_data(hwirq);
+		if (data && (data->domain == domain) && (data->hwirq == hwirq))
+			return hwirq;
+		break;
+	}
+
+	return 0;
+}
+
 1.1.1 irq_alloc_desc_from()
---------------------------------------------------------------------------------
+================================================================================
 ; irq_alloc_desc_from is define to be __irq_alloc_descs()
 __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
 		  struct module *owner)
@@ -153,7 +188,7 @@ err:
 }
 
 1.1.1.1 alloc_descs()
---------------------------------------------------------------------------------
+================================================================================
 alloc_descs(unsigned int start, unsigned int cnt, int node,
 		       struct module *owner)
 {
@@ -181,7 +216,7 @@ err:
 }
 
 2. be_irq_register()
---------------------------------------------------------------------------------
+================================================================================
 be_irq_register(struct be_adapter *adapter)
 {
 	struct net_device *netdev = adapter->netdev;
@@ -212,7 +247,7 @@ done:
 }
 
 2.1 request_irq()
---------------------------------------------------------------------------------
+================================================================================
 static inline int __must_check
 request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags,
 	    const char *name, void *dev)
