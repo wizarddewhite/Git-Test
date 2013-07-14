@@ -1,4 +1,258 @@
-1. pci_read_irq_line(), register an irq in the system
+1. init_IRQ()
+================================================================================
+void __init init_IRQ(void)
+{
+	if (ppc_md.init_IRQ)
+		ppc_md.init_IRQ();
+
+	exc_lvl_ctx_init();
+
+	irq_ctx_init();
+}
+
+1.1 ppc_md.init_IRQ()
+================================================================================
+static void __init pnv_init_IRQ(void)
+{
+	xics_init();
+
+	WARN_ON(!ppc_md.get_irq);
+}
+
+1.1.1 xics_init()
+================================================================================
+void __init xics_init(void)
+{
+	int rc = -1;
+
+	/* Fist locate ICP */
+	if (firmware_has_feature(FW_FEATURE_LPAR))
+		rc = icp_hv_init();
+	if (rc < 0)
+		rc = icp_native_init();
+	if (rc < 0) {
+		pr_warning("XICS: Cannot find a Presentation Controller !\n");
+		return;
+	}
+
+	/* Copy get_irq callback over to ppc_md */
+	ppc_md.get_irq = icp_ops->get_irq;
+
+	/* Patch up IPI chip EOI */
+	xics_ipi_chip.irq_eoi = icp_ops->eoi;
+
+	/* Now locate ICS */
+	rc = ics_rtas_init();
+	if (rc < 0)
+		rc = ics_opal_init();
+	if (rc < 0)
+		pr_warning("XICS: Cannot find a Source Controller !\n");
+
+	/* Initialize common bits */
+	xics_get_server_size();
+	xics_update_irq_servers();
+	xics_init_host();
+	xics_setup_cpu();
+}
+
+1.1.1.1 icp_native_init(), set icp_ops and icp_native_regs[]
+================================================================================
+static const struct icp_ops icp_native_ops = {
+	.get_irq	= icp_native_get_irq,
+	.eoi		= icp_native_eoi,
+	.set_priority	= icp_native_set_cpu_priority,
+	.teardown_cpu	= icp_native_teardown_cpu,
+	.flush_ipi	= icp_native_flush_ipi,
+#ifdef CONFIG_SMP
+	.ipi_action	= icp_native_ipi_action,
+	.cause_ipi	= icp_native_cause_ipi,
+#endif
+};
+
+int __init icp_native_init(void)
+{
+	struct device_node *np;
+	u32 indx = 0;
+	int found = 0;
+
+	for_each_compatible_node(np, NULL, "ibm,ppc-xicp")
+		if (icp_native_init_one_node(np, &indx) == 0)
+			found = 1;
+	if (!found) {
+		for_each_node_by_type(np,
+			"PowerPC-External-Interrupt-Presentation") {
+				if (icp_native_init_one_node(np, &indx) == 0)
+					found = 1;
+		}
+	}
+
+	if (found == 0)
+		return -ENODEV;
+
+	icp_ops = &icp_native_ops;
+
+	return 0;
+}
+1.1.1.2 ics_rtas_init(), init rtas token, register ics_rtas in ics_list
+================================================================================
+; patch the irq_chip.irq_eoi
+int ics_rtas_init(void)
+{
+	ibm_get_xive = rtas_token("ibm,get-xive");
+	ibm_set_xive = rtas_token("ibm,set-xive");
+	ibm_int_on  = rtas_token("ibm,int-on");
+	ibm_int_off = rtas_token("ibm,int-off");
+
+	/* We enable the RTAS "ICS" if RTAS is present with the
+	 * appropriate tokens
+	 */
+	if (ibm_get_xive == RTAS_UNKNOWN_SERVICE ||
+	    ibm_set_xive == RTAS_UNKNOWN_SERVICE)
+		return -ENODEV;
+
+	/* We need to patch our irq chip's EOI to point to the
+	 * right ICP
+	 */
+	ics_rtas_irq_chip.irq_eoi = icp_ops->eoi;
+
+	/* Register ourselves */
+	xics_register_ics(&ics_rtas);
+
+	return 0;
+}
+
+1.1.1.3 ics_opal_init()
+================================================================================
+; irq_chip is ics_opal_irq_chip
+; add ics_hal in ics_list
+int __init ics_opal_init(void)
+{
+	if (!firmware_has_feature(FW_FEATURE_OPAL))
+		return -ENODEV;
+
+	/* We need to patch our irq chip's EOI to point to the
+	 * right ICP
+	 */
+	ics_opal_irq_chip.irq_eoi = icp_ops->eoi;
+
+	/* Register ourselves */
+	xics_register_ics(&ics_hal);
+
+	pr_info("ICS OPAL backend registered\n");
+
+	return 0;
+}
+
+1.1.1.4 xics_get_server_size(), set xics_interrupt_server_size
+================================================================================
+static void __init xics_get_server_size(void)
+{
+	struct device_node *np;
+	const u32 *isize;
+
+	/* We fetch the interrupt server size from the first ICS node
+	 * we find if any
+	 */
+	np = of_find_compatible_node(NULL, NULL, "ibm,ppc-xics");
+	if (!np)
+		return;
+	isize = of_get_property(np, "ibm,interrupt-server#-size", NULL);
+	if (!isize)
+		return;
+	xics_interrupt_server_size = *isize;
+	of_node_put(np);
+}
+
+1.1.1.5 xics_update_irq_servers()
+================================================================================
+void xics_update_irq_servers(void)
+{
+	int i, j;
+	struct device_node *np;
+	u32 ilen;
+	const u32 *ireg;
+	u32 hcpuid;
+
+	/* Find the server numbers for the boot cpu. */
+	np = of_get_cpu_node(boot_cpuid, NULL);
+	BUG_ON(!np);
+
+	hcpuid = get_hard_smp_processor_id(boot_cpuid);
+	xics_default_server = xics_default_distrib_server = hcpuid;
+
+	pr_devel("xics: xics_default_server = 0x%x\n", xics_default_server);
+
+	ireg = of_get_property(np, "ibm,ppc-interrupt-gserver#s", &ilen);
+	if (!ireg) {
+		of_node_put(np);
+		return;
+	}
+
+	i = ilen / sizeof(int);
+
+	/* Global interrupt distribution server is specified in the last
+	 * entry of "ibm,ppc-interrupt-gserver#s" property. Get the last
+	 * entry fom this property for current boot cpu id and use it as
+	 * default distribution server
+	 */
+	for (j = 0; j < i; j += 2) {
+		if (ireg[j] == hcpuid) {
+			xics_default_distrib_server = ireg[j+1];
+			break;
+		}
+	}
+	pr_devel("xics: xics_default_distrib_server = 0x%x\n",
+		 xics_default_distrib_server);
+	of_node_put(np);
+}
+1.1.1.6 xics_init_host()
+================================================================================
+; create irq_domain and link to irq_domain_list
+; set the irq_default_domain
+static void __init xics_init_host(void)
+{
+	xics_host = irq_domain_add_tree(NULL, &xics_host_ops, NULL);
+	BUG_ON(xics_host == NULL);
+	irq_set_default_host(xics_host);
+}
+
+1.1.1.7 xics_setup_cpu()
+================================================================================
+void xics_setup_cpu(void)
+{
+	icp_ops->set_priority(LOWEST_PRIORITY);
+
+	xics_set_cpu_giq(xics_default_distrib_server, 1);
+}
+
+1.2 exc_lvl_ctx_init()
+================================================================================
+empty on powernv
+
+1.3 irq_ctx_init(), init softirq_ctx and hardirq_ctx
+================================================================================
+struct thread_info *softirq_ctx[NR_CPUS] __read_mostly;
+struct thread_info *hardirq_ctx[NR_CPUS] __read_mostly;
+
+void irq_ctx_init(void)
+{
+	struct thread_info *tp;
+	int i;
+
+	for_each_possible_cpu(i) {
+		memset((void *)softirq_ctx[i], 0, THREAD_SIZE);
+		tp = softirq_ctx[i];
+		tp->cpu = i;
+		tp->preempt_count = 0;
+
+		memset((void *)hardirq_ctx[i], 0, THREAD_SIZE);
+		tp = hardirq_ctx[i];
+		tp->cpu = i;
+		tp->preempt_count = HARDIRQ_OFFSET;
+	}
+}
+
+2. pci_read_irq_line(), register an irq in the system
 ================================================================================
 ; this function is called on power platform, while this is useful to
 ; understand the general idea
@@ -57,8 +311,9 @@ pci_read_irq_line(struct pci_dev *pci_dev)
 	return 0;
 }
 
-1.1 irq_create_mapping()
+2.1 irq_create_mapping(), map a hardware interrupt into linux irq space
 ================================================================================
+; irq_default_domain is initialized in xics_init_host()
 irq_create_mapping(struct irq_domain *domain,
 				irq_hw_number_t hwirq)
 {
@@ -112,7 +367,7 @@ irq_create_mapping(struct irq_domain *domain,
 	return virq;
 }
 
-1.1.1 irq_find_mapping()
+2.1.1 irq_find_mapping(), 
 ================================================================================
 unsigned int irq_find_mapping(struct irq_domain *domain,
 			      irq_hw_number_t hwirq)
@@ -147,9 +402,14 @@ unsigned int irq_find_mapping(struct irq_domain *domain,
 	return 0;
 }
 
-1.1.1 irq_alloc_desc_from()
+2.1.2 irq_alloc_desc_from(), allocate one irq descriptor
 ================================================================================
-; irq_alloc_desc_from is define to be __irq_alloc_descs()
+#define irq_alloc_desc_from(from, node)		\
+	irq_alloc_descs(-1, from, 1, node)
+
+#define irq_alloc_descs(irq, from, cnt, node)	\
+	__irq_alloc_descs(irq, from, cnt, node, THIS_MODULE)
+
 __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
 		  struct module *owner)
 {
@@ -187,35 +447,170 @@ err:
 	return ret;
 }
 
-1.1.1.1 alloc_descs()
+2.1.2.1 alloc_descs(), allocate irq descriptor with a start number
 ================================================================================
-alloc_descs(unsigned int start, unsigned int cnt, int node,
-		       struct module *owner)
+#define irq_to_desc(irq)	(&irq_desc[irq])
+
+static inline int alloc_descs(unsigned int start, unsigned int cnt, int node,
+			      struct module *owner)
 {
-	struct irq_desc *desc;
-	int i;
+	u32 i;
 
 	for (i = 0; i < cnt; i++) {
-		desc = alloc_desc(start + i, node, owner);
-		if (!desc)
-			goto err;
-		mutex_lock(&sparse_irq_lock);
-		irq_insert_desc(start + i, desc);
-		mutex_unlock(&sparse_irq_lock);
+		struct irq_desc *desc = irq_to_desc(start + i);
+
+		desc->owner = owner;
 	}
 	return start;
-
-err:
-	for (i--; i >= 0; i--)
-		free_desc(start + i);
-
-	mutex_lock(&sparse_irq_lock);
-	bitmap_clear(allocated_irqs, start, cnt);
-	mutex_unlock(&sparse_irq_lock);
-	return -ENOMEM;
 }
 
-2. be_irq_register()
+2.1.3 irq_domain_associate(), associate one irq with domain
+================================================================================
+; domain: the domain to associate
+; irq:    irq in linux irq space
+; hwirq:  hardware irq
+static inline int irq_domain_associate(struct irq_domain *domain, unsigned int irq,
+					irq_hw_number_t hwirq)
+{
+	return irq_domain_associate_many(domain, irq, hwirq, 1);
+}
+
+2.1.3.1 irq_domain_associate_many()
+================================================================================
+int irq_domain_associate_many(struct irq_domain *domain, unsigned int irq_base,
+			      irq_hw_number_t hwirq_base, int count)
+{
+	unsigned int virq = irq_base;
+	irq_hw_number_t hwirq = hwirq_base;
+	int i, ret;
+
+	pr_debug("%s(%s, irqbase=%i, hwbase=%i, count=%i)\n", __func__,
+		of_node_full_name(domain->of_node), irq_base, (int)hwirq_base, count);
+
+	for (i = 0; i < count; i++) {
+		struct irq_data *irq_data = irq_get_irq_data(virq + i);
+
+		if (WARN(!irq_data, "error: irq_desc not allocated; "
+			 "irq=%i hwirq=0x%x\n", virq + i, (int)hwirq + i))
+			return -EINVAL;
+		if (WARN(irq_data->domain, "error: irq_desc already associated; "
+			 "irq=%i hwirq=0x%x\n", virq + i, (int)hwirq + i))
+			return -EINVAL;
+	};
+
+	for (i = 0; i < count; i++, virq++, hwirq++) {
+		struct irq_data *irq_data = irq_get_irq_data(virq);
+
+		irq_data->hwirq = hwirq;
+		irq_data->domain = domain;
+		if (domain->ops->map) {
+			ret = domain->ops->map(domain, virq, hwirq);
+			if (ret != 0) {
+				pr_err("irq-%i==>hwirq-0x%lx mapping failed: %d\n",
+				       virq, hwirq, ret);
+				WARN_ON(1);
+				irq_data->domain = NULL;
+				irq_data->hwirq = 0;
+				goto err_unmap;
+			}
+		}
+
+		switch (domain->revmap_type) {
+		case IRQ_DOMAIN_MAP_LINEAR:
+			if (hwirq < domain->revmap_data.linear.size)
+				domain->revmap_data.linear.revmap[hwirq] = virq;
+			break;
+		case IRQ_DOMAIN_MAP_TREE:
+			mutex_lock(&revmap_trees_mutex);
+			radix_tree_insert(&domain->revmap_data.tree, hwirq, irq_data);
+			mutex_unlock(&revmap_trees_mutex);
+			break;
+		}
+
+		irq_clear_status_flags(virq, IRQ_NOREQUEST);
+	}
+
+	return 0;
+
+ err_unmap:
+	irq_domain_disassociate_many(domain, irq_base, i);
+	return -EINVAL;
+}
+
+2.1.3.1.1 irq_get_irq_data()
+================================================================================
+struct irq_data *irq_get_irq_data(unsigned int irq)
+{
+	struct irq_desc *desc = irq_to_desc(irq);
+
+	return desc ? &desc->irq_data : NULL;
+}
+
+2.1.3.1.2 domain->ops->map()
+================================================================================
+; domain = xics_host
+; domain->ops = xics_host_ops
+; domain->ops->map = xics_host_map
+
+; virq: irq in kernel irq space
+; hw:   hardware irq
+static int xics_host_map(struct irq_domain *h, unsigned int virq,
+			 irq_hw_number_t hw)
+{
+	struct ics *ics;
+
+	pr_devel("xics: map virq %d, hwirq 0x%lx\n", virq, hw);
+
+	/* They aren't all level sensitive but we just don't really know */
+	irq_set_status_flags(virq, IRQ_LEVEL);
+
+	/* Don't call into ICS for IPIs */
+	if (hw == XICS_IPI) {
+		irq_set_chip_and_handler(virq, &xics_ipi_chip,
+					 handle_percpu_irq);
+		return 0;
+	}
+
+	/* Let the ICS setup the chip data */
+	list_for_each_entry(ics, &ics_list, link)
+		if (ics->map(ics, virq) == 0)
+			return 0;
+
+	return -EINVAL;
+}
+
+2.1.3.1.2.1 ics_opal_map()
+================================================================================
+; check xive
+; set irq_data.chip to ics_opal_irq_chip
+; set irq_desc.handle_irq to handle_fasteoi_irq
+; set irq_desc.name to NULL
+static int ics_opal_map(struct ics *ics, unsigned int virq)
+{
+	unsigned int hw_irq = (unsigned int)virq_to_hw(virq);
+	int64_t rc;
+	int16_t server;
+	int8_t priority;
+
+	if (WARN_ON(hw_irq == XICS_IPI || hw_irq == XICS_IRQ_SPURIOUS))
+		return -EINVAL;
+
+	/* Check if HAL knows about this interrupt */
+	rc = opal_get_xive(hw_irq, &server, &priority);
+	if (rc != OPAL_SUCCESS)
+		return -ENXIO;
+
+	irq_set_chip_and_handler(virq, &ics_opal_irq_chip, handle_fasteoi_irq);
+	irq_set_chip_data(virq, &ics_hal);
+
+	return 0;
+}
+
+2.2 pci_dev->irq = virq
+================================================================================
+; in pci_dev structure, the irq field is set to the virq in kenel irq space
+
+3. be_irq_register()
 ================================================================================
 be_irq_register(struct be_adapter *adapter)
 {
@@ -246,8 +641,10 @@ done:
 	return 0;
 }
 
-2.1 request_irq()
+3.1 request_irq()
 ================================================================================
+; register be_intx as the handler
+; create an action
 static inline int __must_check
 request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags,
 	    const char *name, void *dev)
@@ -324,3 +721,492 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 #endif
 	return retval;
 }
+
+3.1.1 __setup_irq()
+================================================================================
+__setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
+{
+	struct irqaction *old, **old_ptr;
+	unsigned long flags, thread_mask = 0;
+	int ret, nested, shared = 0;
+	cpumask_var_t mask;
+
+	if (!desc)
+		return -EINVAL;
+
+	if (desc->irq_data.chip == &no_irq_chip)
+		return -ENOSYS;
+	if (!try_module_get(desc->owner))
+		return -ENODEV;
+
+	/*
+	 * Check whether the interrupt nests into another interrupt
+	 * thread.
+	 */
+	nested = irq_settings_is_nested_thread(desc);
+	if (nested) {
+		if (!new->thread_fn) {
+			ret = -EINVAL;
+			goto out_mput;
+		}
+		/*
+		 * Replace the primary handler which was provided from
+		 * the driver for non nested interrupt handling by the
+		 * dummy function which warns when called.
+		 */
+		new->handler = irq_nested_primary_handler;
+	} else {
+		if (irq_settings_can_thread(desc))
+			irq_setup_forced_threading(new);
+	}
+
+	/*
+	 * Create a handler thread when a thread function is supplied
+	 * and the interrupt does not nest into another interrupt
+	 * thread.
+	 */
+	if (new->thread_fn && !nested) {
+		struct task_struct *t;
+
+		t = kthread_create(irq_thread, new, "irq/%d-%s", irq,
+				   new->name);
+		if (IS_ERR(t)) {
+			ret = PTR_ERR(t);
+			goto out_mput;
+		}
+		/*
+		 * We keep the reference to the task struct even if
+		 * the thread dies to avoid that the interrupt code
+		 * references an already freed task_struct.
+		 */
+		get_task_struct(t);
+		new->thread = t;
+		/*
+		 * Tell the thread to set its affinity. This is
+		 * important for shared interrupt handlers as we do
+		 * not invoke setup_affinity() for the secondary
+		 * handlers as everything is already set up. Even for
+		 * interrupts marked with IRQF_NO_BALANCE this is
+		 * correct as we want the thread to move to the cpu(s)
+		 * on which the requesting code placed the interrupt.
+		 */
+		set_bit(IRQTF_AFFINITY, &new->thread_flags);
+	}
+
+	if (!alloc_cpumask_var(&mask, GFP_KERNEL)) {
+		ret = -ENOMEM;
+		goto out_thread;
+	}
+
+	/*
+	 * Drivers are often written to work w/o knowledge about the
+	 * underlying irq chip implementation, so a request for a
+	 * threaded irq without a primary hard irq context handler
+	 * requires the ONESHOT flag to be set. Some irq chips like
+	 * MSI based interrupts are per se one shot safe. Check the
+	 * chip flags, so we can avoid the unmask dance at the end of
+	 * the threaded handler for those.
+	 */
+	if (desc->irq_data.chip->flags & IRQCHIP_ONESHOT_SAFE)
+		new->flags &= ~IRQF_ONESHOT;
+
+	/*
+	 * The following block of code has to be executed atomically
+	 */
+	raw_spin_lock_irqsave(&desc->lock, flags);
+	old_ptr = &desc->action;
+	old = *old_ptr;
+	if (old) {
+		/*
+		 * Can't share interrupts unless both agree to and are
+		 * the same type (level, edge, polarity). So both flag
+		 * fields must have IRQF_SHARED set and the bits which
+		 * set the trigger type must match. Also all must
+		 * agree on ONESHOT.
+		 */
+		if (!((old->flags & new->flags) & IRQF_SHARED) ||
+		    ((old->flags ^ new->flags) & IRQF_TRIGGER_MASK) ||
+		    ((old->flags ^ new->flags) & IRQF_ONESHOT))
+			goto mismatch;
+
+		/* All handlers must agree on per-cpuness */
+		if ((old->flags & IRQF_PERCPU) !=
+		    (new->flags & IRQF_PERCPU))
+			goto mismatch;
+
+		/* add new interrupt at end of irq queue */
+		do {
+			/*
+			 * Or all existing action->thread_mask bits,
+			 * so we can find the next zero bit for this
+			 * new action.
+			 */
+			thread_mask |= old->thread_mask;
+			old_ptr = &old->next;
+			old = *old_ptr;
+		} while (old);
+		shared = 1;
+	}
+
+	/*
+	 * Setup the thread mask for this irqaction for ONESHOT. For
+	 * !ONESHOT irqs the thread mask is 0 so we can avoid a
+	 * conditional in irq_wake_thread().
+	 */
+	if (new->flags & IRQF_ONESHOT) {
+		/*
+		 * Unlikely to have 32 resp 64 irqs sharing one line,
+		 * but who knows.
+		 */
+		if (thread_mask == ~0UL) {
+			ret = -EBUSY;
+			goto out_mask;
+		}
+		/*
+		 * The thread_mask for the action is or'ed to
+		 * desc->thread_active to indicate that the
+		 * IRQF_ONESHOT thread handler has been woken, but not
+		 * yet finished. The bit is cleared when a thread
+		 * completes. When all threads of a shared interrupt
+		 * line have completed desc->threads_active becomes
+		 * zero and the interrupt line is unmasked. See
+		 * handle.c:irq_wake_thread() for further information.
+		 *
+		 * If no thread is woken by primary (hard irq context)
+		 * interrupt handlers, then desc->threads_active is
+		 * also checked for zero to unmask the irq line in the
+		 * affected hard irq flow handlers
+		 * (handle_[fasteoi|level]_irq).
+		 *
+		 * The new action gets the first zero bit of
+		 * thread_mask assigned. See the loop above which or's
+		 * all existing action->thread_mask bits.
+		 */
+		new->thread_mask = 1 << ffz(thread_mask);
+
+	} else if (new->handler == irq_default_primary_handler &&
+		   !(desc->irq_data.chip->flags & IRQCHIP_ONESHOT_SAFE)) {
+		/*
+		 * The interrupt was requested with handler = NULL, so
+		 * we use the default primary handler for it. But it
+		 * does not have the oneshot flag set. In combination
+		 * with level interrupts this is deadly, because the
+		 * default primary handler just wakes the thread, then
+		 * the irq lines is reenabled, but the device still
+		 * has the level irq asserted. Rinse and repeat....
+		 *
+		 * While this works for edge type interrupts, we play
+		 * it safe and reject unconditionally because we can't
+		 * say for sure which type this interrupt really
+		 * has. The type flags are unreliable as the
+		 * underlying chip implementation can override them.
+		 */
+		pr_err("Threaded irq requested with handler=NULL and !ONESHOT for irq %d\n",
+		       irq);
+		ret = -EINVAL;
+		goto out_mask;
+	}
+
+	if (!shared) {
+		init_waitqueue_head(&desc->wait_for_threads);
+
+		/* Setup the type (level, edge polarity) if configured: */
+		if (new->flags & IRQF_TRIGGER_MASK) {
+			ret = __irq_set_trigger(desc, irq,
+					new->flags & IRQF_TRIGGER_MASK);
+
+			if (ret)
+				goto out_mask;
+		}
+
+		desc->istate &= ~(IRQS_AUTODETECT | IRQS_SPURIOUS_DISABLED | \
+				  IRQS_ONESHOT | IRQS_WAITING);
+		irqd_clear(&desc->irq_data, IRQD_IRQ_INPROGRESS);
+
+		if (new->flags & IRQF_PERCPU) {
+			irqd_set(&desc->irq_data, IRQD_PER_CPU);
+			irq_settings_set_per_cpu(desc);
+		}
+
+		if (new->flags & IRQF_ONESHOT)
+			desc->istate |= IRQS_ONESHOT;
+
+		if (irq_settings_can_autoenable(desc))
+			irq_startup(desc, true);
+		else
+			/* Undo nested disables: */
+			desc->depth = 1;
+
+		/* Exclude IRQ from balancing if requested */
+		if (new->flags & IRQF_NOBALANCING) {
+			irq_settings_set_no_balancing(desc);
+			irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
+		}
+
+		/* Set default affinity mask once everything is setup */
+		setup_affinity(irq, desc, mask);
+
+	} else if (new->flags & IRQF_TRIGGER_MASK) {
+		unsigned int nmsk = new->flags & IRQF_TRIGGER_MASK;
+		unsigned int omsk = irq_settings_get_trigger_mask(desc);
+
+		if (nmsk != omsk)
+			/* hope the handler works with current  trigger mode */
+			pr_warning("irq %d uses trigger mode %u; requested %u\n",
+				   irq, nmsk, omsk);
+	}
+
+	new->irq = irq;
+	*old_ptr = new;
+
+	/* Reset broken irq detection when installing new handler */
+	desc->irq_count = 0;
+	desc->irqs_unhandled = 0;
+
+	/*
+	 * Check whether we disabled the irq via the spurious handler
+	 * before. Reenable it and give it another chance.
+	 */
+	if (shared && (desc->istate & IRQS_SPURIOUS_DISABLED)) {
+		desc->istate &= ~IRQS_SPURIOUS_DISABLED;
+		__enable_irq(desc, irq, false);
+	}
+
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
+
+	/*
+	 * Strictly no need to wake it up, but hung_task complains
+	 * when no hard interrupt wakes the thread up.
+	 */
+	if (new->thread)
+		wake_up_process(new->thread);
+
+	register_irq_proc(irq, desc);
+	new->dir = NULL;
+	register_handler_proc(irq, new);
+	free_cpumask_var(mask);
+
+	return 0;
+
+mismatch:
+	if (!(new->flags & IRQF_PROBE_SHARED)) {
+		pr_err("Flags mismatch irq %d. %08x (%s) vs. %08x (%s)\n",
+		       irq, new->flags, new->name, old->flags, old->name);
+#ifdef CONFIG_DEBUG_SHIRQ
+		dump_stack();
+#endif
+	}
+	ret = -EBUSY;
+
+out_mask:
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
+	free_cpumask_var(mask);
+
+out_thread:
+	if (new->thread) {
+		struct task_struct *t = new->thread;
+
+		new->thread = NULL;
+		kthread_stop(t);
+		put_task_struct(t);
+	}
+out_mput:
+	module_put(desc->owner);
+	return ret;
+}
+
+3.1.1.1 __enable_irq(), call chip->irq_enable
+================================================================================
+void __enable_irq(struct irq_desc *desc, unsigned int irq, bool resume)
+{
+	if (resume) {
+		if (!(desc->istate & IRQS_SUSPENDED)) {
+			if (!desc->action)
+				return;
+			if (!(desc->action->flags & IRQF_FORCE_RESUME))
+				return;
+			/* Pretend that it got disabled ! */
+			desc->depth++;
+		}
+		desc->istate &= ~IRQS_SUSPENDED;
+	}
+
+	switch (desc->depth) {
+	case 0:
+ err_out:
+		WARN(1, KERN_WARNING "Unbalanced enable for IRQ %d\n", irq);
+		break;
+	case 1: {
+		if (desc->istate & IRQS_SUSPENDED)
+			goto err_out;
+		/* Prevent probing on this irq: */
+		irq_settings_set_noprobe(desc);
+		irq_enable(desc);
+		check_irq_resend(desc, irq);
+		/* fall-through */
+	}
+	default:
+		desc->depth--;
+	}
+}
+
+3.1.1.2 register_irq_proc(), create irq proc file
+================================================================================
+void register_irq_proc(unsigned int irq, struct irq_desc *desc)
+{
+	char name [MAX_NAMELEN];
+
+	if (!root_irq_dir || (desc->irq_data.chip == &no_irq_chip) || desc->dir)
+		return;
+
+	memset(name, 0, MAX_NAMELEN);
+	sprintf(name, "%d", irq);
+
+	/* create /proc/irq/1234 */
+	desc->dir = proc_mkdir(name, root_irq_dir);
+	if (!desc->dir)
+		return;
+
+#ifdef CONFIG_SMP
+	/* create /proc/irq/<irq>/smp_affinity */
+	proc_create_data("smp_affinity", 0600, desc->dir,
+			 &irq_affinity_proc_fops, (void *)(long)irq);
+
+	/* create /proc/irq/<irq>/affinity_hint */
+	proc_create_data("affinity_hint", 0400, desc->dir,
+			 &irq_affinity_hint_proc_fops, (void *)(long)irq);
+
+	/* create /proc/irq/<irq>/smp_affinity_list */
+	proc_create_data("smp_affinity_list", 0600, desc->dir,
+			 &irq_affinity_list_proc_fops, (void *)(long)irq);
+
+	proc_create_data("node", 0444, desc->dir,
+			 &irq_node_proc_fops, (void *)(long)irq);
+#endif
+
+	proc_create_data("spurious", 0444, desc->dir,
+			 &irq_spurious_proc_fops, (void *)(long)irq);
+}
+
+3.1.1.3 register_handler_proc()
+================================================================================
+void register_handler_proc(unsigned int irq, struct irqaction *action)
+{
+	char name [MAX_NAMELEN];
+	struct irq_desc *desc = irq_to_desc(irq);
+
+	if (!desc->dir || action->dir || !action->name ||
+					!name_unique(irq, action))
+		return;
+
+	memset(name, 0, MAX_NAMELEN);
+	snprintf(name, MAX_NAMELEN, "%s", action->name);
+
+	/* create /proc/irq/1234/handler/ */
+	action->dir = proc_mkdir(name, desc->dir);
+}
+
+0. data structure
+================================================================================
+
+0.1 irq_domain_list
+================================================================================
+
+irq_domain_list(LIST_HEAD)
+    |
+    |    +-----------------+    +-----------------+    +-----------------+
+    +--->|struct irq_domain|--->|struct irq_domain|--->|struct irq_domain|
+         +-----------------+    +-----------------+    +-----------------+
+	    ^
+           /
+          /
+	irq_default_domain(struct irq_domain)
+
+0.1.1 irq_domain
+================================================================================
+
+   xics_host(struct irq_domain)
+   +-------------------------+
+   |link(strct list_head)    |
+   +-------------------------+
+   |revmap_type              | reverse mapping tech
+   |    IRQ_DOMAIN_MAP_LEGACY|
+   |    IRQ_DOMAIN_MAP_NOMAP |
+   |    IRQ_DOMAIN_MAP_LINEAR|      xics_host_ops
+   |    IRQ_DOMAIN_MAP_TREE  |      +---------------------+
+   +-------------------------+      |match                |
+   |ops                      |------+map                  |
+   |  (struct irq_domain_ops)|      |xlate                |
+   +-------------------------+      |                     |
+                                    +---------------------+
+
+0.2 irq_desc
+================================================================================
+
+0.3 irq_chip
+================================================================================
+allocated_irqs(DECLARE_BITMAP)
+
+
+irq_desc
+  +-----------------------+        +--------------------+
+  |irq_data               |--------+irq                 | irq in kernel
+  |   (struct irq_data)   |        |hwirq               | hardware irq
+  |                       |        +--------------------+
+  +-----------------------+        |chip                | -> ics_opal_irq_chip
+  |                       |        |   (struct irq_chip)|
+  |                       |        |chip_data           |
+  |                       |        |   (void* chip_data)| -> ics_hal
+  +-----------------------+        +--------------------+
+  |                       |                              
+  |handle_irq             | -> handle_fasteoi_irq
+  |                       |
+  +-----------------------+        +--------------------+
+  |action                 |--------+handler             | handler in driver
+  |  (struct irqaction*)  |        +--------------------+
+  +-----------------------+        |thread_fn           |
+  |                       |        +--------------------+
+  |                       |        |irq                 | irq in kernel
+  |                       |        |                    |
+  |                       |        +--------------------+
+  |                       |
+  |                       |
+  +-----------------------+
+
+0.4 icp_ops
+================================================================================
+
+icp_ops = icp_native_ops(struct icp_ops)
+                        +---------------------------+
+                        |get_irq                    |
+                        |eoi                        |
+                        |set_priority               |
+                        |teardown_cpu               |
+                        |flush_ipi                  |
+                        |cause_ipi                  |
+                        |ipi_action irq_handler_t   |
+                        +---------------------------+
+
+0.5 icp_native_regs[NR_CPUS]
+================================================================================
+initialized in icp_native_map_one_cpu()
+
+0.6 ics_list
+================================================================================
+
+  ics_list  
+     |     +------------------+     +------------------+
+     +---->|struct ics        |---->|struct ics        |
+           +------------------+     +------------------+
+                ^               
+               /
+              /
+	  ics_hal(struct ics)
+                 +---------------------------+
+                 |map                        |
+                 |mask_unknown               |
+                 |get_server                 |
+                 |host_match                 |
+                 |data[]                     |
+                 |                           |
+                 +---------------------------+
