@@ -100,6 +100,9 @@ start_kernel()
 	ftrace_init()
 	rest_init(); process 0
 
+1.2. init_IRQ(), this is a arch dependent function
+===============================================================================
+
 2. rest_init()  last part of process 0
 ===============================================================================
 this is the last part of process 0
