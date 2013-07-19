@@ -3,7 +3,10 @@ SOURCES += $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
 
 .PHONY: all clean
-all: $(PROGRAM)
+all: inline_asm
+
+inline_asm: inline_asm.c asm_string.c
+	gcc -Wall -g $^ -o $@
 
 %: %.cpp
 	g++ -Wall -g $< -o $@ 

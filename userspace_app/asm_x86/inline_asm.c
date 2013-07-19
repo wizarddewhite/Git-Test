@@ -17,6 +17,7 @@
  * =====================================================================================
  */
 #include <stdio.h>
+#include "asm_string.h"
 
 void asm_add(void)
 {
@@ -44,11 +45,20 @@ void asm_assign(void)
 	printf("b is %d now\n", b);
 }
 
+void strcpy_test()
+{
+	char a[] = "This is a happy world";
+	char b[25] = {0};
+	char* c;
+
+	c = asm_strcpy(b, a);
+
+	printf("%s\n", b);
+}
+
 int main(void)
 {
-	asm_add();
-
-	asm_assign();
+	strcpy_test();
 
 	return 0;
 }
