@@ -26,6 +26,13 @@
 #include <sys/user.h>
 #include <time.h>
 
+void signal_handler(int sig)
+{
+	int status = 0;
+	printf("Process %ld received signal %d\n", (long)getpid(), sig);
+
+}
+
 void do_debugger( pid_t child )
 {
 	int status = 0;
@@ -37,6 +44,17 @@ void do_debugger( pid_t child )
 
 	printf("In debugger process %ld\n", (long)getpid());
 
+	if (signal(SIGCHLD, signal_handler) == SIG_ERR) 
+	{
+		perror("signal");
+		exit( -1 );
+	}
+
+	/* child has executed execve(), parent is notified by wait */
+	wait(&status);
+
+	/* continue the child */
+	ptrace(PTRACE_CONT, child, NULL, NULL);
 
 	printf("In debugger process %ld, child %ld is terminated\n",
 			(long)getpid(), wait(&status));
@@ -48,6 +66,12 @@ void do_debuggie( void )
 	char* envp[] = { NULL };
 	
 	printf("In debuggie process %ld\n", (long)getpid());
+
+	if (ptrace(PTRACE_TRACEME, 0, NULL, NULL))
+	{
+		perror( "ptrace" );
+		return;
+	}
 
 	execve("sleeper", argv, envp);
 }
