@@ -28,9 +28,7 @@
 
 void signal_handler(int sig)
 {
-	int status = 0;
 	printf("Process %ld received signal %d\n", (long)getpid(), sig);
-
 }
 
 void do_debugger(pid_t child)
@@ -55,9 +53,38 @@ void do_debugger(pid_t child)
 	r_child = wait(&status);
 	if (WIFEXITED(status))
 		printf("In debugger process %ld, child %ld is terminated\n",
-			(long)getpid(), r_child);
+			(long)getpid(), (long)r_child);
 	else
-		printf("In debugger process %ld, child state changed.\n");
+		printf("In debugger process %ld, child state changed.\n",
+				(long)getpid());
+
+	/* Placing breakpoint */
+	addr = 0x8048419;
+
+	data = ptrace(PTRACE_PEEKTEXT, child, (void *)addr, NULL);
+	orig_data = data;
+	data = (data & ~0xff) | 0xcc; /* 0xcc is the code for int3 */
+	ptrace(PTRACE_POKETEXT, child, (void *)addr, data);
+
+	/* Breakpoint is ready. Telling child to continue running... */
+	ptrace(PTRACE_CONT, child, NULL, NULL);
+	child = wait(&status);
+
+	/* child hit the breakpoint */
+	/* Changing RIP register so that it will point to the right address... */
+	memset(&regs, 0, sizeof(regs));
+	ptrace(PTRACE_GETREGS, child, NULL, &regs);
+	printf("RIP before resuming child is %lx\n", regs.eip);
+	regs.eip = addr;
+	ptrace(PTRACE_SETREGS, child, NULL, &regs);
+
+	/* and restore the original instruction */
+	ptrace(PTRACE_POKETEXT, child, (void *)addr, orig_data);
+
+	/* Debuggie is now ready to get resumed... Waiting ten seconds... */
+	printf("Time before debugger falling asleep: %ld\n", (long)time(NULL));
+	sleep(5);
+	printf("Time after debugger falling asleep: %ld. Resuming debuggie...\n", (long)time(NULL));
 
 	/* continue the child */
 	ptrace(PTRACE_CONT, child, NULL, NULL);
@@ -66,9 +93,10 @@ void do_debugger(pid_t child)
 
 	if (WIFEXITED(status))
 		printf("In debugger process %ld, child %ld is terminated\n",
-			(long)getpid(), r_child);
+			(long)getpid(), (long)r_child);
 	else
-		printf("In debugger process %ld, child state changed.\n");
+		printf("In debugger process %ld, child state changed.\n",
+				(long)getpid());
 }
 
 void do_debuggie( void )
