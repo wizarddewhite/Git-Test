@@ -33,12 +33,13 @@ void signal_handler(int sig)
 
 }
 
-void do_debugger( pid_t child )
+void do_debugger(pid_t child)
 {
 	int status = 0;
 	long data;
 	long orig_data;
 	unsigned long addr;
+	pid_t r_child;
 
 	struct user_regs_struct regs;
 
@@ -51,13 +52,23 @@ void do_debugger( pid_t child )
 	}
 
 	/* child has executed execve(), parent is notified by wait */
-	wait(&status);
+	r_child = wait(&status);
+	if (WIFEXITED(status))
+		printf("In debugger process %ld, child %ld is terminated\n",
+			(long)getpid(), r_child);
+	else
+		printf("In debugger process %ld, child state changed.\n");
 
 	/* continue the child */
 	ptrace(PTRACE_CONT, child, NULL, NULL);
 
-	printf("In debugger process %ld, child %ld is terminated\n",
-			(long)getpid(), wait(&status));
+	r_child = wait(&status);
+
+	if (WIFEXITED(status))
+		printf("In debugger process %ld, child %ld is terminated\n",
+			(long)getpid(), r_child);
+	else
+		printf("In debugger process %ld, child state changed.\n");
 }
 
 void do_debuggie( void )
