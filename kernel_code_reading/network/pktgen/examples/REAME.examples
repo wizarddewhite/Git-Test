@@ -1,0 +1,38 @@
+A collection of small tutorial scripts for pktgen.
+Source:
+ftp://robur.slu.se/pub/Linux/net-development/pktgen-testing/examples/
+
+
+pktgen.conf-1-1                  # 1 CPU 1 dev 
+pktgen.conf-1-2                  # 1 CPU 2 dev
+pktgen.conf-2-1                  # 2 CPU's 1 dev 
+pktgen.conf-2-2                  # 2 CPU's 2 dev
+pktgen.conf-1-1-rdos             # 1 CPU 1 dev w. route DoS 
+pktgen.conf-1-1-ip6              # 1 CPU 1 dev ipv6
+pktgen.conf-1-1-ip6-rdos         # 1 CPU 1 dev ipv6  w. route DoS
+pktgen.conf-1-1-flows            # 1 CPU 1 dev multiple flows.
+
+
+Hello,
+
+#!/bin/sh
+
+for run in `seq 1 99`
+do
+  for pid in 123456789
+  do
+    perf record -f -p $pid -o perf.data.$pid.$run &
+    perfpid=$!
+
+    sleep 9
+    kill -2 $perfpid
+    sleep 1
+
+    perf report -i perf.data.$pid.$run > perf.data.$pid.$run.out
+  done
+
+  sleep 7
+done
+
+
+Regards
