@@ -1106,6 +1106,9 @@ void register_handler_proc(unsigned int irq, struct irqaction *action)
 	action->dir = proc_mkdir(name, desc->dir);
 }
 
+4. 
+================================================================================
+
 0. data structure
 ================================================================================
 
@@ -1140,13 +1143,14 @@ irq_domain_list(LIST_HEAD)
    +-------------------------+      |                     |
                                     +---------------------+
 
-0.2 irq_desc
+0.2 irq_chip
 ================================================================================
 
-0.3 irq_chip
+0.3 irq_desc
 ================================================================================
+; irq_desc->handle_irq is the start of each irq handling
+
 allocated_irqs(DECLARE_BITMAP)
-
 
 irq_desc
   +-----------------------+        +--------------------+
