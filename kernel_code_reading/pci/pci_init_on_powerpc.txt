@@ -6,6 +6,8 @@ pcibios_init();    called in start_kernel()->res_init()->kernel_init()->
 
 1. pnv_pci_init(), initialize hub and phb
 ===============================================================================
+; initialize ioda-hub
+; setup call back functions of ppc_md
 start_kernel()
 	setup_arch(); arch/powerpc/kernel/setup_64.c
 		ppc_md.setup_arch(); ppc_md is setup in probe_machine, 
@@ -242,7 +244,7 @@ pci_process_bridge_OF_ranges(struct pci_controller *hose, struct device_node *de
 	res->sibling = NULL;
 	res->child = NULL;
 
-1.1.1.2 pnv_pci_init_ioda_msis()
+1.1.1.2 pnv_pci_init_ioda_msis(), retrieve msi base and count
 ===============================================================================
 static void pnv_pci_init_ioda_msis(struct pnv_phb *phb)
 {
@@ -370,6 +372,13 @@ traverse_pci_devices(struct device_node *start, traverse_func pre,
 		}
 	}
 	return NULL;
+
+1.3 set_pci_dma_ops(), set pci_dma_ops to dma_iommu_ops
+===============================================================================
+void set_pci_dma_ops(struct dma_map_ops *dma_ops)
+{
+	pci_dma_ops = dma_ops;
+}
 
 2. pcibios_init()
 ===============================================================================
