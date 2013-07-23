@@ -100,6 +100,14 @@ start_kernel()
 	ftrace_init()
 	rest_init(); process 0
 
+1.1 trap_init()
+===============================================================================
+; arch dependent.
+; on x86, this function will set the idt table.
+; For example, 
+; 	set_system_trap_gate(SYSCALL_VECTOR, &system_call);
+; will set int 0x80 to be the system call.
+
 1.2. init_IRQ(), this is a arch dependent function
 ===============================================================================
 
