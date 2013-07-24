@@ -29,7 +29,7 @@ int main()
 	if (stat("makefile", &st))
 		return -1;
 
-	printf("the size of makefile is %d\n", st.st_size);
+	printf("the size of makefile is %ld\n", st.st_size);
 
 	return 0;
 }
