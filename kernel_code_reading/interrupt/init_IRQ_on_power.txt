@@ -10,7 +10,7 @@ void __init init_IRQ(void)
 	irq_ctx_init();
 }
 
-1.1 ppc_md.init_IRQ()
+1.1 ppc_md.init_IRQ(), chip/callback setup
 ================================================================================
 static void __init pnv_init_IRQ(void)
 {
@@ -93,6 +93,7 @@ int __init icp_native_init(void)
 
 	return 0;
 }
+
 1.1.1.2 ics_rtas_init(), init rtas token, register ics_rtas in ics_list
 ================================================================================
 ; patch the irq_chip.irq_eoi
@@ -205,7 +206,7 @@ void xics_update_irq_servers(void)
 		 xics_default_distrib_server);
 	of_node_put(np);
 }
-1.1.1.6 xics_init_host()
+1.1.1.6 xics_init_host(), set irq_default_domain to xics_host
 ================================================================================
 ; create irq_domain and link to irq_domain_list
 ; set the irq_default_domain
@@ -229,7 +230,7 @@ void xics_setup_cpu(void)
 ================================================================================
 empty on powernv
 
-1.3 irq_ctx_init(), init softirq_ctx and hardirq_ctx
+1.3 irq_ctx_init(), init softirq_ctx and hardirq_ctx, used in do_softirq
 ================================================================================
 struct thread_info *softirq_ctx[NR_CPUS] __read_mostly;
 struct thread_info *hardirq_ctx[NR_CPUS] __read_mostly;
@@ -252,10 +253,18 @@ void irq_ctx_init(void)
 	}
 }
 
-2. pci_read_irq_line(), register an irq in the system
+2. pci_read_irq_line(), map a lsi hardware irq into kernel irq space
 ================================================================================
-; this function is called on power platform, while this is useful to
+; on powerplatform, this is called during the pci enumeration stage
+;
+; even this function is called on power platform, while this is useful to
 ; understand the general idea
+
+; this function is called in 
+; pci_device_add
+;     ->pcibios_add_device
+;        ->pcibios_setup_device
+
 pci_read_irq_line(struct pci_dev *pci_dev)
 {
 	struct of_irq oirq;
@@ -313,7 +322,473 @@ pci_read_irq_line(struct pci_dev *pci_dev)
 
 2.1 irq_create_mapping(), map a hardware interrupt into linux irq space
 ================================================================================
-; irq_default_domain is initialized in xics_init_host()
+
+2.2 pci_dev->irq = virq
+================================================================================
+; in pci_dev structure, the irq field is set to the virq in kenel irq space
+
+3. pci_enable_msix(), map msi hardware irq to kernel irq
+================================================================================
+; called in probe
+int pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries, int nvec)
+{
+	int status, nr_entries;
+	int i, j;
+
+	if (!entries || !dev->msix_cap)
+		return -EINVAL;
+
+	status = pci_msi_check_device(dev, nvec, PCI_CAP_ID_MSIX);
+	if (status)
+		return status;
+
+	nr_entries = pci_msix_table_size(dev);
+	if (nvec > nr_entries)
+		return nr_entries;
+
+	/* Check for any invalid entries */
+	for (i = 0; i < nvec; i++) {
+		if (entries[i].entry >= nr_entries)
+			return -EINVAL;		/* invalid entry */
+		for (j = i + 1; j < nvec; j++) {
+			if (entries[i].entry == entries[j].entry)
+				return -EINVAL;	/* duplicate entry */
+		}
+	}
+	WARN_ON(!!dev->msix_enabled);
+
+	/* Check whether driver already requested for MSI irq */
+	if (dev->msi_enabled) {
+		dev_info(&dev->dev, "can't enable MSI-X "
+		       "(MSI IRQ already assigned)\n");
+		return -EINVAL;
+	}
+	status = msix_capability_init(dev, entries, nvec);
+	return status;
+}
+
+3.1 pci_msi_check_device(), check whether parent bridge, device support msi
+================================================================================
+; besides, it will do some arch msi check
+static int pci_msi_check_device(struct pci_dev *dev, int nvec, int type)
+{
+	struct pci_bus *bus;
+	int ret;
+
+	/* MSI must be globally enabled and supported by the device */
+	if (!pci_msi_enable || !dev || dev->no_msi)
+		return -EINVAL;
+
+	/*
+	 * You can't ask to have 0 or less MSIs configured.
+	 *  a) it's stupid ..
+	 *  b) the list manipulation code assumes nvec >= 1.
+	 */
+	if (nvec < 1)
+		return -ERANGE;
+
+	/*
+	 * Any bridge which does NOT route MSI transactions from its
+	 * secondary bus to its primary bus must set NO_MSI flag on
+	 * the secondary pci_bus.
+	 * We expect only arch-specific PCI host bus controller driver
+	 * or quirks for specific PCI bridges to be setting NO_MSI.
+	 */
+	for (bus = dev->bus; bus; bus = bus->parent)
+		if (bus->bus_flags & PCI_BUS_FLAGS_NO_MSI)
+			return -EINVAL;
+
+	ret = arch_msi_check_device(dev, nvec, type);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+3.1.1 arch_msi_check_device()
+================================================================================
+int arch_msi_check_device(struct pci_dev* dev, int nvec, int type)
+{
+	if (!ppc_md.setup_msi_irqs || !ppc_md.teardown_msi_irqs) {
+		pr_debug("msi: Platform doesn't provide MSI callbacks.\n");
+		return -ENOSYS;
+	}
+
+	/* PowerPC doesn't support multiple MSI yet */
+	if (type == PCI_CAP_ID_MSI && nvec > 1)
+		return 1;
+
+	if (ppc_md.msi_check_device) {
+		pr_debug("msi: Using platform check routine.\n");
+		return ppc_md.msi_check_device(dev, nvec, type);
+	}
+
+        return 0;
+}
+
+3.1.1.1 pnv_msi_check_device()
+================================================================================
+; on powernv, we check the 32bit msi and msi_bmp.bitmap
+static int pnv_msi_check_device(struct pci_dev* pdev, int nvec, int type)
+{
+	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct pci_dn *pdn = pci_get_pdn(pdev);
+
+	if (pdn && pdn->force_32bit_msi && !phb->msi32_support)
+		return -ENODEV;
+
+	return (phb && phb->msi_bmp.bitmap) ? 0 : -ENODEV;
+}
+
+3.2 pci_msix_table_size(), retrieve the table size from msix cap
+================================================================================
+int pci_msix_table_size(struct pci_dev *dev)
+{
+	u16 control;
+
+	if (!dev->msix_cap)
+		return 0;
+
+	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
+	return msix_table_size(control);
+}
+
+3.3 msix_capability_init()
+================================================================================
+; enable the msix in msix cap
+static int msix_capability_init(struct pci_dev *dev,
+				struct msix_entry *entries, int nvec)
+{
+	int ret;
+	u16 control;
+	void __iomem *base;
+
+	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
+
+	/* Ensure MSI-X is disabled while it is set up */
+	control &= ~PCI_MSIX_FLAGS_ENABLE;
+	pci_write_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, control);
+
+	/* Request & Map MSI-X table region */
+	base = msix_map_region(dev, msix_table_size(control));
+	if (!base)
+		return -ENOMEM;
+
+	ret = msix_setup_entries(dev, base, entries, nvec);
+	if (ret)
+		return ret;
+
+	ret = arch_setup_msi_irqs(dev, nvec, PCI_CAP_ID_MSIX);
+	if (ret)
+		goto error;
+
+	/*
+	 * Some devices require MSI-X to be enabled before we can touch the
+	 * MSI-X registers.  We need to mask all the vectors to prevent
+	 * interrupts coming in before they're fully set up.
+	 */
+	control |= PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE;
+	pci_write_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, control);
+
+	msix_program_entries(dev, entries);
+
+	ret = populate_msi_sysfs(dev);
+	if (ret) {
+		ret = 0;
+		goto error;
+	}
+
+	/* Set MSI-X enabled bits and unmask the function */
+	pci_intx_for_msi(dev, 0);
+	dev->msix_enabled = 1;
+
+	control &= ~PCI_MSIX_FLAGS_MASKALL;
+	pci_write_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, control);
+
+	return 0;
+
+error:
+	if (ret < 0) {
+		/*
+		 * If we had some success, report the number of irqs
+		 * we succeeded in setting up.
+		 */
+		struct msi_desc *entry;
+		int avail = 0;
+
+		list_for_each_entry(entry, &dev->msi_list, list) {
+			if (entry->irq != 0)
+				avail++;
+		}
+		if (avail != 0)
+			ret = avail;
+	}
+
+	free_msi_irqs(dev);
+
+	return ret;
+}
+
+3.3.1 msix_map_region(), get the msix table region from BAR
+================================================================================
+static void __iomem *msix_map_region(struct pci_dev *dev, unsigned nr_entries)
+{
+	resource_size_t phys_addr;
+	u32 table_offset;
+	u8 bir;
+
+	pci_read_config_dword(dev, dev->msix_cap + PCI_MSIX_TABLE,
+			      &table_offset);
+	bir = (u8)(table_offset & PCI_MSIX_TABLE_BIR);
+	table_offset &= PCI_MSIX_TABLE_OFFSET;
+	phys_addr = pci_resource_start(dev, bir) + table_offset;
+
+	return ioremap_nocache(phys_addr, nr_entries * PCI_MSIX_ENTRY_SIZE);
+}
+
+3.3.2 msix_setup_entries(), create msi_desc and add to dev->msi_list
+================================================================================
+; entry->msi_attrib.default_irq = dev->irq;
+static int msix_setup_entries(struct pci_dev *dev, void __iomem *base,
+			      struct msix_entry *entries, int nvec)
+{
+	struct msi_desc *entry;
+	int i;
+
+	for (i = 0; i < nvec; i++) {
+		entry = alloc_msi_entry(dev);
+		if (!entry) {
+			if (!i)
+				iounmap(base);
+			else
+				free_msi_irqs(dev);
+			/* No enough memory. Don't try again */
+			return -ENOMEM;
+		}
+
+		entry->msi_attrib.is_msix	= 1;
+		entry->msi_attrib.is_64		= 1;
+		entry->msi_attrib.entry_nr	= entries[i].entry;
+		entry->msi_attrib.default_irq	= dev->irq;
+		entry->msi_attrib.pos		= dev->msix_cap;
+		entry->mask_base		= base;
+
+		list_add_tail(&entry->list, &dev->msi_list);
+	}
+
+	return 0;
+}
+
+3.3.3 arch_setup_msi_irqs(), setup based on the arch
+================================================================================
+int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
+{
+	return ppc_md.setup_msi_irqs(dev, nvec, type);
+}
+
+3.3.3.1 pnv_setup_msi_irqs(), retrieve msi address/data and set to hardware
+================================================================================
+
+3.3.4 msix_program_entries(), entries[i].vector = entry->irq;
+================================================================================
+static void msix_program_entries(struct pci_dev *dev,
+				 struct msix_entry *entries)
+{
+	struct msi_desc *entry;
+	int i = 0;
+
+	list_for_each_entry(entry, &dev->msi_list, list) {
+		int offset = entries[i].entry * PCI_MSIX_ENTRY_SIZE +
+						PCI_MSIX_ENTRY_VECTOR_CTRL;
+
+		entries[i].vector = entry->irq;
+		irq_set_msi_desc(entry->irq, entry);
+		entry->masked = readl(entry->mask_base + offset);
+		msix_mask_irq(entry, 1);
+		i++;
+	}
+}
+
+4. pnv_setup_msi_irqs(), retrieve msi address/data and set to hardware
+================================================================================
+; get the hwirq from phb->msi_bmp
+; map hwirq to virq
+; call pnv_pci_ioda_msi_setup
+; set irq_desc
+; write msi address/data to hardware
+static int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
+{
+	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct msi_desc *entry;
+	struct msi_msg msg;
+	int hwirq;
+	unsigned int virq;
+	int rc;
+
+	if (WARN_ON(!phb))
+		return -ENODEV;
+
+	list_for_each_entry(entry, &pdev->msi_list, list) {
+		if (!entry->msi_attrib.is_64 && !phb->msi32_support) {
+			pr_warn("%s: Supports only 64-bit MSIs\n",
+				pci_name(pdev));
+			return -ENXIO;
+		}
+		hwirq = msi_bitmap_alloc_hwirqs(&phb->msi_bmp, 1);
+		if (hwirq < 0) {
+			pr_warn("%s: Failed to find a free MSI\n",
+				pci_name(pdev));
+			return -ENOSPC;
+		}
+		virq = irq_create_mapping(NULL, phb->msi_base + hwirq);
+		if (virq == NO_IRQ) {
+			pr_warn("%s: Failed to map MSI to linux irq\n",
+				pci_name(pdev));
+			msi_bitmap_free_hwirqs(&phb->msi_bmp, hwirq, 1);
+			return -ENOMEM;
+		}
+		rc = phb->msi_setup(phb, pdev, phb->msi_base + hwirq,
+				    virq, entry->msi_attrib.is_64, &msg);
+		if (rc) {
+			pr_warn("%s: Failed to setup MSI\n", pci_name(pdev));
+			irq_dispose_mapping(virq);
+			msi_bitmap_free_hwirqs(&phb->msi_bmp, hwirq, 1);
+			return rc;
+		}
+		irq_set_msi_desc(virq, entry);
+		write_msi_msg(virq, &msg);
+	}
+	return 0;
+}
+
+4.1 irq_create_mapping()
+================================================================================
+
+4.2 pnv_pci_ioda_msi_setup(), platform setup
+================================================================================
+; mve check
+; setup the xive
+; retrive the msi address/data
+
+static int pnv_pci_ioda_msi_setup(struct pnv_phb *phb, struct pci_dev *dev,
+				  unsigned int hwirq, unsigned int virq,
+				  unsigned int is_64, struct msi_msg *msg)
+{
+	struct pnv_ioda_pe *pe = pnv_ioda_get_pe(dev);
+	struct pci_dn *pdn = pci_get_pdn(dev);
+	struct irq_data *idata;
+	struct irq_chip *ichip;
+	unsigned int xive_num = hwirq - phb->msi_base;
+	uint64_t addr64;
+	uint32_t addr32, data;
+	int rc;
+
+	/* No PE assigned ? bail out ... no MSI for you ! */
+	if (pe == NULL)
+		return -ENXIO;
+
+	/* Check if we have an MVE */
+	if (pe->mve_number < 0)
+		return -ENXIO;
+
+	/* Force 32-bit MSI on some broken devices */
+	if (pdn && pdn->force_32bit_msi)
+		is_64 = 0;
+
+	/* Assign XIVE to PE */
+	rc = opal_pci_set_xive_pe(phb->opal_id, pe->pe_number, xive_num);
+	if (rc) {
+		pr_warn("%s: OPAL error %d setting XIVE %d PE\n",
+			pci_name(dev), rc, xive_num);
+		return -EIO;
+	}
+
+	if (is_64) {
+		rc = opal_get_msi_64(phb->opal_id, pe->mve_number, xive_num, 1,
+				     &addr64, &data);
+		if (rc) {
+			pr_warn("%s: OPAL error %d getting 64-bit MSI data\n",
+				pci_name(dev), rc);
+			return -EIO;
+		}
+		msg->address_hi = addr64 >> 32;
+		msg->address_lo = addr64 & 0xfffffffful;
+	} else {
+		rc = opal_get_msi_32(phb->opal_id, pe->mve_number, xive_num, 1,
+				     &addr32, &data);
+		if (rc) {
+			pr_warn("%s: OPAL error %d getting 32-bit MSI data\n",
+				pci_name(dev), rc);
+			return -EIO;
+		}
+		msg->address_hi = 0;
+		msg->address_lo = addr32;
+	}
+	msg->data = data;
+
+	/*
+	 * Change the IRQ chip for the MSI interrupts on PHB3.
+	 * The corresponding IRQ chip should be populated for
+	 * the first time.
+	 */
+	if (phb->type == PNV_PHB_IODA2) {
+		if (!phb->ioda.irq_chip_init) {
+			idata = irq_get_irq_data(virq);
+			ichip = irq_data_get_irq_chip(idata);
+			phb->ioda.irq_chip_init = 1;
+			phb->ioda.irq_chip = *ichip;
+			phb->ioda.irq_chip.irq_eoi = pnv_ioda2_msi_eoi;
+		}
+
+		irq_set_chip(virq, &phb->ioda.irq_chip);
+	}
+
+	pr_devel("%s: %s-bit MSI on hwirq %x (xive #%d),"
+		 " address=%x_%08x data=%x PE# %d\n",
+		 pci_name(dev), is_64 ? "64" : "32", hwirq, xive_num,
+		 msg->address_hi, msg->address_lo, data, pe->pe_number);
+
+	return 0;
+}
+
+4.3 irq_set_msi_desc(), set the related irq_desc
+================================================================================
+int irq_set_msi_desc(unsigned int irq, struct msi_desc *entry)
+{
+	return irq_set_msi_desc_off(irq, 0, entry);
+}
+
+int irq_set_msi_desc_off(unsigned int irq_base, unsigned int irq_offset,
+			 struct msi_desc *entry)
+{
+	unsigned long flags;
+	struct irq_desc *desc = irq_get_desc_lock(irq_base + irq_offset, &flags, IRQ_GET_DESC_CHECK_GLOBAL);
+
+	if (!desc)
+		return -EINVAL;
+	desc->irq_data.msi_desc = entry;
+	if (entry && !irq_offset)
+		entry->irq = irq_base;
+	irq_put_desc_unlock(desc, flags);
+	return 0;
+}
+
+4.4 write_msi_msg(), set msi address/data to msi cap
+================================================================================
+void write_msi_msg(unsigned int irq, struct msi_msg *msg)
+{
+	struct msi_desc *entry = irq_get_msi_desc(irq);
+
+	__write_msi_msg(entry, msg);
+}
+
+5. irq_create_mapping(), map a hardware interrupt into linux irq space
+================================================================================
+; irq_default_domain is initialized in xics_init_host() on powernv
+; for a lsi, the hwirq is set by firmware in PCI_INTERRUPT_LINE
+; for a msi, this sounds like a MSI address?
 irq_create_mapping(struct irq_domain *domain,
 				irq_hw_number_t hwirq)
 {
@@ -367,7 +842,7 @@ irq_create_mapping(struct irq_domain *domain,
 	return virq;
 }
 
-2.1.1 irq_find_mapping(), 
+5.1 irq_find_mapping(), 
 ================================================================================
 unsigned int irq_find_mapping(struct irq_domain *domain,
 			      irq_hw_number_t hwirq)
@@ -402,7 +877,7 @@ unsigned int irq_find_mapping(struct irq_domain *domain,
 	return 0;
 }
 
-2.1.2 irq_alloc_desc_from(), allocate one irq descriptor
+5.2 irq_alloc_desc_from(), allocate one irq descriptor
 ================================================================================
 #define irq_alloc_desc_from(from, node)		\
 	irq_alloc_descs(-1, from, 1, node)
@@ -447,7 +922,7 @@ err:
 	return ret;
 }
 
-2.1.2.1 alloc_descs(), allocate irq descriptor with a start number
+5.2.1 alloc_descs(), allocate irq descriptor with a start number
 ================================================================================
 #define irq_to_desc(irq)	(&irq_desc[irq])
 
@@ -464,7 +939,7 @@ static inline int alloc_descs(unsigned int start, unsigned int cnt, int node,
 	return start;
 }
 
-2.1.3 irq_domain_associate(), associate one irq with domain
+5.3 irq_domain_associate(), associate one irq with domain
 ================================================================================
 ; domain: the domain to associate
 ; irq:    irq in linux irq space
@@ -475,8 +950,6 @@ static inline int irq_domain_associate(struct irq_domain *domain, unsigned int i
 	return irq_domain_associate_many(domain, irq, hwirq, 1);
 }
 
-2.1.3.1 irq_domain_associate_many()
-================================================================================
 int irq_domain_associate_many(struct irq_domain *domain, unsigned int irq_base,
 			      irq_hw_number_t hwirq_base, int count)
 {
@@ -537,7 +1010,7 @@ int irq_domain_associate_many(struct irq_domain *domain, unsigned int irq_base,
 	return -EINVAL;
 }
 
-2.1.3.1.1 irq_get_irq_data()
+5.3.1 irq_get_irq_data()
 ================================================================================
 struct irq_data *irq_get_irq_data(unsigned int irq)
 {
@@ -546,7 +1019,7 @@ struct irq_data *irq_get_irq_data(unsigned int irq)
 	return desc ? &desc->irq_data : NULL;
 }
 
-2.1.3.1.2 domain->ops->map()
+5.3.2 xics_host_map, set desc->handle_irq, desc->irq_data.chip
 ================================================================================
 ; domain = xics_host
 ; domain->ops = xics_host_ops
@@ -579,7 +1052,7 @@ static int xics_host_map(struct irq_domain *h, unsigned int virq,
 	return -EINVAL;
 }
 
-2.1.3.1.2.1 ics_opal_map()
+5.3.2.1 ics_opal_map(), set chip and handle
 ================================================================================
 ; check xive
 ; set irq_data.chip to ics_opal_irq_chip
@@ -606,11 +1079,7 @@ static int ics_opal_map(struct ics *ics, unsigned int virq)
 	return 0;
 }
 
-2.2 pci_dev->irq = virq
-================================================================================
-; in pci_dev structure, the irq field is set to the virq in kenel irq space
-
-3. be_irq_register()
+6. be_irq_register(), one example for driver to register irq
 ================================================================================
 be_irq_register(struct be_adapter *adapter)
 {
@@ -641,8 +1110,47 @@ done:
 	return 0;
 }
 
-3.1 request_irq()
+6.1 be_msix_register(), try msi first
 ================================================================================
+static int be_msix_register(struct be_adapter *adapter)
+{
+	struct net_device *netdev = adapter->netdev;
+	struct be_eq_obj *eqo;
+	int status, i, vec;
+
+	for_all_evt_queues(adapter, eqo, i) {
+		sprintf(eqo->desc, "%s-q%d", netdev->name, i);
+		vec = be_msix_vec_get(adapter, eqo);
+		status = request_irq(vec, be_msix, 0, eqo->desc, eqo);
+		if (status)
+			goto err_msix;
+	}
+
+	return 0;
+err_msix:
+	for (i--, eqo = &adapter->eq_obj[i]; i >= 0; i--, eqo--)
+		free_irq(be_msix_vec_get(adapter, eqo), eqo);
+	dev_warn(&adapter->pdev->dev, "MSIX Request IRQ failed - err %d\n",
+		status);
+	be_msix_disable(adapter);
+	return status;
+}
+
+6.1.1 be_msix_vec_get(), retrieve the vector, which is set in pci_enable_msix
+================================================================================
+static inline int be_msix_vec_get(struct be_adapter *adapter,
+				struct be_eq_obj *eqo)
+{
+	return adapter->msix_entries[eqo->idx].vector;
+}
+
+6.1.2 request_irq()
+================================================================================
+
+6.2 request_irq(), if no msi, then request lsi irq
+================================================================================
+; create irqaction, set irqaction->handler to device irq_handler
+;
 ; register be_intx as the handler
 ; create an action
 static inline int __must_check
@@ -722,7 +1230,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 	return retval;
 }
 
-3.1.1 __setup_irq()
+6.2.1 __setup_irq(), set the irqaction properly and link in the desc->action
 ================================================================================
 __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 {
@@ -1015,7 +1523,7 @@ out_mput:
 	return ret;
 }
 
-3.1.1.1 __enable_irq(), call chip->irq_enable
+6.2.1.1 __enable_irq(), call chip->irq_enable
 ================================================================================
 void __enable_irq(struct irq_desc *desc, unsigned int irq, bool resume)
 {
@@ -1050,7 +1558,7 @@ void __enable_irq(struct irq_desc *desc, unsigned int irq, bool resume)
 	}
 }
 
-3.1.1.2 register_irq_proc(), create irq proc file
+6.2.1.2 register_irq_proc(), create irq proc file
 ================================================================================
 void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 {
@@ -1088,7 +1596,7 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 			 &irq_spurious_proc_fops, (void *)(long)irq);
 }
 
-3.1.1.3 register_handler_proc()
+6.2.1.3 register_handler_proc()
 ================================================================================
 void register_handler_proc(unsigned int irq, struct irqaction *action)
 {
@@ -1106,8 +1614,36 @@ void register_handler_proc(unsigned int irq, struct irqaction *action)
 	action->dir = proc_mkdir(name, desc->dir);
 }
 
-4. 
+7. pnv_pci_init_ioda_msis(), init msi space
 ================================================================================
+; msi_base/msi_bmp is used during msi allocation
+; this is called in pnv_pci_init_ioda_phb()
+
+static void pnv_pci_init_ioda_msis(struct pnv_phb *phb)
+{
+	unsigned int count;
+	const __be32 *prop = of_get_property(phb->hose->dn,
+					     "ibm,opal-msi-ranges", NULL);
+	if (!prop) {
+		/* BML Fallback */
+		prop = of_get_property(phb->hose->dn, "msi-ranges", NULL);
+	}
+	if (!prop)
+		return;
+
+	phb->msi_base = be32_to_cpup(prop);
+	count = be32_to_cpup(prop + 1);
+	if (msi_bitmap_alloc(&phb->msi_bmp, count, phb->hose->dn)) {
+		pr_err("PCI %d: Failed to allocate MSI bitmap !\n",
+		       phb->hose->global_number);
+		return;
+	}
+
+	phb->msi_setup = pnv_pci_ioda_msi_setup;
+	phb->msi32_support = 1;
+	pr_info("  Allocated bitmap for %d MSIs (base IRQ 0x%x)\n",
+		count, phb->msi_base);
+}
 
 0. data structure
 ================================================================================
@@ -1166,7 +1702,7 @@ irq_desc
   |handle_irq             | -> handle_fasteoi_irq
   |                       |
   +-----------------------+        +--------------------+
-  |action                 |--------+handler             | handler in driver
+  |action                 |--------+handler             | handler set by driver
   |  (struct irqaction*)  |        +--------------------+
   +-----------------------+        |thread_fn           |
   |                       |        +--------------------+
