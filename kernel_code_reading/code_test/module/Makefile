@@ -3,7 +3,7 @@
 ifneq ($(KERNELRELEASE),)
     obj-m := hello_world.o oops_example.o
     obj-m += seq_fs.o kobject-example.o
-    obj-m += scull.o
+    obj-m += scull.o char_dev.o
     scull-objs := scull_sysfs.o
     obj-m += usermodehelper.o timer.o workqueue_test.o
     obj-m += pci_driver.o register_netdev.o my_debugfs.o
