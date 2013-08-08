@@ -4,7 +4,8 @@
  *       Filename:  char_dev.c
  *
  *    Description:  copied from http://linuxgazette.net/125/mishra.html
- *                  sudo mknod /dev/my_device c 222 0
+ *                  sudo mknod /dev/my_device c 222 0;  check /proc/device for
+ *                  the major number first.
  *
  *        Version:  1.0
  *        Created:  08/08/2013 05:10:10 PM
@@ -21,6 +22,7 @@
 #include <linux/fs.h>
 #include <linux/sched.h>
 #include <linux/errno.h>
+#include <linux/cdev.h>
 #include <asm/current.h>
 #include <asm/segment.h>
 #include <asm/uaccess.h>
@@ -72,18 +74,26 @@ struct file_operations my_fops={
 	release:my_release,
 };
 
+dev_t devt;
+struct cdev my_device;
 static int r_init(void)
 {
+	int ret;
+
 	printk("<1>hi\n");
-	if(register_chrdev(222,"my_device",&my_fops)){
-		printk("<1>failed to register");
-	}
+	ret = alloc_chrdev_region(&devt, 0, MINORMASK, "my_device");
+	if (ret)
+		return -1;
+
+	cdev_init(&my_device, &my_fops);
+	cdev_add(&my_device, devt, 1);
 	return 0;
 }
 
 static void r_cleanup(void)
 {
 	printk("<1>bye\n");
-	unregister_chrdev(222,"my_device");
+	cdev_del(&my_device);
+	unregister_chrdev_region(devt, MINORMASK);
 	return ;
 }
