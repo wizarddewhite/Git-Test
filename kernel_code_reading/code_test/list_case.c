@@ -18,9 +18,13 @@
 #include <stdio.h>
 #include "list_case.h"
 
+#define FIRST_LENGTH 11
 LIST_HEAD(test_list);
+struct list_dummy elem[FIRST_LENGTH];
 
-struct list_dummy elem[10];
+#define SECOND_LENGTH 2
+LIST_HEAD(test_list2);
+struct list_dummy elem2[SECOND_LENGTH];
 
 void isempty_test()
 {
@@ -83,7 +87,7 @@ void list_add_tail_test()
 
 	INIT_LIST_HEAD(&elem[0].list_node);
 
-	for (i = 1; i < 11; i++)
+	for (i = 1; i < FIRST_LENGTH; i++)
 	{
 		elem[i].index = i;
 		list_add_tail(&elem[i].list_node, &test_list);
@@ -151,6 +155,8 @@ void list_for_each_entry_reverse_test()
 {
 	struct list_dummy *iter;
 
+	list_add_tail_test();
+
 	list_for_each_entry_reverse(iter, &test_list, list_node)
 	{
 		printf("index of entry is %d\n", iter->index);
@@ -163,16 +169,50 @@ void list_for_each_entry_safe_test()
 	struct list_dummy *iter;
 	struct list_dummy *tmp;
 
+	list_add_tail_test();
+
 	list_for_each_entry_safe(iter, tmp, &test_list, list_node)
 	{
 		printf("index of entry is %d\n", iter->index);
 	}
 }
 
+void list_splice_tail_test()
+{
+	int i;
+	struct list_dummy *iter;
+
+	INIT_LIST_HEAD(&elem2[0].list_node);
+
+	for (i = 0; i < SECOND_LENGTH; i++)
+	{
+		elem2[i].index = i + 100;
+		list_add_tail(&elem2[i].list_node, &test_list2);
+	}
+
+	printf("--- create test_list2\n");
+	list_for_each_entry(iter, &test_list2, list_node) {
+		printf("index of entry is %d\n", iter->index);
+	}
+
+	printf("--- create test_list\n");
+	list_add_tail_test();
+
+	list_for_each_entry(iter, &test_list, list_node) {
+		printf("index of entry is %d\n", iter->index);
+	}
+
+	list_splice_tail(&test_list, &test_list2);
+
+	printf("--- merge test_list and test_list2 to test_list2\n");
+	list_for_each_entry(iter, &test_list2, list_node) {
+		printf("index of entry is %d\n", iter->index);
+	}
+}
+
 int main()
 {
-	list_add_tail_test();
-	list_for_each_entry_safe_test();
+	list_splice_tail_test();
 
 	return 0;
 }
