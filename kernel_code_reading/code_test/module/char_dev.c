@@ -85,6 +85,9 @@ static int r_init(void)
 	if (ret)
 		return -1;
 
+	printk("  Major number is assigned to %d\n", MAJOR(devt));
+	printk("  Minor number is assigned to %d\n", MINOR(devt));
+
 	cdev_init(&my_device, &my_fops);
 	cdev_add(&my_device, devt, 1);
 	return 0;
