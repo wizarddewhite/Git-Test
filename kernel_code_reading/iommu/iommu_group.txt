@@ -14,8 +14,9 @@ static int __init iommu_init(void)
 	return 0;
 }
 
-2. iommu_group_alloc(), create /sys/kernel/iommu_groups/num/
+2. iommu_group_alloc(), create /sys/kernel/iommu_groups/XXX/
 ================================================================================
+; XXX equals to group->id
 struct iommu_group *iommu_group_alloc(void)
 {
 	struct iommu_group *group;
@@ -69,25 +70,6 @@ again:
 
 	return group;
 }
-     +----------------------------+<------------------------------------+
-     |id(int)                     |                                     |
-     +----------------------------+                                     |
-     |kobj                        |                                     |
-     |                            |                                     |
-     |devices_kobj                |                                     |
-     +----------------------------+     +-----------------------+       |
-     |devices(list_head)          |---->+list(list_head)        |       |
-     |                            |     +-----------------------+       |
-     +----------------------------+     |dev(struct device)     |       |
-     |notifier                    |     |      iommu_group      |-------+
-     |   (blocking_notifier_head) |     +-----------------------+ 
-     |                            |     |name                   |
-     |                            |     +-----------------------+
-     |                            |
-     |                            |
-     |                            |
-     +----------------------------+
-	Figure 2.1 iommu_group
 
 3. iommu_group_get_by_id()
 ================================================================================
@@ -386,3 +368,27 @@ static size_t iommu_pgsize(struct iommu_domain *domain,
 
 	return pgsize;
 }
+
+0. Data structures
+================================================================================
+
+     struct iommu_group
+     +----------------------------+<------------------------------------+
+     |id(int)                     |                                     |
+     +----------------------------+                                     |
+     |kobj                        |                                     |
+     |                            |                                     |
+     |devices_kobj                |     struct iommu_device             |
+     +----------------------------+     +-----------------------+       |
+     |devices(list_head)          |---->+list(list_head)        |       |
+     | (list struct iommu_device) |     +-----------------------+       |
+     +----------------------------+     |dev(struct device)     |       |
+     |notifier                    |     |      iommu_group   -----------+
+     |   (blocking_notifier_head) |     +-----------------------+ 
+     |                            |     |name                   |
+     |                            |     +-----------------------+
+     |                            |
+     |                            |
+     |                            |
+     +----------------------------+
+	Figure 2.1 iommu_group
