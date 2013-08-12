@@ -1,0 +1,49 @@
+1. vfio_iommu_type1_init()
+================================================================================
+static int __init vfio_iommu_type1_init(void)
+{
+	if (!iommu_present(&pci_bus_type))
+		return -ENODEV;
+
+	return vfio_register_iommu_driver(&vfio_iommu_driver_ops_type1);
+}
+
+1.1 vfio_register_iommu_driver(), add to vfio.iommu_drivers_list
+================================================================================
+static const struct vfio_iommu_driver_ops vfio_iommu_driver_ops_type1 = {
+	.name		= "vfio-iommu-type1",
+	.owner		= THIS_MODULE,
+	.open		= vfio_iommu_type1_open,
+	.release	= vfio_iommu_type1_release,
+	.ioctl		= vfio_iommu_type1_ioctl,
+	.attach_group	= vfio_iommu_type1_attach_group,
+	.detach_group	= vfio_iommu_type1_detach_group,
+};
+
+int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
+{
+	struct vfio_iommu_driver *driver, *tmp;
+
+	driver = kzalloc(sizeof(*driver), GFP_KERNEL);
+	if (!driver)
+		return -ENOMEM;
+
+	driver->ops = ops;
+
+	mutex_lock(&vfio.iommu_drivers_lock);
+
+	/* Check for duplicates */
+	list_for_each_entry(tmp, &vfio.iommu_drivers_list, vfio_next) {
+		if (tmp->ops == ops) {
+			mutex_unlock(&vfio.iommu_drivers_lock);
+			kfree(driver);
+			return -EINVAL;
+		}
+	}
+
+	list_add(&driver->vfio_next, &vfio.iommu_drivers_list);
+
+	mutex_unlock(&vfio.iommu_drivers_lock);
+
+	return 0;
+}
