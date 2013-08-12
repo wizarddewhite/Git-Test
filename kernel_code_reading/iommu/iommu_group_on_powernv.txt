@@ -1,0 +1,136 @@
+1. tce_iommu_init()
+================================================================================
+subsys_initcall_sync(tce_iommu_init);
+#define subsys_initcall_sync(fn)	__define_initcall(fn, 4s)
+
+; one thing to be noticed, this call is called after pcibios_init which 
+; subsys_initcall(). 
+; which means when it is called, the pci device tree is created.
+
+static int __init tce_iommu_init(void)
+
+	struct pci_dev *pdev = NULL;
+
+	BUILD_BUG_ON(PAGE_SIZE < IOMMU_PAGE_SIZE);
+
+	for_each_pci_dev(pdev)
+		iommu_add_device(&pdev->dev);
+
+	bus_register_notifier(&pci_bus_type, &tce_iommu_bus_nb);
+	return 0;
+}
+
+1.1 iommu_add_device(), add device to the iommu_group
+================================================================================
+static int iommu_add_device(struct device *dev)
+{
+	struct iommu_table *tbl;
+	int ret = 0;
+
+	if (WARN_ON(dev->iommu_group)) {
+		pr_warn("iommu_tce: device %s is already in iommu group %d, skipping\n",
+				dev_name(dev),
+				iommu_group_id(dev->iommu_group));
+		return -EBUSY;
+	}
+
+	tbl = get_iommu_table_base(dev);
+	if (!tbl || !tbl->it_group) {
+		pr_debug("iommu_tce: skipping device %s with no tbl\n",
+				dev_name(dev));
+		return 0;
+	}
+
+	pr_debug("iommu_tce: adding %s to iommu group %d\n",
+			dev_name(dev), iommu_group_id(tbl->it_group));
+
+	ret = iommu_group_add_device(tbl->it_group, dev);
+	if (ret < 0)
+		pr_err("iommu_tce: %s has not been added, ret=%d\n",
+				dev_name(dev), ret);
+
+	return ret;
+}
+
+2. iommu_bus_notifier(), this is called in device_add
+================================================================================
+; mostly, I think this is called when a device is hot pluged
+static struct notifier_block tce_iommu_bus_nb = {
+	.notifier_call = iommu_bus_notifier,
+};
+
+static int iommu_bus_notifier(struct notifier_block *nb,
+			      unsigned long action, void *data)
+{
+	struct device *dev = data;
+
+	switch (action) {
+	case BUS_NOTIFY_ADD_DEVICE:
+		return iommu_add_device(dev);
+	case BUS_NOTIFY_DEL_DEVICE:
+		iommu_del_device(dev);
+		return 0;
+	default:
+		return 0;
+	}
+}
+
+2.1 iommu_add_device(), add dev into a iommu_group
+================================================================================
+static int iommu_add_device(struct device *dev)
+{
+	struct iommu_table *tbl;
+	int ret = 0;
+
+	if (WARN_ON(dev->iommu_group)) {
+		pr_warn("iommu_tce: device %s is already in iommu group %d, skipping\n",
+				dev_name(dev),
+				iommu_group_id(dev->iommu_group));
+		return -EBUSY;
+	}
+
+	tbl = get_iommu_table_base(dev);
+	if (!tbl || !tbl->it_group) { ???
+		pr_debug("iommu_tce: skipping device %s with no tbl\n",
+				dev_name(dev));
+		return 0;
+	}
+
+	pr_debug("iommu_tce: adding %s to iommu group %d\n",
+			dev_name(dev), iommu_group_id(tbl->it_group));
+
+	ret = iommu_group_add_device(tbl->it_group, dev);
+	if (ret < 0)
+		pr_err("iommu_tce: %s has not been added, ret=%d\n",
+				dev_name(dev), ret);
+
+	return ret;
+}
+
+3. pnv_pci_ioda_setup_dma_pe()
+================================================================================
+	iommu_register_group(tbl, pci_domain_nr(pe->pbus), pe->pe_number);
+
+3.1 iommu_register_group(), create an iommu_group for each PE
+================================================================================
+void iommu_register_group(struct iommu_table *tbl,
+		int pci_domain_number, unsigned long pe_num)
+{
+	struct iommu_group *grp;
+	char *name;
+
+	grp = iommu_group_alloc();
+	if (IS_ERR(grp)) {
+		pr_warn("powerpc iommu api: cannot create new group, err=%ld\n",
+				PTR_ERR(grp));
+		return;
+	}
+	tbl->it_group = grp;
+	iommu_group_set_iommudata(grp, tbl, group_release);
+	name = kasprintf(GFP_KERNEL, "domain%d-pe%lx",
+			pci_domain_number, pe_num);
+	if (!name)
+		return;
+	iommu_group_set_name(grp, name);
+	kfree(name);
+}
