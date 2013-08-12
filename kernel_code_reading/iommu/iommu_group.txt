@@ -1,0 +1,388 @@
+1. iommu_init(), create /sys/kernel/iommu_groups/
+================================================================================
+arch_initcall(iommu_init)
+
+static int __init iommu_init(void)
+{
+	iommu_group_kset = kset_create_and_add("iommu_groups",
+					       NULL, kernel_kobj);
+	ida_init(&iommu_group_ida);
+	mutex_init(&iommu_group_mutex);
+
+	BUG_ON(!iommu_group_kset);
+
+	return 0;
+}
+
+2. iommu_group_alloc(), create /sys/kernel/iommu_groups/num/
+================================================================================
+struct iommu_group *iommu_group_alloc(void)
+{
+	struct iommu_group *group;
+	int ret;
+
+	group = kzalloc(sizeof(*group), GFP_KERNEL);
+	if (!group)
+		return ERR_PTR(-ENOMEM);
+
+	group->kobj.kset = iommu_group_kset;
+	mutex_init(&group->mutex);
+	INIT_LIST_HEAD(&group->devices);
+	BLOCKING_INIT_NOTIFIER_HEAD(&group->notifier);
+
+	mutex_lock(&iommu_group_mutex);
+
+again:
+	if (unlikely(0 == ida_pre_get(&iommu_group_ida, GFP_KERNEL))) {
+		kfree(group);
+		mutex_unlock(&iommu_group_mutex);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	if (-EAGAIN == ida_get_new(&iommu_group_ida, &group->id))
+		goto again;
+
+	mutex_unlock(&iommu_group_mutex);
+
+	ret = kobject_init_and_add(&group->kobj, &iommu_group_ktype,
+				   NULL, "%d", group->id);
+	if (ret) {
+		mutex_lock(&iommu_group_mutex);
+		ida_remove(&iommu_group_ida, group->id);
+		mutex_unlock(&iommu_group_mutex);
+		kfree(group);
+		return ERR_PTR(ret);
+	}
+
+	group->devices_kobj = kobject_create_and_add("devices", &group->kobj);
+	if (!group->devices_kobj) {
+		kobject_put(&group->kobj); /* triggers .release & free */
+		return ERR_PTR(-ENOMEM);
+	}
+
+	/*
+	 * The devices_kobj holds a reference on the group kobject, so
+	 * as long as that exists so will the group.  We can therefore
+	 * use the devices_kobj for reference counting.
+	 */
+	kobject_put(&group->kobj);
+
+	return group;
+}
+     +----------------------------+<------------------------------------+
+     |id(int)                     |                                     |
+     +----------------------------+                                     |
+     |kobj                        |                                     |
+     |                            |                                     |
+     |devices_kobj                |                                     |
+     +----------------------------+     +-----------------------+       |
+     |devices(list_head)          |---->+list(list_head)        |       |
+     |                            |     +-----------------------+       |
+     +----------------------------+     |dev(struct device)     |       |
+     |notifier                    |     |      iommu_group      |-------+
+     |   (blocking_notifier_head) |     +-----------------------+ 
+     |                            |     |name                   |
+     |                            |     +-----------------------+
+     |                            |
+     |                            |
+     |                            |
+     +----------------------------+
+	Figure 2.1 iommu_group
+
+3. iommu_group_get_by_id()
+================================================================================
+struct iommu_group *iommu_group_get_by_id(int id)
+{
+	struct kobject *group_kobj;
+	struct iommu_group *group;
+	const char *name;
+
+	if (!iommu_group_kset)
+		return NULL;
+
+	name = kasprintf(GFP_KERNEL, "%d", id);
+	if (!name)
+		return NULL;
+
+	group_kobj = kset_find_obj(iommu_group_kset, name);
+	kfree(name);
+
+	if (!group_kobj)
+		return NULL;
+
+	group = container_of(group_kobj, struct iommu_group, kobj);
+	BUG_ON(group->id != id);
+
+	kobject_get(group->devices_kobj);
+	kobject_put(&group->kobj);
+
+	return group;
+}
+
+4. iommu_group_add_device(), add a device to this group
+================================================================================
+int iommu_group_add_device(struct iommu_group *group, struct device *dev)
+{
+	int ret, i = 0;
+	struct iommu_device *device;
+
+	device = kzalloc(sizeof(*device), GFP_KERNEL);
+	if (!device)
+		return -ENOMEM;
+
+	device->dev = dev;
+
+	ret = sysfs_create_link(&dev->kobj, &group->kobj, "iommu_group");
+	if (ret) {
+		kfree(device);
+		return ret;
+	}
+
+	device->name = kasprintf(GFP_KERNEL, "%s", kobject_name(&dev->kobj));
+rename:
+	if (!device->name) {
+		sysfs_remove_link(&dev->kobj, "iommu_group");
+		kfree(device);
+		return -ENOMEM;
+	}
+
+	ret = sysfs_create_link_nowarn(group->devices_kobj,
+				       &dev->kobj, device->name);
+	if (ret) {
+		kfree(device->name);
+		if (ret == -EEXIST && i >= 0) {
+			/*
+			 * Account for the slim chance of collision
+			 * and append an instance to the name.
+			 */
+			device->name = kasprintf(GFP_KERNEL, "%s.%d",
+						 kobject_name(&dev->kobj), i++);
+			goto rename;
+		}
+
+		sysfs_remove_link(&dev->kobj, "iommu_group");
+		kfree(device);
+		return ret;
+	}
+
+	kobject_get(group->devices_kobj);
+
+	dev->iommu_group = group;
+
+	mutex_lock(&group->mutex);
+	list_add_tail(&device->list, &group->devices);
+	mutex_unlock(&group->mutex);
+
+	/* Notify any listeners about change to group. */
+	blocking_notifier_call_chain(&group->notifier,
+				     IOMMU_GROUP_NOTIFY_ADD_DEVICE, dev);
+	return 0;
+}
+
+5. iommu_group_for_each_dev(), iterate on each device and call (*fn)
+================================================================================
+int iommu_group_for_each_dev(struct iommu_group *group, void *data,
+			     int (*fn)(struct device *, void *))
+{
+	struct iommu_device *device;
+	int ret = 0;
+
+	mutex_lock(&group->mutex);
+	list_for_each_entry(device, &group->devices, list) {
+		ret = fn(device->dev, data);
+		if (ret)
+			break;
+	}
+	mutex_unlock(&group->mutex);
+	return ret;
+}
+
+6. bus_set_iommu()
+================================================================================
+int bus_set_iommu(struct bus_type *bus, struct iommu_ops *ops)
+{
+	if (bus->iommu_ops != NULL)
+		return -EBUSY;
+
+	bus->iommu_ops = ops;
+
+	/* Do IOMMU specific setup for this bus-type */
+	iommu_bus_init(bus, ops);
+
+	return 0;
+}
+
+6.1 iommu_bus_init()
+================================================================================
+; register a notifier
+; iterate on each device on this bus and call add_iommu_group
+static void iommu_bus_init(struct bus_type *bus, struct iommu_ops *ops)
+{
+	bus_register_notifier(bus, &iommu_bus_nb);
+	bus_for_each_dev(bus, NULL, ops, add_iommu_group);
+}
+
+6.1.1 add_iommu_group(), invode ops->add_device on dev
+================================================================================
+int bus_for_each_dev(struct bus_type *bus, struct device *start,
+		     void *data, int (*fn)(struct device *, void *))
+{
+	struct klist_iter i;
+	struct device *dev;
+	int error = 0;
+
+	if (!bus || !bus->p)
+		return -EINVAL;
+
+	klist_iter_init_node(&bus->p->klist_devices, &i,
+			     (start ? &start->p->knode_bus : NULL));
+	while ((dev = next_device(&i)) && !error)
+		error = fn(dev, data);
+	klist_iter_exit(&i);
+	return error;
+}
+
+static int add_iommu_group(struct device *dev, void *data)
+{
+	struct iommu_ops *ops = data;
+
+	if (!ops->add_device)
+		return -ENODEV;
+
+	WARN_ON(dev->iommu_group);
+
+	ops->add_device(dev);
+
+	return 0;
+}
+
+7. iommu_domain_alloc()
+================================================================================
+struct iommu_domain *iommu_domain_alloc(struct bus_type *bus)
+{
+	struct iommu_domain *domain;
+	int ret;
+
+	if (bus == NULL || bus->iommu_ops == NULL)
+		return NULL;
+
+	domain = kzalloc(sizeof(*domain), GFP_KERNEL);
+	if (!domain)
+		return NULL;
+
+	domain->ops = bus->iommu_ops;
+
+	ret = domain->ops->domain_init(domain);
+	if (ret)
+		goto out_free;
+
+	return domain;
+
+out_free:
+	kfree(domain);
+
+	return NULL;
+}
+
+8. iommu_attach_group()
+================================================================================
+int iommu_attach_group(struct iommu_domain *domain, struct iommu_group *group)
+{
+	return iommu_group_for_each_dev(group, domain,
+					iommu_group_do_attach_device);
+}
+
+8.1 iommu_group_do_attach_device()
+================================================================================
+static int iommu_group_do_attach_device(struct device *dev, void *data)
+{
+	struct iommu_domain *domain = data;
+
+	return iommu_attach_device(domain, dev);
+}
+
+9. iommu_map()
+================================================================================
+int iommu_map(struct iommu_domain *domain, unsigned long iova,
+	      phys_addr_t paddr, size_t size, int prot)
+{
+	unsigned long orig_iova = iova;
+	unsigned int min_pagesz;
+	size_t orig_size = size;
+	int ret = 0;
+
+	if (unlikely(domain->ops->unmap == NULL ||
+		     domain->ops->pgsize_bitmap == 0UL))
+		return -ENODEV;
+
+	/* find out the minimum page size supported */
+	min_pagesz = 1 << __ffs(domain->ops->pgsize_bitmap);
+
+	/*
+	 * both the virtual address and the physical one, as well as
+	 * the size of the mapping, must be aligned (at least) to the
+	 * size of the smallest page supported by the hardware
+	 */
+	if (!IS_ALIGNED(iova | paddr | size, min_pagesz)) {
+		pr_err("unaligned: iova 0x%lx pa 0x%pa size 0x%zx min_pagesz 0x%x\n",
+		       iova, &paddr, size, min_pagesz);
+		return -EINVAL;
+	}
+
+	pr_debug("map: iova 0x%lx pa 0x%pa size 0x%zx\n", iova, &paddr, size);
+
+	while (size) {
+		size_t pgsize = iommu_pgsize(domain, iova | paddr, size);
+
+		pr_debug("mapping: iova 0x%lx pa 0x%pa pgsize 0x%zx\n",
+			 iova, &paddr, pgsize);
+
+		ret = domain->ops->map(domain, iova, paddr, pgsize, prot);
+		if (ret)
+			break;
+
+		iova += pgsize;
+		paddr += pgsize;
+		size -= pgsize;
+	}
+
+	/* unroll mapping in case something went wrong */
+	if (ret)
+		iommu_unmap(domain, orig_iova, orig_size - size);
+
+	return ret;
+}
+
+9.1 iommu_pgsize()
+================================================================================
+static size_t iommu_pgsize(struct iommu_domain *domain,
+			   unsigned long addr_merge, size_t size)
+{
+	unsigned int pgsize_idx;
+	size_t pgsize;
+
+	/* Max page size that still fits into 'size' */
+	pgsize_idx = __fls(size);
+
+	/* need to consider alignment requirements ? */
+	if (likely(addr_merge)) {
+		/* Max page size allowed by address */
+		unsigned int align_pgsize_idx = __ffs(addr_merge);
+		pgsize_idx = min(pgsize_idx, align_pgsize_idx);
+	}
+
+	/* build a mask of acceptable page sizes */
+	pgsize = (1UL << (pgsize_idx + 1)) - 1;
+
+	/* throw away page sizes not supported by the hardware */
+	pgsize &= domain->ops->pgsize_bitmap;
+
+	/* make sure we're still sane */
+	BUG_ON(!pgsize);
+
+	/* pick the biggest page */
+	pgsize_idx = __fls(pgsize);
+	pgsize = 1UL << pgsize_idx;
+
+	return pgsize;
+}
