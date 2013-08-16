@@ -1,0 +1,295 @@
+1. pg_init()
+================================================================================
+static int __init pg_init(void)
+{
+	int ret = 0;
+
+	pr_info("%s", version);
+	ret = register_pernet_subsys(&pg_net_ops);
+	if (ret)
+		return ret;
+	ret = register_netdevice_notifier(&pktgen_notifier_block);
+	if (ret)
+		unregister_pernet_subsys(&pg_net_ops);
+
+	return ret;
+}
+
+2. pg_net_ops
+================================================================================
+static struct pernet_operations pg_net_ops = {
+	.init = pg_net_init,
+	.exit = pg_net_exit,
+	.id   = &pg_net_id,
+	.size = sizeof(struct pktgen_net),
+};
+
+2.1 pg_net_init
+================================================================================
+; create /proc/net/pktgen/pgctrl
+; each cpu get a thread
+static int __net_init pg_net_init(struct net *net)
+{
+	struct pktgen_net *pn = net_generic(net, pg_net_id);
+	struct proc_dir_entry *pe;
+	int cpu, ret = 0;
+
+	pn->net = net;
+	INIT_LIST_HEAD(&pn->pktgen_threads);
+	pn->pktgen_exiting = false;
+	pn->proc_dir = proc_mkdir(PG_PROC_DIR, pn->net->proc_net);
+	if (!pn->proc_dir) {
+		pr_warn("cannot create /proc/net/%s\n", PG_PROC_DIR);
+		return -ENODEV;
+	}
+	pe = proc_create(PGCTRL, 0600, pn->proc_dir, &pktgen_fops);
+	if (pe == NULL) {
+		pr_err("cannot create %s procfs entry\n", PGCTRL);
+		ret = -EINVAL;
+		goto remove;
+	}
+
+	for_each_online_cpu(cpu) {
+		int err;
+
+		err = pktgen_create_thread(cpu, pn);
+		if (err)
+			pr_warn("Cannot create thread for cpu %d (%d)\n",
+				   cpu, err);
+	}
+
+	if (list_empty(&pn->pktgen_threads)) {
+		pr_err("Initialization failed for all threads\n");
+		ret = -ENODEV;
+		goto remove_entry;
+	}
+
+	return 0;
+
+remove_entry:
+	remove_proc_entry(PGCTRL, pn->proc_dir);
+remove:
+	remove_proc_entry(PG_PROC_DIR, pn->net->proc_net);
+	return ret;
+}
+
+2.1.1 pktgen_create_thread
+================================================================================
+; create /proc/net/pktgen/kpktgend_%d
+static int __net_init pktgen_create_thread(int cpu, struct pktgen_net *pn)
+{
+	struct pktgen_thread *t;
+	struct proc_dir_entry *pe;
+	struct task_struct *p;
+
+	t = kzalloc_node(sizeof(struct pktgen_thread), GFP_KERNEL,
+			 cpu_to_node(cpu));
+	if (!t) {
+		pr_err("ERROR: out of memory, can't create new thread\n");
+		return -ENOMEM;
+	}
+
+	spin_lock_init(&t->if_lock);
+	t->cpu = cpu;
+
+	INIT_LIST_HEAD(&t->if_list);
+
+	list_add_tail(&t->th_list, &pn->pktgen_threads);
+	init_completion(&t->start_done);
+
+	p = kthread_create_on_node(pktgen_thread_worker,
+				   t,
+				   cpu_to_node(cpu),
+				   "kpktgend_%d", cpu);
+	if (IS_ERR(p)) {
+		pr_err("kernel_thread() failed for cpu %d\n", t->cpu);
+		list_del(&t->th_list);
+		kfree(t);
+		return PTR_ERR(p);
+	}
+	kthread_bind(p, cpu);
+	t->tsk = p;
+
+	pe = proc_create_data(t->tsk->comm, 0600, pn->proc_dir,
+			      &pktgen_thread_fops, t);
+	if (!pe) {
+		pr_err("cannot create %s/%s procfs entry\n",
+		       PG_PROC_DIR, t->tsk->comm);
+		kthread_stop(p);
+		list_del(&t->th_list);
+		kfree(t);
+		return -EINVAL;
+	}
+
+	t->net = pn;
+	wake_up_process(p);
+	wait_for_completion(&t->start_done);
+
+	return 0;
+}
+
+3. pktgen_fops
+================================================================================
+static const struct file_operations pktgen_fops = {
+	.owner   = THIS_MODULE,
+	.open    = pgctrl_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.write   = pgctrl_write,
+	.release = single_release,
+};
+
+3.1 pgctrl_write()
+================================================================================
+static ssize_t pgctrl_write(struct file *file, const char __user *buf,
+			    size_t count, loff_t *ppos)
+{
+	int err = 0;
+	char data[128];
+	struct pktgen_net *pn = net_generic(current->nsproxy->net_ns, pg_net_id);
+
+	if (!capable(CAP_NET_ADMIN)) {
+		err = -EPERM;
+		goto out;
+	}
+
+	if (count > sizeof(data))
+		count = sizeof(data);
+
+	if (copy_from_user(data, buf, count)) {
+		err = -EFAULT;
+		goto out;
+	}
+	data[count - 1] = 0;	/* Make string */
+
+	if (!strcmp(data, "stop"))
+		pktgen_stop_all_threads_ifs(pn);
+
+	else if (!strcmp(data, "start"))
+		pktgen_run_all_threads(pn);
+
+	else if (!strcmp(data, "reset"))
+		pktgen_reset_all_threads(pn);
+
+	else
+		pr_warning("Unknown command: %s\n", data);
+
+	err = count;
+
+out:
+	return err;
+}
+
+4. pktgen_thread_fops
+================================================================================
+static const struct file_operations pktgen_thread_fops = {
+	.owner   = THIS_MODULE,
+	.open    = pktgen_thread_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.write   = pktgen_thread_write,
+	.release = single_release,
+};
+
+4.1 pktgen_thread_open()
+================================================================================
+static int pktgen_thread_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pktgen_thread_show, PDE_DATA(inode));
+}
+
+4.2 pktgen_thread_write
+================================================================================
+static ssize_t pktgen_thread_write(struct file *file,
+				   const char __user * user_buffer,
+				   size_t count, loff_t * offset)
+{
+	struct seq_file *seq = file->private_data;
+	struct pktgen_thread *t = seq->private;
+	int i, max, len, ret;
+	char name[40];
+	char *pg_result;
+
+	if (count < 1) {
+		//      sprintf(pg_result, "Wrong command format");
+		return -EINVAL;
+	}
+
+	max = count;
+	len = count_trail_chars(user_buffer, max);
+	if (len < 0)
+		return len;
+
+	i = len;
+
+	/* Read variable name */
+
+	len = strn_len(&user_buffer[i], sizeof(name) - 1);
+	if (len < 0)
+		return len;
+
+	memset(name, 0, sizeof(name));
+	if (copy_from_user(name, &user_buffer[i], len))
+		return -EFAULT;
+	i += len;
+
+	max = count - i;
+	len = count_trail_chars(&user_buffer[i], max);
+	if (len < 0)
+		return len;
+
+	i += len;
+
+	if (debug)
+		pr_debug("t=%s, count=%lu\n", name, (unsigned long)count);
+
+	if (!t) {
+		pr_err("ERROR: No thread\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+	pg_result = &(t->result[0]);
+
+	if (!strcmp(name, "add_device")) {
+		char f[32];
+		memset(f, 0, 32);
+		len = strn_len(&user_buffer[i], sizeof(f) - 1);
+		if (len < 0) {
+			ret = len;
+			goto out;
+		}
+		if (copy_from_user(f, &user_buffer[i], len))
+			return -EFAULT;
+		i += len;
+		mutex_lock(&pktgen_thread_lock);
+		ret = pktgen_add_device(t, f);
+		mutex_unlock(&pktgen_thread_lock);
+		if (!ret) {
+			ret = count;
+			sprintf(pg_result, "OK: add_device=%s", f);
+		} else
+			sprintf(pg_result, "ERROR: can not add device %s", f);
+		goto out;
+	}
+
+	if (!strcmp(name, "rem_device_all")) {
+		mutex_lock(&pktgen_thread_lock);
+		t->control |= T_REMDEVALL;
+		mutex_unlock(&pktgen_thread_lock);
+		schedule_timeout_interruptible(msecs_to_jiffies(125));	/* Propagate thread->control  */
+		ret = count;
+		sprintf(pg_result, "OK: rem_device_all");
+		goto out;
+	}
+
+	if (!strcmp(name, "max_before_softirq")) {
+		sprintf(pg_result, "OK: Note! max_before_softirq is obsoleted -- Do not use");
+		ret = count;
+		goto out;
+	}
+
+	ret = -EINVAL;
+out:
+	return ret;
+}
