@@ -517,16 +517,19 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
                           |     |     +---------------------------------+    |                             |
                           |     |                                            |                             |
                           |     |                                            +-----------------------------+
-                          |     v
+    struct vfio_container |     v
     +---------------------|-------+       
     |group_list           |       |
     | (list of struct vfio_group) |
-    +-----------------------------+
-    |iommu_driver                 |
+    +-----------------------------+    point to the iommu_driver
+    |iommu_driver                 | -> vfio_iommu_spapr_tce
     |  (struct vfio_iommu_driver*)|
     +-----------------------------+
-    |iommu_data                   |
-    |                             |
-    +-----------------------------+
- 
- 	Figure 0.1 vfio_container
+    |iommu_data                   | -> struct tce_container
+    |  (void *)                   |    +-------------------------------+
+    +-----------------------------+    |tbl(struct iommu_tbl)          |
+                                       |                               |
+        Figure 0.1 vfio_container      +-------------------------------+
+                                       |                               |
+                                       |                               |
+                                       +-------------------------------+
