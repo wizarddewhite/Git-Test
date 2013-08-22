@@ -1,19 +1,21 @@
 SOURCES := $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -g
+CFLAGS = -g -I../
 
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: list_case align_case queue_case cscope \
-	map_case hlist_case
+all: resource pci_resource_test
 
-queue_case: queue_case.c kfifo.c
-	gcc -o $@ -g $^
+# this program emulate the kernel/resource.c to 
+# get more understanding on this structrure
+resource: resource.c resource_case.o
+	gcc $(CCFLAGS) -o resource resource.c resource_case.o
 
-map_case: map_case.c idr.c
-	gcc -o $@ -g $^
+pci_resource_test: resource.o pci_resource_test.o resource_request_simulation.o
+	gcc $(CCFLAGS) -o $@ $^
+
 
 %: %.o
 	gcc $(CFLAGS) $<  -o $@ 

@@ -6,6 +6,5 @@
 *.o
 Module.symvers
 *.order
-resource
 list_case
 !.gitignore
