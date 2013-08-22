@@ -1,21 +1,12 @@
 SOURCES := $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -g -I../ -I../list/
+CFLAGS = -g -I../
 
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource pci_resource_test
-
-# this program emulate the kernel/resource.c to 
-# get more understanding on this structrure
-resource: resource.c resource_case.o
-	gcc $(CCFLAGS) -o resource resource.c resource_case.o
-
-pci_resource_test: resource.o pci_resource_test.o resource_request_simulation.o
-	gcc $(CCFLAGS) -o $@ $^
-
+all: list_case hlist_case
 
 %: %.o
 	gcc $(CFLAGS) $<  -o $@ 
