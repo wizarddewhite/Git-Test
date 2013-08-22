@@ -6,13 +6,16 @@ CFLAGS = -g
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: list_case align_case queue_case cscope \
-	map_case hlist_case
+all: align_case queue_case cscope \
+	map_case sort_case
 
 queue_case: queue_case.c kfifo.c
 	gcc -o $@ -g $^
 
 map_case: map_case.c idr.c
+	gcc -o $@ -g $^
+
+sort_case: sort_case.c sort.c
 	gcc -o $@ -g $^
 
 %: %.o
