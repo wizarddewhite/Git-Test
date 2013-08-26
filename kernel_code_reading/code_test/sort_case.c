@@ -44,8 +44,8 @@ void int_sort()
 
 int int_pointer_comp(const void* a, const void* b)
 {
-	const int** app = a;
-	const int** bpp = b;
+	int* const * app = a;
+	int* const * bpp = b;
 	const int*  ap = *app;
 	const int*  bp = *bpp;
 
