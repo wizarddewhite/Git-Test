@@ -24,10 +24,20 @@ static unsigned int num;
 module_param(num, uint, S_IRUGO);
 MODULE_PARM_DESC(num, "Number used in this example");
 
+static int int_array[6];
+int narr;
+module_param_array(int_array, int, &narr, 0644);
+MODULE_PARM_DESC(int_array, "A integer array");
+
 static int hello_init(void)
 {
-        printk(KERN_ALERT "Hello, world %d\n", num);
-        return 0;
+	int i;
+	printk(KERN_ALERT "Hello, world %d\n", num);
+
+	for (i=0; i < narr; i++)
+		printk(KERN_ALERT "int_array[%d] %d\n", i, int_array[i]);
+
+	return 0;
 }
 static void hello_exit(void)
 {
