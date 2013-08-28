@@ -19,6 +19,11 @@
 #ifndef _TYPES_H_
 #define _TYPES_H_
 
+#include "bitops.h"
+
+#define DECLARE_BITMAP(name,bits) \
+	unsigned long name[BITS_TO_LONGS(bits)]
+
 /**
  * struct callback_head - callback structure for use with RCU and task_work
  * @next: next update requests in a list
