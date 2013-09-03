@@ -498,15 +498,18 @@ pcibios_setup_phb_resources(struct pci_controller *hose, struct list_head *resou
 pnv_pci_probe_mode()
 	return PCI_PROBE_NORMAL;
 
-2.1.4 pci_scan_child_bus(), enumerate the pci tree
+2.1.4 pci_create_root_bus(), 
+===============================================================================
+
+2.1.5 pci_scan_child_bus(), enumerate the pci tree
 ===============================================================================
 this is a core function which is used to enumerate the pci tree
 
-2.1.5 ppc_md.pcibios_fixup_phb
+2.1.6 ppc_md.pcibios_fixup_phb
 ===============================================================================
 ; empty
 
-2.1.6 pcie_bus_configure_settings()
+2.1.7 pcie_bus_configure_settings()
 ===============================================================================
 pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	if (!pci_is_pcie(bus->self))
@@ -528,7 +531,7 @@ pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 	pcie_bus_configure_set(bus->self, &smpss);
 	pci_walk_bus(bus, pcie_bus_configure_set, &smpss);
 
-2.1.6.1 pci_walk_bus(), walk the pci tree and call cb for each pci_dev
+2.1.7.1 pci_walk_bus(), walk the pci tree and call cb for each pci_dev
 ===============================================================================
 pci_walk_bus(struct pci_bus *top, int (*cb)(struct pci_dev *, void *), void *userdata)
 	struct pci_dev *dev;
