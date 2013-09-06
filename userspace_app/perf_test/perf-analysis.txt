@@ -1,0 +1,39 @@
+1. perf stat ./perf_test
+================================================================================
+ Performance counter stats for './perf_test':
+
+        254.098794 task-clock                #    0.997 CPUs utilized          
+                21 context-switches          #    0.083 K/sec                  
+                 6 cpu-migrations            #    0.024 K/sec                  
+                86 page-faults               #    0.338 K/sec                  
+       774,758,136 cycles                    #    3.049 GHz                    
+       554,772,168 stalled-cycles-frontend   #   71.61% frontend cycles idle   
+        26,055,211 stalled-cycles-backend    #    3.36% backend  cycles idle   
+       550,801,917 instructions              #    0.71  insns per cycle        
+                                             #    1.01  stalled cycles per insn
+       110,128,040 branches                  #  433.406 M/sec                  
+             7,007 branch-misses             #    0.01% of all branches        
+
+       0.254960900 seconds time elapsed
+
+
+2. perf top
+================================================================================
+list the processes with their cpu utilization
+
+  6.92%  libc-2.13.so                      [.] 0x0007aa67
+  2.99%  perf                              [.] symbols__insert
+  2.93%  perf                              [.] symbol_filter
+  2.79%  libxul.so                         [.] 0x0088efc3
+  2.68%  [kernel]                          [k] aes_decrypt
+  2.14%  libflashplayer.so                 [.] 0x003442f4
+  1.86%  perf                              [.] rb_next
+  1.54%  chromium-browser                  [.] 0x01363b5f
+
+3. analysis
+================================================================================
+
+perf record -e cpu-cycle ./perf_test
+perf record -g -e cpu-cycle ./perf_test
+
+perf report
