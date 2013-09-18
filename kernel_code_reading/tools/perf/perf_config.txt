@@ -1,0 +1,234 @@
+1. perf_config()
+================================================================================
+int perf_config(config_fn_t fn, void *data)
+{
+	int ret = 0, found = 0;
+	const char *home = NULL;
+
+	/* Setting $PERF_CONFIG makes perf read _only_ the given config file. */
+	if (config_exclusive_filename)
+		return perf_config_from_file(fn, config_exclusive_filename, data);
+	if (perf_config_system() && !access(perf_etc_perfconfig(), R_OK)) {
+		ret += perf_config_from_file(fn, perf_etc_perfconfig(),
+					    data);
+		found += 1;
+	}
+
+	home = getenv("HOME");
+	if (perf_config_global() && home) {
+		char *user_config = strdup(mkpath("%s/.perfconfig", home));
+		struct stat st;
+
+		if (user_config == NULL) {
+			warning("Not enough memory to process %s/.perfconfig, "
+				"ignoring it.", home);
+			goto out;
+		}
+
+		if (stat(user_config, &st) < 0)
+			goto out_free;
+
+		if (st.st_uid && (st.st_uid != geteuid())) {
+			warning("File %s not owned by current user or root, "
+				"ignoring it.", user_config);
+			goto out_free;
+		}
+
+		if (!st.st_size)
+			goto out_free;
+
+		ret += perf_config_from_file(fn, user_config, data);
+		found += 1;
+out_free:
+		free(user_config);
+	}
+out:
+	if (found == 0)
+		return -1;
+	return ret;
+}
+
+1.1 perf_config_from_file()
+================================================================================
+static int perf_config_from_file(config_fn_t fn, const char *filename, void *data)
+{
+	int ret;
+	FILE *f = fopen(filename, "r");
+
+	ret = -1;
+	if (f) {
+		config_file = f;
+		config_file_name = filename;
+		config_linenr = 1;
+		config_file_eof = 0;
+		ret = perf_parse_file(fn, data);
+		fclose(f);
+		config_file_name = NULL;
+	}
+	return ret;
+}
+
+1.1.1 perf_parse_file()
+================================================================================
+static int perf_parse_file(config_fn_t fn, void *data)
+{
+	int comment = 0;
+	int baselen = 0;
+	static char var[MAXNAME];
+
+	/* U+FEFF Byte Order Mark in UTF8 */
+	static const unsigned char *utf8_bom = (unsigned char *) "\xef\xbb\xbf";
+	const unsigned char *bomptr = utf8_bom;
+
+	for (;;) {
+		int c = get_next_char();
+		if (bomptr && *bomptr) {
+			/* We are at the file beginning; skip UTF8-encoded BOM
+			 * if present. Sane editors won't put this in on their
+			 * own, but e.g. Windows Notepad will do it happily. */
+			if ((unsigned char) c == *bomptr) {
+				bomptr++;
+				continue;
+			} else {
+				/* Do not tolerate partial BOM. */
+				if (bomptr != utf8_bom)
+					break;
+				/* No BOM at file beginning. Cool. */
+				bomptr = NULL;
+			}
+		}
+		if (c == '\n') {
+			if (config_file_eof)
+				return 0;
+			comment = 0;
+			continue;
+		}
+		if (comment || isspace(c))
+			continue;
+		if (c == '#' || c == ';') {
+			comment = 1;
+			continue;
+		}
+		if (c == '[') {
+			baselen = get_base_var(var);
+			if (baselen <= 0)
+				break;
+			var[baselen++] = '.';
+			var[baselen] = 0;
+			continue;
+		}
+		if (!isalpha(c))
+			break;
+		var[baselen] = tolower(c);
+		if (get_value(fn, data, var, baselen+1) < 0)
+			break;
+	}
+	die("bad config file line %d in %s", config_linenr, config_file_name);
+}
+
+1.1.1.1 get_value()
+================================================================================
+static int get_value(config_fn_t fn, void *data, char *name, unsigned int len)
+{
+	int c;
+	char *value;
+
+	/* Get the full name */
+	for (;;) {
+		c = get_next_char();
+		if (config_file_eof)
+			break;
+		if (!iskeychar(c))
+			break;
+		name[len++] = c;
+		if (len >= MAXNAME)
+			return -1;
+	}
+	name[len] = 0;
+	while (c == ' ' || c == '\t')
+		c = get_next_char();
+
+	value = NULL;
+	if (c != '\n') {
+		if (c != '=')
+			return -1;
+		value = parse_value();
+		if (!value)
+			return -1;
+	}
+	return fn(name, value, data);
+}
+
+1.1.1.1.1 parse_value()
+================================================================================
+static char *parse_value(void)
+{
+	static char value[1024];
+	int quote = 0, comment = 0, space = 0;
+	size_t len = 0;
+
+	for (;;) {
+		int c = get_next_char();
+
+		if (len >= sizeof(value) - 1)
+			return NULL;
+		if (c == '\n') {
+			if (quote)
+				return NULL;
+			value[len] = 0;
+			return value;
+		}
+		if (comment)
+			continue;
+		if (isspace(c) && !quote) {
+			space = 1;
+			continue;
+		}
+		if (!quote) {
+			if (c == ';' || c == '#') {
+				comment = 1;
+				continue;
+			}
+		}
+		if (space) {
+			if (len)
+				value[len++] = ' ';
+			space = 0;
+		}
+		if (c == '\\') {
+			c = get_next_char();
+			switch (c) {
+			case '\n':
+				continue;
+			case 't':
+				c = '\t';
+				break;
+			case 'b':
+				c = '\b';
+				break;
+			case 'n':
+				c = '\n';
+				break;
+			/* Some characters escape as themselves */
+			case '\\': case '"':
+				break;
+			/* Reject unknown escape sequences */
+			default:
+				return NULL;
+			}
+			value[len++] = c;
+			continue;
+		}
+		if (c == '"') {
+			quote = 1-quote;
+			continue;
+		}
+		value[len++] = c;
+	}
+}
+
+0. example config
+================================================================================
+/home/richard/.perfconfig
+
+[tui] top = 8
