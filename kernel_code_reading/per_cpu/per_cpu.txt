@@ -1,0 +1,996 @@
+1. setup_per_cpu_areas()
+================================================================================
+; setup_per_cpu_areas() is called in start_kernel()
+
+void __init setup_per_cpu_areas(void)
+{
+	unsigned int cpu;
+	unsigned long delta;
+	int rc;
+
+	pr_info("NR_CPUS:%d nr_cpumask_bits:%d nr_cpu_ids:%d nr_node_ids:%d\n",
+		NR_CPUS, nr_cpumask_bits, nr_cpu_ids, nr_node_ids);
+
+	/*
+	 * Allocate percpu area.  Embedding allocator is our favorite;
+	 * however, on NUMA configurations, it can result in very
+	 * sparse unit mapping and vmalloc area isn't spacious enough
+	 * on 32bit.  Use page in that case.
+	 */
+#ifdef CONFIG_X86_32
+	if (pcpu_chosen_fc == PCPU_FC_AUTO && pcpu_need_numa())
+		pcpu_chosen_fc = PCPU_FC_PAGE;
+#endif
+	rc = -EINVAL;
+	if (pcpu_chosen_fc != PCPU_FC_PAGE) {
+		const size_t dyn_size = PERCPU_MODULE_RESERVE +
+			PERCPU_DYNAMIC_RESERVE - PERCPU_FIRST_CHUNK_RESERVE;
+		size_t atom_size;
+
+		/*
+		 * On 64bit, use PMD_SIZE for atom_size so that embedded
+		 * percpu areas are aligned to PMD.  This, in the future,
+		 * can also allow using PMD mappings in vmalloc area.  Use
+		 * PAGE_SIZE on 32bit as vmalloc space is highly contended
+		 * and large vmalloc area allocs can easily fail.
+		 */
+#ifdef CONFIG_X86_64
+		atom_size = PMD_SIZE;
+#else
+		atom_size = PAGE_SIZE;
+#endif
+		rc = pcpu_embed_first_chunk(PERCPU_FIRST_CHUNK_RESERVE,
+					    dyn_size, atom_size,
+					    pcpu_cpu_distance,
+					    pcpu_fc_alloc, pcpu_fc_free);
+		if (rc < 0)
+			pr_warning("%s allocator failed (%d), falling back to page size\n",
+				   pcpu_fc_names[pcpu_chosen_fc], rc);
+	}
+	if (rc < 0)
+		rc = pcpu_page_first_chunk(PERCPU_FIRST_CHUNK_RESERVE,
+					   pcpu_fc_alloc, pcpu_fc_free,
+					   pcpup_populate_pte);
+	if (rc < 0)
+		panic("cannot initialize percpu area (err=%d)", rc);
+
+	/* alrighty, percpu areas up and running */
+	delta = (unsigned long)pcpu_base_addr - (unsigned long)__per_cpu_start;
+	for_each_possible_cpu(cpu) {
+		per_cpu_offset(cpu) = delta + pcpu_unit_offsets[cpu];
+		per_cpu(this_cpu_off, cpu) = per_cpu_offset(cpu);
+		per_cpu(cpu_number, cpu) = cpu;
+		setup_percpu_segment(cpu);
+		setup_stack_canary_segment(cpu);
+		/*
+		 * Copy data used in early init routines from the
+		 * initial arrays to the per cpu data areas.  These
+		 * arrays then become expendable and the *_early_ptr's
+		 * are zeroed indicating that the static arrays are
+		 * gone.
+		 */
+#ifdef CONFIG_X86_LOCAL_APIC
+		per_cpu(x86_cpu_to_apicid, cpu) =
+			early_per_cpu_map(x86_cpu_to_apicid, cpu);
+		per_cpu(x86_bios_cpu_apicid, cpu) =
+			early_per_cpu_map(x86_bios_cpu_apicid, cpu);
+#endif
+#ifdef CONFIG_X86_32
+		per_cpu(x86_cpu_to_logical_apicid, cpu) =
+			early_per_cpu_map(x86_cpu_to_logical_apicid, cpu);
+#endif
+#ifdef CONFIG_X86_64
+		per_cpu(irq_stack_ptr, cpu) =
+			per_cpu(irq_stack_union.irq_stack, cpu) +
+			IRQ_STACK_SIZE - 64;
+#endif
+#ifdef CONFIG_NUMA
+		per_cpu(x86_cpu_to_node_map, cpu) =
+			early_per_cpu_map(x86_cpu_to_node_map, cpu);
+		/*
+		 * Ensure that the boot cpu numa_node is correct when the boot
+		 * cpu is on a node that doesn't have memory installed.
+		 * Also cpu_up() will call cpu_to_node() for APs when
+		 * MEMORY_HOTPLUG is defined, before per_cpu(numa_node) is set
+		 * up later with c_init aka intel_init/amd_init.
+		 * So set them all (boot cpu and all APs).
+		 */
+		set_cpu_numa_node(cpu, early_cpu_to_node(cpu));
+#endif
+		/*
+		 * Up to this point, the boot CPU has been using .init.data
+		 * area.  Reload any changed state for the boot CPU.
+		 */
+		if (!cpu)
+			switch_to_new_gdt(cpu);
+	}
+
+	/* indicate the early static arrays will soon be gone */
+#ifdef CONFIG_X86_LOCAL_APIC
+	early_per_cpu_ptr(x86_cpu_to_apicid) = NULL;
+	early_per_cpu_ptr(x86_bios_cpu_apicid) = NULL;
+#endif
+#ifdef CONFIG_X86_32
+	early_per_cpu_ptr(x86_cpu_to_logical_apicid) = NULL;
+#endif
+#ifdef CONFIG_NUMA
+	early_per_cpu_ptr(x86_cpu_to_node_map) = NULL;
+#endif
+
+	/* Setup node to cpumask map */
+	setup_node_to_cpumask_map();
+
+	/* Setup cpu initialized, callin, callout masks */
+	setup_cpu_local_masks();
+}
+
+1.1 pcpu_embed_first_chunk()
+================================================================================
+int __init pcpu_embed_first_chunk(size_t reserved_size, size_t dyn_size,
+				  size_t atom_size,
+				  pcpu_fc_cpu_distance_fn_t cpu_distance_fn,
+				  pcpu_fc_alloc_fn_t alloc_fn,
+				  pcpu_fc_free_fn_t free_fn)
+{
+	void *base = (void *)ULONG_MAX;
+	void **areas = NULL;
+	struct pcpu_alloc_info *ai;
+	size_t size_sum, areas_size, max_distance;
+	int group, i, rc;
+
+	ai = pcpu_build_alloc_info(reserved_size, dyn_size, atom_size,
+				   cpu_distance_fn);
+	if (IS_ERR(ai))
+		return PTR_ERR(ai);
+
+	size_sum = ai->static_size + ai->reserved_size + ai->dyn_size;
+	areas_size = PFN_ALIGN(ai->nr_groups * sizeof(void *));
+
+	areas = alloc_bootmem_nopanic(areas_size);
+	if (!areas) {
+		rc = -ENOMEM;
+		goto out_free;
+	}
+
+	/* allocate, copy and determine base address */
+	for (group = 0; group < ai->nr_groups; group++) {
+		struct pcpu_group_info *gi = &ai->groups[group];
+		unsigned int cpu = NR_CPUS;
+		void *ptr;
+
+		for (i = 0; i < gi->nr_units && cpu == NR_CPUS; i++)
+			cpu = gi->cpu_map[i];
+		BUG_ON(cpu == NR_CPUS);
+
+		/* allocate space for the whole group */
+		ptr = alloc_fn(cpu, gi->nr_units * ai->unit_size, atom_size);
+		if (!ptr) {
+			rc = -ENOMEM;
+			goto out_free_areas;
+		}
+		/* kmemleak tracks the percpu allocations separately */
+		kmemleak_free(ptr);
+		areas[group] = ptr;
+
+		base = min(ptr, base);
+	}
+
+	/*
+	 * Copy data and free unused parts.  This should happen after all
+	 * allocations are complete; otherwise, we may end up with
+	 * overlapping groups.
+	 */
+	for (group = 0; group < ai->nr_groups; group++) {
+		struct pcpu_group_info *gi = &ai->groups[group];
+		void *ptr = areas[group];
+
+		for (i = 0; i < gi->nr_units; i++, ptr += ai->unit_size) {
+			if (gi->cpu_map[i] == NR_CPUS) {
+				/* unused unit, free whole */
+				free_fn(ptr, ai->unit_size);
+				continue;
+			}
+			/* copy and return the unused part */
+			memcpy(ptr, __per_cpu_load, ai->static_size);
+			free_fn(ptr + size_sum, ai->unit_size - size_sum);
+		}
+	}
+
+	/* base address is now known, determine group base offsets */
+	max_distance = 0;
+	for (group = 0; group < ai->nr_groups; group++) {
+		ai->groups[group].base_offset = areas[group] - base;
+		max_distance = max_t(size_t, max_distance,
+				     ai->groups[group].base_offset);
+	}
+	max_distance += ai->unit_size;
+
+	/* warn if maximum distance is further than 75% of vmalloc space */
+	if (max_distance > (VMALLOC_END - VMALLOC_START) * 3 / 4) {
+		pr_warning("PERCPU: max_distance=0x%zx too large for vmalloc "
+			   "space 0x%lx\n", max_distance,
+			   (unsigned long)(VMALLOC_END - VMALLOC_START));
+#ifdef CONFIG_NEED_PER_CPU_PAGE_FIRST_CHUNK
+		/* and fail if we have fallback */
+		rc = -EINVAL;
+		goto out_free;
+#endif
+	}
+
+	pr_info("PERCPU: Embedded %zu pages/cpu @%p s%zu r%zu d%zu u%zu\n",
+		PFN_DOWN(size_sum), base, ai->static_size, ai->reserved_size,
+		ai->dyn_size, ai->unit_size);
+
+	rc = pcpu_setup_first_chunk(ai, base);
+	goto out_free;
+
+out_free_areas:
+	for (group = 0; group < ai->nr_groups; group++)
+		free_fn(areas[group],
+			ai->groups[group].nr_units * ai->unit_size);
+out_free:
+	pcpu_free_alloc_info(ai);
+	if (areas)
+		free_bootmem(__pa(areas), areas_size);
+	return rc;
+}
+
+1.1.1 pcpu_build_alloc_info(), create pcpu_alloc_info
+================================================================================
+static struct pcpu_alloc_info * __init pcpu_build_alloc_info(
+				size_t reserved_size, size_t dyn_size,
+				size_t atom_size,
+				pcpu_fc_cpu_distance_fn_t cpu_distance_fn)
+{
+	static int group_map[NR_CPUS] __initdata;
+	static int group_cnt[NR_CPUS] __initdata;
+	const size_t static_size = __per_cpu_end - __per_cpu_start;
+	int nr_groups = 1, nr_units = 0;
+	size_t size_sum, min_unit_size, alloc_size;
+	int upa, max_upa, uninitialized_var(best_upa);	/* units_per_alloc */
+	int last_allocs, group, unit;
+	unsigned int cpu, tcpu;
+	struct pcpu_alloc_info *ai;
+	unsigned int *cpu_map;
+
+	/* this function may be called multiple times */
+	memset(group_map, 0, sizeof(group_map));
+	memset(group_cnt, 0, sizeof(group_cnt));
+
+	/* calculate size_sum and ensure dyn_size is enough for early alloc */
+	size_sum = PFN_ALIGN(static_size + reserved_size +
+			    max_t(size_t, dyn_size, PERCPU_DYNAMIC_EARLY_SIZE));
+	dyn_size = size_sum - static_size - reserved_size;
+
+	/*
+	 * Determine min_unit_size, alloc_size and max_upa such that
+	 * alloc_size is multiple of atom_size and is the smallest
+	 * which can accommodate 4k aligned segments which are equal to
+	 * or larger than min_unit_size.
+	 */
+	min_unit_size = max_t(size_t, size_sum, PCPU_MIN_UNIT_SIZE);
+
+	alloc_size = roundup(min_unit_size, atom_size);
+	upa = alloc_size / min_unit_size;
+	while (alloc_size % upa || ((alloc_size / upa) & ~PAGE_MASK))
+		upa--;
+	max_upa = upa;
+
+	/* group cpus according to their proximity */
+	for_each_possible_cpu(cpu) {
+		group = 0;
+	next_group:
+		for_each_possible_cpu(tcpu) {
+			if (cpu == tcpu)
+				break;
+			if (group_map[tcpu] == group && cpu_distance_fn &&
+			    (cpu_distance_fn(cpu, tcpu) > LOCAL_DISTANCE ||
+			     cpu_distance_fn(tcpu, cpu) > LOCAL_DISTANCE)) {
+				group++;
+				if (group == nr_groups) {
+					nr_groups++;
+					break;
+				}
+				goto next_group;
+			}
+		}
+		group_map[cpu] = group;
+		group_cnt[group]++;
+	}
+
+	/*
+	 * Expand unit size until address space usage goes over 75%
+	 * and then as much as possible without using more address
+	 * space.
+	 */
+	last_allocs = INT_MAX;
+	for (upa = max_upa; upa; upa--) {
+		int allocs = 0, wasted = 0;
+
+		if (alloc_size % upa || ((alloc_size / upa) & ~PAGE_MASK))
+			continue;
+
+		for (group = 0; group < nr_groups; group++) {
+			int this_allocs = DIV_ROUND_UP(group_cnt[group], upa);
+			allocs += this_allocs;
+			wasted += this_allocs * upa - group_cnt[group];
+		}
+
+		/*
+		 * Don't accept if wastage is over 1/3.  The
+		 * greater-than comparison ensures upa==1 always
+		 * passes the following check.
+		 */
+		if (wasted > num_possible_cpus() / 3)
+			continue;
+
+		/* and then don't consume more memory */
+		if (allocs > last_allocs)
+			break;
+		last_allocs = allocs;
+		best_upa = upa;
+	}
+	upa = best_upa;
+
+	/* allocate and fill alloc_info */
+	for (group = 0; group < nr_groups; group++)
+		nr_units += roundup(group_cnt[group], upa);
+
+	ai = pcpu_alloc_alloc_info(nr_groups, nr_units);
+	if (!ai)
+		return ERR_PTR(-ENOMEM);
+	cpu_map = ai->groups[0].cpu_map;
+
+	for (group = 0; group < nr_groups; group++) {
+		ai->groups[group].cpu_map = cpu_map;
+		cpu_map += roundup(group_cnt[group], upa);
+	}
+
+	ai->static_size = static_size;
+	ai->reserved_size = reserved_size;
+	ai->dyn_size = dyn_size;
+	ai->unit_size = alloc_size / upa;
+	ai->atom_size = atom_size;
+	ai->alloc_size = alloc_size;
+
+	for (group = 0, unit = 0; group_cnt[group]; group++) {
+		struct pcpu_group_info *gi = &ai->groups[group];
+
+		/*
+		 * Initialize base_offset as if all groups are located
+		 * back-to-back.  The caller should update this to
+		 * reflect actual allocation.
+		 */
+		gi->base_offset = unit * ai->unit_size;
+
+		for_each_possible_cpu(cpu)
+			if (group_map[cpu] == group)
+				gi->cpu_map[gi->nr_units++] = cpu;
+		gi->nr_units = roundup(gi->nr_units, upa);
+		unit += gi->nr_units;
+	}
+	BUG_ON(unit != nr_units);
+
+	return ai;
+}
+
+         group_map[NR_CPUS]              group_cnt[NR_CPUS]
+         +-------------+                 +------------+
+  CPU0   |             |        Group0   |            |
+         +-------------+                 +------------+
+  CPU1   |             |        Group1   |            |
+         +-------------+                 +------------+
+  CPU2   |             |        Group2   |            |
+         +-------------+                 +------------+
+   .     |             |          .      |            |
+         +-------------+                 +------------+
+   .     |             |          .      |            |
+         +-------------+                 +------------+
+   .     |             |          .      |            |
+         +-------------+                 +------------+
+
+	 CPU0 belongs to group group_map[0]
+	 Group0 has group_cnt[0] number of cpus
+
+	Figure 1.0 group_map[NR_CPUS] and group_cnt[NR_CPUS]
+
+1.1.1.1 pcpu_alloc_alloc_info()
+================================================================================
+struct pcpu_alloc_info * __init pcpu_alloc_alloc_info(int nr_groups,
+						      int nr_units)
+{
+	struct pcpu_alloc_info *ai;
+	size_t base_size, ai_size;
+	void *ptr;
+	int unit;
+
+	base_size = ALIGN(sizeof(*ai) + nr_groups * sizeof(ai->groups[0]),
+			  __alignof__(ai->groups[0].cpu_map[0]));
+	ai_size = base_size + nr_units * sizeof(ai->groups[0].cpu_map[0]);
+
+	ptr = alloc_bootmem_nopanic(PFN_ALIGN(ai_size));
+	if (!ptr)
+		return NULL;
+	ai = ptr;
+	ptr += base_size;
+
+	ai->groups[0].cpu_map = ptr;
+
+	for (unit = 0; unit < nr_units; unit++)
+		ai->groups[0].cpu_map[unit] = NR_CPUS;
+
+	ai->nr_groups = nr_groups;
+	ai->__ai_size = PFN_ALIGN(ai_size);
+
+	return ai;
+}
+
+1.1.2 alloc_bootmem_nopanic()
+================================================================================
+
+1.1.3 pcpu_fc_alloc()
+================================================================================
+static void * __init pcpu_fc_alloc(unsigned int cpu, size_t size, size_t align)
+{
+	return pcpu_alloc_bootmem(cpu, size, align);
+}
+
+1.1.3.1 pcpu_alloc_bootmem()
+================================================================================
+static void * __init pcpu_alloc_bootmem(unsigned int cpu, unsigned long size,
+					unsigned long align)
+{
+	const unsigned long goal = __pa(MAX_DMA_ADDRESS);
+#ifdef CONFIG_NEED_MULTIPLE_NODES
+	int node = early_cpu_to_node(cpu);
+	void *ptr;
+
+	if (!node_online(node) || !NODE_DATA(node)) {
+		ptr = __alloc_bootmem_nopanic(size, align, goal);
+		pr_info("cpu %d has no node %d or node-local memory\n",
+			cpu, node);
+		pr_debug("per cpu data for cpu%d %lu bytes at %016lx\n",
+			 cpu, size, __pa(ptr));
+	} else {
+		ptr = __alloc_bootmem_node_nopanic(NODE_DATA(node),
+						   size, align, goal);
+		pr_debug("per cpu data for cpu%d %lu bytes on node%d at %016lx\n",
+			 cpu, size, node, __pa(ptr));
+	}
+	return ptr;
+#else
+	return __alloc_bootmem_nopanic(size, align, goal);
+#endif
+}
+
+1.1.4 pcpu_setup_first_chunk()
+================================================================================
+; assign the pcpu_first_chunk, pcpu_base_addr
+int __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
+				  void *base_addr)
+{
+	static char cpus_buf[4096] __initdata;
+	static int smap[PERCPU_DYNAMIC_EARLY_SLOTS] __initdata;
+	static int dmap[PERCPU_DYNAMIC_EARLY_SLOTS] __initdata;
+	size_t dyn_size = ai->dyn_size;
+	size_t size_sum = ai->static_size + ai->reserved_size + dyn_size;
+	struct pcpu_chunk *schunk, *dchunk = NULL;
+	unsigned long *group_offsets;
+	size_t *group_sizes;
+	unsigned long *unit_off;
+	unsigned int cpu;
+	int *unit_map;
+	int group, unit, i;
+
+	cpumask_scnprintf(cpus_buf, sizeof(cpus_buf), cpu_possible_mask);
+
+#define PCPU_SETUP_BUG_ON(cond)	do {					\
+	if (unlikely(cond)) {						\
+		pr_emerg("PERCPU: failed to initialize, %s", #cond);	\
+		pr_emerg("PERCPU: cpu_possible_mask=%s\n", cpus_buf);	\
+		pcpu_dump_alloc_info(KERN_EMERG, ai);			\
+		BUG();							\
+	}								\
+} while (0)
+
+	/* sanity checks */
+	PCPU_SETUP_BUG_ON(ai->nr_groups <= 0);
+#ifdef CONFIG_SMP
+	PCPU_SETUP_BUG_ON(!ai->static_size);
+	PCPU_SETUP_BUG_ON((unsigned long)__per_cpu_start & ~PAGE_MASK);
+#endif
+	PCPU_SETUP_BUG_ON(!base_addr);
+	PCPU_SETUP_BUG_ON((unsigned long)base_addr & ~PAGE_MASK);
+	PCPU_SETUP_BUG_ON(ai->unit_size < size_sum);
+	PCPU_SETUP_BUG_ON(ai->unit_size & ~PAGE_MASK);
+	PCPU_SETUP_BUG_ON(ai->unit_size < PCPU_MIN_UNIT_SIZE);
+	PCPU_SETUP_BUG_ON(ai->dyn_size < PERCPU_DYNAMIC_EARLY_SIZE);
+	PCPU_SETUP_BUG_ON(pcpu_verify_alloc_info(ai) < 0);
+
+	/* process group information and build config tables accordingly */
+	group_offsets = alloc_bootmem(ai->nr_groups * sizeof(group_offsets[0]));
+	group_sizes = alloc_bootmem(ai->nr_groups * sizeof(group_sizes[0]));
+	unit_map = alloc_bootmem(nr_cpu_ids * sizeof(unit_map[0]));
+	unit_off = alloc_bootmem(nr_cpu_ids * sizeof(unit_off[0]));
+
+	for (cpu = 0; cpu < nr_cpu_ids; cpu++)
+		unit_map[cpu] = UINT_MAX;
+
+	pcpu_low_unit_cpu = NR_CPUS;
+	pcpu_high_unit_cpu = NR_CPUS;
+
+	for (group = 0, unit = 0; group < ai->nr_groups; group++, unit += i) {
+		const struct pcpu_group_info *gi = &ai->groups[group];
+
+		group_offsets[group] = gi->base_offset;
+		group_sizes[group] = gi->nr_units * ai->unit_size;
+
+		for (i = 0; i < gi->nr_units; i++) {
+			cpu = gi->cpu_map[i];
+			if (cpu == NR_CPUS)
+				continue;
+
+			PCPU_SETUP_BUG_ON(cpu > nr_cpu_ids);
+			PCPU_SETUP_BUG_ON(!cpu_possible(cpu));
+			PCPU_SETUP_BUG_ON(unit_map[cpu] != UINT_MAX);
+
+			unit_map[cpu] = unit + i;
+			unit_off[cpu] = gi->base_offset + i * ai->unit_size;
+
+			/* determine low/high unit_cpu */
+			if (pcpu_low_unit_cpu == NR_CPUS ||
+			    unit_off[cpu] < unit_off[pcpu_low_unit_cpu])
+				pcpu_low_unit_cpu = cpu;
+			if (pcpu_high_unit_cpu == NR_CPUS ||
+			    unit_off[cpu] > unit_off[pcpu_high_unit_cpu])
+				pcpu_high_unit_cpu = cpu;
+		}
+	}
+	pcpu_nr_units = unit;
+
+	for_each_possible_cpu(cpu)
+		PCPU_SETUP_BUG_ON(unit_map[cpu] == UINT_MAX);
+
+	/* we're done parsing the input, undefine BUG macro and dump config */
+#undef PCPU_SETUP_BUG_ON
+	pcpu_dump_alloc_info(KERN_DEBUG, ai);
+
+	pcpu_nr_groups = ai->nr_groups;
+	pcpu_group_offsets = group_offsets;
+	pcpu_group_sizes = group_sizes;
+	pcpu_unit_map = unit_map;
+	pcpu_unit_offsets = unit_off;
+
+	/* determine basic parameters */
+	pcpu_unit_pages = ai->unit_size >> PAGE_SHIFT;
+	pcpu_unit_size = pcpu_unit_pages << PAGE_SHIFT;
+	pcpu_atom_size = ai->atom_size;
+	pcpu_chunk_struct_size = sizeof(struct pcpu_chunk) +
+		BITS_TO_LONGS(pcpu_unit_pages) * sizeof(unsigned long);
+
+	/*
+	 * Allocate chunk slots.  The additional last slot is for
+	 * empty chunks.
+	 */
+	pcpu_nr_slots = __pcpu_size_to_slot(pcpu_unit_size) + 2;
+	pcpu_slot = alloc_bootmem(pcpu_nr_slots * sizeof(pcpu_slot[0]));
+	for (i = 0; i < pcpu_nr_slots; i++)
+		INIT_LIST_HEAD(&pcpu_slot[i]);
+
+	/*
+	 * Initialize static chunk.  If reserved_size is zero, the
+	 * static chunk covers static area + dynamic allocation area
+	 * in the first chunk.  If reserved_size is not zero, it
+	 * covers static area + reserved area (mostly used for module
+	 * static percpu allocation).
+	 */
+	schunk = alloc_bootmem(pcpu_chunk_struct_size);
+	INIT_LIST_HEAD(&schunk->list);
+	schunk->base_addr = base_addr;
+	schunk->map = smap;
+	schunk->map_alloc = ARRAY_SIZE(smap);
+	schunk->immutable = true;
+	bitmap_fill(schunk->populated, pcpu_unit_pages);
+
+	if (ai->reserved_size) {
+		schunk->free_size = ai->reserved_size;
+		pcpu_reserved_chunk = schunk;
+		pcpu_reserved_chunk_limit = ai->static_size + ai->reserved_size;
+	} else {
+		schunk->free_size = dyn_size;
+		dyn_size = 0;			/* dynamic area covered */
+	}
+	schunk->contig_hint = schunk->free_size;
+
+	schunk->map[schunk->map_used++] = -ai->static_size;
+	if (schunk->free_size)
+		schunk->map[schunk->map_used++] = schunk->free_size;
+
+	/* init dynamic chunk if necessary */
+	if (dyn_size) {
+		dchunk = alloc_bootmem(pcpu_chunk_struct_size);
+		INIT_LIST_HEAD(&dchunk->list);
+		dchunk->base_addr = base_addr;
+		dchunk->map = dmap;
+		dchunk->map_alloc = ARRAY_SIZE(dmap);
+		dchunk->immutable = true;
+		bitmap_fill(dchunk->populated, pcpu_unit_pages);
+
+		dchunk->contig_hint = dchunk->free_size = dyn_size;
+		dchunk->map[dchunk->map_used++] = -pcpu_reserved_chunk_limit;
+		dchunk->map[dchunk->map_used++] = dchunk->free_size;
+	}
+
+	/* link the first chunk in */
+	pcpu_first_chunk = dchunk ?: schunk;
+	pcpu_chunk_relocate(pcpu_first_chunk, -1);
+
+	/* we're done */
+	pcpu_base_addr = base_addr;
+	return 0;
+}
+
+1.1.4.1 pcpu_chunk_relocate()
+================================================================================
+static void pcpu_chunk_relocate(struct pcpu_chunk *chunk, int oslot)
+{
+	int nslot = pcpu_chunk_slot(chunk);
+
+	if (chunk != pcpu_reserved_chunk && oslot != nslot) {
+		if (oslot < nslot)
+			list_move(&chunk->list, &pcpu_slot[nslot]);
+		else
+			list_move_tail(&chunk->list, &pcpu_slot[nslot]);
+	}
+}
+
+1.2 setup_cpu_local_masks()
+================================================================================
+void __init setup_cpu_local_masks(void)
+{
+	alloc_bootmem_cpumask_var(&cpu_initialized_mask);
+	alloc_bootmem_cpumask_var(&cpu_callin_mask);
+	alloc_bootmem_cpumask_var(&cpu_callout_mask);
+	alloc_bootmem_cpumask_var(&cpu_sibling_setup_mask);
+}
+
+2. DEFINE_PER_CPU(), define a percpu variable in its section
+================================================================================
+#define DEFINE_PER_CPU(type, name)					\
+	DEFINE_PER_CPU_SECTION(type, name, "")
+
+2.1 DEFINE_PER_CPU_SECTION()
+================================================================================
+#define DEFINE_PER_CPU_SECTION(type, name, sec)				\
+	__PCPU_ATTRS(sec) PER_CPU_DEF_ATTRIBUTES			\
+	__typeof__(type) name
+
+2.1.1 __PCPU_ATTRS()
+================================================================================
+#define __PCPU_ATTRS(sec)						\
+	__percpu __attribute__((section(PER_CPU_BASE_SECTION sec)))	\
+	PER_CPU_ATTRIBUTES
+
+2.1.1.1 PER_CPU_BASE_SECTION
+================================================================================
+#define PER_CPU_BASE_SECTION ".data..percpu"
+
+3. DECLARE_PER_CPU(), declaration of a percpu variable
+================================================================================
+#define DECLARE_PER_CPU(type, name)					\
+	DECLARE_PER_CPU_SECTION(type, name, "")
+
+3.1 DECLARE_PER_CPU_SECTION()
+================================================================================
+#define DECLARE_PER_CPU_SECTION(type, name, sec)			\
+	extern __PCPU_ATTRS(sec) __typeof__(type) name
+
+4. __alloc_percpu(), allocate percpu variable dynamicly
+================================================================================
+void __percpu *__alloc_percpu(size_t size, size_t align)
+{
+	return pcpu_alloc(size, align, false);
+}
+
+4.1 pcpu_alloc()
+================================================================================
+static void __percpu *pcpu_alloc(size_t size, size_t align, bool reserved)
+{
+	static int warn_limit = 10;
+	struct pcpu_chunk *chunk;
+	const char *err;
+	int slot, off, new_alloc;
+	unsigned long flags;
+	void __percpu *ptr;
+
+	if (unlikely(!size || size > PCPU_MIN_UNIT_SIZE || align > PAGE_SIZE)) {
+		WARN(true, "illegal size (%zu) or align (%zu) for "
+		     "percpu allocation\n", size, align);
+		return NULL;
+	}
+
+	mutex_lock(&pcpu_alloc_mutex);
+	spin_lock_irqsave(&pcpu_lock, flags);
+
+	/* serve reserved allocations from the reserved chunk if available */
+	if (reserved && pcpu_reserved_chunk) {
+		chunk = pcpu_reserved_chunk;
+
+		if (size > chunk->contig_hint) {
+			err = "alloc from reserved chunk failed";
+			goto fail_unlock;
+		}
+
+		while ((new_alloc = pcpu_need_to_extend(chunk))) {
+			spin_unlock_irqrestore(&pcpu_lock, flags);
+			if (pcpu_extend_area_map(chunk, new_alloc) < 0) {
+				err = "failed to extend area map of reserved chunk";
+				goto fail_unlock_mutex;
+			}
+			spin_lock_irqsave(&pcpu_lock, flags);
+		}
+
+		off = pcpu_alloc_area(chunk, size, align);
+		if (off >= 0)
+			goto area_found;
+
+		err = "alloc from reserved chunk failed";
+		goto fail_unlock;
+	}
+
+restart:
+	/* search through normal chunks */
+	for (slot = pcpu_size_to_slot(size); slot < pcpu_nr_slots; slot++) {
+		list_for_each_entry(chunk, &pcpu_slot[slot], list) {
+			if (size > chunk->contig_hint)
+				continue;
+
+			new_alloc = pcpu_need_to_extend(chunk);
+			if (new_alloc) {
+				spin_unlock_irqrestore(&pcpu_lock, flags);
+				if (pcpu_extend_area_map(chunk,
+							 new_alloc) < 0) {
+					err = "failed to extend area map";
+					goto fail_unlock_mutex;
+				}
+				spin_lock_irqsave(&pcpu_lock, flags);
+				/*
+				 * pcpu_lock has been dropped, need to
+				 * restart cpu_slot list walking.
+				 */
+				goto restart;
+			}
+
+			off = pcpu_alloc_area(chunk, size, align);
+			if (off >= 0)
+				goto area_found;
+		}
+	}
+
+	/* hmmm... no space left, create a new chunk */
+	spin_unlock_irqrestore(&pcpu_lock, flags);
+
+	chunk = pcpu_create_chunk();
+	if (!chunk) {
+		err = "failed to allocate new chunk";
+		goto fail_unlock_mutex;
+	}
+
+	spin_lock_irqsave(&pcpu_lock, flags);
+	pcpu_chunk_relocate(chunk, -1);
+	goto restart;
+
+area_found:
+	spin_unlock_irqrestore(&pcpu_lock, flags);
+
+	/* populate, map and clear the area */
+	if (pcpu_populate_chunk(chunk, off, size)) {
+		spin_lock_irqsave(&pcpu_lock, flags);
+		pcpu_free_area(chunk, off);
+		err = "failed to populate";
+		goto fail_unlock;
+	}
+
+	mutex_unlock(&pcpu_alloc_mutex);
+
+	/* return address relative to base address */
+	ptr = __addr_to_pcpu_ptr(chunk->base_addr + off);
+	kmemleak_alloc_percpu(ptr, size);
+	return ptr;
+
+fail_unlock:
+	spin_unlock_irqrestore(&pcpu_lock, flags);
+fail_unlock_mutex:
+	mutex_unlock(&pcpu_alloc_mutex);
+	if (warn_limit) {
+		pr_warning("PERCPU: allocation failed, size=%zu align=%zu, "
+			   "%s\n", size, align, err);
+		dump_stack();
+		if (!--warn_limit)
+			pr_info("PERCPU: limit reached, disable warning\n");
+	}
+	return NULL;
+}
+
+5. per_cpu(), get variable on other cpu
+================================================================================
+#define per_cpu(var, cpu) \
+	(*SHIFT_PERCPU_PTR(&(var), per_cpu_offset(cpu)))
+
+5.1 SHIFT_PERCPU_PTR()
+================================================================================
+#define SHIFT_PERCPU_PTR(__p, __offset)	({				\
+	__verify_pcpu_ptr((__p));					\
+	RELOC_HIDE((typeof(*(__p)) __kernel __force *)(__p), (__offset)); \
+})
+
+5.1.1 __verify_pcpu_ptr()
+================================================================================
+#define __verify_pcpu_ptr(ptr)	do {					\
+	const void __percpu *__vpp_verify = (typeof(ptr))NULL;		\
+	(void)__vpp_verify;						\
+} while (0)
+
+5.1.2 RELOC_HIDE()
+================================================================================
+# define RELOC_HIDE(ptr, off)					\
+  ({ unsigned long __ptr;					\
+     __ptr = (unsigned long) (ptr);				\
+    (typeof(ptr)) (__ptr + (off)); })
+
+5.2 per_cpu_offset()
+================================================================================
+#define per_cpu_offset(x) (__per_cpu_offset[x])
+
+5.2.1 __per_cpu_offset[]
+================================================================================
+per_cpu_offset(cpu) = delta + pcpu_unit_offsets[cpu];
+	delta = (unsigned long)pcpu_base_addr - (unsigned long)__per_cpu_start;
+		pcpu_base_addr = base_addr = min(areas[group]);
+	pcpu_unit_offsets[cpu] = gi->base_offset + i*ai->unit_size;
+			ai->groups[group].base_offset = areas[group] - base = areas[group] - base_addr;
+			ai->unit_size = alloc_size / upa;
+    |
+    v
+per_cpu_offset(cpu) = 
+	pcpu_base_addr - __per_cpu_start +
+	areas[group] - pcpu_base_addr + i*(alloc_size/upa);
+
+5.3 __ptr + (off)
+================================================================================
+&this_cpu_off + (pcpu_base_addr - __per_cpu_start + 
+		areas[group] - pcpu_base_addr + i*ai->unit_size)
+= &this_cpu_off + (-__per_cpu_start + areas[group] + i*ai->unit_size)
+= (&this_cpu_off - __per_cpu_start) + (areas[group] + i*ai->unit_size)
+= (offset of the variable in pcpu section) + (start address of real pcpu area)
+
+6. get_cpu_var()/put_cpu_var()
+================================================================================
+
+6.1 get_cpu_var()
+================================================================================
+#define get_cpu_var(var) (*({				\
+	preempt_disable();				\
+	&__get_cpu_var(var); }))
+
+6.1.1 __get_cpu_var()
+================================================================================
+#define __get_cpu_var(var) (*this_cpu_ptr(&(var)))
+
+#define this_cpu_ptr(ptr) __this_cpu_ptr(ptr)
+
+#define __this_cpu_ptr(ptr) SHIFT_PERCPU_PTR(ptr, __my_cpu_offset)
+
+6.2 put_cpu_var()
+================================================================================
+#define put_cpu_var(var) do {				\
+	(void)&(var);					\
+	preempt_enable();				\
+} while (0)
+
+0. data structure
+================================================================================
+
+0.0 global variables
+================================================================================
+pcpu_nr_groups(int);
+pcpu_group_offsets(unsigned long *) [pcpu_nr_groups]
+pcpu_group_sizes(size_t *) [pcpu_nr_groups]
+pcpu_unit_map(int *) [nr_cpu_ids]
+pcpu_unit_offsets(unsigned long *)  [nr_cpu_ids]
+
+pcpu_unit_pages(int)
+pcpu_unit_size(int)
+pcpu_atom_size(int)
+pcpu_chunk_struct_size(size_t)
+
+pcpu_nr_slots(int)
+pcpu_slot(struct list_head *) [pcpu_nr_slots]
+
+pcpu_base_addr(void *)
+
+unsigned long __per_cpu_offset[NR_CPUS]
+
+0.1 percpu section 
+================================================================================
+#define PERCPU_INPUT(cacheline)						\
+	VMLINUX_SYMBOL(__per_cpu_start) = .;				\
+	*(.data..percpu..first)						\
+	. = ALIGN(PAGE_SIZE);						\
+	*(.data..percpu..page_aligned)					\
+	. = ALIGN(cacheline);						\
+	*(.data..percpu..readmostly)					\
+	. = ALIGN(cacheline);						\
+	*(.data..percpu)						\
+	*(.data..percpu..shared_aligned)				\
+	VMLINUX_SYMBOL(__per_cpu_end) = .;
+
+0.2 pcpu_alloc_info 
+================================================================================
+
+      struct pcpu_alloc_info
+      +-------------------+
+      |static_size        |   = __per_cpu_end - __per_cpu_start
+      |    (size_t)       |
+      |reserved_size      |   = PERCPU_FIRST_CHUNK_RESERVE
+      |dyn_size           |   = PERCPU_MODULE_RESERVE + PERCPU_DYNAMIC_RESERVE - PERCPU_FIRST_CHUNK_RESERVE
+      |atom_size          |   = PAGE_SIZE
+      |                   |
+      |unit_size          |
+      |alloc_size         |
+      |__ai_size          |
+      |nr_groups          |
+      +-------------------+                struct pcpu_group_info
+      |groups[nr_groups]  |--------------->+-------------------+
+      |                   |                |nr_units           |
+      +-------------------+                |   (int)           |
+                                           +-------------------+
+                                           |base_offset        |
+                                           |   (unsigned long) |
+                                           +-------------------+
+                                           |cpu_map            | this is an arry with nr_units entries
+                                           |   (unsigned int*) |
+                                           +-------------------+
+
+	Figure 0.1 pcpu_alloc_info
+
+0.3 pcpu_chunk 
+================================================================================
+
+    pcpu_slot(struct list_head)
+    +-----------+
+    |           |---+
+    +-----------+   |
+           +--------+
+	   |    
+           |    struct pcpu_chunk                 struct pcpu_chunk        
+           +--->+-----------------------+         +-----------------------+
+                |list                   |-------->|list                   |
+                |   (struct list_head)  |         |   (struct list_head)  |
+                +-----------------------+         +-----------------------+
+                |base_addr              |
+                |   (void *)            |
+                +-----------------------+
+                |data                   |
+                |   (void *)            |
+                +-----------------------+
+                |map                    |
+                |   (void *)            |
+                +-----------------------+
+                |free_size              |
+                |contig_hint            |
+                |map_used               |
+                |map_alloc              |
+                |   (int)               |
+                +-----------------------+
+                |immutable              |
+                |   (bool)              |
+                |populated[]            |
+                |   (unsigned long)     |
+                +-----------------------+
+
+
+
+
+
+
