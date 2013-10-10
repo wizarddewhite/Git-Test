@@ -59,7 +59,19 @@ err:
 
 static int main_init(void)
 {
-	int ret;
+	int ret, i;
+	int *cpu_num;
+
+	/* Retrieve percpu defined in compile time */
+	cpu_num = &get_cpu_var(cpu_number);
+	printk(KERN_INFO "running on cpu %d\n", *cpu_num);
+	put_cpu_var(cpu_num);
+
+	/* Retrieve percpu on different cpus */
+	for_each_possible_cpu(i) {
+		cpu_num = &per_cpu(cpu_number, i);
+		printk(KERN_INFO "cpu_number %d\n", *cpu_num);
+	}
 
 	ret = percpu_dynamic();
 
