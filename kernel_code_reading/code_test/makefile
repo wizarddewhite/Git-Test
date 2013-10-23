@@ -7,7 +7,8 @@ CFLAGS = -g
 
 .PHONY: all clean cscope
 all: align_case queue_case cscope \
-	map_case sort_case bitmap_case
+	map_case sort_case bitmap_case \
+	container_of
 
 queue_case: queue_case.c kfifo.c
 	gcc -o $@ -g $^
