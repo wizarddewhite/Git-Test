@@ -2,7 +2,7 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
     obj-m := hello_world.o oops_example.o
-    obj-m += seq_fs.o kobject-example.o
+    obj-m += proc_fs.o seq_fs.o kobject-example.o
     obj-m += scull.o char_dev.o
     scull-objs := scull_sysfs.o
     obj-m += usermodehelper.o timer.o workqueue_test.o
