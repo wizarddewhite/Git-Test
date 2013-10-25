@@ -812,6 +812,216 @@ fail_unlock_mutex:
 	return NULL;
 }
 
+4.1.1 pcpu_size_to_slot()
+================================================================================
+static int pcpu_size_to_slot(int size)
+{
+	if (size == pcpu_unit_size)
+		return pcpu_nr_slots - 1;
+	return __pcpu_size_to_slot(size);
+}
+
+4.1.2 pcpu_need_to_extend()
+================================================================================
+static int pcpu_need_to_extend(struct pcpu_chunk *chunk)
+{
+	int new_alloc;
+
+	if (chunk->map_alloc >= chunk->map_used + 2)
+		return 0;
+
+	new_alloc = PCPU_DFL_MAP_ALLOC;
+	while (new_alloc < chunk->map_used + 2)
+		new_alloc *= 2;
+
+	return new_alloc;
+}
+
+4.1.3 pcpu_extend_area_map()
+================================================================================
+static int pcpu_extend_area_map(struct pcpu_chunk *chunk, int new_alloc)
+{
+	int *old = NULL, *new = NULL;
+	size_t old_size = 0, new_size = new_alloc * sizeof(new[0]);
+	unsigned long flags;
+
+	new = pcpu_mem_zalloc(new_size);
+	if (!new)
+		return -ENOMEM;
+
+	/* acquire pcpu_lock and switch to new area map */
+	spin_lock_irqsave(&pcpu_lock, flags);
+
+	if (new_alloc <= chunk->map_alloc)
+		goto out_unlock;
+
+	old_size = chunk->map_alloc * sizeof(chunk->map[0]);
+	old = chunk->map;
+
+	memcpy(new, old, old_size);
+
+	chunk->map_alloc = new_alloc;
+	chunk->map = new;
+	new = NULL;
+
+out_unlock:
+	spin_unlock_irqrestore(&pcpu_lock, flags);
+
+	/*
+	 * pcpu_mem_free() might end up calling vfree() which uses
+	 * IRQ-unsafe lock and thus can't be called under pcpu_lock.
+	 */
+	pcpu_mem_free(old, old_size);
+	pcpu_mem_free(new, new_size);
+
+	return 0;
+}
+
+4.1.4 pcpu_alloc_area()
+================================================================================
+static int pcpu_alloc_area(struct pcpu_chunk *chunk, int size, int align)
+{
+	int oslot = pcpu_chunk_slot(chunk);
+	int max_contig = 0;
+	int i, off;
+
+	for (i = 0, off = 0; i < chunk->map_used; off += abs(chunk->map[i++])) {
+		bool is_last = i + 1 == chunk->map_used;
+		int head, tail;
+
+		/* extra for alignment requirement */
+		head = ALIGN(off, align) - off;
+		BUG_ON(i == 0 && head != 0);
+
+		if (chunk->map[i] < 0)
+			continue;
+		if (chunk->map[i] < head + size) {
+			max_contig = max(chunk->map[i], max_contig);
+			continue;
+		}
+
+		/*
+		 * If head is small or the previous block is free,
+		 * merge'em.  Note that 'small' is defined as smaller
+		 * than sizeof(int), which is very small but isn't too
+		 * uncommon for percpu allocations.
+		 */
+		if (head && (head < sizeof(int) || chunk->map[i - 1] > 0)) {
+			if (chunk->map[i - 1] > 0)
+				chunk->map[i - 1] += head;
+			else {
+				chunk->map[i - 1] -= head;
+				chunk->free_size -= head;
+			}
+			chunk->map[i] -= head;
+			off += head;
+			head = 0;
+		}
+
+		/* if tail is small, just keep it around */
+		tail = chunk->map[i] - head - size;
+		if (tail < sizeof(int))
+			tail = 0;
+
+		/* split if warranted */
+		if (head || tail) {
+			pcpu_split_block(chunk, i, head, tail);
+			if (head) {
+				i++;
+				off += head;
+				max_contig = max(chunk->map[i - 1], max_contig);
+			}
+			if (tail)
+				max_contig = max(chunk->map[i + 1], max_contig);
+		}
+
+		/* update hint and mark allocated */
+		if (is_last)
+			chunk->contig_hint = max_contig; /* fully scanned */
+		else
+			chunk->contig_hint = max(chunk->contig_hint,
+						 max_contig);
+
+		chunk->free_size -= chunk->map[i];
+		chunk->map[i] = -chunk->map[i];
+
+		pcpu_chunk_relocate(chunk, oslot);
+		return off;
+	}
+
+	chunk->contig_hint = max_contig;	/* fully scanned */
+	pcpu_chunk_relocate(chunk, oslot);
+
+	/* tell the upper layer that this chunk has no matching area */
+	return -1;
+}
+
+4.1.5 pcpu_populate_chunk()
+================================================================================
+static int pcpu_populate_chunk(struct pcpu_chunk *chunk, int off, int size)
+{
+	int page_start = PFN_DOWN(off);
+	int page_end = PFN_UP(off + size);
+	int free_end = page_start, unmap_end = page_start;
+	struct page **pages;
+	unsigned long *populated;
+	unsigned int cpu;
+	int rs, re, rc;
+
+	/* quick path, check whether all pages are already there */
+	rs = page_start;
+	pcpu_next_pop(chunk, &rs, &re, page_end);
+	if (rs == page_start && re == page_end)
+		goto clear;
+
+	/* need to allocate and map pages, this chunk can't be immutable */
+	WARN_ON(chunk->immutable);
+
+	pages = pcpu_get_pages_and_bitmap(chunk, &populated, true);
+	if (!pages)
+		return -ENOMEM;
+
+	/* alloc and map */
+	pcpu_for_each_unpop_region(chunk, rs, re, page_start, page_end) {
+		rc = pcpu_alloc_pages(chunk, pages, populated, rs, re);
+		if (rc)
+			goto err_free;
+		free_end = re;
+	}
+
+	pcpu_for_each_unpop_region(chunk, rs, re, page_start, page_end) {
+		rc = pcpu_map_pages(chunk, pages, populated, rs, re);
+		if (rc)
+			goto err_unmap;
+		unmap_end = re;
+	}
+	pcpu_post_map_flush(chunk, page_start, page_end);
+
+	/* commit new bitmap */
+	bitmap_copy(chunk->populated, populated, pcpu_unit_pages);
+clear:
+	for_each_possible_cpu(cpu)
+		memset((void *)pcpu_chunk_addr(chunk, cpu, 0) + off, 0, size);
+	return 0;
+
+err_unmap:
+	pcpu_pre_unmap_flush(chunk, page_start, unmap_end);
+	pcpu_for_each_unpop_region(chunk, rs, re, page_start, unmap_end)
+		pcpu_unmap_pages(chunk, pages, populated, rs, re);
+	pcpu_post_unmap_tlb_flush(chunk, page_start, unmap_end);
+err_free:
+	pcpu_for_each_unpop_region(chunk, rs, re, page_start, free_end)
+		pcpu_free_pages(chunk, pages, populated, rs, re);
+	return rc;
+}
+
+4.1.6 __addr_to_pcpu_ptr()
+================================================================================
+#define __addr_to_pcpu_ptr(addr)					\
+	(void __percpu *)((unsigned long)(addr) -			\
+			  (unsigned long)pcpu_base_addr	+		\
+			  (unsigned long)__per_cpu_start)
+
 5. per_cpu(), get variable on other cpu
 ================================================================================
 #define per_cpu(var, cpu) \
@@ -888,6 +1098,10 @@ per_cpu_offset(cpu) =
 	preempt_enable();				\
 } while (0)
 
+7. per_cpu_ptr(), access dynamicly allocate percpu variable
+================================================================================
+#define per_cpu_ptr(ptr, cpu)	SHIFT_PERCPU_PTR((ptr), per_cpu_offset((cpu)))
+
 0. data structure
 ================================================================================
 
@@ -949,8 +1163,43 @@ unsigned long __per_cpu_offset[NR_CPUS]
                                            |   (unsigned long) |
                                            +-------------------+
                                            |cpu_map            | this is an arry with nr_units entries
-                                           |   (unsigned int*) |
-                                           +-------------------+
+                                           |                   | each one indicate this slot belows to which cpu
+                                           |   (unsigned int*) |                 int[nr_units]
+                                           +-------------------+  -------------> +--------------+
+                                           +-------------------+                 |              |
+                                           |nr_units           |                 +--------------+
+                                           |   (int)           |                 |              |
+                                           +-------------------+                 +--------------+
+                                           |base_offset        |                 |              |
+                                           |   (unsigned long) |                 +--------------+
+                                           +-------------------+                 |              |
+                                           |cpu_map            |                 +--------------+
+                                           |   (unsigned int*) |---------------> |              |
+                                           +-------------------+                 +--------------+  
+                                           +-------------------+                 |              |
+                                           |nr_units           |                 +--------------+
+                                           |   (int)           |                 |              |
+                                           +-------------------+                 +--------------+
+                                           |base_offset        |                 |              |
+                                           |   (unsigned long) |                 +--------------+
+                                           +-------------------+                 |              |
+                                           |cpu_map            |                 +--------------+
+                                           |   (unsigned int*) |-------          |              |
+                                           +-------------------+       \         +--------------+
+					            .                   -------> |              |
+					            .                            +--------------+
+					            .                                   .
+                                           +-------------------+                        .
+                                           |nr_units           |                        .
+                                           |   (int)           |                  
+                                           +-------------------+                  
+                                           |base_offset        |                 +--------------+
+                                           |   (unsigned long) |        -------> |              |
+                                           +-------------------+       /         +--------------+
+                                           |cpu_map            |------/          |              |
+                                           |   (unsigned int*) |                 +--------------+
+                                           +-------------------+                 |              |
+                                                                                 +--------------+
 
 	Figure 0.1 pcpu_alloc_info
 
