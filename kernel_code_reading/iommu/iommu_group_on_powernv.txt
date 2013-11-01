@@ -1,4 +1,90 @@
-1. tce_iommu_init()
+1. pnv_pci_ioda_setup_dma_pe(), create iommu_group for each PE
+================================================================================
+iommu_register_group(tbl, pci_domain_nr(pe->pbus), pe->pe_number);
+
+set_iommu_table_base(&pe->pdev->dev, tbl);
+
+1.1 iommu_register_group(), create an iommu_group for each PE
+================================================================================
+void iommu_register_group(struct iommu_table *tbl,
+		int pci_domain_number, unsigned long pe_num)
+{
+	struct iommu_group *grp;
+	char *name;
+
+	grp = iommu_group_alloc();
+	if (IS_ERR(grp)) {
+		pr_warn("powerpc iommu api: cannot create new group, err=%ld\n",
+				PTR_ERR(grp));
+		return;
+	}
+	tbl->it_group = grp;
+	iommu_group_set_iommudata(grp, tbl, group_release);
+	name = kasprintf(GFP_KERNEL, "domain%d-pe%lx",
+			pci_domain_number, pe_num);
+	if (!name)
+		return;
+	iommu_group_set_name(grp, name);
+	kfree(name);
+}
+
+1.1.1 iommu_group_alloc(), register iommu_group in system
+================================================================================
+assign an ID, group->id
+
+1.1.2 iommu_group_set_iommudata(), group arch data set to tbl
+================================================================================
+void iommu_group_set_iommudata(struct iommu_group *group, void *iommu_data,
+			       void (*release)(void *iommu_data))
+{
+	group->iommu_data = iommu_data;
+	group->iommu_data_release = release;
+}
+
+1.1.3 iommu_group_set_name(), /sys/kernel/iommu_group/#/group->name?
+================================================================================
+int iommu_group_set_name(struct iommu_group *group, const char *name)
+{
+	int ret;
+
+	if (group->name) {
+		iommu_group_remove_file(group, &iommu_group_attr_name);
+		kfree(group->name);
+		group->name = NULL;
+		if (!name)
+			return 0;
+	}
+
+	group->name = kstrdup(name, GFP_KERNEL);
+	if (!group->name)
+		return -ENOMEM;
+
+	ret = iommu_group_create_file(group, &iommu_group_attr_name);
+	if (ret) {
+		kfree(group->name);
+		group->name = NULL;
+		return ret;
+	}
+
+	return 0;
+}
+
+1.1.3.1 iommu_group_create_file()
+================================================================================
+static int iommu_group_create_file(struct iommu_group *group,
+				   struct iommu_group_attribute *attr)
+{
+	return sysfs_create_file(&group->kobj, &attr->attr);
+}
+
+1.2 set_iommu_table_base(), set iommu_group arch specific data
+================================================================================
+static inline void set_iommu_table_base(struct device *dev, void *base)
+{
+	dev->archdata.dma_data.iommu_table_base = base;
+}
+
+2. tce_iommu_init(), add device to iommu_group, done after pci tree enumerated
 ================================================================================
 subsys_initcall_sync(tce_iommu_init);
 #define subsys_initcall_sync(fn)	__define_initcall(fn, 4s)
@@ -20,7 +106,7 @@ static int __init tce_iommu_init(void)
 	return 0;
 }
 
-1.1 iommu_add_device(), add device to the iommu_group
+2.1 iommu_add_device(), add already created devices to the iommu_group
 ================================================================================
 ; iommu_group are already there
 static int iommu_add_device(struct device *dev)
@@ -53,10 +139,14 @@ static int iommu_add_device(struct device *dev)
 	return ret;
 }
 
-2. iommu_bus_notifier(), this is called in device_add
+2.1.1 get_iommu_table_base(), check whether a iommu_table is associated
 ================================================================================
-; mostly, I think this is called when a device is hot pluged
-; and VFs
+
+2.1.2 iommu_group_add_device()
+================================================================================
+
+2.2 tce_iommu_bus_nb(), this is called in device_add/device_del for each device
+================================================================================
 static struct notifier_block tce_iommu_bus_nb = {
 	.notifier_call = iommu_bus_notifier,
 };
@@ -77,43 +167,8 @@ static int iommu_bus_notifier(struct notifier_block *nb,
 	}
 }
 
-2.1 iommu_add_device(), add dev into a iommu_group
+2.2.1 iommu_add_device(), add dev into a iommu_group
 ================================================================================
-
-3. pnv_pci_ioda_setup_dma_pe()
-================================================================================
-	iommu_register_group(tbl, pci_domain_nr(pe->pbus), pe->pe_number);
-
-3.1 iommu_register_group(), create an iommu_group for each PE
-================================================================================
-void iommu_register_group(struct iommu_table *tbl,
-		int pci_domain_number, unsigned long pe_num)
-{
-	struct iommu_group *grp;
-	char *name;
-
-	grp = iommu_group_alloc();
-	if (IS_ERR(grp)) {
-		pr_warn("powerpc iommu api: cannot create new group, err=%ld\n",
-				PTR_ERR(grp));
-		return;
-	}
-	tbl->it_group = grp;
-	iommu_group_set_iommudata(grp, tbl, group_release);
-	name = kasprintf(GFP_KERNEL, "domain%d-pe%lx",
-			pci_domain_number, pe_num);
-	if (!name)
-		return;
-	iommu_group_set_name(grp, name);
-	kfree(name);
-}
-
-3.2 set_iommu_table_base(), set iommu_group arch specific data
-================================================================================
-static inline void set_iommu_table_base(struct device *dev, void *base)
-{
-	dev->archdata.dma_data.iommu_table_base = base;
-}
 
 0. Data structures
 ================================================================================
@@ -134,7 +189,7 @@ static inline void set_iommu_table_base(struct device *dev, void *base)
      |                            |     |name                   |
      |                            |     +-----------------------+
      |                            |
-     +----------------------------+     struct iommu_table*
+     +----------------------------+     struct iommu_table*(so one iommu_table map one iommu_group)
      |iommu_data                  |---->+---------------------+
      |   (void *)                 |     |                     |
      |iommu_data_release          |     |                     |
