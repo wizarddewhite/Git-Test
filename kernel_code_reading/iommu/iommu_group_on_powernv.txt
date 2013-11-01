@@ -22,6 +22,7 @@ static int __init tce_iommu_init(void)
 
 1.1 iommu_add_device(), add device to the iommu_group
 ================================================================================
+; iommu_group are already there
 static int iommu_add_device(struct device *dev)
 {
 	struct iommu_table *tbl;
@@ -55,6 +56,7 @@ static int iommu_add_device(struct device *dev)
 2. iommu_bus_notifier(), this is called in device_add
 ================================================================================
 ; mostly, I think this is called when a device is hot pluged
+; and VFs
 static struct notifier_block tce_iommu_bus_nb = {
 	.notifier_call = iommu_bus_notifier,
 };
@@ -77,35 +79,6 @@ static int iommu_bus_notifier(struct notifier_block *nb,
 
 2.1 iommu_add_device(), add dev into a iommu_group
 ================================================================================
-static int iommu_add_device(struct device *dev)
-{
-	struct iommu_table *tbl;
-	int ret = 0;
-
-	if (WARN_ON(dev->iommu_group)) {
-		pr_warn("iommu_tce: device %s is already in iommu group %d, skipping\n",
-				dev_name(dev),
-				iommu_group_id(dev->iommu_group));
-		return -EBUSY;
-	}
-
-	tbl = get_iommu_table_base(dev);
-	if (!tbl || !tbl->it_group) { ???
-		pr_debug("iommu_tce: skipping device %s with no tbl\n",
-				dev_name(dev));
-		return 0;
-	}
-
-	pr_debug("iommu_tce: adding %s to iommu group %d\n",
-			dev_name(dev), iommu_group_id(tbl->it_group));
-
-	ret = iommu_group_add_device(tbl->it_group, dev);
-	if (ret < 0)
-		pr_err("iommu_tce: %s has not been added, ret=%d\n",
-				dev_name(dev), ret);
-
-	return ret;
-}
 
 3. pnv_pci_ioda_setup_dma_pe()
 ================================================================================
@@ -134,3 +107,38 @@ void iommu_register_group(struct iommu_table *tbl,
 	iommu_group_set_name(grp, name);
 	kfree(name);
 }
+
+3.2 set_iommu_table_base(), set iommu_group arch specific data
+================================================================================
+static inline void set_iommu_table_base(struct device *dev, void *base)
+{
+	dev->archdata.dma_data.iommu_table_base = base;
+}
+
+0. Data structures
+================================================================================
+
+     struct iommu_group
+     +----------------------------+<------------------------------------+
+     |id(int)                     |                                     |
+     +----------------------------+                                     |
+     |kobj                        |                                     |
+     |                            |                                     |
+     |devices_kobj                |     struct iommu_device             |
+     +----------------------------+     +-----------------------+       |
+     |devices(list_head)          |---->+list(list_head)        |       |
+     | (list struct iommu_device) |     +-----------------------+       |
+     +----------------------------+     |dev(struct device)     |       |
+     |notifier                    |     |      iommu_group   -----------+
+     |   (blocking_notifier_head) |     +-----------------------+ 
+     |                            |     |name                   |
+     |                            |     +-----------------------+
+     |                            |
+     +----------------------------+     struct iommu_table*
+     |iommu_data                  |---->+---------------------+
+     |   (void *)                 |     |                     |
+     |iommu_data_release          |     |                     |
+     |   (void (*)(void *))       |     |                     |
+     |                            |     +---------------------+
+     +----------------------------+
+	Figure 2.1 iommu_group
