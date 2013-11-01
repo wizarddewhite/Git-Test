@@ -196,7 +196,7 @@ int bus_set_iommu(struct bus_type *bus, struct iommu_ops *ops)
 
 6.1 iommu_bus_init()
 ================================================================================
-; register a notifier
+; register a notifier to a specific bus
 ; iterate on each device on this bus and call add_iommu_group
 static void iommu_bus_init(struct bus_type *bus, struct iommu_ops *ops)
 {
@@ -388,7 +388,11 @@ static size_t iommu_pgsize(struct iommu_domain *domain,
      |                            |     |name                   |
      |                            |     +-----------------------+
      |                            |
-     |                            |
-     |                            |
+     +----------------------------+     arch specific data
+     |iommu_data                  |---->+---------------------+
+     |   (void *)                 |     |                     |
+     |iommu_data_release          |     |                     |
+     |   (void (*)(void *))       |     |                     |
+     |                            |     +---------------------+
      +----------------------------+
 	Figure 2.1 iommu_group
