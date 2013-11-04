@@ -102,6 +102,100 @@ static int __init init_pci_cap_basic_perm(struct perm_bits *perm)
 	return 0;
 }
 
+1.1.1.1 alloc_perm_bits(), allocate config space
+================================================================================
+static int alloc_perm_bits(struct perm_bits *perm, int size)
+{
+	/*
+	 * Round up all permission bits to the next dword, this lets us
+	 * ignore whether a read/write exceeds the defined capability
+	 * structure.  We can do this because:
+	 *  - Standard config space is already dword aligned
+	 *  - Capabilities are all dword alinged (bits 0:1 of next reserved)
+	 *  - Express capabilities defined as dword aligned
+	 */
+	size = round_up(size, 4);
+
+	/*
+	 * Zero state is
+	 * - All Readable, None Writeable, None Virtualized
+	 */
+	perm->virt = kzalloc(size, GFP_KERNEL);
+	perm->write = kzalloc(size, GFP_KERNEL);
+	if (!perm->virt || !perm->write) {
+		free_perm_bits(perm);
+		return -ENOMEM;
+	}
+
+	perm->readfn = vfio_default_config_read;
+	perm->writefn = vfio_default_config_write;
+
+	return 0;
+}
+
+1.1.1.2 p_setw(), set permition for each bit
+================================================================================
+static inline void p_setw(struct perm_bits *p, int off, u16 virt, u16 write)
+{
+	*(__le16 *)(&p->virt[off]) = cpu_to_le16(virt);
+	*(__le16 *)(&p->write[off]) = cpu_to_le16(write);
+}
+
+1.1.2 vfio_user_config_read()
+================================================================================
+static int vfio_user_config_read(struct pci_dev *pdev, int offset,
+				 __le32 *val, int count)
+{
+	int ret = -EINVAL;
+	u32 tmp_val = 0;
+
+	switch (count) {
+	case 1:
+	{
+		u8 tmp;
+		ret = pci_user_read_config_byte(pdev, offset, &tmp);
+		tmp_val = tmp;
+		break;
+	}
+	case 2:
+	{
+		u16 tmp;
+		ret = pci_user_read_config_word(pdev, offset, &tmp);
+		tmp_val = tmp;
+		break;
+	}
+	case 4:
+		ret = pci_user_read_config_dword(pdev, offset, &tmp_val);
+		break;
+	}
+
+	*val = cpu_to_le32(tmp_val);
+
+	return pcibios_err_to_errno(ret);
+}
+
+1.1.2.1 vfio_user_config_read()
+================================================================================
+#define PCI_USER_READ_CONFIG(size,type)					\
+int pci_user_read_config_##size						\
+	(struct pci_dev *dev, int pos, type *val)			\
+{									\
+	int ret = 0;							\
+	u32 data = -1;							\
+	if (PCI_##size##_BAD)						\
+		return -EINVAL;						\
+	raw_spin_lock_irq(&pci_lock);				\
+	if (unlikely(dev->block_cfg_access))				\
+		pci_wait_cfg(dev);					\
+	ret = dev->bus->ops->read(dev->bus, dev->devfn,			\
+					pos, sizeof(type), &data);	\
+	raw_spin_unlock_irq(&pci_lock);				\
+	*val = (type)data;						\
+	if (ret > 0)							\
+		ret = -EINVAL;						\
+	return ret;							\
+}									\
+
 1.2 vfio_pci_virqfd_init(), create a work queue, vfio-irqfd-cleanup
 ================================================================================
 int __init vfio_pci_virqfd_init(void)
