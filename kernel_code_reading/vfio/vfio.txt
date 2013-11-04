@@ -356,8 +356,10 @@ static int vfio_group_fops_release(struct inode *inode, struct file *filep)
 
 	return 0;
 }
-2. vfio_add_group_dev()
+
+2. vfio_add_group_dev(), add a device to vfio_group->device_list
 ================================================================================
+; called in vfio_pci driver probe.
 int vfio_add_group_dev(struct device *dev,
 		       const struct vfio_device_ops *ops, void *device_data)
 {
@@ -405,7 +407,7 @@ int vfio_add_group_dev(struct device *dev,
 	return 0;
 }
 
-2.1 vfio_create_group(), create vfio_group
+2.1 vfio_create_group(), create vfio_group /dev/vfio/#GROUP
 ================================================================================
 ; create /dev/vfio/xx for vfio_group
 static struct vfio_group *vfio_create_group(struct iommu_group *iommu_group)
@@ -476,7 +478,7 @@ static struct vfio_group *vfio_create_group(struct iommu_group *iommu_group)
 	return group;
 }
 
-2.2 vfio_group_create_device()
+2.2 vfio_group_create_device(), create vfio_device/ops and link to vfio_group
 ================================================================================
 struct vfio_device *vfio_group_create_device(struct vfio_group *group,
 					     struct device *dev,
@@ -563,14 +565,17 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
    |                             |    | (list of struct vfio_device)    |   |group                     ---|---+
    +-----------------------------+    +---------------------------------+   | (struct vfio_group*)        |
 	                              |                                 |   +-----------------------------+
+	                              |                                 |   |ops                          | ---> vfio_pci_ops
+	                              |                                 |   |  (struct vfio_device_ops*)  |
+	                              |                                 |   +-----------------------------+
                                       |                                 |   |dev                          | point to the real device
                                       |                                 |   | (struct device*)            | like pdev->dev
                                       |                                 |   +-----------------------------+  -----+
-                          +---------> |                                 |   |ops                          |       |        struct device
-                          |           |                                 |   | (struct vfio_device_ops*)   |       +------->+---------------+
+                          +---------> |                                 |   |                             |       |        struct device
+                          |           |                                 |   |                             |       +------->+---------------+
                           |           |                                 |   +-----------------------------+                |iommu_group    |
-                          |           +---------------------------------+   |                             |              / |               |
-                          |           |iommu_group(struct iommu_group*) |   +-----------------------------+             /  |               |
+                          |           +---------------------------------+                                                / |               |
+                          |           |iommu_group(struct iommu_group*) |                                               /  |               |
                           |           |                              ---|-+                                    +-------+   +---------------+
                           |           +---------------------------------+ |                                   /
                           |           |                                 | |                                  /
