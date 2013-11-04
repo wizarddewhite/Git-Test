@@ -34,3 +34,116 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
 
 	return 0;
 }
+
+2. tce_iommu_driver_ops()
+================================================================================
+
+2.1 tce_iommu_open(), create tce_container
+================================================================================
+; return value will be passed to attach_group
+static void *tce_iommu_open(unsigned long arg)
+{
+	struct tce_container *container;
+
+	if (arg != VFIO_SPAPR_TCE_IOMMU) {
+		pr_err("tce_vfio: Wrong IOMMU type\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	container = kzalloc(sizeof(*container), GFP_KERNEL);
+	if (!container)
+		return ERR_PTR(-ENOMEM);
+
+	mutex_init(&container->lock);
+
+	return container;
+}
+
+2.2 tce_iommu_release()
+================================================================================
+static void tce_iommu_release(void *iommu_data)
+{
+	struct tce_container *container = iommu_data;
+
+	WARN_ON(container->tbl && !container->tbl->it_group);
+	tce_iommu_disable(container);
+
+	if (container->tbl && container->tbl->it_group)
+		tce_iommu_detach_group(iommu_data, container->tbl->it_group);
+
+	mutex_destroy(&container->lock);
+
+	kfree(container);
+}
+
+2.2.1 tce_iommu_disable()
+================================================================================
+static void tce_iommu_disable(struct tce_container *container)
+{
+	if (!container->enabled)
+		return;
+
+	container->enabled = false;
+
+	if (!container->tbl || !current->mm)
+		return;
+
+	down_write(&current->mm->mmap_sem);
+	current->mm->locked_vm -= (container->tbl->it_size <<
+			IOMMU_PAGE_SHIFT) >> PAGE_SHIFT;
+	up_write(&current->mm->mmap_sem);
+}
+
+2.3 tce_iommu_attach_group(), called in vfio_ioctl_set_iommu()
+================================================================================
+static int tce_iommu_attach_group(void *iommu_data,
+		struct iommu_group *iommu_group)
+{
+	int ret;
+	struct tce_container *container = iommu_data;
+	struct iommu_table *tbl = iommu_group_get_iommudata(iommu_group);
+
+	BUG_ON(!tbl);
+	mutex_lock(&container->lock);
+
+	/* pr_debug("tce_vfio: Attaching group #%u to iommu %p\n",
+			iommu_group_id(iommu_group), iommu_group); */
+	if (container->tbl) {
+		pr_warn("tce_vfio: Only one group per IOMMU container is allowed, existing id=%d, attaching id=%d\n",
+				iommu_group_id(container->tbl->it_group),
+				iommu_group_id(iommu_group));
+		ret = -EBUSY;
+	} else if (container->enabled) {
+		pr_err("tce_vfio: attaching group #%u to enabled container\n",
+				iommu_group_id(iommu_group));
+		ret = -EBUSY;
+	} else {
+		ret = iommu_take_ownership(tbl);
+		if (!ret)
+			container->tbl = tbl;
+	}
+
+	mutex_unlock(&container->lock);
+
+	return ret;
+}
+
+2.3.1 iommu_take_ownership(), clear iommu_table and release pages
+================================================================================
+int iommu_take_ownership(struct iommu_table *tbl)
+{
+	unsigned long sz = (tbl->it_size + 7) >> 3;
+
+	if (tbl->it_offset == 0)
+		clear_bit(0, tbl->it_map);
+
+	if (!bitmap_empty(tbl->it_map, tbl->it_size)) {
+		pr_err("iommu_tce: it_map is not empty");
+		return -EBUSY;
+	}
+
+	memset(tbl->it_map, 0xff, sz);
+	iommu_clear_tces_and_put_pages(tbl, tbl->it_offset, tbl->it_size);
+
+	return 0;
+}
