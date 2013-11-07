@@ -1,7 +1,12 @@
 1. command line
 ================================================================================
+/home/ywywyang/git/qemu-impreza/ppc64-softmmu/qemu-system-ppc64 \
+         -M pseries -m 2048 -enable-kvm -nographic \
+         -drive file=/home/ywywyang/kvm/fc19.img \
+         -monitor telnet:localhost:5435,server,nowait -boot cd \
+         -device "spapr-pci-vfio-host-bridge,id=CXGB3,iommu=26,index=6"
 
-2. vfio_pci_dev_class_init
+2. vfio_pci_dev_class_init()
 ================================================================================
 static void vfio_pci_dev_class_init(ObjectClass *klass, void *data)
 {
@@ -20,8 +25,11 @@ static void vfio_pci_dev_class_init(ObjectClass *klass, void *data)
     pdc->is_express = 1; /* We might be */
 }
 
-3. vfio_initfn
+3. vfio_initfn()
 ================================================================================
+; path          /sys/kernel/iommu_groups/
+; group_name    #GROUP
+; space         address space
 static int vfio_initfn(PCIDevice *pdev)
 {
     VFIODevice *pvdev, *vdev = DO_UPCAST(VFIODevice, pdev, pdev);
@@ -169,9 +177,37 @@ out_put:
     return ret;
 }
 
-3.1 vfio_get_group()
+3.1 vfio_get_address_space()
 ================================================================================
-static VFIOGroup *vfio_get_group(int groupid)
+static AddressSpace *spapr_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+{
+    sPAPRPHBState *phb = opaque;
+
+    return &phb->iommu_as;
+}
+
+static VFIOAddressSpace *vfio_get_address_space(AddressSpace *as)
+{
+    VFIOAddressSpace *space;
+
+    QLIST_FOREACH(space, &vfio_address_spaces, list) {
+        if (space->as == as)
+            return space;
+    }
+
+    /* No suitable VFIOAddressSpace, create a new one */
+    space = g_malloc0(sizeof(*space));
+    space->as = as;
+    QLIST_INIT(&space->containers);
+
+    QLIST_INSERT_HEAD(&vfio_address_spaces, space, list);
+
+    return space;
+}
+
+3.2 vfio_get_group(), create VFIOGroup, VFIOGroup->fd = /dev/vfio/#Group
+================================================================================
+static VFIOGroup *vfio_get_group(int groupid, VFIOAddressSpace *space)
 {
     VFIOGroup *group;
     char path[32];
@@ -224,7 +260,7 @@ static VFIOGroup *vfio_get_group(int groupid)
     return group;
 }
 
-3.1.1 vfio_connect_container()
+3.2.1 vfio_connect_container(), connect vfio_group and vfio_container
 ================================================================================
 static int vfio_connect_container(VFIOGroup *group)
 {
@@ -296,3 +332,851 @@ static int vfio_connect_container(VFIOGroup *group)
 
     return 0;
 }
+
+3.2.1.1 open /dev/vfio/vfio
+================================================================================
+
+3.2.1.2 ioctl(/dev/vfio/#Group, VFIO_GROUP_SET_CONTAINER, /dev/vfio/vfio)
+================================================================================
+; after this, vfio_group->container will point to vfio_container.
+
+3.2.1.3 ioctl(/dev/vfio/vfio, VFIO_SET_IOMMU, VFIO_SPAPR_TCE_IOMMU)
+================================================================================
+; vfio_container->iommu_driver will point to an iommu_driver, eg. tce_iommu_driver
+; then run the attach_group()
+; on powernv, the tce will be cleared.
+
+3.2.1.3 ioctl(/dev/vfio/vfio, VFIO_IOMMU_ENABLE)
+================================================================================
+; lock the TCE table
+
+3.2.1.3 mem listerner/release
+================================================================================
+        container->iommu_data.listener = vfio_memory_listener;
+        container->iommu_data.release = vfio_listener_release;
+
+3.2 vfio_get_device(), get fd for vfio_device
+================================================================================
+static int vfio_get_device(VFIOGroup *group, const char *name, VFIODevice *vdev)
+{
+    struct vfio_device_info dev_info = { .argsz = sizeof(dev_info) };
+    struct vfio_region_info reg_info = { .argsz = sizeof(reg_info) };
+    struct vfio_irq_info irq_info = { .argsz = sizeof(irq_info) };
+    int ret, i;
+
+    ret = ioctl(group->fd, VFIO_GROUP_GET_DEVICE_FD, name);
+    if (ret < 0) {
+        error_report("vfio: error getting device %s from group %d: %m",
+                     name, group->groupid);
+        error_printf("Verify all devices in group %d are bound to vfio-pci "
+                     "or pci-stub and not already in use\n", group->groupid);
+        return ret;
+    }
+
+    vdev->fd = ret;
+    vdev->group = group;
+    QLIST_INSERT_HEAD(&group->device_list, vdev, next);
+
+    /* Sanity check device */
+    ret = ioctl(vdev->fd, VFIO_DEVICE_GET_INFO, &dev_info);
+    if (ret) {
+        error_report("vfio: error getting device info: %m");
+        goto error;
+    }
+
+    DPRINTF("Device %s flags: %u, regions: %u, irgs: %u\n", name,
+            dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+
+    if (!(dev_info.flags & VFIO_DEVICE_FLAGS_PCI)) {
+        error_report("vfio: Um, this isn't a PCI device");
+        goto error;
+    }
+
+    vdev->reset_works = !!(dev_info.flags & VFIO_DEVICE_FLAGS_RESET);
+    if (!vdev->reset_works) {
+        error_report("Warning, device %s does not support reset", name);
+    }
+
+    if (dev_info.num_regions < VFIO_PCI_CONFIG_REGION_INDEX + 1) {
+        error_report("vfio: unexpected number of io regions %u",
+                     dev_info.num_regions);
+        goto error;
+    }
+
+    if (dev_info.num_irqs < VFIO_PCI_MSIX_IRQ_INDEX + 1) {
+        error_report("vfio: unexpected number of irqs %u", dev_info.num_irqs);
+        goto error;
+    }
+
+    for (i = VFIO_PCI_BAR0_REGION_INDEX; i < VFIO_PCI_ROM_REGION_INDEX; i++) {
+        reg_info.index = i;
+
+        ret = ioctl(vdev->fd, VFIO_DEVICE_GET_REGION_INFO, &reg_info);
+        if (ret) {
+            error_report("vfio: Error getting region %d info: %m", i);
+            goto error;
+        }
+
+        DPRINTF("Device %s region %d:\n", name, i);
+        DPRINTF("  size: 0x%lx, offset: 0x%lx, flags: 0x%lx\n",
+                (unsigned long)reg_info.size, (unsigned long)reg_info.offset,
+                (unsigned long)reg_info.flags);
+
+        vdev->bars[i].flags = reg_info.flags;
+        vdev->bars[i].size = reg_info.size;
+        vdev->bars[i].fd_offset = reg_info.offset;
+        vdev->bars[i].fd = vdev->fd;
+        vdev->bars[i].nr = i;
+        QLIST_INIT(&vdev->bars[i].quirks);
+    }
+
+    reg_info.index = VFIO_PCI_ROM_REGION_INDEX;
+
+    ret = ioctl(vdev->fd, VFIO_DEVICE_GET_REGION_INFO, &reg_info);
+    if (ret) {
+        error_report("vfio: Error getting ROM info: %m");
+        goto error;
+    }
+
+    DPRINTF("Device %s ROM:\n", name);
+    DPRINTF("  size: 0x%lx, offset: 0x%lx, flags: 0x%lx\n",
+            (unsigned long)reg_info.size, (unsigned long)reg_info.offset,
+            (unsigned long)reg_info.flags);
+
+    vdev->rom_size = reg_info.size;
+    vdev->rom_offset = reg_info.offset;
+
+    reg_info.index = VFIO_PCI_CONFIG_REGION_INDEX;
+
+    ret = ioctl(vdev->fd, VFIO_DEVICE_GET_REGION_INFO, &reg_info);
+    if (ret) {
+        error_report("vfio: Error getting config info: %m");
+        goto error;
+    }
+
+    DPRINTF("Device %s config:\n", name);
+    DPRINTF("  size: 0x%lx, offset: 0x%lx, flags: 0x%lx\n",
+            (unsigned long)reg_info.size, (unsigned long)reg_info.offset,
+            (unsigned long)reg_info.flags);
+
+    vdev->config_size = reg_info.size;
+    if (vdev->config_size == PCI_CONFIG_SPACE_SIZE) {
+        vdev->pdev.cap_present &= ~QEMU_PCI_CAP_EXPRESS;
+    }
+    vdev->config_offset = reg_info.offset;
+
+    if ((vdev->features & VFIO_FEATURE_ENABLE_VGA) &&
+        dev_info.num_regions > VFIO_PCI_VGA_REGION_INDEX) {
+        struct vfio_region_info vga_info = {
+            .argsz = sizeof(vga_info),
+            .index = VFIO_PCI_VGA_REGION_INDEX,
+         };
+
+        ret = ioctl(vdev->fd, VFIO_DEVICE_GET_REGION_INFO, &vga_info);
+        if (ret) {
+            error_report(
+                "vfio: Device does not support requested feature x-vga");
+            goto error;
+        }
+
+        if (!(vga_info.flags & VFIO_REGION_INFO_FLAG_READ) ||
+            !(vga_info.flags & VFIO_REGION_INFO_FLAG_WRITE) ||
+            vga_info.size < 0xbffff + 1) {
+            error_report("vfio: Unexpected VGA info, flags 0x%lx, size 0x%lx",
+                         (unsigned long)vga_info.flags,
+                         (unsigned long)vga_info.size);
+            goto error;
+        }
+
+        vdev->vga.fd_offset = vga_info.offset;
+        vdev->vga.fd = vdev->fd;
+
+        vdev->vga.region[QEMU_PCI_VGA_MEM].offset = QEMU_PCI_VGA_MEM_BASE;
+        vdev->vga.region[QEMU_PCI_VGA_MEM].nr = QEMU_PCI_VGA_MEM;
+        QLIST_INIT(&vdev->vga.region[QEMU_PCI_VGA_MEM].quirks);
+
+        vdev->vga.region[QEMU_PCI_VGA_IO_LO].offset = QEMU_PCI_VGA_IO_LO_BASE;
+        vdev->vga.region[QEMU_PCI_VGA_IO_LO].nr = QEMU_PCI_VGA_IO_LO;
+        QLIST_INIT(&vdev->vga.region[QEMU_PCI_VGA_IO_LO].quirks);
+
+        vdev->vga.region[QEMU_PCI_VGA_IO_HI].offset = QEMU_PCI_VGA_IO_HI_BASE;
+        vdev->vga.region[QEMU_PCI_VGA_IO_HI].nr = QEMU_PCI_VGA_IO_HI;
+        QLIST_INIT(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].quirks);
+
+        vdev->has_vga = true;
+    }
+    irq_info.index = VFIO_PCI_ERR_IRQ_INDEX;
+
+    ret = ioctl(vdev->fd, VFIO_DEVICE_GET_IRQ_INFO, &irq_info);
+    if (ret) {
+        /* This can fail for an old kernel or legacy PCI dev */
+        DPRINTF("VFIO_DEVICE_GET_IRQ_INFO failure ret=%d\n", ret);
+        ret = 0;
+    } else if (irq_info.count == 1) {
+        vdev->pci_aer = true;
+    } else {
+        error_report("vfio: Warning: "
+                     "Could not enable error recovery for the device\n");
+    }
+
+error:
+    if (ret) {
+        QLIST_REMOVE(vdev, next);
+        vdev->group = NULL;
+        close(vdev->fd);
+    }
+    return ret;
+}
+
+3.2.1 ioctl(/dev/vfio/$Group, VFIO_GROUP_GET_DEVICE_FD, name)
+================================================================================
+; search the vfio_group->device_list and call device->ops->open()
+
+3.2.1.1 vfio_pci_open(), in kernel
+================================================================================
+; in this case, a vfio_pci device will do the initialization
+
+3.2.1.2 create fd with vfio_device_fops
+================================================================================
+; return the fd
+
+3.2.2 ioctl(vdev->fd, VFIO_DEVICE_GET_INFO, &dev_info)
+================================================================================
+; check the flags
+
+3.2.3 ioctl(vdev->fd, VFIO_DEVICE_GET_REGION_INFO, &reg_info)
+================================================================================
+; fill vdev->bars[]
+
+3.2.4 ioctl(vdev->fd, VFIO_DEVICE_GET_IRQ_INFO, &irq_info)
+================================================================================
+
+3.3 vfio_early_setup_msix(), setup msix from config space
+================================================================================
+static int vfio_early_setup_msix(VFIODevice *vdev)
+{
+    uint8_t pos;
+    uint16_t ctrl;
+    uint32_t table, pba;
+
+    pos = pci_find_capability(&vdev->pdev, PCI_CAP_ID_MSIX);
+    if (!pos) {
+        return 0;
+    }
+
+    if (pread(vdev->fd, &ctrl, sizeof(ctrl),
+              vdev->config_offset + pos + PCI_CAP_FLAGS) != sizeof(ctrl)) {
+        return -errno;
+    }
+
+    if (pread(vdev->fd, &table, sizeof(table),
+              vdev->config_offset + pos + PCI_MSIX_TABLE) != sizeof(table)) {
+        return -errno;
+    }
+
+    if (pread(vdev->fd, &pba, sizeof(pba),
+              vdev->config_offset + pos + PCI_MSIX_PBA) != sizeof(pba)) {
+        return -errno;
+    }
+
+    ctrl = le16_to_cpu(ctrl);
+    table = le32_to_cpu(table);
+    pba = le32_to_cpu(pba);
+
+    vdev->msix = g_malloc0(sizeof(*(vdev->msix)));
+    vdev->msix->table_bar = table & PCI_MSIX_FLAGS_BIRMASK;
+    vdev->msix->table_offset = table & ~PCI_MSIX_FLAGS_BIRMASK;
+    vdev->msix->pba_bar = pba & PCI_MSIX_FLAGS_BIRMASK;
+    vdev->msix->pba_offset = pba & ~PCI_MSIX_FLAGS_BIRMASK;
+    vdev->msix->entries = (ctrl & PCI_MSIX_FLAGS_QSIZE) + 1;
+
+    DPRINTF("%04x:%02x:%02x.%x "
+            "PCI MSI-X CAP @0x%x, BAR %d, offset 0x%x, entries %d\n",
+            vdev->host.domain, vdev->host.bus, vdev->host.slot,
+            vdev->host.function, pos, vdev->msix->table_bar,
+            vdev->msix->table_offset, vdev->msix->entries);
+
+    return 0;
+}
+
+3.4 vfio_map_bars()
+================================================================================
+static void vfio_map_bars(VFIODevice *vdev)
+{
+    int i;
+
+    for (i = 0; i < PCI_ROM_SLOT; i++) {
+        vfio_map_bar(vdev, i);
+    }
+
+    if (vdev->has_vga) {
+        memory_region_init_io(&vdev->vga.region[QEMU_PCI_VGA_MEM].mem,
+                              OBJECT(vdev), &vfio_vga_ops,
+                              &vdev->vga.region[QEMU_PCI_VGA_MEM],
+                              "vfio-vga-mmio@0xa0000",
+                              QEMU_PCI_VGA_MEM_SIZE);
+        memory_region_init_io(&vdev->vga.region[QEMU_PCI_VGA_IO_LO].mem,
+                              OBJECT(vdev), &vfio_vga_ops,
+                              &vdev->vga.region[QEMU_PCI_VGA_IO_LO],
+                              "vfio-vga-io@0x3b0",
+                              QEMU_PCI_VGA_IO_LO_SIZE);
+        memory_region_init_io(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].mem,
+                              OBJECT(vdev), &vfio_vga_ops,
+                              &vdev->vga.region[QEMU_PCI_VGA_IO_HI],
+                              "vfio-vga-io@0x3c0",
+                              QEMU_PCI_VGA_IO_HI_SIZE);
+
+        pci_register_vga(&vdev->pdev, &vdev->vga.region[QEMU_PCI_VGA_MEM].mem,
+                         &vdev->vga.region[QEMU_PCI_VGA_IO_LO].mem,
+                         &vdev->vga.region[QEMU_PCI_VGA_IO_HI].mem);
+        vfio_vga_quirk_setup(vdev);
+    }
+}
+
+3.4.1 vfio_map_bar(), vfio_bar_ops
+================================================================================
+static void vfio_map_bar(VFIODevice *vdev, int nr)
+{
+    VFIOBAR *bar = &vdev->bars[nr];
+    unsigned size = bar->size;
+    char name[64];
+    uint32_t pci_bar;
+    uint8_t type;
+    int ret;
+
+    /* Skip both unimplemented BARs and the upper half of 64bit BARS. */
+    if (!size) {
+        return;
+    }
+
+    snprintf(name, sizeof(name), "VFIO %04x:%02x:%02x.%x BAR %d",
+             vdev->host.domain, vdev->host.bus, vdev->host.slot,
+             vdev->host.function, nr);
+
+    /* Determine what type of BAR this is for registration */
+    ret = pread(vdev->fd, &pci_bar, sizeof(pci_bar),
+                vdev->config_offset + PCI_BASE_ADDRESS_0 + (4 * nr));
+    if (ret != sizeof(pci_bar)) {
+        error_report("vfio: Failed to read BAR %d (%m)", nr);
+        return;
+    }
+
+    pci_bar = le32_to_cpu(pci_bar);
+    bar->ioport = (pci_bar & PCI_BASE_ADDRESS_SPACE_IO);
+    bar->mem64 = bar->ioport ? 0 : (pci_bar & PCI_BASE_ADDRESS_MEM_TYPE_64);
+    type = pci_bar & (bar->ioport ? ~PCI_BASE_ADDRESS_IO_MASK :
+                                    ~PCI_BASE_ADDRESS_MEM_MASK);
+
+    /* A "slow" read/write mapping underlies all BARs */
+    memory_region_init_io(&bar->mem, OBJECT(vdev), &vfio_bar_ops,
+                          bar, name, size);
+    pci_register_bar(&vdev->pdev, nr, type, &bar->mem);
+
+    /*
+     * We can't mmap areas overlapping the MSIX vector table, so we
+     * potentially insert a direct-mapped subregion before and after it.
+     */
+    if (vdev->msix && vdev->msix->table_bar == nr) {
+        size = vdev->msix->table_offset & TARGET_PAGE_MASK;
+    }
+
+    strncat(name, " mmap", sizeof(name) - strlen(name) - 1);
+    if (vfio_mmap_bar(vdev, bar, &bar->mem,
+                      &bar->mmap_mem, &bar->mmap, size, 0, name)) {
+        error_report("%s unsupported. Performance may be slow", name);
+    }
+
+    if (vdev->msix && vdev->msix->table_bar == nr) {
+        unsigned start;
+
+        start = TARGET_PAGE_ALIGN(vdev->msix->table_offset +
+                                  (vdev->msix->entries * PCI_MSIX_ENTRY_SIZE));
+
+        size = start < bar->size ? bar->size - start : 0;
+        strncat(name, " msix-hi", sizeof(name) - strlen(name) - 1);
+        /* VFIOMSIXInfo contains another MemoryRegion for this mapping */
+        if (vfio_mmap_bar(vdev, bar, &bar->mem, &vdev->msix->mmap_mem,
+                          &vdev->msix->mmap, size, start, name)) {
+            error_report("%s unsupported. Performance may be slow", name);
+        }
+    }
+
+    vfio_bar_quirk_setup(vdev, nr);
+}
+
+3.4.1.1 vfio_bar_quirk_setup()
+================================================================================
+static void vfio_bar_quirk_setup(VFIODevice *vdev, int nr)
+{
+    vfio_probe_ati_bar4_window_quirk(vdev, nr);
+    vfio_probe_ati_bar2_4000_quirk(vdev, nr);
+    vfio_probe_nvidia_bar5_window_quirk(vdev, nr);
+    vfio_probe_nvidia_bar0_88000_quirk(vdev, nr);
+    vfio_probe_nvidia_bar0_1800_quirk(vdev, nr);
+}
+
+3.5 vfio_add_capabilities()
+================================================================================
+static int vfio_add_capabilities(VFIODevice *vdev)
+{
+    PCIDevice *pdev = &vdev->pdev;
+
+    if (!(pdev->config[PCI_STATUS] & PCI_STATUS_CAP_LIST) ||
+        !pdev->config[PCI_CAPABILITY_LIST]) {
+        return 0; /* Nothing to add */
+    }
+
+    return vfio_add_std_cap(vdev, pdev->config[PCI_CAPABILITY_LIST]);
+}
+
+3.5.1 vfio_add_std_cap()
+================================================================================
+static int vfio_add_std_cap(VFIODevice *vdev, uint8_t pos)
+{
+    PCIDevice *pdev = &vdev->pdev;
+    uint8_t cap_id, next, size;
+    int ret;
+
+    cap_id = pdev->config[pos];
+    next = pdev->config[pos + 1];
+
+    /*
+     * If it becomes important to configure capabilities to their actual
+     * size, use this as the default when it's something we don't recognize.
+     * Since QEMU doesn't actually handle many of the config accesses,
+     * exact size doesn't seem worthwhile.
+     */
+    size = vfio_std_cap_max_size(pdev, pos);
+
+    /*
+     * pci_add_capability always inserts the new capability at the head
+     * of the chain.  Therefore to end up with a chain that matches the
+     * physical device, we insert from the end by making this recursive.
+     * This is also why we pre-caclulate size above as cached config space
+     * will be changed as we unwind the stack.
+     */
+    if (next) {
+        ret = vfio_add_std_cap(vdev, next);
+        if (ret) {
+            return ret;
+        }
+    } else {
+        /* Begin the rebuild, use QEMU emulated list bits */
+        pdev->config[PCI_CAPABILITY_LIST] = 0;
+        vdev->emulated_config_bits[PCI_CAPABILITY_LIST] = 0xff;
+        vdev->emulated_config_bits[PCI_STATUS] |= PCI_STATUS_CAP_LIST;
+    }
+
+    /* Use emulated next pointer to allow dropping caps */
+    pci_set_byte(vdev->emulated_config_bits + pos + 1, 0xff);
+
+    switch (cap_id) {
+    case PCI_CAP_ID_MSI:
+        ret = vfio_setup_msi(vdev, pos);
+        break;
+    case PCI_CAP_ID_EXP:
+        ret = vfio_setup_pcie_cap(vdev, pos, size);
+        break;
+    case PCI_CAP_ID_MSIX:
+        ret = vfio_setup_msix(vdev, pos);
+        break;
+    case PCI_CAP_ID_PM:
+        vdev->pm_cap = pos;
+    default:
+        ret = pci_add_capability(pdev, cap_id, pos, size);
+        break;
+    }
+
+    if (ret < 0) {
+        error_report("vfio: %04x:%02x:%02x.%x Error adding PCI capability "
+                     "0x%x[0x%x]@0x%x: %d", vdev->host.domain,
+                     vdev->host.bus, vdev->host.slot, vdev->host.function,
+                     cap_id, size, pos, ret);
+        return ret;
+    }
+
+    return 0;
+}
+
+3.6 pci_device_set_intx_routing_notifier()
+================================================================================
+
+3.7 vfio_register_err_notifier()
+================================================================================
+static void vfio_register_err_notifier(VFIODevice *vdev)
+{
+    int ret;
+    int argsz;
+    struct vfio_irq_set *irq_set;
+    int32_t *pfd;
+
+    if (!vdev->pci_aer) {
+        return;
+    }
+
+    if (event_notifier_init(&vdev->err_notifier, 0)) {
+        error_report("vfio: Warning: "
+                     "Unable to init event notifier for error detection\n");
+        vdev->pci_aer = false;
+        return;
+    }
+
+    argsz = sizeof(*irq_set) + sizeof(*pfd);
+
+    irq_set = g_malloc0(argsz);
+    irq_set->argsz = argsz;
+    irq_set->flags = VFIO_IRQ_SET_DATA_EVENTFD |
+                     VFIO_IRQ_SET_ACTION_TRIGGER;
+    irq_set->index = VFIO_PCI_ERR_IRQ_INDEX;
+    irq_set->start = 0;
+    irq_set->count = 1;
+    pfd = (int32_t *)&irq_set->data;
+
+    *pfd = event_notifier_get_fd(&vdev->err_notifier);
+    qemu_set_fd_handler(*pfd, vfio_err_notifier_handler, NULL, vdev);
+
+    ret = ioctl(vdev->fd, VFIO_DEVICE_SET_IRQS, irq_set);
+    if (ret) {
+        error_report("vfio: Failed to set up error notification\n");
+        qemu_set_fd_handler(*pfd, NULL, NULL, vdev);
+        event_notifier_cleanup(&vdev->err_notifier);
+        vdev->pci_aer = false;
+    }
+    g_free(irq_set);
+}
+
+4. vfio_listener_region_add()
+================================================================================
+static void vfio_listener_region_add(MemoryListener *listener,
+                                     MemoryRegionSection *section)
+{
+    VFIOContainer *container = container_of(listener, VFIOContainer,
+                                            iommu_data.listener);
+    hwaddr iova, end;
+    int ret;
+
+    if (vfio_listener_skipped_section(section)) {
+        DPRINTF("SKIPPING region_add %"HWADDR_PRIx" - %"PRIx64"\n",
+                section->offset_within_address_space,
+                section->offset_within_address_space + section->size - 1);
+        return;
+    }
+
+    if (unlikely((section->offset_within_address_space & ~TARGET_PAGE_MASK) !=
+                 (section->offset_within_region & ~TARGET_PAGE_MASK))) {
+        error_report("%s received unaligned region", __func__);
+        return;
+    }
+
+    iova = TARGET_PAGE_ALIGN(section->offset_within_address_space);
+    end = (section->offset_within_address_space + int128_get64(section->size)) &
+          TARGET_PAGE_MASK;
+
+    if (iova >= end) {
+        return;
+    }
+
+    if (memory_region_is_iommu(section->mr)) {
+        VFIOGuestIOMMU *giommu;
+
+        DPRINTF("region_add [iommu] %"HWADDR_PRIx" - %"HWADDR_PRIx"\n",
+                iova, end - 1);
+
+        memory_region_ref(section->mr);
+        /*
+         * FIXME: We should do some checking to see if the
+         * capabilities of the host VFIO IOMMU are adequate to model
+         * the guest IOMMU
+         *
+         * FIXME: This assumes that the guest IOMMU is empty of
+         * mappings at this point - we should either enforce this, or
+         * loop through existing mappings to map them into VFIO.
+         *
+         * FIXME: For VFIO iommu types which have KVM acceleration to
+         * avoid bouncing all map/unmaps through qemu this way, this
+         * would be the right place to wire that up (tell the KVM
+         * device emulation the VFIO iommu handles to use).
+         */
+        giommu = g_malloc0(sizeof(*giommu));
+        giommu->iommu = section->mr;
+        giommu->container = container;
+        giommu->n.notify = vfio_iommu_map_notify;
+        QLIST_INSERT_HEAD(&container->guest_iommus, giommu, list);
+        memory_region_register_iommu_notifier(giommu->iommu, &giommu->n);
+
+    } else if (memory_region_is_ram(section->mr)) {
+        void *vaddr;
+
+        vaddr = memory_region_get_ram_ptr(section->mr) +
+                section->offset_within_region +
+                (iova - section->offset_within_address_space);
+
+        DPRINTF("region_add [ram] %"HWADDR_PRIx" - %"HWADDR_PRIx" [%p]\n",
+                iova, end - 1, vaddr);
+
+        memory_region_ref(section->mr);
+        ret = vfio_dma_map(container, iova, end - iova, vaddr, section->readonly);
+        if (ret) {
+            error_report("vfio_dma_map(%p, 0x%"HWADDR_PRIx", "
+                         "0x%"HWADDR_PRIx", %p) = %d (%m)",
+                         container, iova, end - iova, vaddr, ret);
+        }
+    }
+}
+
+4.1 vfio_iommu_map_notify()
+================================================================================
+static void vfio_iommu_map_notify(Notifier *n, void *data)
+{
+    VFIOGuestIOMMU *giommu = container_of(n, VFIOGuestIOMMU, n);
+    VFIOContainer *container = giommu->container;
+    IOMMUTLBEntry *iotlb = data;
+    MemoryRegion *mr;
+    hwaddr xlat;
+    hwaddr len = iotlb->addr_mask + 1;
+    void *vaddr;
+    int ret;
+
+    DPRINTF("iommu map @ %"HWADDR_PRIx" - %"HWADDR_PRIx"\n",
+            iotlb->iova, iotlb->iova + iotlb->address_mask);
+
+    /* The IOMMU TLB entry we have just covers translation through
+     * this IOMMU to its immediate target.  We need to translate
+     * it the rest of the way through to memory. */
+    mr = address_space_translate(&address_space_memory,
+                                 iotlb->translated_addr,
+                                 &xlat, &len, iotlb->perm & IOMMU_WO);
+    if (!memory_region_is_ram(mr)) {
+        DPRINTF("iommu map to non memory area %"HWADDR_PRIx"\n",
+                xlat);
+        return;
+    }
+    if (len & iotlb->addr_mask) {
+        DPRINTF("iommu has granularity incompatible with target AS\n");
+        return;
+    }
+
+    vaddr = memory_region_get_ram_ptr(mr) + xlat;
+
+    if (iotlb->perm != IOMMU_NONE) {
+        ret = vfio_dma_map(container, iotlb->iova,
+                           iotlb->addr_mask + 1, vaddr,
+                           !(iotlb->perm & IOMMU_WO) || mr->readonly);
+        if (ret) {
+            error_report("vfio_dma_map(%p, 0x%"HWADDR_PRIx", "
+                         "0x%"HWADDR_PRIx", %p) = %d (%m)",
+                         container, iotlb->iova,
+                         iotlb->addr_mask + 1, vaddr, ret);
+        }
+    } else {
+        ret = vfio_dma_unmap(container, iotlb->iova, iotlb->addr_mask + 1);
+        if (ret) {
+            error_report("vfio_dma_unmap(%p, 0x%"HWADDR_PRIx", "
+                         "0x%"HWADDR_PRIx") = %d (%m)",
+                         container, iotlb->iova,
+                         iotlb->addr_mask + 1, ret);
+        }
+    }
+}
+
+4.1.1 address_space_translate()
+================================================================================
+MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
+                                      hwaddr *xlat, hwaddr *plen,
+                                      bool is_write)
+{
+    IOMMUTLBEntry iotlb;
+    MemoryRegionSection *section;
+    MemoryRegion *mr;
+    hwaddr len = *plen;
+
+    for (;;) {
+        section = address_space_translate_internal(as->dispatch, addr, &addr, plen, true);
+        mr = section->mr;
+
+        if (!mr->iommu_ops) {
+            break;
+        }
+
+        iotlb = mr->iommu_ops->translate(mr, addr);
+        addr = ((iotlb.translated_addr & ~iotlb.addr_mask)
+                | (addr & iotlb.addr_mask));
+        len = MIN(len, (addr | iotlb.addr_mask) - addr + 1);
+        if (!(iotlb.perm & (1 << is_write))) {
+            mr = &io_mem_unassigned;
+            break;
+        }
+
+        as = iotlb.target_as;
+    }
+
+    *plen = len;
+    *xlat = addr;
+    return mr;
+}
+
+4.1.1.1 address_space_translate_internal()
+================================================================================
+static MemoryRegionSection *
+address_space_translate_internal(AddressSpaceDispatch *d, hwaddr addr, hwaddr *xlat,
+                                 hwaddr *plen, bool resolve_subpage)
+{
+    MemoryRegionSection *section;
+    Int128 diff;
+
+    section = address_space_lookup_region(d, addr, resolve_subpage);
+    /* Compute offset within MemoryRegionSection */
+    addr -= section->offset_within_address_space;
+
+    /* Compute offset within MemoryRegion */
+    *xlat = addr + section->offset_within_region;
+
+    diff = int128_sub(section->mr->size, int128_make64(addr));
+    *plen = int128_get64(int128_min(diff, int128_make64(*plen)));
+    return section;
+}
+
+4.1.1.2 spapr_tce_translate_iommu()
+================================================================================
+static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr)
+{
+    sPAPRTCETable *tcet = container_of(iommu, sPAPRTCETable, iommu);
+    uint64_t tce;
+
+#ifdef DEBUG_TCE
+    fprintf(stderr, "spapr_tce_translate liobn=0x%" PRIx32 " addr=0x"
+            DMA_ADDR_FMT "\n", tcet->liobn, addr);
+#endif
+
+    if (tcet->bypass) {
+        return (IOMMUTLBEntry) {
+            .target_as = &address_space_memory,
+            .iova = 0,
+            .translated_addr = 0,
+            .addr_mask = ~(hwaddr)0,
+            .perm = IOMMU_RW,
+        };
+    }
+
+    /* Check if we are in bound */
+    if (addr >= tcet->window_size) {
+#ifdef DEBUG_TCE
+        fprintf(stderr, "spapr_tce_translate out of bounds\n");
+#endif
+        return (IOMMUTLBEntry) { .perm = IOMMU_NONE };
+    }
+
+    tce = tcet->table[addr >> SPAPR_TCE_PAGE_SHIFT];
+
+#ifdef DEBUG_TCE
+    fprintf(stderr, " ->  *paddr=0x%llx, *len=0x%llx\n",
+            (tce & ~SPAPR_TCE_PAGE_MASK), SPAPR_TCE_PAGE_MASK + 1);
+#endif
+
+    return (IOMMUTLBEntry) {
+        .target_as = &address_space_memory,
+        .iova = addr & ~SPAPR_TCE_PAGE_MASK,
+        .translated_addr = tce & ~SPAPR_TCE_PAGE_MASK,
+        .addr_mask = SPAPR_TCE_PAGE_MASK,
+        .perm = tce,
+    };
+}
+
+4.1.2 vfio_dma_map()
+================================================================================
+static int vfio_dma_map(VFIOContainer *container, hwaddr iova,
+                        ram_addr_t size, void *vaddr, bool readonly)
+{
+    struct vfio_iommu_type1_dma_map map = {
+        .argsz = sizeof(map),
+        .flags = VFIO_DMA_MAP_FLAG_READ,
+        .vaddr = (__u64)(uintptr_t)vaddr,
+        .iova = iova,
+        .size = size,
+    };
+
+    if (!readonly) {
+        map.flags |= VFIO_DMA_MAP_FLAG_WRITE;
+    }
+
+    /*
+     * Try the mapping, if it fails with EBUSY, unmap the region and try
+     * again.  This shouldn't be necessary, but we sometimes see it in
+     * the the VGA ROM space.
+     */
+    if (ioctl(container->fd, VFIO_IOMMU_MAP_DMA, &map) == 0 ||
+        (errno == EBUSY && vfio_dma_unmap(container, iova, size) == 0 &&
+         ioctl(container->fd, VFIO_IOMMU_MAP_DMA, &map) == 0)) {
+        return 0;
+    }
+
+    DPRINTF("VFIO_MAP_DMA: %d\n", -errno);
+    return -errno;
+}
+
+4.1.3 vfio_dma_unmap()
+================================================================================
+static int vfio_dma_unmap(VFIOContainer *container,
+                          hwaddr iova, ram_addr_t size)
+{
+    struct vfio_iommu_type1_dma_unmap unmap = {
+        .argsz = sizeof(unmap),
+        .flags = 0,
+        .iova = iova,
+        .size = size,
+    };
+
+    if (ioctl(container->fd, VFIO_IOMMU_UNMAP_DMA, &unmap)) {
+        DPRINTF("VFIO_UNMAP_DMA: %d\n", -errno);
+        return -errno;
+    }
+
+    return 0;
+}
+
+0. data structure
+================================================================================
+
+    VFIOGroup
+    +------------------------+
+    |fd                      | -> /dev/vfio/#Group
+    |groupid                 | -> #Group
+    +------------------------+
+    |container               |                 
+    |  (VFIOContainer*)      | ---------------->VFIOContainer
+    +------------------------+                  +-----------------------+
+    |                        |                  |fd                     | -> /dev/vfio/vfio
+    |                        |                  |                       |
+    +------------------------+                  +-----------------------+
+    |                        |                  |space                  |
+    |                        |                  |   (VFIOAddressSpace)  |
+    +------------------------+                  +-----------------------+
+    |device_list             |                  |listerner              |
+    |                        |                  |   (MemoryListerner)   |
+    +------------------------+                  +-----------------------+       
+        |            ^                          |guest_iommus           | ----->+--------------------------+
+        |            |                          |   (VFIOGuestIOMMU)    |       |                          |
+        |            +----------------------+   +-----------------------+       |                          |
+        |                                   |                                   +--------------------------+
+        |       VFIODevice                  |                                   |notify                    |
+        +------>+------------------------+  |                                   |    vfio_iommu_map_notify |
+                |group                   |--+                                   +--------------------------+
+                |                        |
+                +------------------------+
+                |fd                      | -> 
+                |                        |
+                +------------------------+
+                |bars[8]                 |
+                |  (VFIOBAR)             |
+                +------------------------+
+                |rom_size                |
+                |rom_offset              |
+                |                        |
+                +------------------------+
+                |config_size             |
+                |config_offset           |
+                |                        |
+                +------------------------+
+                |pdev                    |
+                |   (PCIDevice)          |
+                +------------------------+
