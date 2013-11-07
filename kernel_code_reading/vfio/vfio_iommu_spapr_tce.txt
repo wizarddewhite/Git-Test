@@ -147,3 +147,169 @@ int iommu_take_ownership(struct iommu_table *tbl)
 
 	return 0;
 }
+
+2.4 tce_iommu_ioctl()
+================================================================================
+static long tce_iommu_ioctl(void *iommu_data,
+				 unsigned int cmd, unsigned long arg)
+{
+	struct tce_container *container = iommu_data;
+	unsigned long minsz;
+	long ret;
+
+	switch (cmd) {
+	case VFIO_CHECK_EXTENSION:
+		return (arg == VFIO_SPAPR_TCE_IOMMU) ? 1 : 0;
+
+	case VFIO_IOMMU_SPAPR_TCE_GET_INFO: {
+		struct vfio_iommu_spapr_tce_info info;
+		struct iommu_table *tbl = container->tbl;
+
+		if (WARN_ON(!tbl))
+			return -ENXIO;
+
+		minsz = offsetofend(struct vfio_iommu_spapr_tce_info,
+				dma32_window_size);
+
+		if (copy_from_user(&info, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (info.argsz < minsz)
+			return -EINVAL;
+
+		info.dma32_window_start = tbl->it_offset << IOMMU_PAGE_SHIFT;
+		info.dma32_window_size = tbl->it_size << IOMMU_PAGE_SHIFT;
+		info.flags = 0;
+
+		if (copy_to_user((void __user *)arg, &info, minsz))
+			return -EFAULT;
+
+		return 0;
+	}
+	case VFIO_IOMMU_MAP_DMA: {
+		struct vfio_iommu_type1_dma_map param;
+		struct iommu_table *tbl = container->tbl;
+		unsigned long tce, i;
+
+		if (!tbl)
+			return -ENXIO;
+
+		BUG_ON(!tbl->it_group);
+
+		minsz = offsetofend(struct vfio_iommu_type1_dma_map, size);
+
+		if (copy_from_user(&param, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (param.argsz < minsz)
+			return -EINVAL;
+
+		if (param.flags & ~(VFIO_DMA_MAP_FLAG_READ |
+				VFIO_DMA_MAP_FLAG_WRITE))
+			return -EINVAL;
+
+		if ((param.size & ~IOMMU_PAGE_MASK) ||
+				(param.vaddr & ~IOMMU_PAGE_MASK))
+			return -EINVAL;
+
+		/* iova is checked by the IOMMU API */
+		tce = param.vaddr;
+		if (param.flags & VFIO_DMA_MAP_FLAG_READ)
+			tce |= TCE_PCI_READ;
+		if (param.flags & VFIO_DMA_MAP_FLAG_WRITE)
+			tce |= TCE_PCI_WRITE;
+
+		ret = iommu_tce_put_param_check(tbl, param.iova, tce);
+		if (ret)
+			return ret;
+
+		for (i = 0; i < (param.size >> IOMMU_PAGE_SHIFT); ++i) {
+			ret = iommu_put_tce_user_mode(tbl,
+					(param.iova >> IOMMU_PAGE_SHIFT) + i,
+					tce);
+			if (ret)
+				break;
+			tce += IOMMU_PAGE_SIZE;
+		}
+		if (ret)
+			iommu_clear_tces_and_put_pages(tbl,
+					param.iova >> IOMMU_PAGE_SHIFT,	i);
+
+		iommu_flush_tce(tbl);
+
+		return ret;
+	}
+	case VFIO_IOMMU_UNMAP_DMA: {
+		struct vfio_iommu_type1_dma_unmap param;
+		struct iommu_table *tbl = container->tbl;
+
+		if (WARN_ON(!tbl))
+			return -ENXIO;
+
+		minsz = offsetofend(struct vfio_iommu_type1_dma_unmap,
+				size);
+
+		if (copy_from_user(&param, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (param.argsz < minsz)
+			return -EINVAL;
+
+		/* No flag is supported now */
+		if (param.flags)
+			return -EINVAL;
+
+		if (param.size & ~IOMMU_PAGE_MASK)
+			return -EINVAL;
+
+		ret = iommu_tce_clear_param_check(tbl, param.iova, 0,
+				param.size >> IOMMU_PAGE_SHIFT);
+		if (ret)
+			return ret;
+
+		ret = iommu_clear_tces_and_put_pages(tbl,
+				param.iova >> IOMMU_PAGE_SHIFT,
+				param.size >> IOMMU_PAGE_SHIFT);
+		iommu_flush_tce(tbl);
+
+		return ret;
+	}
+	case VFIO_IOMMU_ENABLE:
+		mutex_lock(&container->lock);
+		ret = tce_iommu_enable(container);
+		mutex_unlock(&container->lock);
+		return ret;
+
+
+	case VFIO_IOMMU_DISABLE:
+		mutex_lock(&container->lock);
+		tce_iommu_disable(container);
+		mutex_unlock(&container->lock);
+		return 0;
+	}
+
+	return -ENOTTY;
+}
+
+2.4.1 VFIO_IOMMU_UNMAP_DMA
+================================================================================
+int iommu_tce_clear_param_check(struct iommu_table *tbl,
+		unsigned long ioba, unsigned long tce_value,
+		unsigned long npages)
+{
+	/* ppc_md.tce_free() does not support any value but 0 */
+	if (tce_value)
+		return -EINVAL;
+
+	if (ioba & ~IOMMU_PAGE_MASK)
+		return -EINVAL;
+
+	ioba >>= IOMMU_PAGE_SHIFT;
+	if (ioba < tbl->it_offset)
+		return -EINVAL;
+
+	if ((ioba + npages) > (tbl->it_offset + tbl->it_size))
+		return -EINVAL;
+
+	return 0;
+}
