@@ -1,0 +1,260 @@
+1. qemu_init_vcpu(), general vcpu init function
+================================================================================
+void qemu_init_vcpu(CPUState *cpu)
+{
+    cpu->nr_cores = smp_cores;
+    cpu->nr_threads = smp_threads;
+    cpu->stopped = true;
+    if (kvm_enabled()) {
+        qemu_kvm_start_vcpu(cpu);
+    } else if (tcg_enabled()) {
+        qemu_tcg_init_vcpu(cpu);
+    } else {
+        qemu_dummy_start_vcpu(cpu);
+    }
+}
+
+1.1 qemu_kvm_start_vcpu(), with kvm enabled
+================================================================================
+static void qemu_kvm_start_vcpu(CPUState *cpu)
+{
+    cpu->thread = g_malloc0(sizeof(QemuThread));
+    cpu->halt_cond = g_malloc0(sizeof(QemuCond));
+    qemu_cond_init(cpu->halt_cond);
+    qemu_thread_create(cpu->thread, qemu_kvm_cpu_thread_fn, cpu,
+                       QEMU_THREAD_JOINABLE);
+    while (!cpu->created) {
+        qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
+    }
+}
+
+1.1.1 qemu_kvm_cpu_thread_fn()
+================================================================================
+static void *qemu_kvm_cpu_thread_fn(void *arg)
+{
+    CPUState *cpu = arg;
+    int r;
+
+    qemu_mutex_lock(&qemu_global_mutex);
+    qemu_thread_get_self(cpu->thread);
+    cpu->thread_id = qemu_get_thread_id();
+    current_cpu = cpu;
+
+    r = kvm_init_vcpu(cpu);
+    if (r < 0) {
+        fprintf(stderr, "kvm_init_vcpu failed: %s\n", strerror(-r));
+        exit(1);
+    }
+
+    qemu_kvm_init_cpu_signals(cpu);
+
+    /* signal CPU creation */
+    cpu->created = true;
+    qemu_cond_signal(&qemu_cpu_cond);
+
+    while (1) {
+        if (cpu_can_run(cpu)) {
+            r = kvm_cpu_exec(cpu);
+            if (r == EXCP_DEBUG) {
+                cpu_handle_guest_debug(cpu);
+            }
+        }
+        qemu_kvm_wait_io_event(cpu);
+    }
+
+    return NULL;
+}
+
+1.1.1.1 kvm_init_vcpu()
+================================================================================
+int kvm_init_vcpu(CPUState *cpu)
+{
+    KVMState *s = kvm_state;
+    long mmap_size;
+    int ret;
+
+    DPRINTF("kvm_init_vcpu\n");
+
+    ret = kvm_vm_ioctl(s, KVM_CREATE_VCPU, (void *)kvm_arch_vcpu_id(cpu));
+    if (ret < 0) {
+        DPRINTF("kvm_create_vcpu failed\n");
+        goto err;
+    }
+
+    cpu->kvm_fd = ret;
+    cpu->kvm_state = s;
+    cpu->kvm_vcpu_dirty = true;
+
+    mmap_size = kvm_ioctl(s, KVM_GET_VCPU_MMAP_SIZE, 0);
+    if (mmap_size < 0) {
+        ret = mmap_size;
+        DPRINTF("KVM_GET_VCPU_MMAP_SIZE failed\n");
+        goto err;
+    }
+
+    cpu->kvm_run = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                        cpu->kvm_fd, 0);
+    if (cpu->kvm_run == MAP_FAILED) {
+        ret = -errno;
+        DPRINTF("mmap'ing vcpu state failed\n");
+        goto err;
+    }
+
+    if (s->coalesced_mmio && !s->coalesced_mmio_ring) {
+        s->coalesced_mmio_ring =
+            (void *)cpu->kvm_run + s->coalesced_mmio * PAGE_SIZE;
+    }
+
+    ret = kvm_arch_init_vcpu(cpu);
+    if (ret == 0) {
+        qemu_register_reset(kvm_reset_vcpu, cpu);
+        kvm_arch_reset_vcpu(cpu);
+    }
+err:
+    return ret;
+}
+
+1.1.1.2 qemu_kvm_init_cpu_signals(), signal is handled by main thread
+================================================================================
+static void qemu_kvm_init_cpu_signals(CPUState *cpu)
+{
+    int r;
+    sigset_t set;
+    struct sigaction sigact;
+
+    memset(&sigact, 0, sizeof(sigact));
+    sigact.sa_handler = dummy_signal;
+    sigaction(SIG_IPI, &sigact, NULL);
+
+    pthread_sigmask(SIG_BLOCK, NULL, &set);
+    sigdelset(&set, SIG_IPI);
+    sigdelset(&set, SIGBUS);
+    r = kvm_set_signal_mask(cpu, &set);
+    if (r) {
+        fprintf(stderr, "kvm_set_signal_mask: %s\n", strerror(-r));
+        exit(1);
+    }
+}
+
+1.1.1.3 qemu_cond_signal(&qemu_cpu_cond)
+================================================================================
+
+1.1.1.4 kvm_cpu_exec(cpu)
+================================================================================
+int kvm_cpu_exec(CPUState *cpu)
+{
+    struct kvm_run *run = cpu->kvm_run;
+    int ret, run_ret;
+
+    DPRINTF("kvm_cpu_exec()\n");
+
+    if (kvm_arch_process_async_events(cpu)) {
+        cpu->exit_request = 0;
+        return EXCP_HLT;
+    }
+
+    do {
+        if (cpu->kvm_vcpu_dirty) {
+            kvm_arch_put_registers(cpu, KVM_PUT_RUNTIME_STATE);
+            cpu->kvm_vcpu_dirty = false;
+        }
+
+        kvm_arch_pre_run(cpu, run);
+        if (cpu->exit_request) {
+            DPRINTF("interrupt exit requested\n");
+            /*
+             * KVM requires us to reenter the kernel after IO exits to complete
+             * instruction emulation. This self-signal will ensure that we
+             * leave ASAP again.
+             */
+            qemu_cpu_kick_self();
+        }
+        qemu_mutex_unlock_iothread();
+
+        run_ret = kvm_vcpu_ioctl(cpu, KVM_RUN, 0);
+
+        qemu_mutex_lock_iothread();
+        kvm_arch_post_run(cpu, run);
+
+        if (run_ret < 0) {
+            if (run_ret == -EINTR || run_ret == -EAGAIN) {
+                DPRINTF("io window exit\n");
+                ret = EXCP_INTERRUPT;
+                break;
+            }
+            fprintf(stderr, "error: kvm run failed %s\n",
+                    strerror(-run_ret));
+            abort();
+        }
+
+        trace_kvm_run_exit(cpu->cpu_index, run->exit_reason);
+        switch (run->exit_reason) {
+        case KVM_EXIT_IO:
+            DPRINTF("handle_io\n");
+            kvm_handle_io(run->io.port,
+                          (uint8_t *)run + run->io.data_offset,
+                          run->io.direction,
+                          run->io.size,
+                          run->io.count);
+            ret = 0;
+            break;
+        case KVM_EXIT_MMIO:
+            DPRINTF("handle_mmio\n");
+            cpu_physical_memory_rw(run->mmio.phys_addr,
+                                   run->mmio.data,
+                                   run->mmio.len,
+                                   run->mmio.is_write);
+            ret = 0;
+            break;
+        case KVM_EXIT_IRQ_WINDOW_OPEN:
+            DPRINTF("irq_window_open\n");
+            ret = EXCP_INTERRUPT;
+            break;
+        case KVM_EXIT_SHUTDOWN:
+            DPRINTF("shutdown\n");
+            qemu_system_reset_request();
+            ret = EXCP_INTERRUPT;
+            break;
+        case KVM_EXIT_UNKNOWN:
+            fprintf(stderr, "KVM: unknown exit, hardware reason %" PRIx64 "\n",
+                    (uint64_t)run->hw.hardware_exit_reason);
+            ret = -1;
+            break;
+        case KVM_EXIT_INTERNAL_ERROR:
+            ret = kvm_handle_internal_error(cpu, run);
+            break;
+        default:
+            DPRINTF("kvm_arch_handle_exit\n");
+            ret = kvm_arch_handle_exit(cpu, run);
+            break;
+        }
+    } while (ret == 0);
+
+    if (ret < 0) {
+        cpu_dump_state(cpu, stderr, fprintf, CPU_DUMP_CODE);
+        vm_stop(RUN_STATE_INTERNAL_ERROR);
+    }
+
+    cpu->exit_request = 0;
+    return ret;
+}
+
+1.1.1.5 qemu_kvm_wait_io_event(cpu)
+================================================================================
+
+0. data structure
+================================================================================
+   CPUState
+   +-------------------------+
+   |thread                   | -> qemu_kvm_cpu_thread_fn
+   |  (QemuThread*)          |
+   +-------------------------+
+   |kvm_fd                   | -> with kvm_vcpu_fops
+   |                         |
+   +-------------------------+
+   |kvm_state                |
+   |  (KVMState)             |
+   +-------------------------+
+   |kvm_run                  | -> mmap to kernel
+   |  (struct kvm_run*)      |
+   +-------------------------+
