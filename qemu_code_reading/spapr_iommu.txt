@@ -1,0 +1,199 @@
+1. spapr_tce_table_info()
+================================================================================
+static TypeInfo spapr_tce_table_info = {
+    .name = TYPE_SPAPR_TCE_TABLE,
+    .parent = TYPE_DEVICE,
+    .instance_size = sizeof(sPAPRTCETable),
+    .class_init = spapr_tce_table_class_init,
+    .class_size = sizeof(sPAPRTCETableClass),
+    .instance_finalize = spapr_tce_table_finalize,
+};
+
+1.1 spapr_tce_table_class_init()
+================================================================================
+static void spapr_tce_table_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    sPAPRTCETableClass *k = SPAPR_TCE_TABLE_CLASS(klass);
+
+    dc->vmsd = &vmstate_spapr_tce_table;
+    dc->init = spapr_tce_table_realize;
+    dc->reset = spapr_tce_reset;
+    k->put_tce = put_tce_emu;
+
+    QLIST_INIT(&spapr_tce_tables);
+
+    /* hcall-tce */
+    spapr_register_hypercall(H_PUT_TCE, h_put_tce);
+    spapr_register_hypercall(H_PUT_TCE_INDIRECT, h_put_tce_indirect);
+    spapr_register_hypercall(H_STUFF_TCE, h_stuff_tce);
+}
+
+2. spapr_tce_table_realize()
+================================================================================
+static int spapr_tce_table_realize(DeviceState *dev)
+{
+    sPAPRTCETable *tcet = SPAPR_TCE_TABLE(dev);
+
+    if (kvm_enabled()) {
+        tcet->table = kvmppc_create_spapr_tce(tcet->liobn,
+                                              tcet->window_size,
+                                              &tcet->fd);
+    }
+
+    if (!tcet->table) {
+        size_t table_size = (tcet->window_size >> SPAPR_TCE_PAGE_SHIFT)
+            * sizeof(uint64_t);
+        tcet->table = g_malloc0(table_size);
+    }
+    tcet->nb_table = tcet->window_size >> SPAPR_TCE_PAGE_SHIFT;
+
+#ifdef DEBUG_TCE
+    fprintf(stderr, "spapr_iommu: New TCE table @ %p, liobn=0x%x, "
+            "table @ %p, fd=%d\n", tcet, liobn, tcet->table, tcet->fd);
+#endif
+
+    memory_region_init_iommu(&tcet->iommu, OBJECT(dev), &spapr_iommu_ops,
+                             "iommu-spapr", (uint64_t)INT64_MAX + 1);
+
+    QLIST_INSERT_HEAD(&spapr_tce_tables, tcet, list);
+
+    return 0;
+}
+
+2.1 kvmppc_create_spapr_tce(), create tce_table fd->ops kvm_spapr_tce_fops
+================================================================================
+void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t window_size, int *pfd)
+{
+    struct kvm_create_spapr_tce args = {
+        .liobn = liobn,
+        .window_size = window_size,
+    };
+    long len;
+    int fd;
+    void *table;
+
+    /* Must set fd to -1 so we don't try to munmap when called for
+     * destroying the table, which the upper layers -will- do
+     */
+    *pfd = -1;
+    if (!cap_spapr_tce) {
+        return NULL;
+    }
+
+    fd = kvm_vm_ioctl(kvm_state, KVM_CREATE_SPAPR_TCE, &args);
+    if (fd < 0) {
+        fprintf(stderr, "KVM: Failed to create TCE table for liobn 0x%x\n",
+                liobn);
+        return NULL;
+    }
+
+    len = (window_size / SPAPR_TCE_PAGE_SIZE) * sizeof(uint64_t);
+    /* FIXME: round this up to page size */
+
+    table = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (table == MAP_FAILED) {
+        fprintf(stderr, "KVM: Failed to map TCE table for liobn 0x%x\n",
+                liobn);
+        close(fd);
+        return NULL;
+    }
+
+    *pfd = fd;
+    return table;
+}
+
+2.1 memory_region_init_iommu(spapr_iommu_ops)
+================================================================================
+static MemoryRegionIOMMUOps spapr_iommu_ops = {
+    .translate = spapr_tce_translate_iommu,
+};
+
+5. spapr_tce_table_vfio_info()
+================================================================================
+static TypeInfo spapr_tce_table_vfio_info = {
+    .name = TYPE_SPAPR_TCE_TABLE_VFIO,
+    .parent = TYPE_SPAPR_TCE_TABLE,
+    .instance_size = sizeof(sPAPRTCETable),
+    .class_init = spapr_tce_table_vfio_class_init,
+    .class_size = sizeof(sPAPRTCETableClass),
+};
+
+5.1 spapr_tce_table_vfio_class_init()
+================================================================================
+static void spapr_tce_table_vfio_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    sPAPRTCETableClass *k = SPAPR_TCE_TABLE_CLASS(klass);
+
+    dc->init = spapr_tce_table_vfio_realize;
+    k->put_tce = put_tce_vfio;
+}
+
+5.2 spapr_tce_table_vfio_realize()
+================================================================================
+static int spapr_tce_table_vfio_realize(DeviceState *dev)
+{
+    sPAPRTCETable *tcet = SPAPR_TCE_TABLE(dev);
+
+    memory_region_init_iommu(&tcet->iommu, NULL, &spapr_vfio_iommu_ops,
+                             "iommu-vfio-spapr", (uint64_t)INT64_MAX+1);
+
+    QLIST_INSERT_HEAD(&spapr_tce_tables, tcet, list);
+
+    return 0;
+}
+
+5.3 put_tce_vfio()
+================================================================================
+this function is called in this flow:
+
+kvm_arch_handle_exit()
+    spapr_hypercall()
+        h_put_tce()
+            put_tce_vfio() <- then notify the vfio_iommu
+
+static target_ulong put_tce_vfio(sPAPRTCETable *tcet, target_ulong ioba,
+                                 target_ulong tce)
+{
+    IOMMUTLBEntry entry;
+
+    entry.iova = ioba & ~SPAPR_TCE_PAGE_MASK;
+    entry.translated_addr = tce & ~SPAPR_TCE_PAGE_MASK;
+    entry.addr_mask = SPAPR_TCE_PAGE_MASK;
+    entry.perm = 0;
+    if ((tce & SPAPR_TCE_RO) == SPAPR_TCE_RO) {
+        entry.perm |= IOMMU_RO;
+    }
+    if ((tce & SPAPR_TCE_WO) == SPAPR_TCE_WO) {
+        entry.perm |= IOMMU_WO;
+    }
+    memory_region_notify_iommu(&tcet->iommu, entry);
+
+    return H_SUCCESS;
+}
+
+5.3.1 memory_region_notify_iommu()
+================================================================================
+void memory_region_notify_iommu(MemoryRegion *mr,
+                                IOMMUTLBEntry entry)
+{
+    assert(memory_region_is_iommu(mr));
+    notifier_list_notify(&mr->iommu_notify, &entry);
+}
+
+5.3.1.1 notifier_list_notify()
+================================================================================
+void notifier_list_notify(NotifierList *list, void *data)
+{
+    Notifier *notifier, *next;
+
+    QLIST_FOREACH_SAFE(notifier, &list->notifiers, node, next) {
+        notifier->notify(notifier, data);
+    }
+}
+
+5.3.1.1.1 vfio_iommu_map_notify()
+================================================================================
+; the data is of IOMMUTLBEntry, which is passed from put_tce_vfio()
+static void vfio_iommu_map_notify(Notifier *n, void *data)
