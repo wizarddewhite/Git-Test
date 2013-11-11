@@ -924,8 +924,9 @@ static void vfio_listener_region_add(MemoryListener *listener,
     }
 }
 
-4.1 vfio_iommu_map_notify()
+4.1 vfio_iommu_map_notify(), iommu notification 
 ================================================================================
+; is notified in memory_region_notify_iommu()
 static void vfio_iommu_map_notify(Notifier *n, void *data)
 {
     VFIOGuestIOMMU *giommu = container_of(n, VFIOGuestIOMMU, n);
