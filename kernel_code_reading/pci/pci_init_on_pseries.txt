@@ -298,6 +298,165 @@ static void __init pSeries_request_regions(void)
 	request_region(0xc0,0x20,"dma2");
 }
 
+3. setup_system, called in head_64.S
+===============================================================================
+void __init setup_system(void)
+{
+	DBG(" -> setup_system()\n");
+
+	/* Apply the CPUs-specific and firmware specific fixups to kernel
+	 * text (nop out sections not relevant to this CPU or this firmware)
+	 */
+	do_feature_fixups(cur_cpu_spec->cpu_features,
+			  &__start___ftr_fixup, &__stop___ftr_fixup);
+	do_feature_fixups(cur_cpu_spec->mmu_features,
+			  &__start___mmu_ftr_fixup, &__stop___mmu_ftr_fixup);
+	do_feature_fixups(powerpc_firmware_features,
+			  &__start___fw_ftr_fixup, &__stop___fw_ftr_fixup);
+	do_lwsync_fixups(cur_cpu_spec->cpu_features,
+			 &__start___lwsync_fixup, &__stop___lwsync_fixup);
+	do_final_fixups();
+
+	/*
+	 * Unflatten the device-tree passed by prom_init or kexec
+	 */
+	unflatten_device_tree();
+
+	/*
+	 * Fill the ppc64_caches & systemcfg structures with informations
+ 	 * retrieved from the device-tree.
+	 */
+	initialize_cache_info();
+
+#ifdef CONFIG_PPC_RTAS
+	/*
+	 * Initialize RTAS if available
+	 */
+	rtas_initialize();
+#endif /* CONFIG_PPC_RTAS */
+
+	/*
+	 * Check if we have an initrd provided via the device-tree
+	 */
+	check_for_initrd();
+
+	/*
+	 * Do some platform specific early initializations, that includes
+	 * setting up the hash table pointers. It also sets up some interrupt-mapping
+	 * related options that will be used by finish_device_tree()
+	 */
+	if (ppc_md.init_early)
+		ppc_md.init_early();
+
+ 	/*
+	 * We can discover serial ports now since the above did setup the
+	 * hash table management for us, thus ioremap works. We do that early
+	 * so that further code can be debugged
+	 */
+	find_legacy_serial_ports();
+
+	/*
+	 * Register early console
+	 */
+	register_early_udbg_console();
+
+	/*
+	 * Initialize xmon
+	 */
+	xmon_setup();
+
+	smp_setup_cpu_maps();
+	check_smt_enabled();
+
+#ifdef CONFIG_SMP
+	/* Release secondary cpus out of their spinloops at 0x60 now that
+	 * we can map physical -> logical CPU ids
+	 */
+	smp_release_cpus();
+#endif
+
+	printk("Starting Linux PPC64 %s\n", init_utsname()->version);
+
+	printk("-----------------------------------------------------\n");
+	printk("ppc64_pft_size                = 0x%llx\n", ppc64_pft_size);
+	printk("physicalMemorySize            = 0x%llx\n", memblock_phys_mem_size());
+	if (ppc64_caches.dline_size != 0x80)
+		printk("ppc64_caches.dcache_line_size = 0x%x\n",
+		       ppc64_caches.dline_size);
+	if (ppc64_caches.iline_size != 0x80)
+		printk("ppc64_caches.icache_line_size = 0x%x\n",
+		       ppc64_caches.iline_size);
+#ifdef CONFIG_PPC_STD_MMU_64
+	if (htab_address)
+		printk("htab_address                  = 0x%p\n", htab_address);
+	printk("htab_hash_mask                = 0x%lx\n", htab_hash_mask);
+#endif /* CONFIG_PPC_STD_MMU_64 */
+	if (PHYSICAL_START > 0)
+		printk("physical_start                = 0x%llx\n",
+		       (unsigned long long)PHYSICAL_START);
+	printk("-----------------------------------------------------\n");
+
+	DBG(" <- setup_system()\n");
+}
+
+3.1 pSeries_init_early(), ppc_md.init_early();
+===============================================================================
+static void __init pSeries_init_early(void)
+{
+	pr_debug(" -> pSeries_init_early()\n");
+
+#ifdef CONFIG_HVC_CONSOLE
+	if (firmware_has_feature(FW_FEATURE_LPAR))
+		hvc_vio_init_early();
+#endif
+	if (firmware_has_feature(FW_FEATURE_XDABR))
+		ppc_md.set_dabr = pseries_set_xdabr;
+	else if (firmware_has_feature(FW_FEATURE_DABR))
+		ppc_md.set_dabr = pseries_set_dabr;
+
+	if (firmware_has_feature(FW_FEATURE_SET_MODE))
+		ppc_md.set_dawr = pseries_set_dawr;
+
+	pSeries_cmo_feature_init();
+	iommu_init_early_pSeries();
+
+	pr_debug(" <- pSeries_init_early()\n");
+}
+
+3.1.1 iommu_init_early_pSeries(), init ppc_md handle
+===============================================================================
+void iommu_init_early_pSeries(void)
+{
+	if (of_chosen && of_get_property(of_chosen, "linux,iommu-off", NULL))
+		return;
+
+	if (firmware_has_feature(FW_FEATURE_LPAR)) {
+		if (firmware_has_feature(FW_FEATURE_MULTITCE)) {
+			ppc_md.tce_build = tce_buildmulti_pSeriesLP;
+			ppc_md.tce_free	 = tce_freemulti_pSeriesLP;
+		} else {
+			ppc_md.tce_build = tce_build_pSeriesLP;
+			ppc_md.tce_free	 = tce_free_pSeriesLP;
+		}
+		ppc_md.tce_get   = tce_get_pSeriesLP;
+		ppc_md.pci_dma_bus_setup = pci_dma_bus_setup_pSeriesLP;
+		ppc_md.pci_dma_dev_setup = pci_dma_dev_setup_pSeriesLP;
+		ppc_md.dma_set_mask = dma_set_mask_pSeriesLP;
+		ppc_md.dma_get_required_mask = dma_get_required_mask_pSeriesLP;
+	} else {
+		ppc_md.tce_build = tce_build_pSeries;
+		ppc_md.tce_free  = tce_free_pSeries;
+		ppc_md.tce_get   = tce_get_pseries;
+		ppc_md.pci_dma_bus_setup = pci_dma_bus_setup_pSeries;
+		ppc_md.pci_dma_dev_setup = pci_dma_dev_setup_pSeries;
+	}
+
+
+	of_reconfig_notifier_register(&iommu_reconfig_nb);
+	register_memory_notifier(&iommu_mem_nb);
+
+	set_pci_dma_ops(&dma_iommu_ops);
+}
 0. data structure
 ===============================================================================
 
