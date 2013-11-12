@@ -1,0 +1,311 @@
+1. pSeries_setup_arch(), initialize hub and phb
+===============================================================================
+start_kernel()
+	setup_arch(); arch/powerpc/kernel/setup_64.c
+		ppc_md.setup_arch(); ppc_md is setup in probe_machine, 
+		                   ; see "machine type initialization"
+		pSeries_setup_arch()
+			find_and_init_phbs()
+
+static void __init pSeries_setup_arch(void)
+{
+	panic_timeout = 10;
+
+	/* Discover PIC type and setup ppc_md accordingly */
+	pseries_discover_pic();
+
+	/* openpic global configuration register (64-bit format). */
+	/* openpic Interrupt Source Unit pointer (64-bit format). */
+	/* python0 facility area (mmio) (64-bit format) REAL address. */
+
+	/* init to some ~sane value until calibrate_delay() runs */
+	loops_per_jiffy = 50000000;
+
+	fwnmi_init();
+
+	/* By default, only probe PCI (can be overriden by rtas_pci) */
+	pci_add_flags(PCI_PROBE_ONLY);
+
+	/* Find and initialize PCI host bridges */
+	init_pci_config_tokens();
+	find_and_init_phbs();
+	of_reconfig_notifier_register(&pci_dn_reconfig_nb);
+
+	pSeries_nvram_init();
+
+	if (firmware_has_feature(FW_FEATURE_SPLPAR)) {
+		vpa_init(boot_cpuid);
+		ppc_md.power_save = pSeries_idle;
+	}
+
+	if (firmware_has_feature(FW_FEATURE_LPAR))
+		ppc_md.enable_pmcs = pseries_lpar_enable_pmcs;
+	else
+		ppc_md.enable_pmcs = power4_enable_pmcs;
+
+	ppc_md.pcibios_root_bridge_prepare = pseries_root_bridge_prepare;
+
+	if (firmware_has_feature(FW_FEATURE_SET_MODE)) {
+		long rc;
+		if ((rc = pSeries_enable_reloc_on_exc()) != H_SUCCESS) {
+			pr_warn("Unable to enable relocation on exceptions: "
+				"%ld\n", rc);
+		}
+	}
+}
+
+1.1 init_pci_config_tokens(), init rtas functions
+===============================================================================
+void __init init_pci_config_tokens(void)
+{
+	read_pci_config = rtas_token("read-pci-config");
+	write_pci_config = rtas_token("write-pci-config");
+	ibm_read_pci_config = rtas_token("ibm,read-pci-config");
+	ibm_write_pci_config = rtas_token("ibm,write-pci-config");
+}
+
+1.2 find_and_init_phbs(), create phb structure
+===============================================================================
+void __init find_and_init_phbs(void)
+{
+	struct device_node *node;
+	struct pci_controller *phb;
+	struct device_node *root = of_find_node_by_path("/");
+
+	for_each_child_of_node(root, node) {
+		if (node->type == NULL || (strcmp(node->type, "pci") != 0 &&
+					   strcmp(node->type, "pciex") != 0))
+			continue;
+
+		phb = pcibios_alloc_controller(node);
+		if (!phb)
+			continue;
+		rtas_setup_phb(phb);
+		pci_process_bridge_OF_ranges(phb, node, 0);
+		isa_bridge_find_early(phb);
+	}
+
+	of_node_put(root);
+	pci_devs_phb_init();
+
+	/*
+	 * PCI_PROBE_ONLY and PCI_REASSIGN_ALL_BUS can be set via properties
+	 * in chosen.
+	 */
+	if (of_chosen) {
+		const int *prop;
+
+		prop = of_get_property(of_chosen,
+				"linux,pci-probe-only", NULL);
+		if (prop) {
+			if (*prop)
+				pci_add_flags(PCI_PROBE_ONLY);
+			else
+				pci_clear_flags(PCI_PROBE_ONLY);
+		}
+
+#ifdef CONFIG_PPC32 /* Will be made generic soon */
+		prop = of_get_property(of_chosen,
+				"linux,pci-assign-all-buses", NULL);
+		if (prop && *prop)
+			pci_add_flags(PCI_REASSIGN_ALL_BUS);
+#endif /* CONFIG_PPC32 */
+	}
+}
+
+1.2.1 rtas_setup_phb()
+===============================================================================
+int rtas_setup_phb(struct pci_controller *phb)
+{
+	struct device_node *dev = phb->dn;
+
+	if (is_python(dev))
+		python_countermeasures(dev);
+
+	if (phb_set_bus_ranges(dev, phb))
+		return 1;
+
+	phb->ops = &rtas_pci_ops;
+	phb->buid = get_phb_buid(dev);
+
+	return 0;
+}
+
+1.2.2 pci_process_bridge_OF_ranges(), parse io/mmio space
+===============================================================================
+
+2. pcibios_init(), 
+===============================================================================
+static int __init pcibios_init(void)
+{
+	struct pci_controller *hose, *tmp;
+
+	printk(KERN_INFO "PCI: Probing PCI hardware\n");
+
+	/* For now, override phys_mem_access_prot. If we need it,g
+	 * later, we may move that initialization to each ppc_md
+	 */
+	ppc_md.phys_mem_access_prot = pci_phys_mem_access_prot;
+
+	/* On ppc64, we always enable PCI domains and we keep domain 0
+	 * backward compatible in /proc for video cards
+	 */
+	pci_add_flags(PCI_ENABLE_PROC_DOMAINS | PCI_COMPAT_DOMAIN_0);
+
+	/* Scan all of the recorded PCI controllers.  */
+	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
+		pcibios_scan_phb(hose);
+		pci_bus_add_devices(hose->bus);
+	}
+
+	/* Call common code to handle resource allocation */
+	pcibios_resource_survey();
+
+	printk(KERN_DEBUG "PCI: Probing PCI hardware done\n");
+
+	return 0;
+}
+
+2.1 pcibios_scan_phb(), 
+===============================================================================
+void pcibios_scan_phb(struct pci_controller *hose)
+{
+	LIST_HEAD(resources);
+	struct pci_bus *bus;
+	struct device_node *node = hose->dn;
+	int mode;
+
+	pr_debug("PCI: Scanning PHB %s\n", of_node_full_name(node));
+
+	/* Get some IO space for the new PHB */
+	pcibios_setup_phb_io_space(hose);
+
+	/* Wire up PHB bus resources */
+	pcibios_setup_phb_resources(hose, &resources);
+
+	hose->busn.start = hose->first_busno;
+	hose->busn.end	 = hose->last_busno;
+	hose->busn.flags = IORESOURCE_BUS;
+	pci_add_resource(&resources, &hose->busn);
+
+	/* Create an empty bus for the toplevel */
+	bus = pci_create_root_bus(hose->parent, hose->first_busno,
+				  hose->ops, hose, &resources);
+	if (bus == NULL) {
+		pr_err("Failed to create bus for PCI domain %04x\n",
+			hose->global_number);
+		pci_free_resource_list(&resources);
+		return;
+	}
+	hose->bus = bus;
+
+	/* Get probe mode and perform scan */
+	mode = PCI_PROBE_NORMAL;
+	if (node && ppc_md.pci_probe_mode)
+		mode = ppc_md.pci_probe_mode(bus);
+	pr_debug("    probe mode: %d\n", mode);
+	if (mode == PCI_PROBE_DEVTREE)
+		of_scan_bus(node, bus);
+
+	if (mode == PCI_PROBE_NORMAL) {
+		pci_bus_update_busn_res_end(bus, 255);
+		hose->last_busno = pci_scan_child_bus(bus);
+		pci_bus_update_busn_res_end(bus, hose->last_busno);
+	}
+
+	/* Platform gets a chance to do some global fixups before
+	 * we proceed to resource allocation
+	 */
+	if (ppc_md.pcibios_fixup_phb)
+		ppc_md.pcibios_fixup_phb(hose);
+
+	/* Configure PCI Express settings */
+	if (bus && !pci_has_flag(PCI_PROBE_ONLY)) {
+		struct pci_bus *child;
+		list_for_each_entry(child, &bus->children, node) {
+			struct pci_dev *self = child->self;
+			if (!self)
+				continue;
+			pcie_bus_configure_settings(child, self->pcie_mpss);
+		}
+	}
+}
+
+2.1.1 pcibios_setup_phb_resources(), create io/mmio resource list 
+===============================================================================
+
+2.1.2 pci_create_root_bus()
+===============================================================================
+
+2.2 pci_bus_add_devices(), curious about why run this again
+===============================================================================
+
+2.3 pcibios_resource_survey(), 
+===============================================================================
+void __init pcibios_resource_survey(void)
+{
+	struct pci_bus *b;
+
+	/* Allocate and assign resources */
+	list_for_each_entry(b, &pci_root_buses, node)
+		pcibios_allocate_bus_resources(b);
+	pcibios_allocate_resources(0);
+	pcibios_allocate_resources(1);
+
+	/* Before we start assigning unassigned resource, we try to reserve
+	 * the low IO area and the VGA memory area if they intersect the
+	 * bus available resources to avoid allocating things on top of them
+	 */
+	if (!pci_has_flag(PCI_PROBE_ONLY)) {
+		list_for_each_entry(b, &pci_root_buses, node)
+			pcibios_reserve_legacy_regions(b);
+	}
+
+	/* Now, if the platform didn't decide to blindly trust the firmware,
+	 * we proceed to assigning things that were left unassigned
+	 */
+	if (!pci_has_flag(PCI_PROBE_ONLY)) {
+		pr_debug("PCI: Assigning unassigned resources...\n");
+		pci_assign_unassigned_resources();
+	}
+
+	/* Call machine dependent fixup */
+	if (ppc_md.pcibios_fixup)
+		ppc_md.pcibios_fixup();
+}
+
+2.3.1 pSeries_final_fixup(), 
+===============================================================================
+void __init pSeries_final_fixup(void)
+{
+	pSeries_request_regions();
+
+	eeh_addr_cache_build();
+}
+
+2.3.1.1 pSeries_request_regions(), 
+===============================================================================
+static void __init pSeries_request_regions(void)
+{
+	if (!isa_io_base)
+		return;
+
+	request_region(0x20,0x20,"pic1");
+	request_region(0xa0,0x20,"pic2");
+	request_region(0x00,0x20,"dma1");
+	request_region(0x40,0x20,"timer");
+	request_region(0x80,0x10,"dma page reg");
+	request_region(0xc0,0x20,"dma2");
+}
+
+0. data structure
+===============================================================================
+
+     pci_controller
+     +-------------------------+
+     |ops                      | -> rtas_pci_ops
+     |   (struct pci_ops)      |
+     +-------------------------+
+     |                         |
+     |                         |
+     +-------------------------+
