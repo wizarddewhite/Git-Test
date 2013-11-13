@@ -1,6 +1,6 @@
 SOURCES := $(wildcard *.cpp)
 SOURCES += $(wildcard *.c)
-PROGRAM := foo
+PROGRAM := foo bar
 
 .PHONY: all clean
 all: $(PROGRAM)
