@@ -20,11 +20,8 @@ bar:
 	# increase stack and save stack pointer
 	stdu 1,-64(1)      # *(r1-64) = r1; r1 = r1-64;
 	mr 31,1            # r31 = r1;
-	mr 9,3             # r9 = r3;
 	# a + 3
-	addi 9,9,3         # r9 = r9 + 3;
-	extsw 9,9
-	mr 3,9             # r3 = r9;
+	addi 3,3,3         # r3 = r3 + 3;
 	# restore r1, the stack
 	addi 1,31,64       # r1 = r31 +  64;
 	# restore r31
