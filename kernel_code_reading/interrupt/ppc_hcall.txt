@@ -226,6 +226,8 @@ hcall_try_real_mode:
 
 3. hcall_real_table()
 ================================================================================
+; so when plpar_hcall_norets(H_PUT_TCE, x, x, x) invoked in guest,
+; kvmppc_h_put_tce will be invoked.
 hcall_real_table:
 	.long	0		/* 0 - unused */
 	.long	.kvmppc_h_remove - hcall_real_table
