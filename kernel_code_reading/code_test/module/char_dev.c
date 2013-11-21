@@ -23,6 +23,7 @@
 #include <linux/sched.h>
 #include <linux/errno.h>
 #include <linux/cdev.h>
+#include <linux/device.h>
 #include <asm/current.h>
 #include <asm/segment.h>
 #include <asm/uaccess.h>
@@ -74,6 +75,19 @@ struct file_operations my_fops={
 	release:my_release,
 };
 
+/**
+ * Module/class support
+ */
+static char *mydev_devnode(struct device *dev, umode_t *mode)
+{
+	if (mode && (MINOR(dev->devt) == 0))
+		*mode = S_IRUGO | S_IWUGO;
+
+	return kasprintf(GFP_KERNEL, "my_dev/%s", dev_name(dev));
+}
+
+struct class *my_class;
+struct device *my_dev;
 dev_t devt;
 struct cdev my_device;
 static int r_init(void)
@@ -81,6 +95,17 @@ static int r_init(void)
 	int ret;
 
 	printk("<1>hi\n");
+
+	/* shown in /sys/class/my_device */
+	my_class = class_create(THIS_MODULE, "my_device");
+	if (IS_ERR(my_class)) {
+		ret = PTR_ERR(my_class);
+		goto err_class;
+	}
+
+	/* create device node under /dev for this class */
+	my_class->devnode = mydev_devnode;
+
 	ret = alloc_chrdev_region(&devt, 0, MINORMASK, "my_device");
 	if (ret)
 		return -1;
@@ -90,13 +115,21 @@ static int r_init(void)
 
 	cdev_init(&my_device, &my_fops);
 	cdev_add(&my_device, devt, 1);
+
+	/* device shown in /dev/my_dev/my_device */
+	my_dev = device_create(my_class, NULL, devt, NULL, "my_device");
+
 	return 0;
+err_class:
+	return ret;
 }
 
 static void r_cleanup(void)
 {
 	printk("<1>bye\n");
+	device_destroy(my_class, devt);
 	cdev_del(&my_device);
 	unregister_chrdev_region(devt, MINORMASK);
+	class_destroy(my_class);
 	return ;
 }
