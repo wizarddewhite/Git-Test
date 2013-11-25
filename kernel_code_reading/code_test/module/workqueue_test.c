@@ -63,6 +63,7 @@ int workqueue_init( void )
 	int ret;
 
 	printk(KERN_ERR "workqueue test\n");
+	/* By running 'ps -ef', it's shown with name "my_queue" */
 	my_wq = create_workqueue("my_queue");
 	if (my_wq) {
 		/* Queue some work (item 1) */
