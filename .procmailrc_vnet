@@ -9,6 +9,16 @@ SHELL=/bin/bash
 * ^(From|Cc|To).*weiyang
 weiyang
 
+# netdev
+:0:
+* ^(From|Cc|To).*netdev
+netdev
+
+# sapphire
+:0:
+* ^(From|Cc|To).*sapphire
+sapphire
+
 # powerkvm
 :0:
 * ^(From|Cc|To).*PowerKVM
@@ -44,6 +54,12 @@ kvm
 * ^(From|Cc|To).*ltc-interlock
 ltc-interlock
 
+#autotest
 :0:
 * ^(From|Cc|To).*autotest
 autotest
+
+#linux-read
+:0:
+* ^(From|Cc|To).*linux-read
+linux-read
