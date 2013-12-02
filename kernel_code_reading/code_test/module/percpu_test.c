@@ -28,8 +28,7 @@
 #define err(msg) printk(KERN_ALERT "%s\n", msg)
 
 static int *percpu;
-
-int percpu_dynamic()
+int percpu_dynamic(void)
 {
         int *p;
         int i;
