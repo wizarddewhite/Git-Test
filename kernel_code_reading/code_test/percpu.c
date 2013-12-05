@@ -121,6 +121,7 @@ void best_upa_calculation(int group_cnt[], int nr_groups, int upa)
 	int group;
 	int last_allocs;
 	int best_upa;
+	int nr_units;
 	int num_possible_cpus = 0;
 
 	for (group = 0; group < nr_groups; group++)
@@ -128,17 +129,19 @@ void best_upa_calculation(int group_cnt[], int nr_groups, int upa)
 
 	last_allocs = INT_MAX;
 	for (; upa; upa--) {
-		int allocs = 0, wasted = 0;
+		int allocs = 0, wasted = 0, nr_units = 0;
 
 		for (group = 0; group < nr_groups; group++) {
 			int this_allocs = DIV_ROUND_UP(group_cnt[group], upa);
 			allocs += this_allocs;
 			wasted += this_allocs * upa - group_cnt[group];
+			nr_units += roundup(group_cnt[group], upa);
 		}
 		printf("upa: %d\n", upa);
 		printf("   allocs: %d\n", allocs);
 		printf("   wasted: %d\n", wasted);
 		printf("   last_allocs: %d\n", last_allocs);
+		printf("   nr_units: %d\n", nr_units);
 
 		/*
 		 * Don't accept if wastage is over 1/3.  The
