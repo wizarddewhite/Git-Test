@@ -962,6 +962,38 @@ static int pcpu_alloc_area(struct pcpu_chunk *chunk, int size, int align)
 	return -1;
 }
 
+4.1.4.1 pcpu_split_block()
+================================================================================
+; if current block is big, such as has head and tail space
+; For example, head = tail = 5, i = 1
+; Before         After
+;-120            -120
+; 200             5
+; 100             190
+;                 5
+;                 100
+static void pcpu_split_block(struct pcpu_chunk *chunk, int i,
+			     int head, int tail)
+{
+	int nr_extra = !!head + !!tail;
+
+	BUG_ON(chunk->map_alloc < chunk->map_used + nr_extra);
+
+	/* insert new subblocks */
+	memmove(&chunk->map[i + nr_extra], &chunk->map[i],
+		sizeof(chunk->map[0]) * (chunk->map_used - i));
+	chunk->map_used += nr_extra;
+
+	if (head) {
+		chunk->map[i + 1] = chunk->map[i] - head;
+		chunk->map[i++] = head;
+	}
+	if (tail) {
+		chunk->map[i++] -= tail;
+		chunk->map[i] = tail;
+	}
+}
+
 4.1.5 pcpu_create_chunk()
 ================================================================================
 static struct pcpu_chunk *pcpu_create_chunk(void)
@@ -985,7 +1017,7 @@ static struct pcpu_chunk *pcpu_create_chunk(void)
 	return chunk;
 }
 
-4.1.6 pcpu_populate_chunk()
+4.1.6 pcpu_populate_chunk(), not sure why need to populate, future reading
 ================================================================================
 static int pcpu_populate_chunk(struct pcpu_chunk *chunk, int off, int size)
 {
@@ -1277,7 +1309,7 @@ unsigned long __per_cpu_offset[NR_CPUS]
                        |   (int)               |
                        +-----------------------+
                        |free_size              |
-                       |contig_hint            |
+                       |contig_hint            | max continues space
                        +-----------------------+
                        |immutable              |
                        |   (bool)              |
