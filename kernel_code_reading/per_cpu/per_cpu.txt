@@ -1083,37 +1083,110 @@ err_free:
 			  (unsigned long)pcpu_base_addr	+		\
 			  (unsigned long)__per_cpu_start)
 
-5. per_cpu(), get variable on other cpu
+5. free_percpu(), release dynamicly allocated pcpu variable
+================================================================================
+void free_percpu(void __percpu *ptr)
+{
+	void *addr;
+	struct pcpu_chunk *chunk;
+	unsigned long flags;
+	int off;
+
+	if (!ptr)
+		return;
+
+	kmemleak_free_percpu(ptr);
+
+	addr = __pcpu_ptr_to_addr(ptr);
+
+	spin_lock_irqsave(&pcpu_lock, flags);
+
+	chunk = pcpu_chunk_addr_search(addr);
+	off = addr - chunk->base_addr;
+
+	pcpu_free_area(chunk, off);
+
+	/* if there are more than one fully free chunks, wake up grim reaper */
+	if (chunk->free_size == pcpu_unit_size) {
+		struct pcpu_chunk *pos;
+
+		list_for_each_entry(pos, &pcpu_slot[pcpu_nr_slots - 1], list)
+			if (pos != chunk) {
+				schedule_work(&pcpu_reclaim_work);
+				break;
+			}
+	}
+
+	spin_unlock_irqrestore(&pcpu_lock, flags);
+}
+
+5.1 pcpu_free_area(), free and merge if possible
+================================================================================
+static void pcpu_free_area(struct pcpu_chunk *chunk, int freeme)
+{
+	int oslot = pcpu_chunk_slot(chunk);
+	int i, off;
+
+	for (i = 0, off = 0; i < chunk->map_used; off += abs(chunk->map[i++]))
+		if (off == freeme)
+			break;
+	BUG_ON(off != freeme);
+	BUG_ON(chunk->map[i] > 0);
+
+	chunk->map[i] = -chunk->map[i];
+	chunk->free_size += chunk->map[i];
+
+	/* merge with previous? */
+	if (i > 0 && chunk->map[i - 1] >= 0) {
+		chunk->map[i - 1] += chunk->map[i];
+		chunk->map_used--;
+		memmove(&chunk->map[i], &chunk->map[i + 1],
+			(chunk->map_used - i) * sizeof(chunk->map[0]));
+		i--;
+	}
+	/* merge with next? */
+	if (i + 1 < chunk->map_used && chunk->map[i + 1] >= 0) {
+		chunk->map[i] += chunk->map[i + 1];
+		chunk->map_used--;
+		memmove(&chunk->map[i + 1], &chunk->map[i + 2],
+			(chunk->map_used - (i + 1)) * sizeof(chunk->map[0]));
+	}
+
+	chunk->contig_hint = max(chunk->map[i], chunk->contig_hint);
+	pcpu_chunk_relocate(chunk, oslot);
+}
+
+6. per_cpu(), get variable on other cpu
 ================================================================================
 #define per_cpu(var, cpu) \
 	(*SHIFT_PERCPU_PTR(&(var), per_cpu_offset(cpu)))
 
-5.1 SHIFT_PERCPU_PTR()
+6.1 SHIFT_PERCPU_PTR()
 ================================================================================
 #define SHIFT_PERCPU_PTR(__p, __offset)	({				\
 	__verify_pcpu_ptr((__p));					\
 	RELOC_HIDE((typeof(*(__p)) __kernel __force *)(__p), (__offset)); \
 })
 
-5.1.1 __verify_pcpu_ptr()
+6.1.1 __verify_pcpu_ptr()
 ================================================================================
 #define __verify_pcpu_ptr(ptr)	do {					\
 	const void __percpu *__vpp_verify = (typeof(ptr))NULL;		\
 	(void)__vpp_verify;						\
 } while (0)
 
-5.1.2 RELOC_HIDE(), return (__ptr + off)
+6.1.2 RELOC_HIDE(), return (__ptr + off)
 ================================================================================
 # define RELOC_HIDE(ptr, off)					\
   ({ unsigned long __ptr;					\
      __ptr = (unsigned long) (ptr);				\
     (typeof(ptr)) (__ptr + (off)); })
 
-5.2 per_cpu_offset()
+6.2 per_cpu_offset()
 ================================================================================
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 
-5.2.1 __per_cpu_offset[], offset of pcpu area and __per_cpu_start
+6.2.1 __per_cpu_offset[], offset of pcpu area and __per_cpu_start
 ================================================================================
 per_cpu_offset(cpu) = delta + pcpu_unit_offsets[cpu];
 	delta = (unsigned long)pcpu_base_addr - (unsigned long)__per_cpu_start;
@@ -1129,23 +1202,23 @@ per_cpu_offset(cpu) =
 	= areas[group] + i*(alloc_size/upa) - __per_cpu_start;
 	= (pcpu area addr) - __per_cpu_start;
 
-5.3 __ptr + (off), get the real address of pcpu variable
+6.3 __ptr + (off), get the real address of pcpu variable
 ================================================================================
 &var + per_cpu_offset(cpu)
 = &var + (pcpu area addr) - __per_cpu_start
 = (&var - __per_cpu_start) + (pcpu area addr)
 = (offset of the variable in pcpu section) + (start address of real pcpu area)
 
-6. get_cpu_var()/put_cpu_var()
+7. get_cpu_var()/put_cpu_var()
 ================================================================================
 
-6.1 get_cpu_var()
+7.1 get_cpu_var()
 ================================================================================
 #define get_cpu_var(var) (*({				\
 	preempt_disable();				\
 	&__get_cpu_var(var); }))
 
-6.1.1 __get_cpu_var()
+7.1.1 __get_cpu_var()
 ================================================================================
 #define __get_cpu_var(var) (*this_cpu_ptr(&(var)))
 
@@ -1153,14 +1226,14 @@ per_cpu_offset(cpu) =
 
 #define __this_cpu_ptr(ptr) SHIFT_PERCPU_PTR(ptr, __my_cpu_offset)
 
-6.2 put_cpu_var()
+7.2 put_cpu_var()
 ================================================================================
 #define put_cpu_var(var) do {				\
 	(void)&(var);					\
 	preempt_enable();				\
 } while (0)
 
-7. per_cpu_ptr(), access dynamicly allocate percpu variable
+8. per_cpu_ptr(), access dynamicly allocate percpu variable
 ================================================================================
 #define per_cpu_ptr(ptr, cpu)	SHIFT_PERCPU_PTR((ptr), per_cpu_offset((cpu)))
 
