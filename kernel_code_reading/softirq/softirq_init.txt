@@ -1,0 +1,50 @@
+1. softirq_init()
+================================================================================
+softirq_init() is called in start_kernel()
+
+void __init softirq_init(void)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		int i;
+
+		per_cpu(tasklet_vec, cpu).tail =
+			&per_cpu(tasklet_vec, cpu).head;
+		per_cpu(tasklet_hi_vec, cpu).tail =
+			&per_cpu(tasklet_hi_vec, cpu).head;
+		for (i = 0; i < NR_SOFTIRQS; i++)
+			INIT_LIST_HEAD(&per_cpu(softirq_work_list[i], cpu));
+	}
+
+	register_hotcpu_notifier(&remote_softirq_cpu_notifier);
+
+	open_softirq(TASKLET_SOFTIRQ, tasklet_action);
+	open_softirq(HI_SOFTIRQ, tasklet_hi_action);
+}
+
+1.1 open_softirq(), register a handler in softirq_vec[]
+================================================================================
+void open_softirq(int nr, void (*action)(struct softirq_action *))
+{
+	softirq_vec[nr].action = action;
+}
+
+0. data structure
+================================================================================
+
+0.1 softirq_vec[]
+================================================================================
+static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp;
+
+softirq_vec[NR_SOFTIRQS]
+      +------------------------------------+
+      |action                              |
+      |  void (*)(struct softirq_action *) |
+      +------------------------------------+
+      |action                              |
+      |  void (*)(struct softirq_action *) |
+      +------------------------------------+
+      |action                              |
+      |  void (*)(struct softirq_action *) |
+      +------------------------------------+
