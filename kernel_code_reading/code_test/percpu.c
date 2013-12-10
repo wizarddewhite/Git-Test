@@ -139,6 +139,7 @@ void best_upa_calculation(int group_cnt[], int nr_groups, int upa)
 		}
 		printf("upa: %d\n", upa);
 		printf("   allocs: %d\n", allocs);
+		printf("   cpus/3: %d\n", num_possible_cpus / 3);
 		printf("   wasted: %d\n", wasted);
 		printf("   last_allocs: %d\n", last_allocs);
 		printf("   nr_units: %d\n", nr_units);
@@ -191,6 +192,19 @@ void best_upa_test()
 	upa = 3;
 	for (i = 0; i < nr_groups; i ++)
 		group_cnt[i] = 4;
+
+	printf("--- Groups: 3, upa: 3 ---\n");
+	best_upa_calculation(group_cnt, nr_groups, upa);
+
+	/*
+	 * Three groups
+	 * Each group has 4 cpus
+	 * And the upa starts from 3
+	 */
+	nr_groups = 1;
+	upa = 3;
+	for (i = 0; i < nr_groups; i ++)
+		group_cnt[i] = 1;
 
 	printf("--- Groups: 3, upa: 3 ---\n");
 	best_upa_calculation(group_cnt, nr_groups, upa);
