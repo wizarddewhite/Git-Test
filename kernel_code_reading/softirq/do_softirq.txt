@@ -1,0 +1,196 @@
+1. do_softirq()
+================================================================================
+asmlinkage void do_softirq(void)
+{
+	__u32 pending;
+	unsigned long flags;
+
+	if (in_interrupt())
+		return;
+
+	local_irq_save(flags);
+
+	pending = local_softirq_pending();
+
+	if (pending)
+		do_softirq_own_stack();
+
+	local_irq_restore(flags);
+}
+
+1.1 local_softirq_pending()
+================================================================================
+; Each arch will implement this variable by them self.
+; On x86, this is a pcpu variable with type of (int)
+  /* arch independent irq_stat fields */
+#define local_softirq_pending() \
+	__IRQ_STAT(smp_processor_id(), __softirq_pending)
+
+1.2 do_softirq_own_stack()
+================================================================================
+; also arch dependent
+static inline void do_softirq_own_stack(void)
+{
+	__do_softirq();
+}
+
+2. __do_softirq(), go throught the softirq_vec and invoke if necessary
+================================================================================
+; maximum run time 2ms
+
+asmlinkage void __do_softirq(void)
+{
+	struct softirq_action *h;
+	__u32 pending;
+	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;
+	int cpu;
+	unsigned long old_flags = current->flags;
+	int max_restart = MAX_SOFTIRQ_RESTART;
+
+	/*
+	 * Mask out PF_MEMALLOC s current task context is borrowed for the
+	 * softirq. A softirq handled such as network RX might set PF_MEMALLOC
+	 * again if the socket is related to swap
+	 */
+	current->flags &= ~PF_MEMALLOC;
+
+	pending = local_softirq_pending();
+	account_irq_enter_time(current);
+
+	__local_bh_disable(_RET_IP_, SOFTIRQ_OFFSET);
+	lockdep_softirq_enter();
+
+	cpu = smp_processor_id();
+restart:
+	/* Reset the pending bitmask before enabling irqs */
+	set_softirq_pending(0);
+
+	local_irq_enable();
+
+	h = softirq_vec;
+
+	do {
+		if (pending & 1) {
+			unsigned int vec_nr = h - softirq_vec;
+			int prev_count = preempt_count();
+
+			kstat_incr_softirqs_this_cpu(vec_nr);
+
+			trace_softirq_entry(vec_nr);
+			h->action(h);
+			trace_softirq_exit(vec_nr);
+			if (unlikely(prev_count != preempt_count())) {
+				printk(KERN_ERR "huh, entered softirq %u %s %p"
+				       "with preempt_count %08x,"
+				       " exited with %08x?\n", vec_nr,
+				       softirq_to_name[vec_nr], h->action,
+				       prev_count, preempt_count());
+				preempt_count_set(prev_count);
+			}
+
+			rcu_bh_qs(cpu);
+		}
+		h++;
+		pending >>= 1;
+	} while (pending);
+
+	local_irq_disable();
+
+	pending = local_softirq_pending();
+	if (pending) {
+		if (time_before(jiffies, end) && !need_resched() &&
+		    --max_restart)
+			goto restart;
+
+		wakeup_softirqd();
+	}
+
+	lockdep_softirq_exit();
+
+	account_irq_exit_time(current);
+	__local_bh_enable(SOFTIRQ_OFFSET);
+	WARN_ON_ONCE(in_interrupt());
+	tsk_restore_flags(current, old_flags, PF_MEMALLOC);
+}
+
+2.1 account_irq_enter_time()
+================================================================================
+static inline void account_irq_enter_time(struct task_struct *tsk)
+{
+	vtime_account_irq_enter(tsk);
+	irqtime_account_irq(tsk);
+}
+
+2.1.1 irqtime_account_irq(), account time accordingly
+================================================================================
+; add to the pcpu variable cpu_hardirq_time/cpu_softirq_time
+
+void irqtime_account_irq(struct task_struct *curr)
+{
+	unsigned long flags;
+	s64 delta;
+	int cpu;
+
+	if (!sched_clock_irqtime)
+		return;
+
+	local_irq_save(flags);
+
+	cpu = smp_processor_id();
+	delta = sched_clock_cpu(cpu) - __this_cpu_read(irq_start_time);
+	__this_cpu_add(irq_start_time, delta);
+
+	irq_time_write_begin();
+	/*
+	 * We do not account for softirq time from ksoftirqd here.
+	 * We want to continue accounting softirq time to ksoftirqd thread
+	 * in that case, so as not to confuse scheduler with a special task
+	 * that do not consume any time, but still wants to run.
+	 */
+	if (hardirq_count())
+		__this_cpu_add(cpu_hardirq_time, delta);
+	else if (in_serving_softirq() && curr != this_cpu_ksoftirqd())
+		__this_cpu_add(cpu_softirq_time, delta);
+
+	irq_time_write_end();
+	local_irq_restore(flags);
+}
+
+2.2 __local_bh_disable()
+================================================================================
+static inline void __local_bh_disable(unsigned long ip, unsigned int cnt)
+{
+	preempt_count_add(cnt);
+	barrier();
+}
+
+2.2.1 preempt_count_add(), thread_info
+================================================================================
+#define preempt_count_add(val)	__preempt_count_add(val)
+
+static __always_inline void __preempt_count_add(int val)
+{
+	*preempt_count_ptr() += val;
+}
+
+2.3 lockdep_softirq_enter()
+================================================================================
+# define lockdep_softirq_enter()	do { current->softirq_context++; } while (0)
+
+2.4 local_irq_enable(), enable the irq during processing?
+================================================================================
+
+2.5 rcu_bh_qs(cpu)
+================================================================================
+
+2.6 __local_bh_enable()
+================================================================================
+static void __local_bh_enable(unsigned int cnt)
+{
+	WARN_ON_ONCE(!irqs_disabled());
+
+	if (softirq_count() == cnt)
+		trace_softirqs_on(_RET_IP_);
+	preempt_count_sub(cnt);
+}
+
