@@ -210,6 +210,7 @@ again:
 
 2.3.1 __register_pernet_operations()
 ================================================================================
+; iterate on each network namespace
 static int __register_pernet_operations(struct list_head *list,
 					struct pernet_operations *ops)
 {
@@ -236,7 +237,7 @@ out_undo:
 	return error;
 }
 
-2.3.1.1 ops_init(const struct pernet_operations *ops, struct net *net)
+2.3.1.1 ops_init(), allocate a space & record it in net->ng->ptr[id]
 ================================================================================
 static int ops_init(const struct pernet_operations *ops, struct net *net)
 {
@@ -267,25 +268,47 @@ out:
 
 0. data structure
 ================================================================================
+
+0.1 net
+================================================================================
 init_net(struct net)
    +------------------------+
    |                        |
    |                        |
    +------------------------+
-   |gen(struct net_generic) |------------->+-------------------+
-   |                        |              |len                |
-   +------------------------+              |rcu(rcu_head)      |
-   |                        |              |ptr                |
-   |                        |              +-------------------+
-   |                        |
-   +------------------------+              init_user_ns
-   |user_ns(user_namespace) |--------------+-------------------+
-   |                        |              |uid_map            |
-   +------------------------+              |gid_map            |
-   |                        |              |projid_map         |
-   |                        |              |                   |
-   |                        |              |owner              |
-   |                        |              |group              |
-   +------------------------+              |                   |
-                                           |                   |
-                                           +-------------------+
+   |gen(struct net_generic) |------>+---------------+
+   |                        |       |len            |
+   +------------------------+       |rcu(rcu_head)  |         point to the data necessary for proper pernet_operations
+   |                        |       |ptr(void *[])  |---------+---------------+
+   |                        |       +---------------+         |               |
+   |                        |                                 +---------------+
+   +------------------------+        init_user_ns             |               |
+   |user_ns(user_namespace) |--------+-------------------+    +---------------+
+   |                        |        |uid_map            |    |               |
+   +------------------------+        |gid_map            |    +---------------+
+   |                        |        |projid_map         |
+   |                        |        |                   |
+   |                        |        |owner              |
+   |                        |        |group              |
+   +------------------------+        |                   |
+                                     |                   |
+                                     +-------------------+
+
+               Figure 0.1 Glance at the init_net
+
+0.2 net_namespace_list/pernet_list
+================================================================================
+
+net_namespace_list, a list of network namespace
+   +-------------+       +-------------+       +-------------+
+   |net          | ----->|net          | ----->|net          |
+   +-------------+       +-------------+       +-------------+
+   init_net
+
+pernet_list, a list of pernet_operations
+   +-------------+       +-------------+       +-------------+
+   |ops          | ----->|ops          | ----->|ops          |
+   +-------------+       +-------------+       +-------------+
+   net_ns_ops
+
+               Figure 0.2 net_namespace & pernet_list
