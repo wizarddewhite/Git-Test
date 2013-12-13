@@ -306,9 +306,11 @@ net_namespace_list, a list of network namespace
    init_net
 
 pernet_list, a list of pernet_operations
-   +-------------+       +-------------+       +-------------+
-   |ops          | ----->|ops          | ----->|ops          |
-   +-------------+       +-------------+       +-------------+
-   net_ns_ops
+   +-------------+       +-------------+      +-------------+      +-------------+
+   |ops          | ----->|ops          |----->|ops          |----->|ops          |
+   +-------------+       +-------------+      +-------------+      +-------------+
+   net_ns_ops            netdev_net_ops       loopback_net_ops     default_device_ops
+                         .netdev_init         .loopback_net_init   .default_device_exit
+			 .netdev_exit
 
                Figure 0.2 net_namespace & pernet_list

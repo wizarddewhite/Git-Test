@@ -76,7 +76,7 @@ out:
 	return rc;
 }
 
-1.1 dev_proc_init(), create proc file under /proc/pid/net/
+1.1 dev_proc_init(), create proc file under /proc/net & /proc/pid/net/
 ================================================================================
 static struct pernet_operations __net_initdata dev_proc_ops = {
 	.init = dev_proc_net_init,
@@ -93,6 +93,7 @@ static int __init dev_proc_init(void)
 
 1.1.1.1 dev_proc_net_init(&dev_proc_ops), under /proc/pid/net
 ================================================================================
+; one indication the net->proc_net is initialized in proc_net_init().
 static int __net_init dev_proc_net_init(struct net *net)
 {
 	int rc = -ENOMEM;
@@ -126,7 +127,7 @@ struct proc_dir_entry *proc_net_fops_create(struct net *net,
 	return proc_create(name, mode, net->proc_net, fops);
 }
 
-1.2 netdev_kobject_init()
+1.2 netdev_kobject_init(), /sys/class/net/
 ================================================================================
 int netdev_kobject_init(void)
 {
@@ -134,9 +135,9 @@ int netdev_kobject_init(void)
 	return class_register(&net_class);
 }
 
-1.2.1 kobj_ns_type_register(&net_ns_type_operations), register namespace of net
+1.2.1 kobj_ns_type_register(&net_ns_type_operations), register namespace ops of net
 ================================================================================
-; there is an array for kobject namespace, 
+; there is an array for kobject namespace ops, 
 ; register one for network
 struct kobj_ns_type_operations net_ns_type_operations = {
 	.type = KOBJ_NS_TYPE_NET,
@@ -178,12 +179,8 @@ out:
 static struct class net_class = {
 	.name = "net",
 	.dev_release = netdev_release,
-#ifdef CONFIG_SYSFS
-	.dev_attrs = net_class_attributes,
-#endif /* CONFIG_SYSFS */
-#ifdef CONFIG_HOTPLUG
+	.dev_groups = net_class_groups,
 	.dev_uevent = netdev_uevent,
-#endif
 	.ns_type = &net_ns_type_operations,
 	.namespace = net_namespace,
 };
@@ -240,76 +237,12 @@ struct pernet_operations __net_initdata loopback_net_ops = {
        .init = loopback_net_init,
 };
 
-1.4.1 loopback_net_init(), create loopback net device in every namespace
-================================================================================
-static __net_init int loopback_net_init(struct net *net)
-{
-	struct net_device *dev;
-	int err;
-
-	err = -ENOMEM;
-	dev = alloc_netdev(0, "lo", loopback_setup);
-	if (!dev)
-		goto out;
-
-	dev_net_set(dev, net);
-	err = register_netdev(dev);
-	if (err)
-		goto out_free_netdev;
-
-	BUG_ON(dev->ifindex != LOOPBACK_IFINDEX);
-	net->loopback_dev = dev;
-	return 0;
-
-
-out_free_netdev:
-	free_netdev(dev);
-out:
-	if (net_eq(net, &init_net))
-		panic("loopback: Failed to register netdevice: %d\n", err);
-	return err;
-}
-
 1.5 register_pernet_device(&default_device_ops)
 ================================================================================
 static struct pernet_operations __net_initdata default_device_ops = {
 	.exit = default_device_exit,
 	.exit_batch = default_device_exit_batch,
 };
-
-1.5.1 default_device_exit()
-================================================================================
-static void __net_exit default_device_exit(struct net *net)
-{
-	struct net_device *dev, *aux;
-	/*
-	 * Push all migratable network devices back to the
-	 * initial network namespace
-	 */
-	rtnl_lock();
-	for_each_netdev_safe(net, dev, aux) {
-		int err;
-		char fb_name[IFNAMSIZ];
-
-		/* Ignore unmoveable devices (i.e. loopback) */
-		if (dev->features & NETIF_F_NETNS_LOCAL)
-			continue;
-
-		/* Leave virtual devices for the generic cleanup */
-		if (dev->rtnl_link_ops)
-			continue;
-
-		/* Push remaining network devices to init_net */
-		snprintf(fb_name, IFNAMSIZ, "dev%d", dev->ifindex);
-		err = dev_change_net_namespace(dev, &init_net, fb_name);
-		if (err) {
-			pr_emerg("%s: failed to move %s to init_net: %d\n",
-				 __func__, dev->name, err);
-			BUG();
-		}
-	}
-	rtnl_unlock();
-}
 
 1.6 open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 ================================================================================
@@ -384,259 +317,29 @@ outroll:
 	goto unlock;
 }
 
-1.10 dev_mcast_init(), proc file for multicast
-================================================================================
-static struct pernet_operations __net_initdata dev_mc_net_ops = {
-	.init = dev_mc_net_init,
-	.exit = dev_mc_net_exit,
-};
-
-void __init dev_mcast_init(void)
-{
-	register_pernet_subsys(&dev_mc_net_ops);
-}
-
-1.10.1 dev_mc_net_init()
-================================================================================
-static int __net_init dev_mc_net_init(struct net *net)
-{
-	if (!proc_net_fops_create(net, "dev_mcast", 0, &dev_mc_seq_fops))
-		return -ENOMEM;
-	return 0;
-}
-
-4. __qdisc_run(),
-================================================================================
-void __qdisc_run(struct Qdisc *q)
-{
-	int quota = weight_p;
-
-	while (qdisc_restart(q)) {
-		/*
-		 * Ordered by possible occurrence: Postpone processing if
-		 * 1. we've exceeded packet quota
-		 * 2. another process needs the CPU;
-		 */
-		if (--quota <= 0 || need_resched()) {
-			__netif_schedule(q);
-			break;
-		}
-	}
-
-	qdisc_run_end(q);
-}
-
-4.1 qdisc_restart()
-================================================================================
-static inline int qdisc_restart(struct Qdisc *q)
-{
-	struct netdev_queue *txq;
-	struct net_device *dev;
-	spinlock_t *root_lock;
-	struct sk_buff *skb;
-
-	/* Dequeue packet */
-	skb = dequeue_skb(q);
-	if (unlikely(!skb))
-		return 0;
-	WARN_ON_ONCE(skb_dst_is_noref(skb));
-	root_lock = qdisc_lock(q);
-	dev = qdisc_dev(q);
-	txq = netdev_get_tx_queue(dev, skb_get_queue_mapping(skb));
-
-	return sch_direct_xmit(skb, q, dev, txq, root_lock);
-}
-
-4.1.1 dequeue_skb()
-================================================================================
-static inline struct sk_buff *dequeue_skb(struct Qdisc *q)
-{
-	struct sk_buff *skb = q->gso_skb;
-	const struct netdev_queue *txq = q->dev_queue;
-
-	if (unlikely(skb)) {
-		/* check the reason of requeuing without tx lock first */
-		txq = netdev_get_tx_queue(txq->dev, skb_get_queue_mapping(skb));
-		if (!netif_xmit_frozen_or_stopped(txq)) {
-			q->gso_skb = NULL;
-			q->q.qlen--;
-		} else
-			skb = NULL;
-	} else {
-		if (!(q->flags & TCQ_F_ONETXQUEUE) || !netif_xmit_frozen_or_stopped(txq))
-			skb = q->dequeue(q);
-	}
-
-	return skb;
-}
-
-4.2 __netif_schedule()
+0. data structure
 ================================================================================
 
-4.3 qdisc_run_end(), unmask the state bit
+0.1 softnet_data, percpu variable
 ================================================================================
-static inline void qdisc_run_end(struct Qdisc *qdisc)
-{
-	qdisc->__state &= ~__QDISC___STATE_RUNNING;
-}
-
-5. qdisc
-================================================================================
-
-5.1 register_qdisc(), append to the end of qdisc_base
-================================================================================
-int register_qdisc(struct Qdisc_ops *qops)
-{
-	struct Qdisc_ops *q, **qp;
-	int rc = -EEXIST;
-
-	write_lock(&qdisc_mod_lock);
-	for (qp = &qdisc_base; (q = *qp) != NULL; qp = &q->next)
-		if (!strcmp(qops->id, q->id))
-			goto out;
-
-	if (qops->enqueue == NULL)
-		qops->enqueue = noop_qdisc_ops.enqueue;
-	if (qops->peek == NULL) {
-		if (qops->dequeue == NULL)
-			qops->peek = noop_qdisc_ops.peek;
-		else
-			goto out_einval;
-	}
-	if (qops->dequeue == NULL)
-		qops->dequeue = noop_qdisc_ops.dequeue;
-
-	if (qops->cl_ops) {
-		const struct Qdisc_class_ops *cops = qops->cl_ops;
-
-		if (!(cops->get && cops->put && cops->walk && cops->leaf))
-			goto out_einval;
-
-		if (cops->tcf_chain && !(cops->bind_tcf && cops->unbind_tcf))
-			goto out_einval;
-	}
-
-	qops->next = NULL;
-	*qp = qops;
-	rc = 0;
-out:
-	write_unlock(&qdisc_mod_lock);
-	return rc;
-
-out_einval:
-	rc = -EINVAL;
-	goto out;
-}
-
-5.2 unregister_qdisc(), append to the end of qdisc_base
-================================================================================
-int unregister_qdisc(struct Qdisc_ops *qops)
-{
-	struct Qdisc_ops *q, **qp;
-	int err = -ENOENT;
-
-	write_lock(&qdisc_mod_lock);
-	for (qp = &qdisc_base; (q = *qp) != NULL; qp = &q->next)
-		if (q == qops)
-			break;
-	if (q) {
-		*qp = q->next;
-		q->next = NULL;
-		err = 0;
-	}
-	write_unlock(&qdisc_mod_lock);
-	return err;
-}
-
-
-5.3 pktsched_init(), subsys_initcall(pktsched_init)
-================================================================================
-static int __init pktsched_init(void)
-{
-	int err;
-
-	err = register_pernet_subsys(&psched_net_ops);
-	if (err) {
-		pr_err("pktsched_init: "
-		       "cannot initialize per netns operations\n");
-		return err;
-	}
-
-	register_qdisc(&pfifo_qdisc_ops);
-	register_qdisc(&bfifo_qdisc_ops);
-	register_qdisc(&pfifo_head_drop_qdisc_ops);
-	register_qdisc(&mq_qdisc_ops);
-
-	rtnl_register(PF_UNSPEC, RTM_NEWQDISC, tc_modify_qdisc, NULL, NULL);
-	rtnl_register(PF_UNSPEC, RTM_DELQDISC, tc_get_qdisc, NULL, NULL);
-	rtnl_register(PF_UNSPEC, RTM_GETQDISC, tc_get_qdisc, tc_dump_qdisc, NULL);
-	rtnl_register(PF_UNSPEC, RTM_NEWTCLASS, tc_ctl_tclass, NULL, NULL);
-	rtnl_register(PF_UNSPEC, RTM_DELTCLASS, tc_ctl_tclass, NULL, NULL);
-	rtnl_register(PF_UNSPEC, RTM_GETTCLASS, tc_ctl_tclass, tc_dump_tclass, NULL);
-
-	return 0;
-}
-
-5.3.1 psched_net_ops, create psched under /proc/pid/net/
-================================================================================
-static struct pernet_operations psched_net_ops = {
-	.init = psched_net_init,
-	.exit = psched_net_exit,
-};
-
-static int __net_init psched_net_init(struct net *net)
-{
-	struct proc_dir_entry *e;
-
-	e = proc_create("psched", 0, net->proc_net, &psched_fops);
-	if (e == NULL)
-		return -ENOMEM;
-
-	return 0;
-}
-
-5.3.2 rtnl_register()
-================================================================================
-void rtnl_register(int protocol, int msgtype,
-		   rtnl_doit_func doit, rtnl_dumpit_func dumpit,
-		   rtnl_calcit_func calcit)
-{
-	if (__rtnl_register(protocol, msgtype, doit, dumpit, calcit) < 0)
-		panic("Unable to register rtnetlink message handler, "
-		      "protocol = %d, message type = %d\n",
-		      protocol, msgtype);
-}
-
-5.3.2.1 __rtnl_register(), register it in rtnl_msg_handlers
-================================================================================
-int __rtnl_register(int protocol, int msgtype,
-		    rtnl_doit_func doit, rtnl_dumpit_func dumpit,
-		    rtnl_calcit_func calcit)
-{
-	struct rtnl_link *tab;
-	int msgindex;
-
-	BUG_ON(protocol < 0 || protocol > RTNL_FAMILY_MAX);
-	msgindex = rtm_msgindex(msgtype);
-
-	tab = rtnl_msg_handlers[protocol];
-	if (tab == NULL) {
-		tab = kcalloc(RTM_NR_MSGTYPES, sizeof(*tab), GFP_KERNEL);
-		if (tab == NULL)
-			return -ENOBUFS;
-
-		rtnl_msg_handlers[protocol] = tab;
-	}
-
-	if (doit)
-		tab[msgindex].doit = doit;
-
-	if (dumpit)
-		tab[msgindex].dumpit = dumpit;
-
-	if (calcit)
-		tab[msgindex].calcit = calcit;
-
-	return 0;
-}
-
+ softnet_data
+    +----------------------------+
+    |input_pkt_queue             |
+    |process_queue               |
+    |   (struct sk_buff_head)    |
+    +----------------------------+
+    |completion_queue            |
+    |   (struct sk_buff*)        |
+    +----------------------------+
+    |poll_list                   |
+    |   (struct list_head)       |
+    +----------------------------+
+    |                            |
+    |                            |
+    +----------------------------+
+    |backlog                     |
+    |   (struct napi_struct)     |
+    +----------------------------+
+    |                            |
+    |                            |
+    +----------------------------+
