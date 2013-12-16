@@ -25,6 +25,25 @@ struct hlist_head head[HASHENTRIES];
 #define ENTRY_NUM 60
 struct dummy_struct hlist_entry[ENTRY_NUM];
 
+/*
+ * After several days, I found I forget the detail of how hlist works.
+ * Here is a draft chart to illustrate my understanding.
+ *
+ * hlist_head
+ * +--------+
+ * |        | -> hlist_node -> hlist_node -> hlist_node
+ * +--------+
+ * |        | -> hlist_node -> hlist_node -> hlist_node
+ * +--------+
+ * |        | -> hlist_node -> hlist_node -> hlist_node
+ * +--------+
+ *
+ * The concept is simple,
+ * first find a 'slot' through a hash function
+ * then insert/search an element in this slot
+ *
+ */
+
 int hlist_init(struct hlist_head *hash)
 {
 	int i;
