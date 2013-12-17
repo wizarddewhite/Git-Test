@@ -1,0 +1,529 @@
+1. start_kernel()
+================================================================================
+start_kernel
+
+1.1 setup_arch()
+================================================================================
+void __init setup_arch(char **cmdline_p)
+{
+	memblock_reserve(__pa_symbol(_text),
+			 (unsigned long)__bss_stop - (unsigned long)_text);
+
+	early_reserve_initrd();
+
+	/*
+	 * At this point everything still needed from the boot loader
+	 * or BIOS or kernel text should be early reserved or marked not
+	 * RAM in e820. All other memory is free game.
+	 */
+
+#ifdef CONFIG_X86_32
+	memcpy(&boot_cpu_data, &new_cpu_data, sizeof(new_cpu_data));
+	visws_early_detect();
+
+	/*
+	 * copy kernel address range established so far and switch
+	 * to the proper swapper page table
+	 */
+	clone_pgd_range(swapper_pg_dir     + KERNEL_PGD_BOUNDARY,
+			initial_page_table + KERNEL_PGD_BOUNDARY,
+			KERNEL_PGD_PTRS);
+
+	load_cr3(swapper_pg_dir);
+	__flush_tlb_all();
+#else
+	printk(KERN_INFO "Command line: %s\n", boot_command_line);
+#endif
+
+	/*
+	 * If we have OLPC OFW, we might end up relocating the fixmap due to
+	 * reserve_top(), so do this before touching the ioremap area.
+	 */
+	olpc_ofw_detect();
+
+	early_trap_init();
+	early_cpu_init();
+	early_ioremap_init();
+
+	setup_olpc_ofw_pgd();
+
+	ROOT_DEV = old_decode_dev(boot_params.hdr.root_dev);
+	screen_info = boot_params.screen_info;
+	edid_info = boot_params.edid_info;
+#ifdef CONFIG_X86_32
+	apm_info.bios = boot_params.apm_bios_info;
+	ist_info = boot_params.ist_info;
+	if (boot_params.sys_desc_table.length != 0) {
+		machine_id = boot_params.sys_desc_table.table[0];
+		machine_submodel_id = boot_params.sys_desc_table.table[1];
+		BIOS_revision = boot_params.sys_desc_table.table[2];
+	}
+#endif
+	saved_video_mode = boot_params.hdr.vid_mode;
+	bootloader_type = boot_params.hdr.type_of_loader;
+	if ((bootloader_type >> 4) == 0xe) {
+		bootloader_type &= 0xf;
+		bootloader_type |= (boot_params.hdr.ext_loader_type+0x10) << 4;
+	}
+	bootloader_version  = bootloader_type & 0xf;
+	bootloader_version |= boot_params.hdr.ext_loader_ver << 4;
+
+#ifdef CONFIG_BLK_DEV_RAM
+	rd_image_start = boot_params.hdr.ram_size & RAMDISK_IMAGE_START_MASK;
+	rd_prompt = ((boot_params.hdr.ram_size & RAMDISK_PROMPT_FLAG) != 0);
+	rd_doload = ((boot_params.hdr.ram_size & RAMDISK_LOAD_FLAG) != 0);
+#endif
+#ifdef CONFIG_EFI
+	if (!strncmp((char *)&boot_params.efi_info.efi_loader_signature,
+		     "EL32", 4)) {
+		set_bit(EFI_BOOT, &x86_efi_facility);
+	} else if (!strncmp((char *)&boot_params.efi_info.efi_loader_signature,
+		     "EL64", 4)) {
+		set_bit(EFI_BOOT, &x86_efi_facility);
+		set_bit(EFI_64BIT, &x86_efi_facility);
+	}
+
+	if (efi_enabled(EFI_BOOT))
+		efi_memblock_x86_reserve_range();
+#endif
+
+	x86_init.oem.arch_setup();
+
+	iomem_resource.end = (1ULL << boot_cpu_data.x86_phys_bits) - 1;
+	setup_memory_map();
+	parse_setup_data();
+	/* update the e820_saved too */
+	e820_reserve_setup_data();
+
+	copy_edd();
+
+	if (!boot_params.hdr.root_flags)
+		root_mountflags &= ~MS_RDONLY;
+	init_mm.start_code = (unsigned long) _text;
+	init_mm.end_code = (unsigned long) _etext;
+	init_mm.end_data = (unsigned long) _edata;
+	init_mm.brk = _brk_end;
+
+	code_resource.start = __pa_symbol(_text);
+	code_resource.end = __pa_symbol(_etext)-1;
+	data_resource.start = __pa_symbol(_etext);
+	data_resource.end = __pa_symbol(_edata)-1;
+	bss_resource.start = __pa_symbol(__bss_start);
+	bss_resource.end = __pa_symbol(__bss_stop)-1;
+
+#ifdef CONFIG_CMDLINE_BOOL
+#ifdef CONFIG_CMDLINE_OVERRIDE
+	strlcpy(boot_command_line, builtin_cmdline, COMMAND_LINE_SIZE);
+#else
+	if (builtin_cmdline[0]) {
+		/* append boot loader cmdline to builtin */
+		strlcat(builtin_cmdline, " ", COMMAND_LINE_SIZE);
+		strlcat(builtin_cmdline, boot_command_line, COMMAND_LINE_SIZE);
+		strlcpy(boot_command_line, builtin_cmdline, COMMAND_LINE_SIZE);
+	}
+#endif
+#endif
+
+	strlcpy(command_line, boot_command_line, COMMAND_LINE_SIZE);
+	*cmdline_p = command_line;
+
+	/*
+	 * x86_configure_nx() is called before parse_early_param() to detect
+	 * whether hardware doesn't support NX (so that the early EHCI debug
+	 * console setup can safely call set_fixmap()). It may then be called
+	 * again from within noexec_setup() during parsing early parameters
+	 * to honor the respective command line option.
+	 */
+	x86_configure_nx();
+
+	parse_early_param();
+
+	x86_report_nx();
+
+	/* after early param, so could get panic from serial */
+	memblock_x86_reserve_range_setup_data();
+
+	if (acpi_mps_check()) {
+#ifdef CONFIG_X86_LOCAL_APIC
+		disable_apic = 1;
+#endif
+		setup_clear_cpu_cap(X86_FEATURE_APIC);
+	}
+
+#ifdef CONFIG_PCI
+	if (pci_early_dump_regs)
+		early_dump_pci_devices();
+#endif
+
+	finish_e820_parsing();
+
+	if (efi_enabled(EFI_BOOT))
+		efi_init();
+
+	dmi_scan_machine();
+	dmi_set_dump_stack_arch_desc();
+
+	/*
+	 * VMware detection requires dmi to be available, so this
+	 * needs to be done after dmi_scan_machine, for the BP.
+	 */
+	init_hypervisor_platform();
+
+	x86_init.resources.probe_roms();
+
+	/* after parse_early_param, so could debug it */
+	insert_resource(&iomem_resource, &code_resource);
+	insert_resource(&iomem_resource, &data_resource);
+	insert_resource(&iomem_resource, &bss_resource);
+
+	e820_add_kernel_range();
+	trim_bios_range();
+#ifdef CONFIG_X86_32
+	if (ppro_with_ram_bug()) {
+		e820_update_range(0x70000000ULL, 0x40000ULL, E820_RAM,
+				  E820_RESERVED);
+		sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
+		printk(KERN_INFO "fixed physical RAM map:\n");
+		e820_print_map("bad_ppro");
+	}
+#else
+	early_gart_iommu_check();
+#endif
+
+	/*
+	 * partially used pages are not usable - thus
+	 * we are rounding upwards:
+	 */
+	max_pfn = e820_end_of_ram_pfn();
+
+	/* update e820 for memory not covered by WB MTRRs */
+	mtrr_bp_init();
+	if (mtrr_trim_uncached_memory(max_pfn))
+		max_pfn = e820_end_of_ram_pfn();
+
+#ifdef CONFIG_X86_32
+	/* max_low_pfn get updated here */
+	find_low_pfn_range();
+#else
+	check_x2apic();
+
+	/* How many end-of-memory variables you have, grandma! */
+	/* need this before calling reserve_initrd */
+	if (max_pfn > (1UL<<(32 - PAGE_SHIFT)))
+		max_low_pfn = e820_end_of_low_ram_pfn();
+	else
+		max_low_pfn = max_pfn;
+
+	high_memory = (void *)__va(max_pfn * PAGE_SIZE - 1) + 1;
+#endif
+
+	/*
+	 * Find and reserve possible boot-time SMP configuration:
+	 */
+	find_smp_config();
+
+	reserve_ibft_region();
+
+	early_alloc_pgt_buf();
+
+	/*
+	 * Need to conclude brk, before memblock_x86_fill()
+	 *  it could use memblock_find_in_range, could overlap with
+	 *  brk area.
+	 */
+	reserve_brk();
+
+	cleanup_highmap();
+
+	memblock.current_limit = ISA_END_ADDRESS;
+	memblock_x86_fill();
+
+	/*
+	 * The EFI specification says that boot service code won't be called
+	 * after ExitBootServices(). This is, in fact, a lie.
+	 */
+	if (efi_enabled(EFI_MEMMAP))
+		efi_reserve_boot_services();
+
+	/* preallocate 4k for mptable mpc */
+	early_reserve_e820_mpc_new();
+
+#ifdef CONFIG_X86_CHECK_BIOS_CORRUPTION
+	setup_bios_corruption_check();
+#endif
+
+#ifdef CONFIG_X86_32
+	printk(KERN_DEBUG "initial memory mapped: [mem 0x00000000-%#010lx]\n",
+			(max_pfn_mapped<<PAGE_SHIFT) - 1);
+#endif
+
+	reserve_real_mode();
+
+	trim_platform_memory_ranges();
+	trim_low_memory_range();
+
+	init_mem_mapping();
+
+	early_trap_pf_init();
+
+	setup_real_mode();
+
+	memblock.current_limit = get_max_mapped();
+	dma_contiguous_reserve(0);
+
+	/*
+	 * NOTE: On x86-32, only from this point on, fixmaps are ready for use.
+	 */
+
+#ifdef CONFIG_PROVIDE_OHCI1394_DMA_INIT
+	if (init_ohci1394_dma_early)
+		init_ohci1394_dma_on_all_controllers();
+#endif
+	/* Allocate bigger log buffer */
+	setup_log_buf(1);
+
+	reserve_initrd();
+
+#if defined(CONFIG_ACPI) && defined(CONFIG_BLK_DEV_INITRD)
+	acpi_initrd_override((void *)initrd_start, initrd_end - initrd_start);
+#endif
+
+	reserve_crashkernel();
+
+	vsmp_init();
+
+	io_delay_init();
+
+	/*
+	 * Parse the ACPI tables for possible boot-time SMP configuration.
+	 */
+	acpi_boot_table_init();
+
+	early_acpi_boot_init();
+
+	initmem_init();
+	memblock_find_dma_reserve();
+
+#ifdef CONFIG_KVM_GUEST
+	kvmclock_init();
+#endif
+
+	x86_init.paging.pagetable_init();
+
+	if (boot_cpu_data.cpuid_level >= 0) {
+		/* A CPU has %cr4 if and only if it has CPUID */
+		mmu_cr4_features = read_cr4();
+		if (trampoline_cr4_features)
+			*trampoline_cr4_features = mmu_cr4_features;
+	}
+
+#ifdef CONFIG_X86_32
+	/* sync back kernel address range */
+	clone_pgd_range(initial_page_table + KERNEL_PGD_BOUNDARY,
+			swapper_pg_dir     + KERNEL_PGD_BOUNDARY,
+			KERNEL_PGD_PTRS);
+#endif
+
+	tboot_probe();
+
+#ifdef CONFIG_X86_64
+	map_vsyscall();
+#endif
+
+	generic_apic_probe();
+
+	early_quirks();
+
+	/*
+	 * Read APIC and some other early information from ACPI tables.
+	 */
+	acpi_boot_init();
+	sfi_init();
+	x86_dtb_init();
+
+	/*
+	 * get boot-time SMP configuration:
+	 */
+	if (smp_found_config)
+		get_smp_config();
+
+	prefill_possible_map();
+
+	init_cpu_to_node();
+
+	init_apic_mappings();
+	if (x86_io_apic_ops.init)
+		x86_io_apic_ops.init();
+
+	kvm_guest_init();
+
+	e820_reserve_resources();
+	e820_mark_nosave_regions(max_low_pfn);
+
+	x86_init.resources.reserve_resources();
+
+	e820_setup_gap();
+
+#ifdef CONFIG_VT
+#if defined(CONFIG_VGA_CONSOLE)
+	if (!efi_enabled(EFI_BOOT) || (efi_mem_type(0xa0000) != EFI_CONVENTIONAL_MEMORY))
+		conswitchp = &vga_con;
+#elif defined(CONFIG_DUMMY_CONSOLE)
+	conswitchp = &dummy_con;
+#endif
+#endif
+	x86_init.oem.banner();
+
+	x86_init.timers.wallclock_init();
+
+	mcheck_init();
+
+	arch_init_ideal_nops();
+
+	register_refined_jiffies(CLOCK_TICK_RATE);
+
+#ifdef CONFIG_EFI
+	/* Once setup is done above, unmap the EFI memory map on
+	 * mismatched firmware/kernel archtectures since there is no
+	 * support for runtime services.
+	 */
+	if (efi_enabled(EFI_BOOT) && !efi_is_native()) {
+		pr_info("efi: Setup done, disabling due to 32/64-bit mismatch\n");
+		efi_unmap_memmap();
+	}
+#endif
+}
+
+1.1.1 setup_memory_map()
+================================================================================
+void __init setup_memory_map(void)
+{
+	char *who;
+
+	who = x86_init.resources.memory_setup();
+	memcpy(&e820_saved, &e820, sizeof(struct e820map));
+	printk(KERN_INFO "e820: BIOS-provided physical RAM map:\n");
+	e820_print_map(who);
+}
+
+1.1.2 x86_init.paging.pagetable_init()
+================================================================================
+void __init native_pagetable_init(void)
+{
+	unsigned long pfn, va;
+	pgd_t *pgd, *base = swapper_pg_dir;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pte;
+
+	/*
+	 * Remove any mappings which extend past the end of physical
+	 * memory from the boot time page table.
+	 * In virtual address space, we should have at least two pages
+	 * from VMALLOC_END to pkmap or fixmap according to VMALLOC_END
+	 * definition. And max_low_pfn is set to VMALLOC_END physical
+	 * address. If initial memory mapping is doing right job, we
+	 * should have pte used near max_low_pfn or one pmd is not present.
+	 */
+	for (pfn = max_low_pfn; pfn < 1<<(32-PAGE_SHIFT); pfn++) {
+		va = PAGE_OFFSET + (pfn<<PAGE_SHIFT);
+		pgd = base + pgd_index(va);
+		if (!pgd_present(*pgd))
+			break;
+
+		pud = pud_offset(pgd, va);
+		pmd = pmd_offset(pud, va);
+		if (!pmd_present(*pmd))
+			break;
+
+		/* should not be large page here */
+		if (pmd_large(*pmd)) {
+			pr_warn("try to clear pte for ram above max_low_pfn: pfn: %lx pmd: %p pmd phys: %lx, but pmd is big page and is not using pte !\n",
+				pfn, pmd, __pa(pmd));
+			BUG_ON(1);
+		}
+
+		pte = pte_offset_kernel(pmd, va);
+		if (!pte_present(*pte))
+			break;
+
+		printk(KERN_DEBUG "clearing pte for ram above max_low_pfn: pfn: %lx pmd: %p pmd phys: %lx pte: %p pte phys: %lx\n",
+				pfn, pmd, __pa(pmd), pte, __pa(pte));
+		pte_clear(NULL, va, pte);
+	}
+	paravirt_alloc_pmd(&init_mm, __pa(base) >> PAGE_SHIFT);
+	paging_init();
+}
+
+2. setup_memory_map()
+================================================================================
+void __init setup_memory_map(void)
+{
+	char *who;
+
+	who = x86_init.resources.memory_setup();
+	memcpy(&e820_saved, &e820, sizeof(struct e820map));
+	printk(KERN_INFO "e820: BIOS-provided physical RAM map:\n");
+	e820_print_map(who);
+}
+
+kernel will return something like this:
+
+e820: BIOS-provided physical RAM map:
+BIOS-e820: [mem 0x0000000000000000-0x000000000009d7ff] usable
+BIOS-e820: [mem 0x000000000009d800-0x000000000009ffff] reserved
+BIOS-e820: [mem 0x00000000000e0000-0x00000000000fffff] reserved
+BIOS-e820: [mem 0x0000000000100000-0x00000000ba99efff] usable
+BIOS-e820: [mem 0x00000000ba99f000-0x00000000bae9efff] reserved
+BIOS-e820: [mem 0x00000000bae9f000-0x00000000baf9efff] ACPI NVS
+BIOS-e820: [mem 0x00000000baf9f000-0x00000000baffefff] ACPI data
+BIOS-e820: [mem 0x00000000bafff000-0x00000000baffffff] usable
+BIOS-e820: [mem 0x00000000bb000000-0x00000000bf9fffff] reserved
+BIOS-e820: [mem 0x00000000f8000000-0x00000000fbffffff] reserved
+BIOS-e820: [mem 0x00000000fec00000-0x00000000fec00fff] reserved
+BIOS-e820: [mem 0x00000000fed08000-0x00000000fed08fff] reserved
+BIOS-e820: [mem 0x00000000fed10000-0x00000000fed19fff] reserved
+BIOS-e820: [mem 0x00000000fed1c000-0x00000000fed1ffff] reserved
+BIOS-e820: [mem 0x00000000fee00000-0x00000000fee00fff] reserved
+BIOS-e820: [mem 0x00000000ffd20000-0x00000000ffffffff] reserved
+BIOS-e820: [mem 0x0000000100000000-0x000000013e5fffff] usable
+
+2.1 x86_init.resources.memory_setup
+================================================================================
+char *__init default_machine_specific_memory_setup(void)
+{
+	char *who = "BIOS-e820";
+	u32 new_nr;
+	/*
+	 * Try to copy the BIOS-supplied E820-map.
+	 *
+	 * Otherwise fake a memory map; one section from 0k->640k,
+	 * the next section from 1mb->appropriate_mem_k
+	 */
+	new_nr = boot_params.e820_entries;
+	sanitize_e820_map(boot_params.e820_map,
+			ARRAY_SIZE(boot_params.e820_map),
+			&new_nr);
+	boot_params.e820_entries = new_nr;
+	if (append_e820_map(boot_params.e820_map, boot_params.e820_entries)
+	  < 0) {
+		u64 mem_size;
+
+		/* compare results from other methods and take the greater */
+		if (boot_params.alt_mem_k
+		    < boot_params.screen_info.ext_mem_k) {
+			mem_size = boot_params.screen_info.ext_mem_k;
+			who = "BIOS-88";
+		} else {
+			mem_size = boot_params.alt_mem_k;
+			who = "BIOS-e801";
+		}
+
+		e820.nr_map = 0;
+		e820_add_region(0, LOWMEMSIZE(), E820_RAM);
+		e820_add_region(HIGH_MEMORY, mem_size << 10, E820_RAM);
+	}
+
+	/* In case someone cares... */
+	return who;
+}
