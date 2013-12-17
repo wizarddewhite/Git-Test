@@ -1,0 +1,144 @@
+1. eeh_init()
+================================================================================
+; eeh_ops is init to powernv_eeh_ops in eeh_powernv_init()
+
+int eeh_init(void)
+{
+	struct pci_controller *hose, *tmp;
+	struct device_node *phb;
+	static int cnt = 0;
+	int ret = 0;
+
+	/*
+	 * We have to delay the initialization on PowerNV after
+	 * the PCI hierarchy tree has been built because the PEs
+	 * are figured out based on PCI devices instead of device
+	 * tree nodes
+	 */
+	if (machine_is(powernv) && cnt++ <= 0)
+		return ret;
+
+	/* call platform initialization function */
+	if (!eeh_ops) {
+		pr_warning("%s: Platform EEH operation not found\n",
+			__func__);
+		return -EEXIST;
+	} else if ((ret = eeh_ops->init())) {
+		pr_warning("%s: Failed to call platform init function (%d)\n",
+			__func__, ret);
+		return ret;
+	}
+
+	/* Initialize EEH event */
+	ret = eeh_event_init();
+	if (ret)
+		return ret;
+
+	/* Enable EEH for all adapters */
+	if (eeh_probe_mode_devtree()) {
+		list_for_each_entry_safe(hose, tmp,
+			&hose_list, list_node) {
+			phb = hose->dn;
+			traverse_pci_devices(phb, eeh_ops->of_probe, NULL);
+		}
+	} else if (eeh_probe_mode_dev()) {
+		list_for_each_entry_safe(hose, tmp,
+			&hose_list, list_node)
+			pci_walk_bus(hose->bus, eeh_ops->dev_probe, NULL);
+	} else {
+		pr_warning("%s: Invalid probe mode %d\n",
+			   __func__, eeh_probe_mode);
+		return -EINVAL;
+	}
+
+	/*
+	 * Call platform post-initialization. Actually, It's good chance
+	 * to inform platform that EEH is ready to supply service if the
+	 * I/O cache stuff has been built up.
+	 */
+	if (eeh_ops->post_init) {
+		ret = eeh_ops->post_init();
+		if (ret)
+			return ret;
+	}
+
+	if (eeh_subsystem_enabled)
+		pr_info("EEH: PCI Enhanced I/O Error Handling Enabled\n");
+	else
+		pr_warning("EEH: No capable adapters found\n");
+
+	return ret;
+}
+
+1.1 eeh_init(), powernv_eeh_init()
+================================================================================
+static int powernv_eeh_init(void)
+{
+	/* We require OPALv3 */
+	if (!firmware_has_feature(FW_FEATURE_OPALv3)) {
+		pr_warning("%s: OPALv3 is required !\n", __func__);
+		return -EINVAL;
+	}
+
+	/* Set EEH probe mode */
+	eeh_probe_mode_set(EEH_PROBE_MODE_DEV);
+
+	return 0;
+}
+
+1.2 powernv_eeh_dev_probe()
+================================================================================
+static int powernv_eeh_dev_probe(struct pci_dev *dev, void *flag)
+{
+	struct pci_controller *hose = pci_bus_to_host(dev->bus);
+	struct pnv_phb *phb = hose->private_data;
+	struct device_node *dn = pci_device_to_OF_node(dev);
+	struct eeh_dev *edev = of_node_to_eeh_dev(dn);
+
+	/*
+	 * When probing the root bridge, which doesn't have any
+	 * subordinate PCI devices. We don't have OF node for
+	 * the root bridge. So it's not reasonable to continue
+	 * the probing.
+	 */
+	if (!dn || !edev || edev->pe)
+		return 0;
+
+	/* Skip for PCI-ISA bridge */
+	if ((dev->class >> 8) == PCI_CLASS_BRIDGE_ISA)
+		return 0;
+
+	/* Initialize eeh device */
+	edev->class_code = dev->class;
+	edev->mode	&= 0xFFFFFF00;
+	if (dev->hdr_type == PCI_HEADER_TYPE_BRIDGE)
+		edev->mode |= EEH_DEV_BRIDGE;
+	if (pci_is_pcie(dev)) {
+		edev->pcie_cap = pci_pcie_cap(dev);
+
+		if (pci_pcie_type(dev) == PCI_EXP_TYPE_ROOT_PORT)
+			edev->mode |= EEH_DEV_ROOT_PORT;
+		else if (pci_pcie_type(dev) == PCI_EXP_TYPE_DOWNSTREAM)
+			edev->mode |= EEH_DEV_DS_PORT;
+	}
+
+	edev->config_addr	= ((dev->bus->number << 8) | dev->devfn);
+	edev->pe_config_addr	= phb->bdfn_to_pe(phb, dev->bus, dev->devfn & 0xff);
+
+	/* Create PE */
+	eeh_add_to_parent_pe(edev);
+
+	/*
+	 * Enable EEH explicitly so that we will do EEH check
+	 * while accessing I/O stuff
+	 *
+	 * FIXME: Enable that for PHB3 later
+	 */
+	if (phb->type == PNV_PHB_IODA1)
+		eeh_subsystem_enabled = 1;
+
+	/* Save memory bars */
+	eeh_save_bars(edev);
+
+	return 0;
+}
