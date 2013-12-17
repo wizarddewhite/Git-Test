@@ -296,6 +296,13 @@ init_net(struct net)
    |loopback_dev            |
    |  (struct net_device*)  |
    +------------------------+
+   |dev_base_head           | list or hash list link the netdev
+   |  (struct list_head)    | in this namespace
+   |dev_name_head           |
+   |  (hlist_head*)         |
+   |dev_index_head          |
+   |  (hlist_head*)         |
+   +------------------------+
    |                        |
    |                        |
    +------------------------+
