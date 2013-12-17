@@ -1,0 +1,245 @@
+1. kvm_init()
+================================================================================
+int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
+		  struct module *module)
+{
+	int r;
+	int cpu;
+
+	r = kvm_arch_init(opaque);
+	if (r)
+		goto out_fail;
+
+	/*
+	 * kvm_arch_init makes sure there's at most one caller
+	 * for architectures that support multiple implementations,
+	 * like intel and amd on x86.
+	 * kvm_arch_init must be called before kvm_irqfd_init to avoid creating
+	 * conflicts in case kvm is already setup for another implementation.
+	 */
+	r = kvm_irqfd_init();
+	if (r)
+		goto out_irqfd;
+
+	if (!zalloc_cpumask_var(&cpus_hardware_enabled, GFP_KERNEL)) {
+		r = -ENOMEM;
+		goto out_free_0;
+	}
+
+	r = kvm_arch_hardware_setup();
+	if (r < 0)
+		goto out_free_0a;
+
+	for_each_online_cpu(cpu) {
+		smp_call_function_single(cpu,
+				kvm_arch_check_processor_compat,
+				&r, 1);
+		if (r < 0)
+			goto out_free_1;
+	}
+
+	r = register_cpu_notifier(&kvm_cpu_notifier);
+	if (r)
+		goto out_free_2;
+	register_reboot_notifier(&kvm_reboot_notifier);
+
+	/* A kmem cache lets us meet the alignment requirements of fx_save. */
+	if (!vcpu_align)
+		vcpu_align = __alignof__(struct kvm_vcpu);
+	kvm_vcpu_cache = kmem_cache_create("kvm_vcpu", vcpu_size, vcpu_align,
+					   0, NULL);
+	if (!kvm_vcpu_cache) {
+		r = -ENOMEM;
+		goto out_free_3;
+	}
+
+	r = kvm_async_pf_init();
+	if (r)
+		goto out_free;
+
+	kvm_chardev_ops.owner = module;
+	kvm_vm_fops.owner = module;
+	kvm_vcpu_fops.owner = module;
+
+	r = misc_register(&kvm_dev);
+	if (r) {
+		printk(KERN_ERR "kvm: misc device register failed\n");
+		goto out_unreg;
+	}
+
+	register_syscore_ops(&kvm_syscore_ops);
+
+	kvm_preempt_ops.sched_in = kvm_sched_in;
+	kvm_preempt_ops.sched_out = kvm_sched_out;
+
+	r = kvm_init_debug();
+	if (r) {
+		printk(KERN_ERR "kvm: create debugfs files failed\n");
+		goto out_undebugfs;
+	}
+
+	return 0;
+
+out_undebugfs:
+	unregister_syscore_ops(&kvm_syscore_ops);
+	misc_deregister(&kvm_dev);
+out_unreg:
+	kvm_async_pf_deinit();
+out_free:
+	kmem_cache_destroy(kvm_vcpu_cache);
+out_free_3:
+	unregister_reboot_notifier(&kvm_reboot_notifier);
+	unregister_cpu_notifier(&kvm_cpu_notifier);
+out_free_2:
+out_free_1:
+	kvm_arch_hardware_unsetup();
+out_free_0a:
+	free_cpumask_var(cpus_hardware_enabled);
+out_free_0:
+	kvm_irqfd_exit();
+out_irqfd:
+	kvm_arch_exit();
+out_fail:
+	return r;
+}
+
+1.1 kvm_dev()
+================================================================================
+static struct file_operations kvm_chardev_ops = {
+	.unlocked_ioctl = kvm_dev_ioctl,
+	.compat_ioctl   = kvm_dev_ioctl,
+	.llseek		= noop_llseek,
+};
+
+static struct miscdevice kvm_dev = {
+	KVM_MINOR,
+	"kvm",
+	&kvm_chardev_ops,
+};
+
+1.1.1 kvm_dev_ioctl()
+================================================================================
+static long kvm_dev_ioctl(struct file *filp,
+			  unsigned int ioctl, unsigned long arg)
+{
+	long r = -EINVAL;
+
+	switch (ioctl) {
+	case KVM_GET_API_VERSION:
+		r = -EINVAL;
+		if (arg)
+			goto out;
+		r = KVM_API_VERSION;
+		break;
+	case KVM_CREATE_VM:
+		r = kvm_dev_ioctl_create_vm(arg);
+		break;
+	case KVM_CHECK_EXTENSION:
+		r = kvm_dev_ioctl_check_extension_generic(arg);
+		break;
+	case KVM_GET_VCPU_MMAP_SIZE:
+		r = -EINVAL;
+		if (arg)
+			goto out;
+		r = PAGE_SIZE;     /* struct kvm_run */
+#ifdef CONFIG_X86
+		r += PAGE_SIZE;    /* pio data page */
+#endif
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+		r += PAGE_SIZE;    /* coalesced mmio ring page */
+#endif
+		break;
+	case KVM_TRACE_ENABLE:
+	case KVM_TRACE_PAUSE:
+	case KVM_TRACE_DISABLE:
+		r = -EOPNOTSUPP;
+		break;
+	default:
+		return kvm_arch_dev_ioctl(filp, ioctl, arg);
+	}
+out:
+	return r;
+}
+
+1.1.1.1 KVM_CREATE_VM, create kvm and return fd with kvm_vm_fops
+================================================================================
+static int kvm_dev_ioctl_create_vm(unsigned long type)
+{
+	int r;
+	struct kvm *kvm;
+
+	kvm = kvm_create_vm(type);
+	if (IS_ERR(kvm))
+		return PTR_ERR(kvm);
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+	r = kvm_coalesced_mmio_init(kvm);
+	if (r < 0) {
+		kvm_put_kvm(kvm);
+		return r;
+	}
+#endif
+	r = anon_inode_getfd("kvm-vm", &kvm_vm_fops, kvm, O_RDWR);
+	if (r < 0)
+		kvm_put_kvm(kvm);
+
+	return r;
+}
+
+1.1.1.1 KVM_CHECK_EXTENSION
+================================================================================
+static long kvm_dev_ioctl_check_extension_generic(long arg)
+{
+	switch (arg) {
+	case KVM_CAP_USER_MEMORY:
+	case KVM_CAP_DESTROY_MEMORY_REGION_WORKS:
+	case KVM_CAP_JOIN_MEMORY_REGIONS_WORKS:
+#ifdef CONFIG_KVM_APIC_ARCHITECTURE
+	case KVM_CAP_SET_BOOT_CPU_ID:
+#endif
+	case KVM_CAP_INTERNAL_ERROR_DATA:
+#ifdef CONFIG_HAVE_KVM_MSI
+	case KVM_CAP_SIGNAL_MSI:
+#endif
+#ifdef CONFIG_HAVE_KVM_IRQ_ROUTING
+	case KVM_CAP_IRQFD_RESAMPLE:
+#endif
+		return 1;
+#ifdef CONFIG_HAVE_KVM_IRQ_ROUTING
+	case KVM_CAP_IRQ_ROUTING:
+		return KVM_MAX_IRQ_ROUTES;
+#endif
+	default:
+		break;
+	}
+	return kvm_dev_ioctl_check_extension(arg);
+}
+
+0. data structure
+================================================================================
+
+     kvm
+     +-------------------------+
+     |                         |
+     |                         |
+     +-------------------------+
+     |mm                       |
+     |  (struct mm_struct)     |
+     +-------------------------+
+     |memslots                 |
+     |  (struct kvm_memslots)  |
+     +-------------------------+
+     |vcpus[KVM_MAX_VCPUS]     |
+     |  (struct kvm_vcpu)      |
+     +-------------------------+
+     |stat                     |
+     |  (struct kvm_vm_stat)   |
+     +-------------------------+
+     |                         |
+     |                         |
+     +-------------------------+
+     |                         |
+     |                         |
+     +-------------------------+
+     |                         |
+     |                         |
+     +-------------------------+
