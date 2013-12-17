@@ -1,0 +1,747 @@
+1. cmd_top()
+================================================================================
+int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
+{
+	int status;
+	char errbuf[BUFSIZ];
+	struct perf_top top = {
+		.count_filter	     = 5,
+		.delay_secs	     = 2,
+		.record_opts = {
+			.mmap_pages	= UINT_MAX,
+			.user_freq	= UINT_MAX,
+			.user_interval	= ULLONG_MAX,
+			.freq		= 4000, /* 4 KHz */
+			.target		     = {
+				.uses_mmap   = true,
+			},
+		},
+		.sym_pcnt_filter     = 5,
+	};
+	struct perf_record_opts *opts = &top.record_opts;
+	struct perf_target *target = &opts->target;
+	const struct option options[] = {
+	OPT_CALLBACK('e', "event", &top.evlist, "event",
+		     "event selector. use 'perf list' to list available events",
+		     parse_events_option),
+	OPT_U64('c', "count", &opts->user_interval, "event period to sample"),
+	OPT_STRING('p', "pid", &target->pid, "pid",
+		    "profile events on existing process id"),
+	OPT_STRING('t', "tid", &target->tid, "tid",
+		    "profile events on existing thread id"),
+	OPT_BOOLEAN('a', "all-cpus", &target->system_wide,
+			    "system-wide collection from all CPUs"),
+	OPT_STRING('C', "cpu", &target->cpu_list, "cpu",
+		    "list of cpus to monitor"),
+	OPT_STRING('k', "vmlinux", &symbol_conf.vmlinux_name,
+		   "file", "vmlinux pathname"),
+	OPT_BOOLEAN('K', "hide_kernel_symbols", &top.hide_kernel_symbols,
+		    "hide kernel symbols"),
+	OPT_UINTEGER('m', "mmap-pages", &opts->mmap_pages,
+		     "number of mmap data pages"),
+	OPT_INTEGER('r', "realtime", &top.realtime_prio,
+		    "collect data with this RT SCHED_FIFO priority"),
+	OPT_INTEGER('d', "delay", &top.delay_secs,
+		    "number of seconds to delay between refreshes"),
+	OPT_BOOLEAN('D', "dump-symtab", &top.dump_symtab,
+			    "dump the symbol table used for profiling"),
+	OPT_INTEGER('f', "count-filter", &top.count_filter,
+		    "only display functions with more events than this"),
+	OPT_BOOLEAN('g', "group", &opts->group,
+			    "put the counters into a counter group"),
+	OPT_BOOLEAN('i', "no-inherit", &opts->no_inherit,
+		    "child tasks do not inherit counters"),
+	OPT_STRING(0, "sym-annotate", &top.sym_filter, "symbol name",
+		    "symbol to annotate"),
+	OPT_BOOLEAN('z', "zero", &top.zero, "zero history across updates"),
+	OPT_UINTEGER('F', "freq", &opts->user_freq, "profile at this frequency"),
+	OPT_INTEGER('E', "entries", &top.print_entries,
+		    "display this many functions"),
+	OPT_BOOLEAN('U', "hide_user_symbols", &top.hide_user_symbols,
+		    "hide user symbols"),
+	OPT_BOOLEAN(0, "tui", &top.use_tui, "Use the TUI interface"),
+	OPT_BOOLEAN(0, "stdio", &top.use_stdio, "Use the stdio interface"),
+	OPT_INCR('v', "verbose", &verbose,
+		    "be more verbose (show counter open errors, etc)"),
+	OPT_STRING('s', "sort", &sort_order, "key[,key2...]",
+		   "sort by key(s): pid, comm, dso, symbol, parent, weight, local_weight"),
+	OPT_BOOLEAN('n', "show-nr-samples", &symbol_conf.show_nr_samples,
+		    "Show a column with the number of samples"),
+	OPT_CALLBACK_DEFAULT('G', "call-graph", &top.record_opts,
+			     "mode[,dump_size]", record_callchain_help,
+			     &parse_callchain_opt, "fp"),
+	OPT_BOOLEAN(0, "show-total-period", &symbol_conf.show_total_period,
+		    "Show a column with the sum of periods"),
+	OPT_STRING(0, "dsos", &symbol_conf.dso_list_str, "dso[,dso...]",
+		   "only consider symbols in these dsos"),
+	OPT_STRING(0, "comms", &symbol_conf.comm_list_str, "comm[,comm...]",
+		   "only consider symbols in these comms"),
+	OPT_STRING(0, "symbols", &symbol_conf.sym_list_str, "symbol[,symbol...]",
+		   "only consider these symbols"),
+	OPT_BOOLEAN(0, "source", &symbol_conf.annotate_src,
+		    "Interleave source code with assembly code (default)"),
+	OPT_BOOLEAN(0, "asm-raw", &symbol_conf.annotate_asm_raw,
+		    "Display raw encoding of assembly instructions (default)"),
+	OPT_STRING('M', "disassembler-style", &disassembler_style, "disassembler style",
+		   "Specify disassembler style (e.g. -M intel for intel syntax)"),
+	OPT_STRING('u', "uid", &target->uid_str, "user", "user to profile"),
+	OPT_CALLBACK(0, "percent-limit", &top, "percent",
+		     "Don't show entries under that percent", parse_percent_limit),
+	OPT_END()
+	};
+	const char * const top_usage[] = {
+		"perf top [<options>]",
+		NULL
+	};
+
+	top.evlist = perf_evlist__new();
+	if (top.evlist == NULL)
+		return -ENOMEM;
+
+	argc = parse_options(argc, argv, options, top_usage, 0);
+	if (argc)
+		usage_with_options(top_usage, options);
+
+	if (sort_order == default_sort_order)
+		sort_order = "dso,symbol";
+
+	if (setup_sorting() < 0)
+		usage_with_options(top_usage, options);
+
+	/* display thread wants entries to be collapsed in a different tree */
+	sort__need_collapse = 1;
+
+	if (top.use_stdio)
+		use_browser = 0;
+	else if (top.use_tui)
+		use_browser = 1;
+
+	setup_browser(false);
+
+	status = perf_target__validate(target);
+	if (status) {
+		perf_target__strerror(target, status, errbuf, BUFSIZ);
+		ui__warning("%s", errbuf);
+	}
+
+	status = perf_target__parse_uid(target);
+	if (status) {
+		int saved_errno = errno;
+
+		perf_target__strerror(target, status, errbuf, BUFSIZ);
+		ui__error("%s", errbuf);
+
+		status = -saved_errno;
+		goto out_delete_evlist;
+	}
+
+	if (perf_target__none(target))
+		target->system_wide = true;
+
+	if (perf_evlist__create_maps(top.evlist, target) < 0)
+		usage_with_options(top_usage, options);
+
+	if (!top.evlist->nr_entries &&
+	    perf_evlist__add_default(top.evlist) < 0) {
+		ui__error("Not enough memory for event selector list\n");
+		goto out_delete_maps;
+	}
+
+	symbol_conf.nr_events = top.evlist->nr_entries;
+
+	if (top.delay_secs < 1)
+		top.delay_secs = 1;
+
+	if (opts->user_interval != ULLONG_MAX)
+		opts->default_interval = opts->user_interval;
+	if (opts->user_freq != UINT_MAX)
+		opts->freq = opts->user_freq;
+
+	/*
+	 * User specified count overrides default frequency.
+	 */
+	if (opts->default_interval)
+		opts->freq = 0;
+	else if (opts->freq) {
+		opts->default_interval = opts->freq;
+	} else {
+		ui__error("frequency and count are zero, aborting\n");
+		status = -EINVAL;
+		goto out_delete_maps;
+	}
+
+	top.sym_evsel = perf_evlist__first(top.evlist);
+
+	symbol_conf.priv_size = sizeof(struct annotation);
+
+	symbol_conf.try_vmlinux_path = (symbol_conf.vmlinux_name == NULL);
+	if (symbol__init() < 0)
+		return -1;
+
+	sort__setup_elide(stdout);
+
+	get_term_dimensions(&top.winsize);
+	if (top.print_entries == 0) {
+		struct sigaction act = {
+			.sa_sigaction = perf_top__sig_winch,
+			.sa_flags     = SA_SIGINFO,
+		};
+		perf_top__update_print_entries(&top);
+		sigaction(SIGWINCH, &act, NULL);
+	}
+
+	status = __cmd_top(&top);
+
+out_delete_maps:
+	perf_evlist__delete_maps(top.evlist);
+out_delete_evlist:
+	perf_evlist__delete(top.evlist);
+
+	return status;
+}
+
+1.1 perf_evlist__new()
+================================================================================
+struct perf_evlist *perf_evlist__new(void)
+{
+	struct perf_evlist *evlist = zalloc(sizeof(*evlist));
+
+	if (evlist != NULL)
+		perf_evlist__init(evlist, NULL, NULL);
+
+	return evlist;
+}
+
+1.1.1 perf_evlist__init()
+================================================================================
+void perf_evlist__init(struct perf_evlist *evlist, struct cpu_map *cpus,
+		       struct thread_map *threads)
+{
+	int i;
+
+	for (i = 0; i < PERF_EVLIST__HLIST_SIZE; ++i)
+		INIT_HLIST_HEAD(&evlist->heads[i]);
+	INIT_LIST_HEAD(&evlist->entries);
+	perf_evlist__set_maps(evlist, cpus, threads);
+	evlist->workload.pid = -1;
+}
+
+1.1.1.1 perf_evlist__set_maps()
+================================================================================
+static inline void perf_evlist__set_maps(struct perf_evlist *evlist,
+					 struct cpu_map *cpus,
+					 struct thread_map *threads)
+{
+	evlist->cpus	= cpus;
+	evlist->threads	= threads;
+}
+
+1.2 parse_options()
+================================================================================
+int parse_options(int argc, const char **argv, const struct option *options,
+		  const char * const usagestr[], int flags)
+{
+	struct parse_opt_ctx_t ctx;
+
+	perf_header__set_cmdline(argc, argv);
+
+	parse_options_start(&ctx, argc, argv, flags);
+	switch (parse_options_step(&ctx, options, usagestr)) {
+	case PARSE_OPT_HELP:
+		exit(129);
+	case PARSE_OPT_DONE:
+		break;
+	case PARSE_OPT_LIST:
+		while (options->type != OPTION_END) {
+			printf("--%s ", options->long_name);
+			options++;
+		}
+		exit(130);
+	default: /* PARSE_OPT_UNKNOWN */
+		if (ctx.argv[0][1] == '-') {
+			error("unknown option `%s'", ctx.argv[0] + 2);
+		} else {
+			error("unknown switch `%c'", *ctx.opt);
+		}
+		usage_with_options(usagestr, options);
+	}
+
+	return parse_options_end(&ctx);
+}
+
+1.2.1 perf_header__set_cmdline()
+================================================================================
+; set header_argc/header_argv to argc/argv
+perf_header__set_cmdline(int argc, const char **argv)
+{
+	int i;
+
+	/*
+	 * If header_argv has already been set, do not override it.
+	 * This allows a command to set the cmdline, parse args and
+	 * then call another builtin function that implements a
+	 * command -- e.g, cmd_kvm calling cmd_record.
+	 */
+	if (header_argv)
+		return 0;
+
+	header_argc = (u32)argc;
+
+	/* do not include NULL termination */
+	header_argv = calloc(argc, sizeof(char *));
+	if (!header_argv)
+		return -ENOMEM;
+
+	/*
+	 * must copy argv contents because it gets moved
+	 * around during option parsing
+	 */
+	for (i = 0; i < argc ; i++)
+		header_argv[i] = argv[i];
+
+	return 0;
+}
+
+1.2.2 parse_options_start()
+================================================================================
+; init the parse_opt_ctx_t structure
+void parse_options_start(struct parse_opt_ctx_t *ctx,
+			 int argc, const char **argv, int flags)
+{
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->argc = argc - 1;
+	ctx->argv = argv + 1;
+	ctx->out  = argv;
+	ctx->cpidx = ((flags & PARSE_OPT_KEEP_ARGV0) != 0);
+	ctx->flags = flags;
+	if ((flags & PARSE_OPT_KEEP_UNKNOWN) &&
+	    (flags & PARSE_OPT_STOP_AT_NON_OPTION))
+		die("STOP_AT_NON_OPTION and KEEP_UNKNOWN don't go together");
+}
+
+1.2.3 parse_options_step()
+================================================================================
+; iterate on the argv list one by one
+int parse_options_step(struct parse_opt_ctx_t *ctx,
+		       const struct option *options,
+		       const char * const usagestr[])
+{
+	int internal_help = !(ctx->flags & PARSE_OPT_NO_INTERNAL_HELP);
+
+	/* we must reset ->opt, unknown short option leave it dangling */
+	ctx->opt = NULL;
+
+	for (; ctx->argc; ctx->argc--, ctx->argv++) {
+		const char *arg = ctx->argv[0];
+
+		if (*arg != '-' || !arg[1]) {
+			if (ctx->flags & PARSE_OPT_STOP_AT_NON_OPTION)
+				break;
+			ctx->out[ctx->cpidx++] = ctx->argv[0];
+			continue;
+		}
+
+		if (arg[1] != '-') {
+			ctx->opt = arg + 1;
+			if (internal_help && *ctx->opt == 'h')
+				return parse_options_usage(usagestr, options);
+			switch (parse_short_opt(ctx, options)) {
+			case -1:
+				return parse_options_usage(usagestr, options);
+			case -2:
+				goto unknown;
+			default:
+				break;
+			}
+			if (ctx->opt)
+				check_typos(arg + 1, options);
+			while (ctx->opt) {
+				if (internal_help && *ctx->opt == 'h')
+					return parse_options_usage(usagestr, options);
+				switch (parse_short_opt(ctx, options)) {
+				case -1:
+					return parse_options_usage(usagestr, options);
+				case -2:
+					/* fake a short option thing to hide the fact that we may have
+					 * started to parse aggregated stuff
+					 *
+					 * This is leaky, too bad.
+					 */
+					ctx->argv[0] = strdup(ctx->opt - 1);
+					*(char *)ctx->argv[0] = '-';
+					goto unknown;
+				default:
+					break;
+				}
+			}
+			continue;
+		}
+
+		if (!arg[2]) { /* "--" */
+			if (!(ctx->flags & PARSE_OPT_KEEP_DASHDASH)) {
+				ctx->argc--;
+				ctx->argv++;
+			}
+			break;
+		}
+
+		if (internal_help && !strcmp(arg + 2, "help-all"))
+			return usage_with_options_internal(usagestr, options, 1);
+		if (internal_help && !strcmp(arg + 2, "help"))
+			return parse_options_usage(usagestr, options);
+		if (!strcmp(arg + 2, "list-opts"))
+			return PARSE_OPT_LIST;
+		switch (parse_long_opt(ctx, arg + 2, options)) {
+		case -1:
+			return parse_options_usage(usagestr, options);
+		case -2:
+			goto unknown;
+		default:
+			break;
+		}
+		continue;
+unknown:
+		if (!(ctx->flags & PARSE_OPT_KEEP_UNKNOWN))
+			return PARSE_OPT_UNKNOWN;
+		ctx->out[ctx->cpidx++] = ctx->argv[0];
+		ctx->opt = NULL;
+	}
+	return PARSE_OPT_DONE;
+}
+
+1.2.3 parse_options_end()
+================================================================================
+int parse_options_end(struct parse_opt_ctx_t *ctx)
+{
+	memmove(ctx->out + ctx->cpidx, ctx->argv, ctx->argc * sizeof(*ctx->out));
+	ctx->out[ctx->cpidx + ctx->argc] = NULL;
+	return ctx->cpidx + ctx->argc;
+}
+
+1.3 setup_sorting()
+================================================================================
+int setup_sorting(void)
+{
+	char *tmp, *tok, *str = strdup(sort_order);
+	int ret = 0;
+
+	if (str == NULL) {
+		error("Not enough memory to setup sort keys");
+		return -ENOMEM;
+	}
+
+	for (tok = strtok_r(str, ", ", &tmp);
+			tok; tok = strtok_r(NULL, ", ", &tmp)) {
+		ret = sort_dimension__add(tok);
+		if (ret == -EINVAL) {
+			error("Invalid --sort key: `%s'", tok);
+			break;
+		} else if (ret == -ESRCH) {
+			error("Unknown --sort key: `%s'", tok);
+			break;
+		}
+	}
+
+	free(str);
+	return ret;
+}
+
+1.3.1 sort_dimension__add()
+================================================================================
+int sort_dimension__add(const char *tok)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(common_sort_dimensions); i++) {
+		struct sort_dimension *sd = &common_sort_dimensions[i];
+
+		if (strncasecmp(tok, sd->name, strlen(tok)))
+			continue;
+
+		if (sd->entry == &sort_parent) {
+			int ret = regcomp(&parent_regex, parent_pattern, REG_EXTENDED);
+			if (ret) {
+				char err[BUFSIZ];
+
+				regerror(ret, &parent_regex, err, sizeof(err));
+				pr_err("Invalid regex: %s\n%s", parent_pattern, err);
+				return -EINVAL;
+			}
+			sort__has_parent = 1;
+		} else if (sd->entry == &sort_sym) {
+			sort__has_sym = 1;
+		}
+
+		__sort_dimension__add(sd, i);
+		return 0;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(bstack_sort_dimensions); i++) {
+		struct sort_dimension *sd = &bstack_sort_dimensions[i];
+
+		if (strncasecmp(tok, sd->name, strlen(tok)))
+			continue;
+
+		if (sort__mode != SORT_MODE__BRANCH)
+			return -EINVAL;
+
+		if (sd->entry == &sort_sym_from || sd->entry == &sort_sym_to)
+			sort__has_sym = 1;
+
+		__sort_dimension__add(sd, i + __SORT_BRANCH_STACK);
+		return 0;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(memory_sort_dimensions); i++) {
+		struct sort_dimension *sd = &memory_sort_dimensions[i];
+
+		if (strncasecmp(tok, sd->name, strlen(tok)))
+			continue;
+
+		if (sort__mode != SORT_MODE__MEMORY)
+			return -EINVAL;
+
+		if (sd->entry == &sort_mem_daddr_sym)
+			sort__has_sym = 1;
+
+		__sort_dimension__add(sd, i + __SORT_MEMORY_MODE);
+		return 0;
+	}
+
+	return -ESRCH;
+}
+
+1.4 setup_browser()
+================================================================================
+void setup_browser(bool fallback_to_pager)
+{
+	if (use_browser < 2 && (!isatty(1) || dump_trace))
+		use_browser = 0;
+
+	/* default to TUI */
+	if (use_browser < 0)
+		use_browser = 1;
+
+	switch (use_browser) {
+	case 2:
+		if (perf_gtk__init() == 0)
+			break;
+		/* fall through */
+	case 1:
+		use_browser = 1;
+		if (ui__init() == 0)
+			break;
+		/* fall through */
+	default:
+		use_browser = 0;
+		if (fallback_to_pager)
+			setup_pager();
+
+		perf_hpp__column_enable(PERF_HPP__OVERHEAD);
+		perf_hpp__init();
+		break;
+	}
+}
+
+1.5 perf_target__validate()
+================================================================================
+enum perf_target_errno perf_target__validate(struct perf_target *target)
+{
+	enum perf_target_errno ret = PERF_ERRNO_TARGET__SUCCESS;
+
+	if (target->pid)
+		target->tid = target->pid;
+
+	/* CPU and PID are mutually exclusive */
+	if (target->tid && target->cpu_list) {
+		target->cpu_list = NULL;
+		if (ret == PERF_ERRNO_TARGET__SUCCESS)
+			ret = PERF_ERRNO_TARGET__PID_OVERRIDE_CPU;
+	}
+
+	/* UID and PID are mutually exclusive */
+	if (target->tid && target->uid_str) {
+		target->uid_str = NULL;
+		if (ret == PERF_ERRNO_TARGET__SUCCESS)
+			ret = PERF_ERRNO_TARGET__PID_OVERRIDE_UID;
+	}
+
+	/* UID and CPU are mutually exclusive */
+	if (target->uid_str && target->cpu_list) {
+		target->cpu_list = NULL;
+		if (ret == PERF_ERRNO_TARGET__SUCCESS)
+			ret = PERF_ERRNO_TARGET__UID_OVERRIDE_CPU;
+	}
+
+	/* PID and SYSTEM are mutually exclusive */
+	if (target->tid && target->system_wide) {
+		target->system_wide = false;
+		if (ret == PERF_ERRNO_TARGET__SUCCESS)
+			ret = PERF_ERRNO_TARGET__PID_OVERRIDE_SYSTEM;
+	}
+
+	/* UID and SYSTEM are mutually exclusive */
+	if (target->uid_str && target->system_wide) {
+		target->system_wide = false;
+		if (ret == PERF_ERRNO_TARGET__SUCCESS)
+			ret = PERF_ERRNO_TARGET__UID_OVERRIDE_SYSTEM;
+	}
+
+	return ret;
+}
+
+1.6 perf_evlist__create_maps()
+================================================================================
+int perf_evlist__create_maps(struct perf_evlist *evlist,
+			     struct perf_target *target)
+{
+	evlist->threads = thread_map__new_str(target->pid, target->tid,
+					      target->uid);
+
+	if (evlist->threads == NULL)
+		return -1;
+
+	if (perf_target__has_task(target))
+		evlist->cpus = cpu_map__dummy_new();
+	else if (!perf_target__has_cpu(target) && !target->uses_mmap)
+		evlist->cpus = cpu_map__dummy_new();
+	else
+		evlist->cpus = cpu_map__new(target->cpu_list);
+
+	if (evlist->cpus == NULL)
+		goto out_delete_threads;
+
+	return 0;
+
+out_delete_threads:
+	thread_map__delete(evlist->threads);
+	return -1;
+}
+
+1.6.1 thread_map__new_str()
+================================================================================
+struct thread_map *thread_map__new_str(const char *pid, const char *tid,
+				       uid_t uid)
+{
+	if (pid)
+		return thread_map__new_by_pid_str(pid);
+
+	if (!tid && uid != UINT_MAX)
+		return thread_map__new_by_uid(uid);
+
+	return thread_map__new_by_tid_str(tid);
+}
+
+1.6.1.1 thread_map__new_by_tid_str()
+================================================================================
+static struct thread_map *thread_map__new_by_tid_str(const char *tid_str)
+{
+	struct thread_map *threads = NULL, *nt;
+	int ntasks = 0;
+	pid_t tid, prev_tid = INT_MAX;
+	char *end_ptr;
+	struct str_node *pos;
+	struct strlist *slist;
+
+	printf("%s no idea what it is...\n", __func__);
+	/* perf-stat expects threads to be generated even if tid not given */
+	if (!tid_str) {
+		threads = malloc(sizeof(*threads) + sizeof(pid_t));
+		if (threads != NULL) {
+			threads->map[0] = -1;
+			threads->nr	= 1;
+		}
+		return threads;
+	}
+
+	slist = strlist__new(false, tid_str);
+	if (!slist)
+		return NULL;
+
+	strlist__for_each(pos, slist) {
+		tid = strtol(pos->s, &end_ptr, 10);
+
+		if (tid == INT_MIN || tid == INT_MAX ||
+		    (*end_ptr != '\0' && *end_ptr != ','))
+			goto out_free_threads;
+
+		if (tid == prev_tid)
+			continue;
+
+		ntasks++;
+		nt = realloc(threads, sizeof(*threads) + sizeof(pid_t) * ntasks);
+
+		if (nt == NULL)
+			goto out_free_threads;
+
+		threads = nt;
+		threads->map[ntasks - 1] = tid;
+		threads->nr		 = ntasks;
+	}
+out:
+	return threads;
+
+out_free_threads:
+	free(threads);
+	threads = NULL;
+	goto out;
+}
+
+0. data structure
+================================================================================
+
+0.1 perf_evlist
+================================================================================
+
+perf_evlist
+
+     +--------------------------+
+     |entries                   |
+     |   (struct list_head)     |
+     +--------------------------+
+     |heads[]                   |
+     |   (sturct hlist_head)    |
+     +--------------------------+
+     |nr_entries                |
+     |nr_groups                 |
+     |nr_fds                    |
+     |nr_mmaps                  |
+     |mmap_len                  |
+     +--------------------------+
+     |workload                  |
+     |    cork_fd               |
+     |    pid                   |
+     |                          |
+     +--------------------------+
+     |mmap                      |
+     |   (struct perf_mmap)     |
+     +--------------------------+
+     |pollfd                    |
+     |   (struct pollfd *)      |
+     +--------------------------+
+     |threads                   |
+     |   (struct thread_map)    |
+     +--------------------------+
+     |cpus                      |
+     |   (struct cpu_map)       |
+     +--------------------------+
+     |selected                  |
+     |   (struct perf_evsel)    |
+     +--------------------------+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
