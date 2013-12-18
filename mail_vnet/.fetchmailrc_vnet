@@ -1,6 +1,6 @@
 # default settings for polling and logging
 set postmaster "root"
-set syslog
+#set syslog
 set daemon 20
 set logfile "/home/richard/Mail/log"
 
