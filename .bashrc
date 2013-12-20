@@ -83,3 +83,6 @@ export PATH=${PATH}:/media/Study/Project/Android/android-sdk-linux_86/tools:/usr
 
 #super proxy
 #http_proxy=http://autoproxy.au.ibm.com/hk1.pac
+#go agent
+#crossgfwwei1 wizarddewhite
+
