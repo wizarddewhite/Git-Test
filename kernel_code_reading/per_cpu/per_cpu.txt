@@ -677,6 +677,8 @@ void __init setup_cpu_local_masks(void)
 ================================================================================
 #define PER_CPU_BASE_SECTION ".data..percpu"
 
+section defined in include/asm-generic/vmlinux.lds.h
+
 3. DECLARE_PER_CPU(), declaration of a percpu variable
 ================================================================================
 #define DECLARE_PER_CPU(type, name)					\
