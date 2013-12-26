@@ -194,3 +194,33 @@ static void __local_bh_enable(unsigned int cnt)
 	preempt_count_sub(cnt);
 }
 
+3. raise_softirq_irqoff(), actually just set the pending bitmap
+================================================================================
+inline void raise_softirq_irqoff(unsigned int nr)
+{
+	__raise_softirq_irqoff(nr);
+
+	/*
+	 * If we're in an interrupt or softirq, we're done
+	 * (this also catches softirq-disabled code). We will
+	 * actually run the softirq once we return from
+	 * the irq or softirq.
+	 *
+	 * Otherwise we wake up ksoftirqd to make sure we
+	 * schedule the softirq soon.
+	 */
+	if (!in_interrupt())
+		wakeup_softirqd();
+}
+
+3.1 __raise_softirq_irqoff()
+================================================================================
+void __raise_softirq_irqoff(unsigned int nr)
+{
+	trace_softirq_raise(nr);
+	or_softirq_pending(1UL << nr);
+}
+
+3.1.1 or_softirq_pending()
+================================================================================
+#define or_softirq_pending(x)  (local_softirq_pending() |= (x))
