@@ -1,0 +1,392 @@
+1. netdev_alloc_skb()
+================================================================================
+static inline struct sk_buff *netdev_alloc_skb(struct net_device *dev,
+					       unsigned int length)
+{
+	return __netdev_alloc_skb(dev, length, GFP_ATOMIC);
+}
+
+struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
+				   unsigned int length, gfp_t gfp_mask)
+{
+	struct sk_buff *skb = NULL;
+	unsigned int fragsz = SKB_DATA_ALIGN(length + NET_SKB_PAD) +
+			      SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+
+	if (fragsz <= PAGE_SIZE && !(gfp_mask & (__GFP_WAIT | GFP_DMA))) {
+		void *data;
+
+		if (sk_memalloc_socks())
+			gfp_mask |= __GFP_MEMALLOC;
+
+		data = __netdev_alloc_frag(fragsz, gfp_mask);
+
+		if (likely(data)) {
+			skb = build_skb(data, fragsz);
+			if (unlikely(!skb))
+				put_page(virt_to_head_page(data));
+		}
+	} else {
+		skb = __alloc_skb(length + NET_SKB_PAD, gfp_mask,
+				  SKB_ALLOC_RX, NUMA_NO_NODE);
+	}
+	if (likely(skb)) {
+		skb_reserve(skb, NET_SKB_PAD);
+		skb->dev = dev;
+	}
+	return skb;
+}
+
+1.1 __netdev_alloc_frag()
+================================================================================
+static void *__netdev_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
+{
+	struct netdev_alloc_cache *nc;
+	void *data = NULL;
+	int order;
+	unsigned long flags;
+
+	local_irq_save(flags);
+	nc = &__get_cpu_var(netdev_alloc_cache);
+	if (unlikely(!nc->frag.page)) {
+refill:
+		for (order = NETDEV_FRAG_PAGE_MAX_ORDER; ;) {
+			gfp_t gfp = gfp_mask;
+
+			if (order)
+				gfp |= __GFP_COMP | __GFP_NOWARN;
+			nc->frag.page = alloc_pages(gfp, order);
+			if (likely(nc->frag.page))
+				break;
+			if (--order < 0)
+				goto end;
+		}
+		nc->frag.size = PAGE_SIZE << order;
+recycle:
+		atomic_set(&nc->frag.page->_count, NETDEV_PAGECNT_MAX_BIAS);
+		nc->pagecnt_bias = NETDEV_PAGECNT_MAX_BIAS;
+		nc->frag.offset = 0;
+	}
+
+	if (nc->frag.offset + fragsz > nc->frag.size) {
+		/* avoid unnecessary locked operations if possible */
+		if ((atomic_read(&nc->frag.page->_count) == nc->pagecnt_bias) ||
+		    atomic_sub_and_test(nc->pagecnt_bias, &nc->frag.page->_count))
+			goto recycle;
+		goto refill;
+	}
+
+	data = page_address(nc->frag.page) + nc->frag.offset;
+	nc->frag.offset += fragsz;
+	nc->pagecnt_bias--;
+end:
+	local_irq_restore(flags);
+	return data;
+}
+
+1.2 build_skb()
+================================================================================
+struct sk_buff *build_skb(void *data, unsigned int frag_size)
+{
+	struct skb_shared_info *shinfo;
+	struct sk_buff *skb;
+	unsigned int size = frag_size ? : ksize(data);
+
+	skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC);
+	if (!skb)
+		return NULL;
+
+	size -= SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+
+	memset(skb, 0, offsetof(struct sk_buff, tail));
+	skb->truesize = SKB_TRUESIZE(size);
+	skb->head_frag = frag_size != 0;
+	atomic_set(&skb->users, 1);
+	skb->head = data;
+	skb->data = data;
+	skb_reset_tail_pointer(skb);
+	skb->end = skb->tail + size;
+	skb->mac_header = (typeof(skb->mac_header))~0U;
+	skb->transport_header = (typeof(skb->transport_header))~0U;
+
+	/* make sure we initialize shinfo sequentially */
+	shinfo = skb_shinfo(skb);
+	memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
+	atomic_set(&shinfo->dataref, 1);
+	kmemcheck_annotate_variable(shinfo->destructor_arg);
+
+	return skb;
+}
+
+1.3 __alloc_skb()
+================================================================================
+struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
+			    int flags, int node)
+{
+	struct kmem_cache *cache;
+	struct skb_shared_info *shinfo;
+	struct sk_buff *skb;
+	u8 *data;
+	bool pfmemalloc;
+
+	cache = (flags & SKB_ALLOC_FCLONE)
+		? skbuff_fclone_cache : skbuff_head_cache;
+
+	if (sk_memalloc_socks() && (flags & SKB_ALLOC_RX))
+		gfp_mask |= __GFP_MEMALLOC;
+
+	/* Get the HEAD */
+	skb = kmem_cache_alloc_node(cache, gfp_mask & ~__GFP_DMA, node);
+	if (!skb)
+		goto out;
+	prefetchw(skb);
+
+	/* We do our best to align skb_shared_info on a separate cache
+	 * line. It usually works because kmalloc(X > SMP_CACHE_BYTES) gives
+	 * aligned memory blocks, unless SLUB/SLAB debug is enabled.
+	 * Both skb->head and skb_shared_info are cache line aligned.
+	 */
+	size = SKB_DATA_ALIGN(size);
+	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+	data = kmalloc_reserve(size, gfp_mask, node, &pfmemalloc);
+	if (!data)
+		goto nodata;
+	/* kmalloc(size) might give us more room than requested.
+	 * Put skb_shared_info exactly at the end of allocated zone,
+	 * to allow max possible filling before reallocation.
+	 */
+	size = SKB_WITH_OVERHEAD(ksize(data));
+	prefetchw(data + size);
+
+	/*
+	 * Only clear those fields we need to clear, not those that we will
+	 * actually initialise below. Hence, don't put any more fields after
+	 * the tail pointer in struct sk_buff!
+	 */
+	memset(skb, 0, offsetof(struct sk_buff, tail));
+	/* Account for allocated memory : skb + skb->head */
+	skb->truesize = SKB_TRUESIZE(size);
+	skb->pfmemalloc = pfmemalloc;
+	atomic_set(&skb->users, 1);
+	skb->head = data;
+	skb->data = data;
+	skb_reset_tail_pointer(skb);
+	skb->end = skb->tail + size;
+	skb->mac_header = (typeof(skb->mac_header))~0U;
+	skb->transport_header = (typeof(skb->transport_header))~0U;
+
+	/* make sure we initialize shinfo sequentially */
+	shinfo = skb_shinfo(skb);
+	memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
+	atomic_set(&shinfo->dataref, 1);
+	kmemcheck_annotate_variable(shinfo->destructor_arg);
+
+	if (flags & SKB_ALLOC_FCLONE) {
+		struct sk_buff *child = skb + 1;
+		atomic_t *fclone_ref = (atomic_t *) (child + 1);
+
+		kmemcheck_annotate_bitfield(child, flags1);
+		kmemcheck_annotate_bitfield(child, flags2);
+		skb->fclone = SKB_FCLONE_ORIG;
+		atomic_set(fclone_ref, 1);
+
+		child->fclone = SKB_FCLONE_UNAVAILABLE;
+		child->pfmemalloc = pfmemalloc;
+	}
+out:
+	return skb;
+nodata:
+	kmem_cache_free(cache, skb);
+	skb = NULL;
+	goto out;
+}
+
+            head--->+-----------------+
+            data--/ |                 |
+            tail-/  |                 |
+                    |                 |
+                    | tail room       |
+                    |                 |
+                    |                 |
+                    |                 |
+            end---->+-----------------+
+
+    Figure 1.1 new skb
+
+1.4 skb_reserve()
+================================================================================
+
+2. skb_reserve(), reserve head room. ONLY allowed for an empty buffer
+================================================================================
+static inline void skb_reserve(struct sk_buff *skb, int len)
+{
+	skb->data += len;
+	skb->tail += len;
+}
+
+            head--->+-----------------+
+                    |head room        |
+                    |                 |
+            data- ->|- - - - - - - - -| ---
+            tail- / |                 |  ^
+                    |                 |   
+                    |                 | len
+                    |                 |   
+                    |                 |  v
+            data--->+-----------------+ -+-
+            tail--/ |                 |
+                    |                 |
+                    | tail room       |
+                    |                 |
+                    |                 |
+            end---->+-----------------+
+
+	    Move the data/tail together to a new position.
+	    As I know, the "empty buffer" means the data and tail
+	    are at the same position.
+
+    Figure 2.1 after skb_reserve()
+
+3. skb_put()
+================================================================================
+unsigned char *skb_put(struct sk_buff *skb, unsigned int len)
+{
+	unsigned char *tmp = skb_tail_pointer(skb);
+	SKB_LINEAR_ASSERT(skb);
+	skb->tail += len;
+	skb->len  += len;
+	if (unlikely(skb->tail > skb->end))
+		skb_over_panic(skb, len, __builtin_return_address(0));
+	return tmp;
+}
+
+            head--->+-----------------+
+                    |head room        |
+                    |                 |
+                    |                 |
+            data--->+-----------------+
+                    |user data        |
+            tail- ->| - - - - - - - - | ---
+                    |                 |  ^
+                    |                 | len
+                    |                 |  v
+            tail--->+-----------------+ ---
+                    |                 |
+                    |                 |
+                    | tail room       |
+                    |                 |
+                    |                 |
+            end---->+-----------------+
+	    
+	    Advance tail by "len".
+
+    Figure 3.1 after skb_put()
+
+4. skb_push()
+================================================================================
+unsigned char *skb_push(struct sk_buff *skb, unsigned int len)
+{
+	skb->data -= len;
+	skb->len  += len;
+	if (unlikely(skb->data<skb->head))
+		skb_under_panic(skb, len, __builtin_return_address(0));
+	return skb->data;
+}
+
+            head--->+-----------------+
+                    |head room        |
+                    |                 |
+                    |                 |
+            data--->+-----------------+ ---
+                    |UDP header       |  ^
+                    |                 | len
+                    |                 |  
+                    |                 |  v
+            data- ->| - - - - - - - - | ---
+                    |user data        |
+                    |                 |
+                    |                 |
+            tail--->+-----------------+
+                    |                 |
+                    |                 |
+                    | tail room       |
+                    |                 |
+                    |                 |
+            end---->+-----------------+
+	    
+	    Decrement data by "len".
+
+    Figure 4.1 after skb_push() push a UDP header
+
+
+            head--->+-----------------+
+                    |head room        |
+                    |                 |
+                    |                 |
+            data--->+-----------------+ ---
+                    |IP header        |  ^
+                    |                 | len
+                    |                 |  v
+            data- ->| - - - - - - - - |
+                    |UDP header       |
+                    |                 |
+                    | - - - - - - - - |
+                    |user data        |
+                    |                 |
+                    |                 |
+            tail--->+-----------------+
+                    |                 |
+                    |                 |
+                    | tail room       |
+                    |                 |
+                    |                 |
+            end---->+-----------------+
+	    
+	    Decrement data by "len" again.
+	    So between data and tail, it contains IP/UDP header
+	    and user data.
+
+    Figure 4.2 after skb_push() push a IP header
+
+0. data structure
+================================================================================
+; most of this document reference this link
+; http://vger.kernel.org/~davem/skb_data.html
+
+   sk_buff
+   +--------------------------+
+   |next                      |
+   |prev                      |
+   |  (struct sk_buff*)       |
+   +--------------------------+
+   |dev                       |
+   |  (struct net_dev*)       |
+   +--------------------------+
+   |sk                        |
+   |  (struct sock*)          |
+   +--------------------------+
+   |len                       | tail - data
+   |data_len                  | come into play when there is paged data in the SKB
+   |  (unsigned int)          |
+   +--------------------------+
+   |mac_len                   |
+   |hdr_len                   |
+   |  (__u16)                 |
+   +--------------------------+
+   |protocol                  |
+   |  (__be16)                |
+   +--------------------------+
+   |tail                      | point to the current tail
+   |end                       | point to the end of mem block
+   |  (sk_buff_data_t)        |
+   +--------------------------+
+   |data                      | point to the current start
+   |head                      | point to the beginning of mem block
+   |  (unsigned char*)        |
+   +--------------------------+
+   |                          |
+   |                          |
+   +--------------------------+
+   |                          |
+   |                          |
+   +--------------------------+
