@@ -348,6 +348,148 @@ unsigned char *skb_push(struct sk_buff *skb, unsigned int len)
 
     Figure 4.2 after skb_push() push a IP header
 
+5. functions when paged data comes to play
+================================================================================
+
+5.1 skb_is_nonlinear(), (data_len != 0) means there is paged data
+================================================================================
+static inline bool skb_is_nonlinear(const struct sk_buff *skb)
+{
+	return skb->data_len;
+}
+
+5.2 skb_headlen(), return the number of bytes in linear area
+================================================================================
+static inline unsigned int skb_headlen(const struct sk_buff *skb)
+{
+	return skb->len - skb->data_len;
+}
+
+5.3 skb_fill_page_desc(), set page info to a frag and increase the nr_frags
+================================================================================
+static inline void skb_fill_page_desc(struct sk_buff *skb, int i,
+				      struct page *page, int off, int size)
+{
+	__skb_fill_page_desc(skb, i, page, off, size);
+	skb_shinfo(skb)->nr_frags = i + 1;
+}
+
+5.3.1 __skb_fill_page_desc()
+================================================================================
+static inline void __skb_fill_page_desc(struct sk_buff *skb, int i,
+					struct page *page, int off, int size)
+{
+	skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+	/*
+	 * Propagate page->pfmemalloc to the skb if we can. The problem is
+	 * that not all callers have unique ownership of the page. If
+	 * pfmemalloc is set, we check the mapping as a mapping implies
+	 * page->index is set (index and pfmemalloc share space).
+	 * If it's a valid mapping, we cannot use page->pfmemalloc but we
+	 * do not lose pfmemalloc information as the pages would not be
+	 * allocated using __GFP_MEMALLOC.
+	 */
+	frag->page.p		  = page;
+	frag->page_offset	  = off;
+	skb_frag_size_set(frag, size);
+
+	page = compound_head(page);
+	if (page->pfmemalloc && !page->mapping)
+		skb->pfmemalloc	= true;
+}
+
+5.4 skb_header_pointer(), copy skb data to a buffer
+================================================================================
+static inline void *skb_header_pointer(const struct sk_buff *skb, int offset,
+				       int len, void *buffer)
+{
+	int hlen = skb_headlen(skb);
+
+	if (hlen - offset >= len)
+		return skb->data + offset;
+
+	if (skb_copy_bits(skb, offset, buffer, len) < 0)
+		return NULL;
+
+	return buffer;
+}
+
+5.4.1 skb_copy_bits(), copy the non-linear part
+================================================================================
+int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)
+{
+	int start = skb_headlen(skb);
+	struct sk_buff *frag_iter;
+	int i, copy;
+
+	if (offset > (int)skb->len - len)
+		goto fault;
+
+	/* Copy header. */
+	if ((copy = start - offset) > 0) {
+		if (copy > len)
+			copy = len;
+		skb_copy_from_linear_data_offset(skb, offset, to, copy);
+		if ((len -= copy) == 0)
+			return 0;
+		offset += copy;
+		to     += copy;
+	}
+
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		int end;
+		skb_frag_t *f = &skb_shinfo(skb)->frags[i];
+
+		WARN_ON(start > offset + len);
+
+		end = start + skb_frag_size(f);
+		if ((copy = end - offset) > 0) {
+			u8 *vaddr;
+
+			if (copy > len)
+				copy = len;
+
+			vaddr = kmap_atomic(skb_frag_page(f));
+			memcpy(to,
+			       vaddr + f->page_offset + offset - start,
+			       copy);
+			kunmap_atomic(vaddr);
+
+			if ((len -= copy) == 0)
+				return 0;
+			offset += copy;
+			to     += copy;
+		}
+		start = end;
+	}
+
+	skb_walk_frags(skb, frag_iter) {
+		int end;
+
+		WARN_ON(start > offset + len);
+
+		end = start + frag_iter->len;
+		if ((copy = end - offset) > 0) {
+			if (copy > len)
+				copy = len;
+			if (skb_copy_bits(frag_iter, offset - start, to, copy))
+				goto fault;
+			if ((len -= copy) == 0)
+				return 0;
+			offset += copy;
+			to     += copy;
+		}
+		start = end;
+	}
+
+	if (!len)
+		return 0;
+
+fault:
+	return -EFAULT;
+}
+
 0. data structure
 ================================================================================
 ; most of this document reference this link
@@ -367,7 +509,7 @@ unsigned char *skb_push(struct sk_buff *skb, unsigned int len)
    +--------------------------+
    |len                       | tail - data
    |data_len                  | come into play when there is paged data in the SKB
-   |  (unsigned int)          |
+   |  (unsigned int)          | non-zero means there is data in paged area
    +--------------------------+
    |mac_len                   |
    |hdr_len                   |
