@@ -636,16 +636,22 @@ static int netif_alloc_rx_queues(struct net_device *dev)
    |                         |
    |                         |
    |_rx                      |
-   | (struct netdev_rx_queue)|
-   +-------------------------+
-   |features                 |
-   |hw_features              |
-   |wanted_features          |
-   |vlan_features            |
-   |hw_enc_features          |
-   |mpls_features            |
-   |  (netdev_features_t)    |
-   +-------------------------+
+   | (struct netdev_rx_queue)|          +-----------------------+
+   +-------------------------+          |rx_np                  |
+   |features                 |          |  (struct list_head)   |
+   |hw_features              |          +-----------------------+
+   |wanted_features          |          |                       |
+   |vlan_features            |          |                       |
+   |hw_enc_features          |          |                       |
+   |mpls_features            |          |                       |
+   |  (netdev_features_t)    |          |                       |
+   +-------------------------+          |                       |
+   |npinfo                   | -------->|                       |
+   |  (struct netpoll_info)  |          +-----------------------+
+   +-------------------------+           
+   |                         |           
+   |                         |           
+   +-------------------------+           
 
 
 0.2 netdev_queue

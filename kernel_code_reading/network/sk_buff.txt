@@ -753,6 +753,9 @@ fault:
    |protocol                  |
    |  (__be16)                |
    +--------------------------+
+   |network_header            | offset to ip header
+   |  (__u16)                 |
+   +--------------------------+
    |tail                      |
    |end                       |
    |  (sk_buff_data_t)        |
