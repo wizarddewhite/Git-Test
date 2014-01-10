@@ -1,0 +1,1107 @@
+1. arp_init(), arp packet type registration
+================================================================================
+void __init arp_init(void)
+{
+	neigh_table_init(&arp_tbl);
+
+	dev_add_pack(&arp_packet_type);
+	arp_proc_init();
+#ifdef CONFIG_SYSCTL
+	neigh_sysctl_register(NULL, &arp_tbl.parms, "ipv4", NULL);
+#endif
+	register_netdevice_notifier(&arp_netdev_notifier);
+}
+
+1.1 neigh_table_init(), link to list "neigh_tables"
+================================================================================
+void neigh_table_init(struct neigh_table *tbl)
+{
+	struct neigh_table *tmp;
+
+	neigh_table_init_no_netlink(tbl);
+	write_lock(&neigh_tbl_lock);
+	for (tmp = neigh_tables; tmp; tmp = tmp->next) {
+		if (tmp->family == tbl->family)
+			break;
+	}
+	tbl->next	= neigh_tables;
+	neigh_tables	= tbl;
+	write_unlock(&neigh_tbl_lock);
+
+	if (unlikely(tmp)) {
+		pr_err("Registering multiple tables for family %d\n",
+		       tbl->family);
+		dump_stack();
+	}
+}
+
+1.1.1 neigh_table_init_no_netlink()
+================================================================================
+; setup the timer and work
+static void neigh_table_init_no_netlink(struct neigh_table *tbl)
+{
+	unsigned long now = jiffies;
+	unsigned long phsize;
+
+	write_pnet(&tbl->parms.net, &init_net);
+	atomic_set(&tbl->parms.refcnt, 1);
+	tbl->parms.reachable_time =
+			  neigh_rand_reach_time(tbl->parms.base_reachable_time);
+
+	tbl->stats = alloc_percpu(struct neigh_statistics);
+	if (!tbl->stats)
+		panic("cannot create neighbour cache statistics");
+
+#ifdef CONFIG_PROC_FS
+	if (!proc_create_data(tbl->id, 0, init_net.proc_net_stat,
+			      &neigh_stat_seq_fops, tbl))
+		panic("cannot create neighbour proc dir entry");
+#endif
+
+	RCU_INIT_POINTER(tbl->nht, neigh_hash_alloc(3));
+
+	phsize = (PNEIGH_HASHMASK + 1) * sizeof(struct pneigh_entry *);
+	tbl->phash_buckets = kzalloc(phsize, GFP_KERNEL);
+
+	if (!tbl->nht || !tbl->phash_buckets)
+		panic("cannot allocate neighbour cache hashes");
+
+	if (!tbl->entry_size)
+		tbl->entry_size = ALIGN(offsetof(struct neighbour, primary_key) +
+					tbl->key_len, NEIGH_PRIV_ALIGN);
+	else
+		WARN_ON(tbl->entry_size % NEIGH_PRIV_ALIGN);
+
+	rwlock_init(&tbl->lock);
+	INIT_DEFERRABLE_WORK(&tbl->gc_work, neigh_periodic_work);
+	schedule_delayed_work(&tbl->gc_work, tbl->parms.reachable_time);
+	setup_timer(&tbl->proxy_timer, neigh_proxy_process, (unsigned long)tbl);
+	skb_queue_head_init_class(&tbl->proxy_queue,
+			&neigh_table_proxy_queue_class);
+
+	tbl->last_flush = now;
+	tbl->last_rand	= now + tbl->parms.reachable_time * 20;
+}
+
+1.1.1.1 neigh_rand_reach_time(), base time is 30 seconds
+================================================================================
+unsigned long neigh_rand_reach_time(unsigned long base)
+{
+	return base ? (net_random() % base) + (base >> 1) : 0;
+}
+
+1.1.1.2 neigh_periodic_work(), check neighbour delete if necessary, 15s
+================================================================================
+; calculate reachable_time
+; remove neighbour if it stale
+static void neigh_periodic_work(struct work_struct *work)
+{
+	struct neigh_table *tbl = container_of(work, struct neigh_table, gc_work.work);
+	struct neighbour *n;
+	struct neighbour __rcu **np;
+	unsigned int i;
+	struct neigh_hash_table *nht;
+
+	NEIGH_CACHE_STAT_INC(tbl, periodic_gc_runs);
+
+	write_lock_bh(&tbl->lock);
+	nht = rcu_dereference_protected(tbl->nht,
+					lockdep_is_held(&tbl->lock));
+
+	if (atomic_read(&tbl->entries) < tbl->gc_thresh1)
+		goto out;
+
+	/*
+	 *	periodically recompute ReachableTime from random function
+	 */
+
+	if (time_after(jiffies, tbl->last_rand + 300 * HZ)) {
+		struct neigh_parms *p;
+		tbl->last_rand = jiffies;
+		for (p = &tbl->parms; p; p = p->next)
+			p->reachable_time =
+				neigh_rand_reach_time(p->base_reachable_time);
+	}
+
+	for (i = 0 ; i < (1 << nht->hash_shift); i++) {
+		np = &nht->hash_buckets[i];
+
+		while ((n = rcu_dereference_protected(*np,
+				lockdep_is_held(&tbl->lock))) != NULL) {
+			unsigned int state;
+
+			write_lock(&n->lock);
+
+			state = n->nud_state;
+			if (state & (NUD_PERMANENT | NUD_IN_TIMER)) {
+				write_unlock(&n->lock);
+				goto next_elt;
+			}
+
+			if (time_before(n->used, n->confirmed))
+				n->used = n->confirmed;
+
+			if (atomic_read(&n->refcnt) == 1 &&
+			    (state == NUD_FAILED ||
+			     time_after(jiffies, n->used + n->parms->gc_staletime))) {
+				*np = n->next;
+				n->dead = 1;
+				write_unlock(&n->lock);
+				neigh_cleanup_and_release(n);
+				continue;
+			}
+			write_unlock(&n->lock);
+
+next_elt:
+			np = &n->next;
+		}
+		/*
+		 * It's fine to release lock here, even if hash table
+		 * grows while we are preempted.
+		 */
+		write_unlock_bh(&tbl->lock);
+		cond_resched();
+		write_lock_bh(&tbl->lock);
+		nht = rcu_dereference_protected(tbl->nht,
+						lockdep_is_held(&tbl->lock));
+	}
+out:
+	/* Cycle through all hash buckets every base_reachable_time/2 ticks.
+	 * ARP entry timeouts range from 1/2 base_reachable_time to 3/2
+	 * base_reachable_time.
+	 */
+	schedule_delayed_work(&tbl->gc_work,
+			      tbl->parms.base_reachable_time >> 1);
+	write_unlock_bh(&tbl->lock);
+}
+
+1.1.1.3 neigh_proxy_process(), timer function
+================================================================================
+static void neigh_proxy_process(unsigned long arg)
+{
+	struct neigh_table *tbl = (struct neigh_table *)arg;
+	long sched_next = 0;
+	unsigned long now = jiffies;
+	struct sk_buff *skb, *n;
+
+	spin_lock(&tbl->proxy_queue.lock);
+
+	skb_queue_walk_safe(&tbl->proxy_queue, skb, n) {
+		long tdif = NEIGH_CB(skb)->sched_next - now;
+
+		if (tdif <= 0) {
+			struct net_device *dev = skb->dev;
+
+			__skb_unlink(skb, &tbl->proxy_queue);
+			if (tbl->proxy_redo && netif_running(dev)) {
+				rcu_read_lock();
+				tbl->proxy_redo(skb);
+				rcu_read_unlock();
+			} else {
+				kfree_skb(skb);
+			}
+
+			dev_put(dev);
+		} else if (!sched_next || tdif < sched_next)
+			sched_next = tdif;
+	}
+	del_timer(&tbl->proxy_timer);
+	if (sched_next)
+		mod_timer(&tbl->proxy_timer, jiffies + sched_next);
+	spin_unlock(&tbl->proxy_queue.lock);
+}
+
+1.1.1.3.1 parp_redo(), process arp if necessary
+================================================================================
+static void parp_redo(struct sk_buff *skb)
+{
+	arp_process(skb);
+}
+
+1.1.1.4 skb_queue_head_init_class()
+================================================================================
+static inline void skb_queue_head_init_class(struct sk_buff_head *list,
+		struct lock_class_key *class)
+{
+	skb_queue_head_init(list);
+	lockdep_set_class(&list->lock, class);
+}
+
+1.2 dev_add_pack(), add arp packet_type
+================================================================================
+static struct packet_type arp_packet_type __read_mostly = {
+	.type =	cpu_to_be16(ETH_P_ARP),
+	.func =	arp_rcv,
+};
+
+void dev_add_pack(struct packet_type *pt)
+{
+	struct list_head *head = ptype_head(pt);
+
+	spin_lock(&ptype_lock);
+	list_add_rcu(&pt->list, head);
+	spin_unlock(&ptype_lock);
+}
+
+2. arp_rcv()
+================================================================================
+static int arp_rcv(struct sk_buff *skb, struct net_device *dev,
+		   struct packet_type *pt, struct net_device *orig_dev)
+{
+	const struct arphdr *arp;
+
+	if (dev->flags & IFF_NOARP ||
+	    skb->pkt_type == PACKET_OTHERHOST ||
+	    skb->pkt_type == PACKET_LOOPBACK)
+		goto freeskb;
+
+	skb = skb_share_check(skb, GFP_ATOMIC);
+	if (!skb)
+		goto out_of_mem;
+
+	/* ARP header, plus 2 device addresses, plus 2 IP addresses.  */
+	if (!pskb_may_pull(skb, arp_hdr_len(dev)))
+		goto freeskb;
+
+	arp = arp_hdr(skb);
+	if (arp->ar_hln != dev->addr_len || arp->ar_pln != 4)
+		goto freeskb;
+
+	memset(NEIGH_CB(skb), 0, sizeof(struct neighbour_cb));
+
+	return NF_HOOK(NFPROTO_ARP, NF_ARP_IN, skb, dev, NULL, arp_process);
+
+freeskb:
+	kfree_skb(skb);
+out_of_mem:
+	return 0;
+}
+
+2.1 skb_share_check()
+================================================================================
+static inline struct sk_buff *skb_share_check(struct sk_buff *skb, gfp_t pri)
+{
+	might_sleep_if(pri & __GFP_WAIT);
+	if (skb_shared(skb)) {
+		struct sk_buff *nskb = skb_clone(skb, pri);
+
+		if (likely(nskb))
+			consume_skb(skb);
+		else
+			kfree_skb(skb);
+		skb = nskb;
+	}
+	return skb;
+}
+
+2.1.1 skb_shared(), check whether user count is 1
+================================================================================
+; could user count be more than 1?
+static inline int skb_shared(const struct sk_buff *skb)
+{
+	return atomic_read(&skb->users) != 1;
+}
+
+2.2 pskb_may_pull()
+================================================================================
+static inline int pskb_may_pull(struct sk_buff *skb, unsigned int len)
+{
+	if (likely(len <= skb_headlen(skb)))
+		return 1;
+	if (unlikely(len > skb->len))
+		return 0;
+	return __pskb_pull_tail(skb, len - skb_headlen(skb)) != NULL;
+}
+
+2.3 arp_hdr(), point to the packet header(arp header)
+================================================================================
+static inline struct arphdr *arp_hdr(const struct sk_buff *skb)
+{
+	return (struct arphdr *)skb_network_header(skb);
+}
+
+2.4 NF_HOOK(NFPROTO_ARP, NF_ARP_IN, skb, dev, NULL, arp_process)
+================================================================================
+#define NF_HOOK(pf, hook, skb, indev, outdev, okfn) (okfn)(skb)
+
+or if netfilter is enabled
+
+static inline int
+NF_HOOK(uint8_t pf, unsigned int hook, struct sk_buff *skb,
+	struct net_device *in, struct net_device *out,
+	int (*okfn)(struct sk_buff *))
+{
+	return NF_HOOK_THRESH(pf, hook, skb, in, out, okfn, INT_MIN);
+}
+
+3. arp_process()
+================================================================================
+static int arp_process(struct sk_buff *skb)
+{
+	struct net_device *dev = skb->dev;
+	struct in_device *in_dev = __in_dev_get_rcu(dev);
+	struct arphdr *arp;
+	unsigned char *arp_ptr;
+	struct rtable *rt;
+	unsigned char *sha;
+	__be32 sip, tip;
+	u16 dev_type = dev->type;
+	int addr_type;
+	struct neighbour *n;
+	struct net *net = dev_net(dev);
+
+	/* arp_rcv below verifies the ARP header and verifies the device
+	 * is ARP'able.
+	 */
+
+	if (in_dev == NULL)
+		goto out;
+
+	arp = arp_hdr(skb);
+
+	switch (dev_type) {
+	default:
+		if (arp->ar_pro != htons(ETH_P_IP) ||
+		    htons(dev_type) != arp->ar_hrd)
+			goto out;
+		break;
+	case ARPHRD_ETHER:
+	case ARPHRD_FDDI:
+	case ARPHRD_IEEE802:
+		/*
+		 * ETHERNET, and Fibre Channel (which are IEEE 802
+		 * devices, according to RFC 2625) devices will accept ARP
+		 * hardware types of either 1 (Ethernet) or 6 (IEEE 802.2).
+		 * This is the case also of FDDI, where the RFC 1390 says that
+		 * FDDI devices should accept ARP hardware of (1) Ethernet,
+		 * however, to be more robust, we'll accept both 1 (Ethernet)
+		 * or 6 (IEEE 802.2)
+		 */
+		if ((arp->ar_hrd != htons(ARPHRD_ETHER) &&
+		     arp->ar_hrd != htons(ARPHRD_IEEE802)) ||
+		    arp->ar_pro != htons(ETH_P_IP))
+			goto out;
+		break;
+	case ARPHRD_AX25:
+		if (arp->ar_pro != htons(AX25_P_IP) ||
+		    arp->ar_hrd != htons(ARPHRD_AX25))
+			goto out;
+		break;
+	case ARPHRD_NETROM:
+		if (arp->ar_pro != htons(AX25_P_IP) ||
+		    arp->ar_hrd != htons(ARPHRD_NETROM))
+			goto out;
+		break;
+	}
+
+	/* Understand only these message types */
+
+	if (arp->ar_op != htons(ARPOP_REPLY) &&
+	    arp->ar_op != htons(ARPOP_REQUEST))
+		goto out;
+
+/*
+ *	Extract fields
+ */
+	arp_ptr = (unsigned char *)(arp + 1);
+	sha	= arp_ptr;
+	arp_ptr += dev->addr_len;
+	memcpy(&sip, arp_ptr, 4);
+	arp_ptr += 4;
+	switch (dev_type) {
+#if IS_ENABLED(CONFIG_FIREWIRE_NET)
+	case ARPHRD_IEEE1394:
+		break;
+#endif
+	default:
+		arp_ptr += dev->addr_len;
+	}
+	memcpy(&tip, arp_ptr, 4);
+/*
+ *	Check for bad requests for 127.x.x.x and requests for multicast
+ *	addresses.  If this is one such, delete it.
+ */
+	if (ipv4_is_multicast(tip) ||
+	    (!IN_DEV_ROUTE_LOCALNET(in_dev) && ipv4_is_loopback(tip)))
+		goto out;
+
+/*
+ *     Special case: We must set Frame Relay source Q.922 address
+ */
+	if (dev_type == ARPHRD_DLCI)
+		sha = dev->broadcast;
+
+/*
+ *  Process entry.  The idea here is we want to send a reply if it is a
+ *  request for us or if it is a request for someone else that we hold
+ *  a proxy for.  We want to add an entry to our cache if it is a reply
+ *  to us or if it is a request for our address.
+ *  (The assumption for this last is that if someone is requesting our
+ *  address, they are probably intending to talk to us, so it saves time
+ *  if we cache their address.  Their address is also probably not in
+ *  our cache, since ours is not in their cache.)
+ *
+ *  Putting this another way, we only care about replies if they are to
+ *  us, in which case we add them to the cache.  For requests, we care
+ *  about those for us and those for our proxies.  We reply to both,
+ *  and in the case of requests for us we add the requester to the arp
+ *  cache.
+ */
+
+	/* Special case: IPv4 duplicate address detection packet (RFC2131) */
+	if (sip == 0) {
+		if (arp->ar_op == htons(ARPOP_REQUEST) &&
+		    inet_addr_type(net, tip) == RTN_LOCAL &&
+		    !arp_ignore(in_dev, sip, tip))
+			arp_send(ARPOP_REPLY, ETH_P_ARP, sip, dev, tip, sha,
+				 dev->dev_addr, sha);
+		goto out;
+	}
+
+	if (arp->ar_op == htons(ARPOP_REQUEST) &&
+	    ip_route_input_noref(skb, tip, sip, 0, dev) == 0) {
+
+		rt = skb_rtable(skb);
+		addr_type = rt->rt_type;
+
+		if (addr_type == RTN_LOCAL) {
+			int dont_send;
+
+			dont_send = arp_ignore(in_dev, sip, tip);
+			if (!dont_send && IN_DEV_ARPFILTER(in_dev))
+				dont_send = arp_filter(sip, tip, dev);
+			if (!dont_send) {
+				n = neigh_event_ns(&arp_tbl, sha, &sip, dev);
+				if (n) {
+					arp_send(ARPOP_REPLY, ETH_P_ARP, sip,
+						 dev, tip, sha, dev->dev_addr,
+						 sha);
+					neigh_release(n);
+				}
+			}
+			goto out;
+		} else if (IN_DEV_FORWARD(in_dev)) {
+			if (addr_type == RTN_UNICAST  &&
+			    (arp_fwd_proxy(in_dev, dev, rt) ||
+			     arp_fwd_pvlan(in_dev, dev, rt, sip, tip) ||
+			     (rt->dst.dev != dev &&
+			      pneigh_lookup(&arp_tbl, net, &tip, dev, 0)))) {
+				n = neigh_event_ns(&arp_tbl, sha, &sip, dev);
+				if (n)
+					neigh_release(n);
+
+				if (NEIGH_CB(skb)->flags & LOCALLY_ENQUEUED ||
+				    skb->pkt_type == PACKET_HOST ||
+				    in_dev->arp_parms->proxy_delay == 0) {
+					arp_send(ARPOP_REPLY, ETH_P_ARP, sip,
+						 dev, tip, sha, dev->dev_addr,
+						 sha);
+				} else {
+					pneigh_enqueue(&arp_tbl,
+						       in_dev->arp_parms, skb);
+					return 0;
+				}
+				goto out;
+			}
+		}
+	}
+
+	/* Update our ARP tables */
+
+	n = __neigh_lookup(&arp_tbl, &sip, dev, 0);
+
+	if (IN_DEV_ARP_ACCEPT(in_dev)) {
+		/* Unsolicited ARP is not accepted by default.
+		   It is possible, that this option should be enabled for some
+		   devices (strip is candidate)
+		 */
+		if (n == NULL &&
+		    (arp->ar_op == htons(ARPOP_REPLY) ||
+		     (arp->ar_op == htons(ARPOP_REQUEST) && tip == sip)) &&
+		    inet_addr_type(net, sip) == RTN_UNICAST)
+			n = __neigh_lookup(&arp_tbl, &sip, dev, 1);
+	}
+
+	if (n) {
+		int state = NUD_REACHABLE;
+		int override;
+
+		/* If several different ARP replies follows back-to-back,
+		   use the FIRST one. It is possible, if several proxy
+		   agents are active. Taking the first reply prevents
+		   arp trashing and chooses the fastest router.
+		 */
+		override = time_after(jiffies, n->updated + n->parms->locktime);
+
+		/* Broadcast replies and request packets
+		   do not assert neighbour reachability.
+		 */
+		if (arp->ar_op != htons(ARPOP_REPLY) ||
+		    skb->pkt_type != PACKET_HOST)
+			state = NUD_STALE;
+		neigh_update(n, sha, state,
+			     override ? NEIGH_UPDATE_F_OVERRIDE : 0);
+		neigh_release(n);
+	}
+
+out:
+	consume_skb(skb);
+	return 0;
+}
+
+3.1 arp_ignore()
+================================================================================
+static int arp_ignore(struct in_device *in_dev, __be32 sip, __be32 tip)
+{
+	int scope;
+
+	switch (IN_DEV_ARP_IGNORE(in_dev)) {
+	case 0:	/* Reply, the tip is already validated */
+		return 0;
+	case 1:	/* Reply only if tip is configured on the incoming interface */
+		sip = 0;
+		scope = RT_SCOPE_HOST;
+		break;
+	case 2:	/*
+		 * Reply only if tip is configured on the incoming interface
+		 * and is in same subnet as sip
+		 */
+		scope = RT_SCOPE_HOST;
+		break;
+	case 3:	/* Do not reply for scope host addresses */
+		sip = 0;
+		scope = RT_SCOPE_LINK;
+		break;
+	case 4:	/* Reserved */
+	case 5:
+	case 6:
+	case 7:
+		return 0;
+	case 8:	/* Do not reply */
+		return 1;
+	default:
+		return 0;
+	}
+	return !inet_confirm_addr(in_dev, sip, tip, scope);
+}
+
+3.2 neigh_event_ns()
+================================================================================
+struct neighbour *neigh_event_ns(struct neigh_table *tbl,
+				 u8 *lladdr, void *saddr,
+				 struct net_device *dev)
+{
+	struct neighbour *neigh = __neigh_lookup(tbl, saddr, dev,
+						 lladdr || !dev->addr_len);
+	if (neigh)
+		neigh_update(neigh, lladdr, NUD_STALE,
+			     NEIGH_UPDATE_F_OVERRIDE);
+	return neigh;
+}
+
+3.2.1 __neigh_lookup(), lookup neighbour by source addr, create if not there
+================================================================================
+__neigh_lookup(struct neigh_table *tbl, const void *pkey, struct net_device *dev, int creat)
+{
+	struct neighbour *n = neigh_lookup(tbl, pkey, dev);
+
+	if (n || !creat)
+		return n;
+
+	n = neigh_create(tbl, pkey, dev);
+	return IS_ERR(n) ? NULL : n;
+}
+
+3.2.1.1 neigh_create(), create a neighbour entry
+================================================================================
+static inline struct neighbour *neigh_create(struct neigh_table *tbl,
+					     const void *pkey,
+					     struct net_device *dev)
+{
+	return __neigh_create(tbl, pkey, dev, true);
+}
+
+3.2.2 neigh_update()
+================================================================================
+int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
+		 u32 flags)
+{
+	u8 old;
+	int err;
+	int notify = 0;
+	struct net_device *dev;
+	int update_isrouter = 0;
+
+	write_lock_bh(&neigh->lock);
+
+	dev    = neigh->dev;
+	old    = neigh->nud_state;
+	err    = -EPERM;
+
+	if (!(flags & NEIGH_UPDATE_F_ADMIN) &&
+	    (old & (NUD_NOARP | NUD_PERMANENT)))
+		goto out;
+
+	if (!(new & NUD_VALID)) {
+		neigh_del_timer(neigh);
+		if (old & NUD_CONNECTED)
+			neigh_suspect(neigh);
+		neigh->nud_state = new;
+		err = 0;
+		notify = old & NUD_VALID;
+		if ((old & (NUD_INCOMPLETE | NUD_PROBE)) &&
+		    (new & NUD_FAILED)) {
+			neigh_invalidate(neigh);
+			notify = 1;
+		}
+		goto out;
+	}
+
+	/* Compare new lladdr with cached one */
+	if (!dev->addr_len) {
+		/* First case: device needs no address. */
+		lladdr = neigh->ha;
+	} else if (lladdr) {
+		/* The second case: if something is already cached
+		   and a new address is proposed:
+		   - compare new & old
+		   - if they are different, check override flag
+		 */
+		if ((old & NUD_VALID) &&
+		    !memcmp(lladdr, neigh->ha, dev->addr_len))
+			lladdr = neigh->ha;
+	} else {
+		/* No address is supplied; if we know something,
+		   use it, otherwise discard the request.
+		 */
+		err = -EINVAL;
+		if (!(old & NUD_VALID))
+			goto out;
+		lladdr = neigh->ha;
+	}
+
+	if (new & NUD_CONNECTED)
+		neigh->confirmed = jiffies;
+	neigh->updated = jiffies;
+
+	/* If entry was valid and address is not changed,
+	   do not change entry state, if new one is STALE.
+	 */
+	err = 0;
+	update_isrouter = flags & NEIGH_UPDATE_F_OVERRIDE_ISROUTER;
+	if (old & NUD_VALID) {
+		if (lladdr != neigh->ha && !(flags & NEIGH_UPDATE_F_OVERRIDE)) {
+			update_isrouter = 0;
+			if ((flags & NEIGH_UPDATE_F_WEAK_OVERRIDE) &&
+			    (old & NUD_CONNECTED)) {
+				lladdr = neigh->ha;
+				new = NUD_STALE;
+			} else
+				goto out;
+		} else {
+			if (lladdr == neigh->ha && new == NUD_STALE &&
+			    ((flags & NEIGH_UPDATE_F_WEAK_OVERRIDE) ||
+			     (old & NUD_CONNECTED))
+			    )
+				new = old;
+		}
+	}
+
+	if (new != old) {
+		neigh_del_timer(neigh);
+		if (new & NUD_IN_TIMER)
+			neigh_add_timer(neigh, (jiffies +
+						((new & NUD_REACHABLE) ?
+						 neigh->parms->reachable_time :
+						 0)));
+		neigh->nud_state = new;
+	}
+
+	if (lladdr != neigh->ha) {
+		write_seqlock(&neigh->ha_lock);
+		memcpy(&neigh->ha, lladdr, dev->addr_len);
+		write_sequnlock(&neigh->ha_lock);
+		neigh_update_hhs(neigh);
+		if (!(new & NUD_CONNECTED))
+			neigh->confirmed = jiffies -
+				      (neigh->parms->base_reachable_time << 1);
+		notify = 1;
+	}
+	if (new == old)
+		goto out;
+	if (new & NUD_CONNECTED)
+		neigh_connect(neigh);
+	else
+		neigh_suspect(neigh);
+	if (!(old & NUD_VALID)) {
+		struct sk_buff *skb;
+
+		/* Again: avoid dead loop if something went wrong */
+
+		while (neigh->nud_state & NUD_VALID &&
+		       (skb = __skb_dequeue(&neigh->arp_queue)) != NULL) {
+			struct dst_entry *dst = skb_dst(skb);
+			struct neighbour *n2, *n1 = neigh;
+			write_unlock_bh(&neigh->lock);
+
+			rcu_read_lock();
+
+			/* Why not just use 'neigh' as-is?  The problem is that
+			 * things such as shaper, eql, and sch_teql can end up
+			 * using alternative, different, neigh objects to output
+			 * the packet in the output path.  So what we need to do
+			 * here is re-lookup the top-level neigh in the path so
+			 * we can reinject the packet there.
+			 */
+			n2 = NULL;
+			if (dst) {
+				n2 = dst_neigh_lookup_skb(dst, skb);
+				if (n2)
+					n1 = n2;
+			}
+			n1->output(n1, skb);
+			if (n2)
+				neigh_release(n2);
+			rcu_read_unlock();
+
+			write_lock_bh(&neigh->lock);
+		}
+		__skb_queue_purge(&neigh->arp_queue);
+		neigh->arp_queue_len_bytes = 0;
+	}
+out:
+	if (update_isrouter) {
+		neigh->flags = (flags & NEIGH_UPDATE_F_ISROUTER) ?
+			(neigh->flags | NTF_ROUTER) :
+			(neigh->flags & ~NTF_ROUTER);
+	}
+	write_unlock_bh(&neigh->lock);
+
+	if (notify)
+		neigh_update_notify(neigh);
+
+	return err;
+}
+
+4. __neigh_create()
+================================================================================
+struct neighbour *__neigh_create(struct neigh_table *tbl, const void *pkey,
+				 struct net_device *dev, bool want_ref)
+{
+	u32 hash_val;
+	int key_len = tbl->key_len;
+	int error;
+	struct neighbour *n1, *rc, *n = neigh_alloc(tbl, dev);
+	struct neigh_hash_table *nht;
+
+	if (!n) {
+		rc = ERR_PTR(-ENOBUFS);
+		goto out;
+	}
+
+	memcpy(n->primary_key, pkey, key_len);
+	n->dev = dev;
+	dev_hold(dev);
+
+	/* Protocol specific setup. */
+	if (tbl->constructor &&	(error = tbl->constructor(n)) < 0) {
+		rc = ERR_PTR(error);
+		goto out_neigh_release;
+	}
+
+	if (dev->netdev_ops->ndo_neigh_construct) {
+		error = dev->netdev_ops->ndo_neigh_construct(n);
+		if (error < 0) {
+			rc = ERR_PTR(error);
+			goto out_neigh_release;
+		}
+	}
+
+	/* Device specific setup. */
+	if (n->parms->neigh_setup &&
+	    (error = n->parms->neigh_setup(n)) < 0) {
+		rc = ERR_PTR(error);
+		goto out_neigh_release;
+	}
+
+	n->confirmed = jiffies - (n->parms->base_reachable_time << 1);
+
+	write_lock_bh(&tbl->lock);
+	nht = rcu_dereference_protected(tbl->nht,
+					lockdep_is_held(&tbl->lock));
+
+	if (atomic_read(&tbl->entries) > (1 << nht->hash_shift))
+		nht = neigh_hash_grow(tbl, nht->hash_shift + 1);
+
+	hash_val = tbl->hash(pkey, dev, nht->hash_rnd) >> (32 - nht->hash_shift);
+
+	if (n->parms->dead) {
+		rc = ERR_PTR(-EINVAL);
+		goto out_tbl_unlock;
+	}
+
+	for (n1 = rcu_dereference_protected(nht->hash_buckets[hash_val],
+					    lockdep_is_held(&tbl->lock));
+	     n1 != NULL;
+	     n1 = rcu_dereference_protected(n1->next,
+			lockdep_is_held(&tbl->lock))) {
+		if (dev == n1->dev && !memcmp(n1->primary_key, pkey, key_len)) {
+			if (want_ref)
+				neigh_hold(n1);
+			rc = n1;
+			goto out_tbl_unlock;
+		}
+	}
+
+	n->dead = 0;
+	if (want_ref)
+		neigh_hold(n);
+	rcu_assign_pointer(n->next,
+			   rcu_dereference_protected(nht->hash_buckets[hash_val],
+						     lockdep_is_held(&tbl->lock)));
+	rcu_assign_pointer(nht->hash_buckets[hash_val], n);
+	write_unlock_bh(&tbl->lock);
+	neigh_dbg(2, "neigh %p is created\n", n);
+	rc = n;
+out:
+	return rc;
+out_tbl_unlock:
+	write_unlock_bh(&tbl->lock);
+out_neigh_release:
+	neigh_release(n);
+	goto out;
+}
+
+4.1 neigh_alloc()
+================================================================================
+static struct neighbour *neigh_alloc(struct neigh_table *tbl, struct net_device *dev)
+{
+	struct neighbour *n = NULL;
+	unsigned long now = jiffies;
+	int entries;
+
+	entries = atomic_inc_return(&tbl->entries) - 1;
+	if (entries >= tbl->gc_thresh3 ||
+	    (entries >= tbl->gc_thresh2 &&
+	     time_after(now, tbl->last_flush + 5 * HZ))) {
+		if (!neigh_forced_gc(tbl) &&
+		    entries >= tbl->gc_thresh3)
+			goto out_entries;
+	}
+
+	n = kzalloc(tbl->entry_size + dev->neigh_priv_len, GFP_ATOMIC);
+	if (!n)
+		goto out_entries;
+
+	__skb_queue_head_init(&n->arp_queue);
+	rwlock_init(&n->lock);
+	seqlock_init(&n->ha_lock);
+	n->updated	  = n->used = now;
+	n->nud_state	  = NUD_NONE;
+	n->output	  = neigh_blackhole;
+	seqlock_init(&n->hh.hh_lock);
+	n->parms	  = neigh_parms_clone(&tbl->parms);
+	setup_timer(&n->timer, neigh_timer_handler, (unsigned long)n);
+
+	NEIGH_CACHE_STAT_INC(tbl, allocs);
+	n->tbl		  = tbl;
+	atomic_set(&n->refcnt, 1);
+	n->dead		  = 1;
+out:
+	return n;
+
+out_entries:
+	atomic_dec(&tbl->entries);
+	goto out;
+}
+
+4.1.1 neigh_parms_clone()
+================================================================================
+static inline struct neigh_parms *neigh_parms_clone(struct neigh_parms *parms)
+{
+	atomic_inc(&parms->refcnt);
+	return parms;
+}
+
+4.2 tbl->constructor(), arp_constructor
+================================================================================
+static int arp_constructor(struct neighbour *neigh)
+{
+	__be32 addr = *(__be32 *)neigh->primary_key;
+	struct net_device *dev = neigh->dev;
+	struct in_device *in_dev;
+	struct neigh_parms *parms;
+
+	rcu_read_lock();
+	in_dev = __in_dev_get_rcu(dev);
+	if (in_dev == NULL) {
+		rcu_read_unlock();
+		return -EINVAL;
+	}
+
+	neigh->type = inet_addr_type(dev_net(dev), addr);
+
+	parms = in_dev->arp_parms;
+	__neigh_parms_put(neigh->parms);
+	neigh->parms = neigh_parms_clone(parms);
+	rcu_read_unlock();
+
+	if (!dev->header_ops) {
+		neigh->nud_state = NUD_NOARP;
+		neigh->ops = &arp_direct_ops;
+		neigh->output = neigh_direct_output;
+	} else {
+		/* Good devices (checked by reading texts, but only Ethernet is
+		   tested)
+
+		   ARPHRD_ETHER: (ethernet, apfddi)
+		   ARPHRD_FDDI: (fddi)
+		   ARPHRD_IEEE802: (tr)
+		   ARPHRD_METRICOM: (strip)
+		   ARPHRD_ARCNET:
+		   etc. etc. etc.
+
+		   ARPHRD_IPDDP will also work, if author repairs it.
+		   I did not it, because this driver does not work even
+		   in old paradigm.
+		 */
+
+#if 1
+		/* So... these "amateur" devices are hopeless.
+		   The only thing, that I can say now:
+		   It is very sad that we need to keep ugly obsolete
+		   code to make them happy.
+
+		   They should be moved to more reasonable state, now
+		   they use rebuild_header INSTEAD OF hard_start_xmit!!!
+		   Besides that, they are sort of out of date
+		   (a lot of redundant clones/copies, useless in 2.1),
+		   I wonder why people believe that they work.
+		 */
+		switch (dev->type) {
+		default:
+			break;
+		case ARPHRD_ROSE:
+#if IS_ENABLED(CONFIG_AX25)
+		case ARPHRD_AX25:
+#if IS_ENABLED(CONFIG_NETROM)
+		case ARPHRD_NETROM:
+#endif
+			neigh->ops = &arp_broken_ops;
+			neigh->output = neigh->ops->output;
+			return 0;
+#else
+			break;
+#endif
+		}
+#endif
+		if (neigh->type == RTN_MULTICAST) {
+			neigh->nud_state = NUD_NOARP;
+			arp_mc_map(addr, neigh->ha, dev, 1);
+		} else if (dev->flags & (IFF_NOARP | IFF_LOOPBACK)) {
+			neigh->nud_state = NUD_NOARP;
+			memcpy(neigh->ha, dev->dev_addr, dev->addr_len);
+		} else if (neigh->type == RTN_BROADCAST ||
+			   (dev->flags & IFF_POINTOPOINT)) {
+			neigh->nud_state = NUD_NOARP;
+			memcpy(neigh->ha, dev->broadcast, dev->addr_len);
+		}
+
+		if (dev->header_ops->cache)
+			neigh->ops = &arp_hh_ops;
+		else
+			neigh->ops = &arp_generic_ops;
+
+		if (neigh->nud_state & NUD_VALID)
+			neigh->output = neigh->ops->connected_output;
+		else
+			neigh->output = neigh->ops->output;
+	}
+	return 0;
+}
+
+4.3 n->parms->neigh_setup()
+================================================================================
+
+
+0. data structure
+================================================================================
+
+0.1 arp_tbl
+================================================================================
+neigh_tables
+  |
+  |    arp_tbl(struct neigh_table)      struct neigh_table
+  +--->+---------------------------+          +---------------+
+       |next                       | -------->|               |
+       |  (struct neigh_table)     |          +---------------+
+       +---------------------------+
+       |family                     | = AF_INET
+       |  (int)                    |
+       +---------------------------+
+       |key_len                    |
+       |  (int)                    |
+       +---------------------------+
+       |hash(hash function)        | = 
+       +---------------------------+
+       |id                         | = "arp_cache", shown in /procnet/stat/
+       +---------------------------+
+       |stats __percpu             |
+       |  (struct neigh_statistics)|
+       |                           |     an array with 16 entries
+       +---------------------------+     +----------------------+     +-------------+
+       |phash_buckets              | --->|next                  | --->|             |
+       |  (struct pneigh_entry**)  |     |dev                   |     |             |
+       +---------------------------+     |flags                 |     +-------------+
+       |                           |     |key[]                 |
+       |                           |     |                      |
+       +---------------------------+     +----------------------+
+       |                           |
+       |nht                        |     hash key is ip addr           an array of neighbour with hash_shift size
+       |  (struct neigh_hash_table)| --->+---------------------+       +------------------+
+       +---------------------------+     |hash_buckets         |------>|nud_state         |
+       |                           |     | (struct neighbour**)|       |                  |
+       |                           |     |hash_shift           |       +------------------+
+       +---------------------------+     | (int)               |       |used              |
+       |                           |     |hash_rnd[]           |       |confirmed         |
+       |                           |     | (__u32)             |       +------------------+
+       |                           |     |                     |       |timer             |
+       |                           |     |                     |       |                  |
+       |                           |     +---------------------+       +------------------+
+       +---------------------------+       
+       |proxy_timer                |       
+       |  (struct timer_list)      |       
+       +---------------------------+     sk_buff list 
+       |proxy_queue                |-----+---------------------+
+       |  (struct sk_buff_head)    |     |next                 |
+       +---------------------------+     |prev                 |
+                                         | (struct sk_buff*)   |
+                                         |qlen                 |
+                                         +---------------------+
+
+0.2 neighbour
+================================================================================
+    struct neighbour
+    +--------------------------+
+    |                          |
+    |                          |
+    +--------------------------+
+    |timer                     | neigh_timer_handler
+    |  (struct timer_list)     |
+    +--------------------------+
+    |parms                     | point to tbl parms
+    |  (struct neigh_parms*)   | eg: arp_tbl->parms
+    +--------------------------+
+    |updated                   |
+    |confirmed                 |
+    |  (unsigned long)         |
+    +--------------------------+
+    |state                     |
+    |                          |
+    +--------------------------+
+    |                          |
+    |                          |
+    +--------------------------+
+    |                          |
+    |                          |
+    +--------------------------+

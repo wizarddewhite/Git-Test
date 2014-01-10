@@ -739,6 +739,9 @@ fault:
    |dev                       |
    |  (struct net_dev*)       |
    +--------------------------+
+   |cb                        | control buffer, like arp will put neighbour_cb
+   |  (char [48])             |
+   +--------------------------+
    |sk                        |
    |  (struct sock*)          |
    +--------------------------+
