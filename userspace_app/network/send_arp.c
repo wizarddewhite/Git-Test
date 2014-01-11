@@ -43,6 +43,19 @@ Now, for all dog knows, rat is at AA:AA.
 Cache entry would expire, of course, so it needs to be updated (request needs to be resent).  
 How often depends on the particular system, but every 40 sec or so should be sufficient for most cases.
 
+Fake an arp entry in the subnet:
+
+As current linux kernel(3.13), when receive an arp request to itself, it will add
+and neighbour entry in arp table. But it will not check whether it is real or not.
+
+This means you could fake an arp entry in the subnet like:
+
+   ./send_arp fake_slef_ip self_mac target_ip ff:ff:ff:ff:ff:ff
+
+Then on the target_ip machine, there would be an fake_self_ip arp entry.
+
+Could this be an attack? Need to check later.
+
 */
 
 #include <stdio.h>
