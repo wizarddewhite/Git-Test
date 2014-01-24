@@ -43,8 +43,29 @@ void test_is_power2()
 			96, is_power2(96)?" ":" not ");
 }
 
+int power2_roundup(int x)
+{
+    if (x < 0)
+        return 0;
+    --x;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    return x+1;
+}
+
+void test_power2_roundup()
+{
+	printf("%d power2 roundup is %d\n",
+			5, power2_roundup(5));
+	printf("%d power2 roundup is %d\n",
+			126, power2_roundup(126));
+}
+
 int main()
 {
-	test_is_power2();
+	test_power2_roundup();
 	return 0;
 }
