@@ -137,16 +137,30 @@ int power2_roundup(int x)
     return x+1;
 }
 
+int power2_roundup2(int x)
+{
+	/* looks like 2 ^ log2(x-1) */
+	return 1 << fls(x-1);
+}
+
 void test_power2_roundup()
 {
 	printf("%d power2 roundup is %d\n",
 			5, power2_roundup(5));
 	printf("%d power2 roundup is %d\n",
 			126, power2_roundup(126));
+
+	printf("%d power2 roundup is %d\n",
+			7, power2_roundup2(7));
+	printf("%d power2 roundup is %d\n",
+			50, power2_roundup2(50));
+	printf("%d power2 roundup is %d\n",
+			220, power2_roundup2(220));
+
 }
 
 int main()
 {
-	test_ffs_fls();
+	test_power2_roundup();
 	return 0;
 }
