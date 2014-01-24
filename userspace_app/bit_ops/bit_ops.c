@@ -159,8 +159,41 @@ void test_power2_roundup()
 
 }
 
+/* return the value of the lowest set bit
+ *
+ * For example, 0x3204 lowest set bit is 0x4
+ */
+int lowest_bit_value(int x)
+{
+	/* could be 1<<(ffs(x)-1) too*/
+	return x & ~(x-1);
+}
+
+/* could be optimized? */
+int highest_bit_value(int x)
+{
+	return 1 << (fls(x) - 1);
+}
+
+void test_lowest_highest_bit_value()
+{
+	printf("lowest bit value of %016x is %016x\n",
+			6, lowest_bit_value(6));
+	printf("lowest bit value of %016x is %016x\n",
+			46, lowest_bit_value(46));
+	printf("lowest bit value of %016x is %016x\n",
+			12, lowest_bit_value(12));
+
+	printf("highest bit value of %016x is %016x\n",
+			12, highest_bit_value(12));
+	printf("highest bit value of %016x is %016x\n",
+			982, highest_bit_value(982));
+	printf("highest bit value of %016x is %016x\n",
+			765, highest_bit_value(765));
+}
+
 int main()
 {
-	test_power2_roundup();
+	test_lowest_highest_bit_value();
 	return 0;
 }
