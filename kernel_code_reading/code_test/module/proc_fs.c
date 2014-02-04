@@ -201,8 +201,9 @@ fail:
 
 static void proc_fs_exit(void)
 {
-	/* Remove the TEST/rw */
-	remove_proc_entry("rw", proc_root);
+	/* Remove the TEST/r_file TEST/rw_file */
+	remove_proc_entry("r_file", proc_root);
+	remove_proc_entry("rw_file", proc_root);
 
 	/* Remove the root proc directroy */
 	remove_proc_entry("TEST", NULL);
