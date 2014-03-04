@@ -1,0 +1,451 @@
+1. netif_receive_skb(), handle skb to network sub-system
+================================================================================
+; mostly called in driver's napi poll handler
+int netif_receive_skb(struct sk_buff *skb)
+{
+	net_timestamp_check(netdev_tstamp_prequeue, skb);
+
+	if (skb_defer_rx_timestamp(skb))
+		return NET_RX_SUCCESS;
+
+#ifdef CONFIG_RPS
+	if (static_key_false(&rps_needed)) {
+		struct rps_dev_flow voidflow, *rflow = &voidflow;
+		int cpu, ret;
+
+		rcu_read_lock();
+
+		cpu = get_rps_cpu(skb->dev, skb, &rflow);
+
+		if (cpu >= 0) {
+			ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
+			rcu_read_unlock();
+			return ret;
+		}
+		rcu_read_unlock();
+	}
+#endif
+	return __netif_receive_skb(skb);
+}
+
+1.1 net_timestamp_check()
+================================================================================
+#define net_timestamp_check(COND, SKB)			\
+	if (static_key_false(&netstamp_needed)) {		\
+		if ((COND) && !(SKB)->tstamp.tv64)	\
+			__net_timestamp(SKB);		\
+	}						\
+
+1.2 __netif_receive_skb()
+================================================================================
+static int __netif_receive_skb(struct sk_buff *skb)
+{
+	int ret;
+
+	if (sk_memalloc_socks() && skb_pfmemalloc(skb)) {
+		unsigned long pflags = current->flags;
+
+		/*
+		 * PFMEMALLOC skbs are special, they should
+		 * - be delivered to SOCK_MEMALLOC sockets only
+		 * - stay away from userspace
+		 * - have bounded memory usage
+		 *
+		 * Use PF_MEMALLOC as this saves us from propagating the allocation
+		 * context down to all allocation sites.
+		 */
+		current->flags |= PF_MEMALLOC;
+		ret = __netif_receive_skb_core(skb, true);
+		tsk_restore_flags(current, pflags, PF_MEMALLOC);
+	} else
+		ret = __netif_receive_skb_core(skb, false);
+
+	return ret;
+}
+
+1.2.1 __netif_receive_skb_core()
+================================================================================
+
+2. __netif_receive_skb_core()
+================================================================================
+static int __netif_receive_skb_core(struct sk_buff *skb, bool pfmemalloc)
+{
+	struct packet_type *ptype, *pt_prev;
+	rx_handler_func_t *rx_handler;
+	struct net_device *orig_dev;
+	struct net_device *null_or_dev;
+	bool deliver_exact = false;
+	int ret = NET_RX_DROP;
+	__be16 type;
+
+	net_timestamp_check(!netdev_tstamp_prequeue, skb);
+
+	trace_netif_receive_skb(skb);
+
+	/* if we've gotten here through NAPI, check netpoll */
+	if (netpoll_receive_skb(skb))
+		goto out;
+
+	orig_dev = skb->dev;
+
+	skb_reset_network_header(skb);
+	if (!skb_transport_header_was_set(skb))
+		skb_reset_transport_header(skb);
+	skb_reset_mac_len(skb);
+
+	pt_prev = NULL;
+
+	rcu_read_lock();
+
+another_round:
+	skb->skb_iif = skb->dev->ifindex;
+
+	__this_cpu_inc(softnet_data.processed);
+
+	if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
+	    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
+		skb = vlan_untag(skb);
+		if (unlikely(!skb))
+			goto unlock;
+	}
+
+#ifdef CONFIG_NET_CLS_ACT
+	if (skb->tc_verd & TC_NCLS) {
+		skb->tc_verd = CLR_TC_NCLS(skb->tc_verd);
+		goto ncls;
+	}
+#endif
+
+	if (pfmemalloc)
+		goto skip_taps;
+
+	list_for_each_entry_rcu(ptype, &ptype_all, list) {
+		if (!ptype->dev || ptype->dev == skb->dev) {
+			if (pt_prev)
+				ret = deliver_skb(skb, pt_prev, orig_dev);
+			pt_prev = ptype;
+		}
+	}
+
+skip_taps:
+#ifdef CONFIG_NET_CLS_ACT
+	skb = handle_ing(skb, &pt_prev, &ret, orig_dev);
+	if (!skb)
+		goto unlock;
+ncls:
+#endif
+
+	if (pfmemalloc && !skb_pfmemalloc_protocol(skb))
+		goto drop;
+
+	if (vlan_tx_tag_present(skb)) {
+		if (pt_prev) {
+			ret = deliver_skb(skb, pt_prev, orig_dev);
+			pt_prev = NULL;
+		}
+		if (vlan_do_receive(&skb))
+			goto another_round;
+		else if (unlikely(!skb))
+			goto unlock;
+	}
+
+	rx_handler = rcu_dereference(skb->dev->rx_handler);
+	if (rx_handler) {
+		if (pt_prev) {
+			ret = deliver_skb(skb, pt_prev, orig_dev);
+			pt_prev = NULL;
+		}
+		switch (rx_handler(&skb)) {
+		case RX_HANDLER_CONSUMED:
+			ret = NET_RX_SUCCESS;
+			goto unlock;
+		case RX_HANDLER_ANOTHER:
+			goto another_round;
+		case RX_HANDLER_EXACT:
+			deliver_exact = true;
+		case RX_HANDLER_PASS:
+			break;
+		default:
+			BUG();
+		}
+	}
+
+	if (unlikely(vlan_tx_tag_present(skb))) {
+		if (vlan_tx_tag_get_id(skb))
+			skb->pkt_type = PACKET_OTHERHOST;
+		/* Note: we might in the future use prio bits
+		 * and set skb->priority like in vlan_do_receive()
+		 * For the time being, just ignore Priority Code Point
+		 */
+		skb->vlan_tci = 0;
+	}
+
+	/* deliver only exact match when indicated */
+	null_or_dev = deliver_exact ? skb->dev : NULL;
+
+	type = skb->protocol;
+	list_for_each_entry_rcu(ptype,
+			&ptype_base[ntohs(type) & PTYPE_HASH_MASK], list) {
+		if (ptype->type == type &&
+		    (ptype->dev == null_or_dev || ptype->dev == skb->dev ||
+		     ptype->dev == orig_dev)) {
+			if (pt_prev)
+				ret = deliver_skb(skb, pt_prev, orig_dev);
+			pt_prev = ptype;
+		}
+	}
+
+	if (pt_prev) {
+		if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
+			goto drop;
+		else
+			ret = pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
+	} else {
+drop:
+		atomic_long_inc(&skb->dev->rx_dropped);
+		kfree_skb(skb);
+		/* Jamal, now you will not able to escape explaining
+		 * me how you were going to use this. :-)
+		 */
+		ret = NET_RX_DROP;
+	}
+
+unlock:
+	rcu_read_unlock();
+out:
+	return ret;
+}
+
+2.1 netpoll_receive_skb(), netpoll path
+================================================================================
+; while this function is defined when NETPOLL is enabled.
+; NETPOLL is for rx/tx packets before network subsystem is ready,
+; while napi is to polling packets when irq is disabled.
+; NETPOLL is different from napi, so not sure about the relationship
+static inline int netpoll_receive_skb(struct sk_buff *skb)
+{
+	if (!list_empty(&skb->dev->napi_list))
+		return netpoll_rx(skb);
+	return 0;
+}
+
+2.1.1 netpoll_rx()
+================================================================================
+static inline bool netpoll_rx(struct sk_buff *skb)
+{
+	struct netpoll_info *npinfo;
+	unsigned long flags;
+	bool ret = false;
+
+	local_irq_save(flags);
+
+	if (!netpoll_rx_on(skb))
+		goto out;
+
+	npinfo = rcu_dereference_bh(skb->dev->npinfo);
+	spin_lock(&npinfo->rx_lock);
+	/* check rx_flags again with the lock held */
+	if (npinfo->rx_flags && __netpoll_rx(skb, npinfo))
+		ret = true;
+	spin_unlock(&npinfo->rx_lock);
+
+out:
+	local_irq_restore(flags);
+	return ret;
+}
+
+2.1.1.1 netpoll_rx_on(), npinof is NULL for normal devices
+================================================================================
+static inline bool netpoll_rx_on(struct sk_buff *skb)
+{
+	struct netpoll_info *npinfo = rcu_dereference_bh(skb->dev->npinfo);
+
+	return npinfo && (!list_empty(&npinfo->rx_np) || npinfo->rx_flags);
+}
+
+2.1.1.2 __netpoll_rx(), just handle ARPHRD_ETHER netdev
+================================================================================
+; sounds this is a fast path for IPv4 and IPv6.
+; For IPv4 packets, it just handle udp. And in this case, it call 
+; rx_np->rx_skb_hook to handle it.
+int __netpoll_rx(struct sk_buff *skb, struct netpoll_info *npinfo)
+{
+	int proto, len, ulen, data_len;
+	int hits = 0, offset;
+	const struct iphdr *iph;
+	struct udphdr *uh;
+	struct netpoll *np, *tmp;
+	uint16_t source;
+
+	if (list_empty(&npinfo->rx_np))
+		goto out;
+
+	if (skb->dev->type != ARPHRD_ETHER)
+		goto out;
+
+	/* check if netpoll clients need ARP */
+	if (skb->protocol == htons(ETH_P_ARP) && atomic_read(&trapped)) {
+		skb_queue_tail(&npinfo->neigh_tx, skb);
+		return 1;
+	} else if (pkt_is_ns(skb) && atomic_read(&trapped)) {
+		skb_queue_tail(&npinfo->neigh_tx, skb);
+		return 1;
+	}
+
+	if (skb->protocol == cpu_to_be16(ETH_P_8021Q)) {
+		skb = vlan_untag(skb);
+		if (unlikely(!skb))
+			goto out;
+	}
+
+	proto = ntohs(eth_hdr(skb)->h_proto);
+	if (proto != ETH_P_IP && proto != ETH_P_IPV6)
+		goto out;
+	if (skb->pkt_type == PACKET_OTHERHOST)
+		goto out;
+	if (skb_shared(skb))
+		goto out;
+
+	if (proto == ETH_P_IP) {
+		if (!pskb_may_pull(skb, sizeof(struct iphdr)))
+			goto out;
+		iph = (struct iphdr *)skb->data;
+		if (iph->ihl < 5 || iph->version != 4)
+			goto out;
+		if (!pskb_may_pull(skb, iph->ihl*4))
+			goto out;
+		iph = (struct iphdr *)skb->data;
+		if (ip_fast_csum((u8 *)iph, iph->ihl) != 0)
+			goto out;
+
+		len = ntohs(iph->tot_len);
+		if (skb->len < len || len < iph->ihl*4)
+			goto out;
+
+		/*
+		 * Our transport medium may have padded the buffer out.
+		 * Now We trim to the true length of the frame.
+		 */
+		if (pskb_trim_rcsum(skb, len))
+			goto out;
+
+		iph = (struct iphdr *)skb->data;
+		if (iph->protocol != IPPROTO_UDP)
+			goto out;
+
+		len -= iph->ihl*4;
+		uh = (struct udphdr *)(((char *)iph) + iph->ihl*4);
+		offset = (unsigned char *)(uh + 1) - skb->data;
+		ulen = ntohs(uh->len);
+		data_len = skb->len - offset;
+		source = ntohs(uh->source);
+
+		if (ulen != len)
+			goto out;
+		if (checksum_udp(skb, uh, ulen, iph->saddr, iph->daddr))
+			goto out;
+		list_for_each_entry_safe(np, tmp, &npinfo->rx_np, rx) {
+			if (np->local_ip.ip && np->local_ip.ip != iph->daddr)
+				continue;
+			if (np->remote_ip.ip && np->remote_ip.ip != iph->saddr)
+				continue;
+			if (np->local_port && np->local_port != ntohs(uh->dest))
+				continue;
+
+			np->rx_skb_hook(np, source, skb, offset, data_len);
+			hits++;
+		}
+	} else {
+#if IS_ENABLED(CONFIG_IPV6)
+		const struct ipv6hdr *ip6h;
+
+		if (!pskb_may_pull(skb, sizeof(struct ipv6hdr)))
+			goto out;
+		ip6h = (struct ipv6hdr *)skb->data;
+		if (ip6h->version != 6)
+			goto out;
+		len = ntohs(ip6h->payload_len);
+		if (!len)
+			goto out;
+		if (len + sizeof(struct ipv6hdr) > skb->len)
+			goto out;
+		if (pskb_trim_rcsum(skb, len + sizeof(struct ipv6hdr)))
+			goto out;
+		ip6h = ipv6_hdr(skb);
+		if (!pskb_may_pull(skb, sizeof(struct udphdr)))
+			goto out;
+		uh = udp_hdr(skb);
+		offset = (unsigned char *)(uh + 1) - skb->data;
+		ulen = ntohs(uh->len);
+		data_len = skb->len - offset;
+		source = ntohs(uh->source);
+		if (ulen != skb->len)
+			goto out;
+		if (udp6_csum_init(skb, uh, IPPROTO_UDP))
+			goto out;
+		list_for_each_entry_safe(np, tmp, &npinfo->rx_np, rx) {
+			if (!ipv6_addr_equal(&np->local_ip.in6, &ip6h->daddr))
+				continue;
+			if (!ipv6_addr_equal(&np->remote_ip.in6, &ip6h->saddr))
+				continue;
+			if (np->local_port && np->local_port != ntohs(uh->dest))
+				continue;
+
+			np->rx_skb_hook(np, source, skb, offset, data_len);
+			hits++;
+		}
+#endif
+	}
+
+	if (!hits)
+		goto out;
+
+	kfree_skb(skb);
+	return 1;
+
+out:
+	if (atomic_read(&trapped)) {
+		kfree_skb(skb);
+		return 1;
+	}
+
+	return 0;
+}
+
+2.1.1.2.1 np->rx_skb_hook()
+================================================================================
+
+2.2 skb_reset_network_header()
+================================================================================
+static inline void skb_reset_network_header(struct sk_buff *skb)
+{
+	skb->network_header = skb->data - skb->head;
+}
+
+2.3 skb_reset_mac_len()
+================================================================================
+static inline void skb_reset_mac_len(struct sk_buff *skb)
+{
+	skb->mac_len = skb->network_header - skb->mac_header;
+}
+
+2.4 rx_handler(), skb->dev->rx_handler, mostly rx_handler is NULL
+================================================================================
+; registered by netdev_rx_handler_register()
+; sounds not many device register this handler
+
+2.5 deliver_skb(), process skb according to the packet type
+================================================================================
+; here may process the packet with the knowledge whether it is a ipv4 or arp
+static inline int deliver_skb(struct sk_buff *skb,
+			      struct packet_type *pt_prev,
+			      struct net_device *orig_dev)
+{
+	if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
+		return -ENOMEM;
+	atomic_inc(&skb->users);
+	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
+}
+
+2.5.1 ip_rcv(), main ip receive routin
+================================================================================
