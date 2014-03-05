@@ -582,6 +582,201 @@ static inline void qdisc_run_end(struct Qdisc *qdisc)
 	qdisc->__state &= ~__QDISC___STATE_RUNNING;
 }
 
+8. dev_queue_xmit()
+================================================================================
+int dev_queue_xmit(struct sk_buff *skb)
+{
+	struct net_device *dev = skb->dev;
+	struct netdev_queue *txq;
+	struct Qdisc *q;
+	int rc = -ENOMEM;
+
+	skb_reset_mac_header(skb);
+
+	/* Disable soft irqs for various locks below. Also
+	 * stops preemption for RCU.
+	 */
+	rcu_read_lock_bh();
+
+	skb_update_prio(skb);
+
+	txq = netdev_pick_tx(dev, skb);
+	q = rcu_dereference_bh(txq->qdisc);
+
+#ifdef CONFIG_NET_CLS_ACT
+	skb->tc_verd = SET_TC_AT(skb->tc_verd, AT_EGRESS);
+#endif
+	trace_net_dev_queue(skb);
+	if (q->enqueue) {
+		rc = __dev_xmit_skb(skb, q, dev, txq);
+		goto out;
+	}
+
+	/* The device has no queue. Common case for software devices:
+	   loopback, all the sorts of tunnels...
+
+	   Really, it is unlikely that netif_tx_lock protection is necessary
+	   here.  (f.e. loopback and IP tunnels are clean ignoring statistics
+	   counters.)
+	   However, it is possible, that they rely on protection
+	   made by us here.
+
+	   Check this and shot the lock. It is not prone from deadlocks.
+	   Either shot noqueue qdisc, it is even simpler 8)
+	 */
+	if (dev->flags & IFF_UP) {
+		int cpu = smp_processor_id(); /* ok because BHs are off */
+
+		if (txq->xmit_lock_owner != cpu) {
+
+			if (__this_cpu_read(xmit_recursion) > RECURSION_LIMIT)
+				goto recursion_alert;
+
+			HARD_TX_LOCK(dev, txq, cpu);
+
+			if (!netif_xmit_stopped(txq)) {
+				__this_cpu_inc(xmit_recursion);
+				rc = dev_hard_start_xmit(skb, dev, txq, NULL);
+				__this_cpu_dec(xmit_recursion);
+				if (dev_xmit_complete(rc)) {
+					HARD_TX_UNLOCK(dev, txq);
+					goto out;
+				}
+			}
+			HARD_TX_UNLOCK(dev, txq);
+			net_crit_ratelimited("Virtual device %s asks to queue packet!\n",
+					     dev->name);
+		} else {
+			/* Recursion is detected! It is possible,
+			 * unfortunately
+			 */
+recursion_alert:
+			net_crit_ratelimited("Dead loop on virtual device %s, fix it urgently!\n",
+					     dev->name);
+		}
+	}
+
+	rc = -ENETDOWN;
+	rcu_read_unlock_bh();
+
+	kfree_skb(skb);
+	return rc;
+out:
+	rcu_read_unlock_bh();
+	return rc;
+}
+
+8.1 netdev_pick_tx(), pick up a transmit queue
+================================================================================
+struct netdev_queue *netdev_pick_tx(struct net_device *dev,
+				    struct sk_buff *skb)
+{
+	int queue_index = 0;
+
+	if (dev->real_num_tx_queues != 1) {
+		const struct net_device_ops *ops = dev->netdev_ops;
+		if (ops->ndo_select_queue)
+			queue_index = ops->ndo_select_queue(dev, skb);
+		else
+			queue_index = __netdev_pick_tx(dev, skb);
+		queue_index = dev_cap_txqueue(dev, queue_index);
+	}
+
+	skb_set_queue_mapping(skb, queue_index);
+	return netdev_get_tx_queue(dev, queue_index);
+}
+
+8.1.1 ndo_select_queue(), driver dedicated tx queue selection
+================================================================================
+
+8.1.2 __netdev_pick_tx(), general tx queue selection
+================================================================================
+u16 __netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
+{
+	struct sock *sk = skb->sk;
+	int queue_index = sk_tx_queue_get(sk);
+
+	if (queue_index < 0 || skb->ooo_okay ||
+	    queue_index >= dev->real_num_tx_queues) {
+		int new_index = get_xps_queue(dev, skb);
+		if (new_index < 0)
+			new_index = skb_tx_hash(dev, skb);
+
+		if (queue_index != new_index && sk &&
+		    rcu_access_pointer(sk->sk_dst_cache))
+			sk_tx_queue_set(sk, new_index);
+
+		queue_index = new_index;
+	}
+
+	return queue_index;
+}
+
+8.2 __dev_xmit_skb()
+================================================================================
+static inline int __dev_xmit_skb(struct sk_buff *skb, struct Qdisc *q,
+				 struct net_device *dev,
+				 struct netdev_queue *txq)
+{
+	spinlock_t *root_lock = qdisc_lock(q);
+	bool contended;
+	int rc;
+
+	qdisc_pkt_len_init(skb);
+	qdisc_calculate_pkt_len(skb, q);
+	/*
+	 * Heuristic to force contended enqueues to serialize on a
+	 * separate lock before trying to get qdisc main lock.
+	 * This permits __QDISC_STATE_RUNNING owner to get the lock more often
+	 * and dequeue packets faster.
+	 */
+	contended = qdisc_is_running(q);
+	if (unlikely(contended))
+		spin_lock(&q->busylock);
+
+	spin_lock(root_lock);
+	if (unlikely(test_bit(__QDISC_STATE_DEACTIVATED, &q->state))) {
+		kfree_skb(skb);
+		rc = NET_XMIT_DROP;
+	} else if ((q->flags & TCQ_F_CAN_BYPASS) && !qdisc_qlen(q) &&
+		   qdisc_run_begin(q)) {
+		/*
+		 * This is a work-conserving queue; there are no old skbs
+		 * waiting to be sent out; and the qdisc is not running -
+		 * xmit the skb directly.
+		 */
+		if (!(dev->priv_flags & IFF_XMIT_DST_RELEASE))
+			skb_dst_force(skb);
+
+		qdisc_bstats_update(q, skb);
+
+		if (sch_direct_xmit(skb, q, dev, txq, root_lock)) {
+			if (unlikely(contended)) {
+				spin_unlock(&q->busylock);
+				contended = false;
+			}
+			__qdisc_run(q);
+		} else
+			qdisc_run_end(q);
+
+		rc = NET_XMIT_SUCCESS;
+	} else {
+		skb_dst_force(skb);
+		rc = q->enqueue(skb, q) & NET_XMIT_MASK;
+		if (qdisc_run_begin(q)) {
+			if (unlikely(contended)) {
+				spin_unlock(&q->busylock);
+				contended = false;
+			}
+			__qdisc_run(q);
+		}
+	}
+	spin_unlock(root_lock);
+	if (unlikely(contended))
+		spin_unlock(&q->busylock);
+	return rc;
+}
+
 0. data structure
 ================================================================================
 
