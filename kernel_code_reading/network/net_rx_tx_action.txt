@@ -452,9 +452,9 @@ static inline void __netif_reschedule(struct Qdisc *q)
     |   (struct sk_buff*)        | in net_tx_action.
     +----------------------------+
     |output_queue                | skb will be sent out, prcessed in net_tx_action.
-    |   (Qdisc *)                |
+    |   (Qdisc *)                | this one point to the start of the list
     +----------------------------+
-    |output_queue_tailp          | a tmp list of output_queue
+    |output_queue_tailp          | this one point to the end of the list
     |   (Qdisc **)               |
     +----------------------------+
     |poll_list                   | napi poll list
@@ -466,6 +466,43 @@ static inline void __netif_reschedule(struct Qdisc *q)
     |                            |
     |                            |
     +----------------------------+
+
+0.1.1 how output_queue grow
+================================================================================
+
+Initialized state:
+
+  softnet_data
+  +-------------------------+
+  |output_queue          ---|--> NULL
+  |                      <--|---+
+  +-------------------------+   |
+  |output_queue_tailp    ---|---+
+  |                         |
+  +-------------------------+
+
+After add one:
+
+  softnet_data                    Qdisc
+  +-------------------------+     +-------------+
+  |output_queue          ---|---> |next_sched   |
+  |                         |   +-|-->          |
+  +-------------------------+   | +-------------+
+  |output_queue_tailp    ---|---+
+  |                         |
+  +-------------------------+
+
+
+After have two:
+
+  softnet_data                    Qdisc               Qdisc
+  +-------------------------+     +-------------+     +-------------+
+  |output_queue          ---|---> |next_sched --|---> |next_sched   |
+  |                         |     |             |   +-|-->          |
+  +-------------------------+     +-------------+   | +-------------+
+  |output_queue_tailp    ---|-----------------------+
+  |                         |
+  +-------------------------+
 
 0.2 ptype_all ptype_base
 ================================================================================
