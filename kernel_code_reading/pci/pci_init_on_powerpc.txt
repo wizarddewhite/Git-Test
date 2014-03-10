@@ -14,6 +14,10 @@ start_kernel()
 		                   ; see "machine type initialization"
 		pnv_setup_arch()
 			pnv_pci_init(); setup pci
+	rest_init()
+		kernel_init()
+		    kernel_init_freeable()
+		        do_pre_smp_initcalls() <- pcibios_init() is invoked
 
 pnv_pci_init()
 	pci_add_flags(PCI_CAN_SKIP_ISA_ALIGN)
@@ -380,8 +384,11 @@ void set_pci_dma_ops(struct dma_map_ops *dma_ops)
 	pci_dma_ops = dma_ops;
 }
 
-2. pcibios_init()
+2. pcibios_init(), scan pci tree, create pci_dev and assign resources
 ===============================================================================
+subsys_initcall(pcibios_init);
+#define subsys_initcall(fn)		__define_initcall(fn, 4)
+
 pcibios_init()
 	ppc_md.phys_mem_access_prot = pci_phys_mem_access_prot;
 
