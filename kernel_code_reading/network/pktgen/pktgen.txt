@@ -199,6 +199,109 @@ out:
 	return err;
 }
 
+3.3.1 pktgen_stop_all_threads_ifs(), set control to T_STOP
+================================================================================
+static void pktgen_stop_all_threads_ifs(struct pktgen_net *pn)
+{
+	struct pktgen_thread *t;
+
+	func_enter();
+
+	mutex_lock(&pktgen_thread_lock);
+
+	list_for_each_entry(t, &pn->pktgen_threads, th_list)
+		t->control |= T_STOP;
+
+	mutex_unlock(&pktgen_thread_lock);
+}
+
+3.3.2 pktgen_run_all_threads(), set control to T_RUN and wait
+================================================================================
+static void pktgen_run_all_threads(struct pktgen_net *pn)
+{
+	struct pktgen_thread *t;
+
+	func_enter();
+
+	mutex_lock(&pktgen_thread_lock);
+
+	list_for_each_entry(t, &pn->pktgen_threads, th_list)
+		t->control |= (T_RUN);
+
+	mutex_unlock(&pktgen_thread_lock);
+
+	/* Propagate thread->control  */
+	schedule_timeout_interruptible(msecs_to_jiffies(125));
+
+	pktgen_wait_all_threads_run(pn);
+}
+
+3.3.2.1 pktgen_wait_all_threads_run(), wait till the end of test
+================================================================================
+static int pktgen_wait_all_threads_run(struct pktgen_net *pn)
+{
+	struct pktgen_thread *t;
+	int sig = 1;
+
+	mutex_lock(&pktgen_thread_lock);
+
+	list_for_each_entry(t, &pn->pktgen_threads, th_list) {
+		sig = pktgen_wait_thread_run(t);
+		if (sig == 0)
+			break;
+	}
+
+	if (sig == 0)
+		list_for_each_entry(t, &pn->pktgen_threads, th_list)
+			t->control |= (T_STOP);
+
+	mutex_unlock(&pktgen_thread_lock);
+	return sig;
+}
+
+3.3.2.1.1 pktgen_wait_thread_run(), return: 1: no dev running, 0: pending signal
+================================================================================
+static int pktgen_wait_thread_run(struct pktgen_thread *t)
+{
+	if_lock(t);
+
+	while (thread_is_running(t)) {
+
+		if_unlock(t);
+
+		msleep_interruptible(100);
+
+		if (signal_pending(current))
+			goto signal;
+		if_lock(t);
+	}
+	if_unlock(t);
+	return 1;
+signal:
+	return 0;
+}
+
+3.3.3 pktgen_reset_all_threads(), set control to T_REMDEVALL and wait
+================================================================================
+static void pktgen_reset_all_threads(struct pktgen_net *pn)
+{
+	struct pktgen_thread *t;
+
+	func_enter();
+
+	mutex_lock(&pktgen_thread_lock);
+
+	list_for_each_entry(t, &pn->pktgen_threads, th_list)
+		t->control |= (T_REMDEVALL);
+
+	mutex_unlock(&pktgen_thread_lock);
+
+	/* Propagate thread->control  */
+	schedule_timeout_interruptible(msecs_to_jiffies(125));
+
+	pktgen_wait_all_threads_run(pn);
+}
+
 4. pktgen_thread_fops, /proc/net/pktgen/kpktgend_0
 ================================================================================
 static const struct file_operations pktgen_thread_fops = {
@@ -419,6 +522,89 @@ out1:
 	vfree(pkt_dev->flows);
 	kfree(pkt_dev);
 	return err;
+}
+
+4.3.1.1 __pktgen_NN_threads(), match a pkt_dev with name 
+================================================================================
+static struct pktgen_dev *__pktgen_NN_threads(const struct pktgen_net *pn,
+					      const char *ifname, int remove)
+{
+	struct pktgen_thread *t;
+	struct pktgen_dev *pkt_dev = NULL;
+	bool exact = (remove == FIND);
+
+	list_for_each_entry(t, &pn->pktgen_threads, th_list) {
+		pkt_dev = pktgen_find_dev(t, ifname, exact);
+		if (pkt_dev) {
+			if (remove) {
+				if_lock(t);
+				pkt_dev->removal_mark = 1;
+				t->control |= T_REMDEV;
+				if_unlock(t);
+			}
+			break;
+		}
+	}
+	return pkt_dev;
+}
+
+4.3.1.2 pktgen_setup_dev(), 
+================================================================================
+static int pktgen_setup_dev(const struct pktgen_net *pn,
+			    struct pktgen_dev *pkt_dev, const char *ifname)
+{
+	struct net_device *odev;
+	int err;
+
+	/* Clean old setups */
+	if (pkt_dev->odev) {
+		dev_put(pkt_dev->odev);
+		pkt_dev->odev = NULL;
+	}
+
+	odev = pktgen_dev_get_by_name(pn, pkt_dev, ifname);
+	if (!odev) {
+		pr_err("no such netdevice: \"%s\"\n", ifname);
+		return -ENODEV;
+	}
+
+	if (odev->type != ARPHRD_ETHER) {
+		pr_err("not an ethernet device: \"%s\"\n", ifname);
+		err = -EINVAL;
+	} else if (!netif_running(odev)) {
+		pr_err("device is down: \"%s\"\n", ifname);
+		err = -ENETDOWN;
+	} else {
+		pkt_dev->odev = odev;
+		return 0;
+	}
+
+	dev_put(odev);
+	return err;
+}
+
+4.3.1.3 add_dev_to_thread()
+================================================================================
+static int add_dev_to_thread(struct pktgen_thread *t,
+			     struct pktgen_dev *pkt_dev)
+{
+	int rv = 0;
+
+	if_lock(t);
+
+	if (pkt_dev->pg_thread) {
+		pr_err("ERROR: already assigned to a thread\n");
+		rv = -EBUSY;
+		goto out;
+	}
+
+	list_add(&pkt_dev->list, &t->if_list);
+	pkt_dev->pg_thread = t;
+	pkt_dev->running = 0;
+
+out:
+	if_unlock(t);
+	return rv;
 }
 
 5. pktgen_if_fops, /proc/net/pktgen/eth0
@@ -1487,6 +1673,253 @@ static ssize_t pktgen_if_write(struct file *file,
 	return -EINVAL;
 }
 
+6. pktgen_thread_worker()
+================================================================================
+static int pktgen_thread_worker(void *arg)
+{
+	DEFINE_WAIT(wait);
+	struct pktgen_thread *t = arg;
+	struct pktgen_dev *pkt_dev = NULL;
+	int cpu = t->cpu;
+
+	BUG_ON(smp_processor_id() != cpu);
+
+	init_waitqueue_head(&t->queue);
+	complete(&t->start_done);
+
+	pr_debug("starting pktgen/%d:  pid=%d\n", cpu, task_pid_nr(current));
+
+	set_current_state(TASK_INTERRUPTIBLE);
+
+	set_freezable();
+
+	while (!kthread_should_stop()) {
+		pkt_dev = next_to_run(t);
+
+		if (unlikely(!pkt_dev && t->control == 0)) {
+			if (t->net->pktgen_exiting)
+				break;
+			wait_event_interruptible_timeout(t->queue,
+							 t->control != 0,
+							 HZ/10);
+			try_to_freeze();
+			continue;
+		}
+
+		__set_current_state(TASK_RUNNING);
+
+		if (likely(pkt_dev)) {
+			pktgen_xmit(pkt_dev);
+
+			if (need_resched())
+				pktgen_resched(pkt_dev);
+			else
+				cpu_relax();
+		}
+
+		if (t->control & T_STOP) {
+			pktgen_stop(t);
+			t->control &= ~(T_STOP);
+		}
+
+		if (t->control & T_RUN) {
+			pktgen_run(t);
+			t->control &= ~(T_RUN);
+		}
+
+		if (t->control & T_REMDEVALL) {
+			pktgen_rem_all_ifs(t);
+			t->control &= ~(T_REMDEVALL);
+		}
+
+		if (t->control & T_REMDEV) {
+			pktgen_rem_one_if(t);
+			t->control &= ~(T_REMDEV);
+		}
+
+		try_to_freeze();
+
+		set_current_state(TASK_INTERRUPTIBLE);
+	}
+
+	pr_debug("%s stopping all device\n", t->tsk->comm);
+	pktgen_stop(t);
+
+	pr_debug("%s removing all device\n", t->tsk->comm);
+	pktgen_rem_all_ifs(t);
+
+	pr_debug("%s removing thread\n", t->tsk->comm);
+	pktgen_rem_thread(t);
+
+	/* Wait for kthread_stop */
+	while (!kthread_should_stop()) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
+	}
+	__set_current_state(TASK_RUNNING);
+
+	return 0;
+}
+
+6.1 set_freezable()
+================================================================================
+bool set_freezable(void)
+{
+	might_sleep();
+
+	/*
+	 * Modify flags while holding freezer_lock.  This ensures the
+	 * freezer notices that we aren't frozen yet or the freezing
+	 * condition is visible to try_to_freeze() below.
+	 */
+	spin_lock_irq(&freezer_lock);
+	current->flags &= ~PF_NOFREEZE;
+	spin_unlock_irq(&freezer_lock);
+
+	return try_to_freeze();
+}
+
+6.1.1 try_to_freeze()
+================================================================================
+static inline bool try_to_freeze(void)
+{
+	if (!(current->flags & PF_NOFREEZE))
+		debug_check_no_locks_held();
+	return try_to_freeze_unsafe();
+}
+
+6.1.1.1 try_to_freeze()
+================================================================================
+static inline bool try_to_freeze_unsafe(void)
+{
+	might_sleep();
+	if (likely(!freezing(current)))
+		return false;
+	return __refrigerator(false);
+}
+
+6.2 next_to_run(), go through dev list and pick up the best one
+================================================================================
+static struct pktgen_dev *next_to_run(struct pktgen_thread *t)
+{
+	struct pktgen_dev *pkt_dev, *best = NULL;
+
+	if_lock(t);
+
+	list_for_each_entry(pkt_dev, &t->if_list, list) {
+		if (!pkt_dev->running)
+			continue;
+		if (best == NULL)
+			best = pkt_dev;
+		else if (ktime_compare(pkt_dev->next_tx, best->next_tx) < 0)
+			best = pkt_dev;
+	}
+	if_unlock(t);
+	return best;
+}
+
+6.3 pktgen_xmit()
+================================================================================
+static void pktgen_xmit(struct pktgen_dev *pkt_dev)
+{
+	struct net_device *odev = pkt_dev->odev;
+	netdev_tx_t (*xmit)(struct sk_buff *, struct net_device *)
+		= odev->netdev_ops->ndo_start_xmit;
+	struct netdev_queue *txq;
+	u16 queue_map;
+	int ret;
+
+	/* If device is offline, then don't send */
+	if (unlikely(!netif_running(odev) || !netif_carrier_ok(odev))) {
+		pktgen_stop_device(pkt_dev);
+		return;
+	}
+
+	/* This is max DELAY, this has special meaning of
+	 * "never transmit"
+	 */
+	if (unlikely(pkt_dev->delay == ULLONG_MAX)) {
+		pkt_dev->next_tx = ktime_add_ns(ktime_get(), ULONG_MAX);
+		return;
+	}
+
+	/* If no skb or clone count exhausted then get new one */
+	if (!pkt_dev->skb || (pkt_dev->last_ok &&
+			      ++pkt_dev->clone_count >= pkt_dev->clone_skb)) {
+		/* build a new pkt */
+		kfree_skb(pkt_dev->skb);
+
+		pkt_dev->skb = fill_packet(odev, pkt_dev);
+		if (pkt_dev->skb == NULL) {
+			pr_err("ERROR: couldn't allocate skb in fill_packet\n");
+			schedule();
+			pkt_dev->clone_count--;	/* back out increment, OOM */
+			return;
+		}
+		pkt_dev->last_pkt_size = pkt_dev->skb->len;
+		pkt_dev->allocated_skbs++;
+		pkt_dev->clone_count = 0;	/* reset counter */
+	}
+
+	if (pkt_dev->delay && pkt_dev->last_ok)
+		spin(pkt_dev, pkt_dev->next_tx);
+
+	queue_map = skb_get_queue_mapping(pkt_dev->skb);
+	txq = netdev_get_tx_queue(odev, queue_map);
+
+	__netif_tx_lock_bh(txq);
+
+	if (unlikely(netif_xmit_frozen_or_stopped(txq))) {
+		ret = NETDEV_TX_BUSY;
+		pkt_dev->last_ok = 0;
+		goto unlock;
+	}
+	atomic_inc(&(pkt_dev->skb->users));
+	ret = (*xmit)(pkt_dev->skb, odev);
+
+	switch (ret) {
+	case NETDEV_TX_OK:
+		txq_trans_update(txq);
+		pkt_dev->last_ok = 1;
+		pkt_dev->sofar++;
+		pkt_dev->seq_num++;
+		pkt_dev->tx_bytes += pkt_dev->last_pkt_size;
+		break;
+	case NET_XMIT_DROP:
+	case NET_XMIT_CN:
+	case NET_XMIT_POLICED:
+		/* skb has been consumed */
+		pkt_dev->errors++;
+		break;
+	default: /* Drivers are not supposed to return other values! */
+		net_info_ratelimited("%s xmit error: %d\n",
+				     pkt_dev->odevname, ret);
+		pkt_dev->errors++;
+		/* fallthru */
+	case NETDEV_TX_LOCKED:
+	case NETDEV_TX_BUSY:
+		/* Retry it next time */
+		atomic_dec(&(pkt_dev->skb->users));
+		pkt_dev->last_ok = 0;
+	}
+unlock:
+	__netif_tx_unlock_bh(txq);
+
+	/* If pkt_dev->count is zero, then run forever */
+	if ((pkt_dev->count != 0) && (pkt_dev->sofar >= pkt_dev->count)) {
+		pktgen_wait_for_skb(pkt_dev);
+
+		/* Done with this */
+		pktgen_stop_device(pkt_dev);
+	}
+}
+
+6.4 pktgen_stop()
+================================================================================
+
+6.5 pktgen_run()
+================================================================================
+
 0. data structure
 ================================================================================
 0.1 pktgen_net
@@ -1512,9 +1945,15 @@ struct pktgen_net {
     |pktgen_exiting             |        |start_done               |
     |  (bool)                   |        |   (struct completion)   |
     +---------------------------+        +-------------------------+  
-                                         |                         |  
-                                         |                         |  
-                                         +-------------------------+  
-                                         |                         |  
-                                         |                         |  
-                                         +-------------------------+  
+                                         |tsk                      |  
+                                         |   (struct task_struct*) |    struct pktgen_dev
+                                         +-------------------------+    +---------------------+
+                                         |if_list                  |--->|list                 |
+                                         |   (struct list_head)    |    |                     |
+                                         +-------------------------+    +---------------------+
+                                         |queue                    |    |                     |
+                                         |   (wait_queue_head_t)   |    |                     |
+                                         +-------------------------+    +---------------------+
+                                                                        |                     |
+                                                                        |                     |
+                                                                        +---------------------+
