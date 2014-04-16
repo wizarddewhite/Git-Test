@@ -107,6 +107,8 @@ void list_for_each_entry_test()
 {
 	struct list_dummy *iter;
 
+	list_add_tail_test();
+
 	list_for_each_entry(iter, &test_list, list_node)
 	{
 		printf("index of entry is %d\n", iter->index);
