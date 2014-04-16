@@ -118,6 +118,17 @@ static inline void __list_del_entry(struct list_head *entry)
 }
 
 /**
+ * list_move - delete from one list and add as another's head
+ * @list: the entry to move
+ * @head: the head that will precede our entry
+ */
+static inline void list_move(struct list_head *list, struct list_head *head)
+{
+	__list_del_entry(list);
+	list_add(list, head);
+}
+
+/**
  * list_is_first - tests whether @list is the fisrt entry in list @head
  * @list: the entry to test
  * @head: the head of the list

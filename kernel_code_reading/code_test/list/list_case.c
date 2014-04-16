@@ -179,6 +179,28 @@ void list_for_each_entry_safe_test()
 	}
 }
 
+void list_move_test()
+{
+	struct list_dummy *iter, *iter2;
+	struct list_dummy *tmp;
+
+	list_for_each_entry_test();
+
+	printf("---   we want to move 5 after 8\n");
+	list_for_each_entry_safe(iter, tmp, &test_list, list_node) {
+		if (iter->index == 5) {
+			list_for_each_entry(iter2, &test_list, list_node) {
+				if (iter2->index == 8)
+					list_move(&iter->list_node,
+						  &iter2->list_node);
+			}
+		}
+	}
+
+	list_for_each_entry(iter, &test_list, list_node)
+		printf("index of entry is %d\n", iter->index);
+}
+
 void list_splice_tail_test()
 {
 	int i;
@@ -214,7 +236,7 @@ void list_splice_tail_test()
 
 int main()
 {
-	list_splice_tail_test();
+	list_move_test();
 
 	return 0;
 }
