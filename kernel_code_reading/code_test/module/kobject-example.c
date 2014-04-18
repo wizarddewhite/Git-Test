@@ -146,6 +146,7 @@ static struct kobj_attribute ltc1_attribute =
 	__ATTR(ltc1, 0666, ltc1_show, ltc1_store);
 
 static struct kobject *example_kobj;
+static struct kobject *example_link_kobj;
 
 static int __init example_init(void)
 {
@@ -162,7 +163,8 @@ static int __init example_init(void)
 	 */
 	example_kobj = kobject_create_and_add("kobject_example", kernel_kobj);
 	printk("the ktype of example_kobj is %p\n", example_kobj->ktype);
-	if (!example_kobj)
+	example_link_kobj = kobject_create_and_add("kobject_link_example", kernel_kobj);
+	if (!example_kobj || !example_link_kobj)
 		return -ENOMEM;
 
 	kobject_set_name(example_kobj, "kobject_example_%d", 1);
@@ -181,12 +183,17 @@ static int __init example_init(void)
 	if (retval)
 		kobject_put(example_kobj);
 
+	retval = sysfs_create_link(example_link_kobj, example_kobj, "link_to");
+	if (retval)
+		printk("failed to create link to example_kobj\n");
+
 	return retval;
 }
 
 static void __exit example_exit(void)
 {
 	kobject_put(example_kobj);
+	kobject_put(example_link_kobj);
 }
 
 module_init(example_init);
