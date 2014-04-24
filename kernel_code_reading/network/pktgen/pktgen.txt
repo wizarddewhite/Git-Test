@@ -548,7 +548,7 @@ static struct pktgen_dev *__pktgen_NN_threads(const struct pktgen_net *pn,
 	return pkt_dev;
 }
 
-4.3.1.2 pktgen_setup_dev(), 
+4.3.1.2 pktgen_setup_dev(), set pktgen_dev->odev to real netdev
 ================================================================================
 static int pktgen_setup_dev(const struct pktgen_net *pn,
 			    struct pktgen_dev *pkt_dev, const char *ifname)
@@ -583,7 +583,7 @@ static int pktgen_setup_dev(const struct pktgen_net *pn,
 	return err;
 }
 
-4.3.1.3 add_dev_to_thread()
+4.3.1.3 add_dev_to_thread(), add pktgen_dev to pktgen_thread->if_list
 ================================================================================
 static int add_dev_to_thread(struct pktgen_thread *t,
 			     struct pktgen_dev *pkt_dev)
@@ -820,7 +820,7 @@ static int pktgen_if_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-5.3 pktgen_if_write, accept command to control the device
+5.3 pktgen_if_write, control behavior of the device: max_pkt_size/dst_max ...
 ================================================================================
 static ssize_t pktgen_if_write(struct file *file,
 			       const char __user * user_buffer, size_t count,
@@ -1788,7 +1788,7 @@ static inline bool try_to_freeze(void)
 	return try_to_freeze_unsafe();
 }
 
-6.1.1.1 try_to_freeze()
+6.1.1.1 try_to_freeze_unsafe()
 ================================================================================
 static inline bool try_to_freeze_unsafe(void)
 {
@@ -1818,7 +1818,7 @@ static struct pktgen_dev *next_to_run(struct pktgen_thread *t)
 	return best;
 }
 
-6.3 pktgen_xmit()
+6.3 pktgen_xmit(), invoke the netdev_ops->ndo_start_xmit send out a packet
 ================================================================================
 static void pktgen_xmit(struct pktgen_dev *pkt_dev)
 {
@@ -1914,11 +1914,307 @@ unlock:
 	}
 }
 
-6.4 pktgen_stop()
+6.3.1 fill_packet(), prepare the ipv4/ipv6 packet
 ================================================================================
+static struct sk_buff *fill_packet(struct net_device *odev,
+				   struct pktgen_dev *pkt_dev)
+{
+	if (pkt_dev->flags & F_IPV6)
+		return fill_packet_ipv6(odev, pkt_dev);
+	else
+		return fill_packet_ipv4(odev, pkt_dev);
+}
 
-6.5 pktgen_run()
+6.4 pktgen_stop(), if T_STOP is set
 ================================================================================
+static void pktgen_stop(struct pktgen_thread *t)
+{
+	struct pktgen_dev *pkt_dev;
+
+	func_enter();
+
+	if_lock(t);
+
+	list_for_each_entry(pkt_dev, &t->if_list, list) {
+		pktgen_stop_device(pkt_dev);
+	}
+
+	if_unlock(t);
+}
+
+6.4.1 pktgen_stop_device()
+================================================================================
+static int pktgen_stop_device(struct pktgen_dev *pkt_dev)
+{
+	int nr_frags = pkt_dev->skb ? skb_shinfo(pkt_dev->skb)->nr_frags : -1;
+
+	if (!pkt_dev->running) {
+		pr_warning("interface: %s is already stopped\n",
+			   pkt_dev->odevname);
+		return -EINVAL;
+	}
+
+	kfree_skb(pkt_dev->skb);
+	pkt_dev->skb = NULL;
+	pkt_dev->stopped_at = ktime_get();
+	pkt_dev->running = 0;
+
+	show_results(pkt_dev, nr_frags);
+
+	return 0;
+}
+
+6.5 pktgen_run(), if T_RUN is set
+================================================================================
+static void pktgen_run(struct pktgen_thread *t)
+{
+	struct pktgen_dev *pkt_dev;
+	int started = 0;
+
+	func_enter();
+
+	if_lock(t);
+	list_for_each_entry(pkt_dev, &t->if_list, list) {
+
+		/*
+		 * setup odev and create initial packet.
+		 */
+		pktgen_setup_inject(pkt_dev);
+
+		if (pkt_dev->odev) {
+			pktgen_clear_counters(pkt_dev);
+			pkt_dev->running = 1;	/* Cranke yeself! */
+			pkt_dev->skb = NULL;
+			pkt_dev->started_at = pkt_dev->next_tx = ktime_get();
+
+			set_pkt_overhead(pkt_dev);
+
+			strcpy(pkt_dev->result, "Starting");
+			started++;
+		} else
+			strcpy(pkt_dev->result, "Error starting");
+	}
+	if_unlock(t);
+	if (started)
+		t->control &= ~(T_STOP);
+}
+
+6.5.1 pktgen_setup_inject(), setup the pktgen_dev
+================================================================================
+static void pktgen_setup_inject(struct pktgen_dev *pkt_dev)
+{
+	int ntxq;
+
+	if (!pkt_dev->odev) {
+		pr_err("ERROR: pkt_dev->odev == NULL in setup_inject\n");
+		sprintf(pkt_dev->result,
+			"ERROR: pkt_dev->odev == NULL in setup_inject.\n");
+		return;
+	}
+
+	/* make sure that we don't pick a non-existing transmit queue */
+	ntxq = pkt_dev->odev->real_num_tx_queues;
+
+	if (ntxq <= pkt_dev->queue_map_min) {
+		pr_warning("WARNING: Requested queue_map_min (zero-based) (%d) exceeds valid range [0 - %d] for (%d) queues on %s, resetting\n",
+			   pkt_dev->queue_map_min, (ntxq ?: 1) - 1, ntxq,
+			   pkt_dev->odevname);
+		pkt_dev->queue_map_min = (ntxq ?: 1) - 1;
+	}
+	if (pkt_dev->queue_map_max >= ntxq) {
+		pr_warning("WARNING: Requested queue_map_max (zero-based) (%d) exceeds valid range [0 - %d] for (%d) queues on %s, resetting\n",
+			   pkt_dev->queue_map_max, (ntxq ?: 1) - 1, ntxq,
+			   pkt_dev->odevname);
+		pkt_dev->queue_map_max = (ntxq ?: 1) - 1;
+	}
+
+	/* Default to the interface's mac if not explicitly set. */
+
+	if (is_zero_ether_addr(pkt_dev->src_mac))
+		ether_addr_copy(&(pkt_dev->hh[6]), pkt_dev->odev->dev_addr);
+
+	/* Set up Dest MAC */
+	ether_addr_copy(&(pkt_dev->hh[0]), pkt_dev->dst_mac);
+
+	if (pkt_dev->flags & F_IPV6) {
+		int i, set = 0, err = 1;
+		struct inet6_dev *idev;
+
+		if (pkt_dev->min_pkt_size == 0) {
+			pkt_dev->min_pkt_size = 14 + sizeof(struct ipv6hdr)
+						+ sizeof(struct udphdr)
+						+ sizeof(struct pktgen_hdr)
+						+ pkt_dev->pkt_overhead;
+		}
+
+		for (i = 0; i < IN6_ADDR_HSIZE; i++)
+			if (pkt_dev->cur_in6_saddr.s6_addr[i]) {
+				set = 1;
+				break;
+			}
+
+		if (!set) {
+
+			/*
+			 * Use linklevel address if unconfigured.
+			 *
+			 * use ipv6_get_lladdr if/when it's get exported
+			 */
+
+			rcu_read_lock();
+			idev = __in6_dev_get(pkt_dev->odev);
+			if (idev) {
+				struct inet6_ifaddr *ifp;
+
+				read_lock_bh(&idev->lock);
+				list_for_each_entry(ifp, &idev->addr_list, if_list) {
+					if ((ifp->scope & IFA_LINK) &&
+					    !(ifp->flags & IFA_F_TENTATIVE)) {
+						pkt_dev->cur_in6_saddr = ifp->addr;
+						err = 0;
+						break;
+					}
+				}
+				read_unlock_bh(&idev->lock);
+			}
+			rcu_read_unlock();
+			if (err)
+				pr_err("ERROR: IPv6 link address not available\n");
+		}
+	} else {
+		if (pkt_dev->min_pkt_size == 0) {
+			pkt_dev->min_pkt_size = 14 + sizeof(struct iphdr)
+						+ sizeof(struct udphdr)
+						+ sizeof(struct pktgen_hdr)
+						+ pkt_dev->pkt_overhead;
+		}
+
+		pkt_dev->saddr_min = 0;
+		pkt_dev->saddr_max = 0;
+		if (strlen(pkt_dev->src_min) == 0) {
+
+			struct in_device *in_dev;
+
+			rcu_read_lock();
+			in_dev = __in_dev_get_rcu(pkt_dev->odev);
+			if (in_dev) {
+				if (in_dev->ifa_list) {
+					pkt_dev->saddr_min =
+					    in_dev->ifa_list->ifa_address;
+					pkt_dev->saddr_max = pkt_dev->saddr_min;
+				}
+			}
+			rcu_read_unlock();
+		} else {
+			pkt_dev->saddr_min = in_aton(pkt_dev->src_min);
+			pkt_dev->saddr_max = in_aton(pkt_dev->src_max);
+		}
+
+		pkt_dev->daddr_min = in_aton(pkt_dev->dst_min);
+		pkt_dev->daddr_max = in_aton(pkt_dev->dst_max);
+	}
+	/* Initialize current values. */
+	pkt_dev->cur_pkt_size = pkt_dev->min_pkt_size;
+	if (pkt_dev->min_pkt_size > pkt_dev->max_pkt_size)
+		pkt_dev->max_pkt_size = pkt_dev->min_pkt_size;
+
+	pkt_dev->cur_dst_mac_offset = 0;
+	pkt_dev->cur_src_mac_offset = 0;
+	pkt_dev->cur_saddr = pkt_dev->saddr_min;
+	pkt_dev->cur_daddr = pkt_dev->daddr_min;
+	pkt_dev->cur_udp_dst = pkt_dev->udp_dst_min;
+	pkt_dev->cur_udp_src = pkt_dev->udp_src_min;
+	pkt_dev->nflows = 0;
+}
+
+6.6 pktgen_rem_all_ifs()
+================================================================================
+static void pktgen_rem_all_ifs(struct pktgen_thread *t)
+{
+	struct list_head *q, *n;
+	struct pktgen_dev *cur;
+
+	func_enter();
+
+	/* Remove all devices, free mem */
+
+	if_lock(t);
+
+	list_for_each_safe(q, n, &t->if_list) {
+		cur = list_entry(q, struct pktgen_dev, list);
+
+		kfree_skb(cur->skb);
+		cur->skb = NULL;
+
+		pktgen_remove_device(t, cur);
+	}
+
+	if_unlock(t);
+}
+
+6.6.1 pktgen_remove_device()
+================================================================================
+static int pktgen_remove_device(struct pktgen_thread *t,
+				struct pktgen_dev *pkt_dev)
+{
+	pr_debug("remove_device pkt_dev=%p\n", pkt_dev);
+
+	if (pkt_dev->running) {
+		pr_warning("WARNING: trying to remove a running interface, stopping it now\n");
+		pktgen_stop_device(pkt_dev);
+	}
+
+	/* Dis-associate from the interface */
+
+	if (pkt_dev->odev) {
+		dev_put(pkt_dev->odev);
+		pkt_dev->odev = NULL;
+	}
+
+	/* And update the thread if_list */
+
+	_rem_dev_from_if_list(t, pkt_dev);
+
+	if (pkt_dev->entry)
+		proc_remove(pkt_dev->entry);
+
+#ifdef CONFIG_XFRM
+	free_SAs(pkt_dev);
+#endif
+	vfree(pkt_dev->flows);
+	if (pkt_dev->page)
+		put_page(pkt_dev->page);
+	kfree(pkt_dev);
+	return 0;
+}
+
+6.7 pktgen_rem_one_ifs()
+================================================================================
+static void pktgen_rem_one_if(struct pktgen_thread *t)
+{
+	struct list_head *q, *n;
+	struct pktgen_dev *cur;
+
+	func_enter();
+
+	if_lock(t);
+
+	list_for_each_safe(q, n, &t->if_list) {
+		cur = list_entry(q, struct pktgen_dev, list);
+
+		if (!cur->removal_mark)
+			continue;
+
+		kfree_skb(cur->skb);
+		cur->skb = NULL;
+
+		pktgen_remove_device(t, cur);
+
+		break;
+	}
+
+	if_unlock(t);
+}
 
 0. data structure
 ================================================================================
@@ -1951,9 +2247,11 @@ struct pktgen_net {
                                          |if_list                  |--->|list                 |
                                          |   (struct list_head)    |    |                     |
                                          +-------------------------+    +---------------------+
-                                         |queue                    |    |                     |
-                                         |   (wait_queue_head_t)   |    |                     |
+                                         |queue                    |    |odev                 |
+                                         |   (wait_queue_head_t)   |    | (struct net_dev*)   |
                                          +-------------------------+    +---------------------+
                                                                         |                     |
                                                                         |                     |
                                                                         +---------------------+
+
+	Figure 0.1 pktgen_net/pktgen_thread/pktgen_dev
