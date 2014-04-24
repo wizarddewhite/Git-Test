@@ -68,6 +68,16 @@ Finally it will hand over skb to the right dev/driver.
 This is a note before, I guess it is not correct. dev_queue_xmit() will hand
 over the skb to a device directly, NET_TX_SOFTIRQ is not involved.
 
+0.1.3 netdev up flow
+================================================================================
+
+net_device_ops->ndo_open()
+   netif_carrier_on()
+      linkwatch_fire_event()
+      ...
+      linkwatch_do_dev()
+         dev_activate()
+
 1. net_namespace_list/pernet_list
 ================================================================================
 
@@ -138,5 +148,10 @@ proto_list
 net_families
    ------> netlink_family_ops ------> inet_family_ops ------> inet6_family_ops
 
-4. softnet_data, percpu variable
+4. qdisc_base, 
+================================================================================
+qdisc_base
+   ------> pfifo_fast_ops ------> pfifo_qdisc_ops ------> ...
+
+5. softnet_data, percpu variable
 ================================================================================
