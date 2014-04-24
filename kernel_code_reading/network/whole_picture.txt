@@ -1,9 +1,142 @@
-1. protocol list
+0.
+================================================================================
+
+0.1 Packet transfer files
+================================================================================
+
+   net_rx_tx_action.txt               rx/tx softirq
+   netif_receive_skb.txt              ingress path
+   sch_generic.txt                    egress path
+
+0.1.1 ingress path
+================================================================================
+net_rx_action:
+
+When an interrupt is triggered by a NIC, probably a packet is received, driver
+will add dev's napi_struct to softnet_data(per cpu)'s poll_list and raise
+NET_RX_SOFTIRQ.
+
+Then net_rx_action will handle each napi_struct structure on its local
+poll_list and finally invoke the napi_struct->poll function, which is set in
+driver.
+
+netif_receive_skb:
+
+In the napi_struct->poll function, driver will prepare the skb and then call
+netif_receive_skb to hand over the packet to kernel. Then kernel will do some
+check and process it according to their packet type.
+
+0.1.2 egress path
+================================================================================
+net_tx_action:
+
+Do the real release of skb on softnet_data->completion_queue(struct sk_buff).
+
+Remove the qdisc list on softnet_data->output_queue(struct Qdisc*), dequeue
+qdisc one by one on this list, then run qdisc_run() on an individual qdisc.
+qdisc_restart() will pick up a proper queue, then do the real transmit by
+dev_hard_start_xmit().
+
+Then the next question is who raise the NET_TX_SOFTIRQ and wake up
+net_tx_action?
+
+This is a little tricky. I search the symbol, NET_TX_SOFTIRQ, all of them are
+in net/core/dev.c. I feel confused about this. Then I am asking who insert a
+qdisc on softnet_data->output_queue? That's the magic of output_queue_tailp.
+Finally, __netif_reschedule() would be the only place to insert on qdisc in
+the output_queue.
+
+Then I believe the magic locates in:
+
+    netif_wake_queue()
+    netif_tx_wake_all_queues()
+         netif_tx_wake_queue()  <-- call __netif_schedule() here
+
+Device driver would call these three functions to schedule a qdisc to system
+and trigger the NET_TX_SOFTIRQ.
+
+Hope I am correct in the above, I forget the meaning of following part:
+
+---------------
+One skb is queued to softnet_data->output_queue for transmission in
+dev_queue_xmit(). This will raise the NET_TX_SOFTIRQ to process the
+output_queue one by one.
+
+Finally it will hand over skb to the right dev/driver.
+---------------
+
+This is a note before, I guess it is not correct. dev_queue_xmit() will hand
+over the skb to a device directly, NET_TX_SOFTIRQ is not involved.
+
+1. net_namespace_list/pernet_list
+================================================================================
+
+net_namespace_list, a list of network namespace
+   +-------------+       +-------------+       +-------------+
+   |net          | ----->|net          | ----->|net          |
+   +-------------+       +-------------+       +-------------+
+   init_net
+
+pernet_list, a list of pernet_operations
+   +-------------+       +-------------+      +-------------+      +-------------+
+   |ops          | ----->|ops          |----->|ops          |----->|ops          |
+   +-------------+       +-------------+      +-------------+      +-------------+
+   net_ns_ops            netdev_net_ops       loopback_net_ops     default_device_ops
+                         .netdev_init         .loopback_net_init   .default_device_exit
+			 .netdev_exit
+
+               Figure 0.2 net_namespace & pernet_list
+
+1.1 net
+================================================================================
+init_net(struct net)
+   +------------------------+
+   |                        |
+   |                        |
+   +------------------------+
+   |gen(struct net_generic) |------>+---------------+
+   |                        |       |len            |
+   +------------------------+       |rcu(rcu_head)  |         point to the data necessary for proper pernet_operations
+   |                        |       |ptr(void *[])  |---------+---------------+
+   |                        |       +---------------+         |               |
+   |                        |                                 +---------------+
+   +------------------------+        init_user_ns             |               |
+   |user_ns(user_namespace) |--------+-------------------+    +---------------+
+   |                        |        |uid_map            |    |               |
+   +------------------------+        |gid_map            |    +---------------+
+   |                        |        |projid_map         |
+   |                        |        |                   |
+   |                        |        |owner              |
+   |                        |        |group              |
+   |                        |        |                   |
+   |                        |        |                   |
+   +------------------------+        +-------------------+
+   |loopback_dev            |
+   |  (struct net_device*)  |
+   +------------------------+
+   |dev_base_head           | list or hash list link the netdev
+   |  (struct list_head)    | in this namespace
+   |dev_name_head           |
+   |  (hlist_head*)         |
+   |dev_index_head          |
+   |  (hlist_head*)         |
+   +------------------------+
+   |                        |
+   |                        |
+   +------------------------+
+
+
+               Figure 0.1 Glance at the init_net
+
+2. protocol list
 ================================================================================
 proto_list 
    ------> netlink_proto ------> tcp_prot ------> udp_prot ------> ping_prot
 
-2. net_proto_family array
+3. net_proto_family array
 ================================================================================
 net_families
    ------> netlink_family_ops ------> inet_family_ops ------> inet6_family_ops
+
+4. softnet_data, percpu variable
+================================================================================
