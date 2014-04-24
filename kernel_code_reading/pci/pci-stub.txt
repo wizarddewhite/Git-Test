@@ -1,0 +1,156 @@
+1. pci_stub_init()
+================================================================================
+static int __init pci_stub_init(void)
+{
+	char *p, *id;
+	int rc;
+
+	rc = pci_register_driver(&stub_driver);
+	if (rc)
+		return rc;
+
+	/* no ids passed actually */
+	if (ids[0] == '\0')
+		return 0;
+
+	/* add ids specified in the module parameter */
+	p = ids;
+	while ((id = strsep(&p, ","))) {
+		unsigned int vendor, device, subvendor = PCI_ANY_ID,
+			subdevice = PCI_ANY_ID, class=0, class_mask=0;
+		int fields;
+
+		if (!strlen(id))
+			continue;
+
+		fields = sscanf(id, "%x:%x:%x:%x:%x:%x",
+				&vendor, &device, &subvendor, &subdevice,
+				&class, &class_mask);
+
+		if (fields < 2) {
+			printk(KERN_WARNING
+			       "pci-stub: invalid id string \"%s\"\n", id);
+			continue;
+		}
+
+		printk(KERN_INFO
+		       "pci-stub: add %04X:%04X sub=%04X:%04X cls=%08X/%08X\n",
+		       vendor, device, subvendor, subdevice, class, class_mask);
+
+		rc = pci_add_dynid(&stub_driver, vendor, device,
+				   subvendor, subdevice, class, class_mask, 0);
+		if (rc)
+			printk(KERN_WARNING
+			       "pci-stub: failed to add dynamic id (%d)\n", rc);
+	}
+
+	return 0;
+}
+
+1.1 stub_driver{}
+================================================================================
+static struct pci_driver stub_driver = {
+	.name		= "pci-stub",
+	.id_table	= NULL,	/* only dynamic id's */
+	.probe		= pci_stub_probe,
+};
+
+static int pci_stub_probe(struct pci_dev *dev, const struct pci_device_id *id)
+{
+	dev_info(&dev->dev, "claimed by stub\n");
+	return 0;
+}
+
+1.2 pci_add_dynid(), add a dynid to drv->dynids, then attach it
+================================================================================
+int pci_add_dynid(struct pci_driver *drv,
+		  unsigned int vendor, unsigned int device,
+		  unsigned int subvendor, unsigned int subdevice,
+		  unsigned int class, unsigned int class_mask,
+		  unsigned long driver_data)
+{
+	struct pci_dynid *dynid;
+	int retval;
+
+	dynid = kzalloc(sizeof(*dynid), GFP_KERNEL);
+	if (!dynid)
+		return -ENOMEM;
+
+	dynid->id.vendor = vendor;
+	dynid->id.device = device;
+	dynid->id.subvendor = subvendor;
+	dynid->id.subdevice = subdevice;
+	dynid->id.class = class;
+	dynid->id.class_mask = class_mask;
+	dynid->id.driver_data = driver_data;
+
+	spin_lock(&drv->dynids.lock);
+	list_add_tail(&dynid->node, &drv->dynids.list);
+	spin_unlock(&drv->dynids.lock);
+
+	retval = driver_attach(&drv->driver);
+
+	return retval;
+}
+
+2. driver attribute, /sys/bus/pci/drivers/drv/new_id
+================================================================================
+struct bus_type pci_bus_type = {
+	.name		= "pci",
+	.match		= pci_bus_match,
+	.uevent		= pci_uevent,
+	.probe		= pci_device_probe,
+	.remove		= pci_device_remove,
+	.shutdown	= pci_device_shutdown,
+	.dev_groups	= pci_dev_groups,
+	.bus_groups	= pci_bus_groups,
+	.drv_groups	= pci_drv_groups,
+	.pm		= PCI_PM_OPS_PTR,
+};
+
+static struct attribute *pci_drv_attrs[] = {
+	&driver_attr_new_id.attr,
+	&driver_attr_remove_id.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(pci_drv);
+
+static ssize_t
+store_new_id(struct device_driver *driver, const char *buf, size_t count)
+{
+	struct pci_driver *pdrv = to_pci_driver(driver);
+	const struct pci_device_id *ids = pdrv->id_table;
+	__u32 vendor, device, subvendor=PCI_ANY_ID,
+		subdevice=PCI_ANY_ID, class=0, class_mask=0;
+	unsigned long driver_data=0;
+	int fields=0;
+	int retval;
+
+	fields = sscanf(buf, "%x %x %x %x %x %x %lx",
+			&vendor, &device, &subvendor, &subdevice,
+			&class, &class_mask, &driver_data);
+	if (fields < 2)
+		return -EINVAL;
+
+	/* Only accept driver_data values that match an existing id_table
+	   entry */
+	if (ids) {
+		retval = -EINVAL;
+		while (ids->vendor || ids->subvendor || ids->class_mask) {
+			if (driver_data == ids->driver_data) {
+				retval = 0;
+				break;
+			}
+			ids++;
+		}
+		if (retval)	/* No match */
+			return retval;
+	}
+
+	retval = pci_add_dynid(pdrv, vendor, device, subvendor, subdevice,
+			       class, class_mask, driver_data);
+	if (retval)
+		return retval;
+	return count;
+}
+static DRIVER_ATTR(new_id, S_IWUSR, NULL, store_new_id);
