@@ -558,7 +558,7 @@ static int ioda_eeh_event(struct notifier_block *nb,
 	return 0;
 }
 
-3. eeh_handle_event()
+3. eeh_handle_event(), unified entry to process eeh event
 ================================================================================
 void eeh_handle_event(struct eeh_pe *pe)
 {
@@ -1178,8 +1178,9 @@ static void eeh_handle_special_event(void)
 	} while (rc != EEH_NEXT_ERR_NONE);
 }
 
-4. eeh_addr_cache_build(), invoked in pnv_pci_ioda_fixup()
+4. eeh_addr_cache_build(), build iommu address <-> PE map
 ================================================================================
+; invoked in pnv_pci_ioda_fixup()
 void eeh_addr_cache_build(void)
 {
 	struct device_node *dn;
@@ -1337,7 +1338,7 @@ void eeh_sysfs_add_device(struct pci_dev *pdev)
 		edev->mode |= EEH_DEV_SYSFS;
 }
 
-5. eeh event trigger
+5. eeh event trigger, a glance at who will trigger eeh
 ================================================================================
 int eeh_send_failure_event(struct eeh_pe *pe)
 {
@@ -1656,7 +1657,7 @@ static int ioda_eeh_get_state(struct eeh_pe *pe)
 5.2.2 eeh_send_failure_event()
 ================================================================================
 
-6. eeh_reset_device()
+6. eeh_reset_device(), the core function to do the eeh recovery
 ================================================================================
 static int eeh_reset_device(struct eeh_pe *pe, struct pci_bus *bus)
 {
@@ -2339,15 +2340,15 @@ struct pnv_eeh_ops ioda_eeh_ops = {
 
  eeh_pe
  +----------------------+
- |                      |
- |                      |
- +----------------------+
- |edevs                 |---+
- | (struct list_head)   |   |           +------+    +------+
- +----------------------+   |     +---->|list  |--->|list  |
-                            |     |     +------+    +------+
-   +------------------------+     |
-   |                              |
+ |                      | <----------------------------------------+
+ |                      |                                          |
+ +----------------------+                                          |
+ |edevs                 |---+                                      |
+ | (struct list_head)   |   |           +------+    +------+       |
+ +----------------------+   |     +---->|list  |--->|list  |       |
+                            |     |     +------+    +------+       |
+   +------------------------+     |     |pe    |----|pe    |-------+
+   |                              |     +------+    +------+
    |   struct eeh_dev             |
    |   +----------------------+<--|---------------------------------------------+
    +-->|list                  |---+                                             |
@@ -2363,6 +2364,12 @@ struct pnv_eeh_ops ioda_eeh_ops = {
        +----------------------+                           +-----------------+      |                |
        |bus                   |                                                    +----------------+
        | (struct pci_bus*)    |                                                    
+       +----------------------+
+       |config_addr           | pci BDF
+       | (int)                |
+       +----------------------+
+       |pe_config_addr        | PE#
+       | (int)                |
        +----------------------+
 
 0.6 pci_io_addr_cache_root
