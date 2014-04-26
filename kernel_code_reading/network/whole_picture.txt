@@ -10,6 +10,8 @@
 
 0.1.1 ingress path
 ================================================================================
+0.1.1.1 net_rx_action()
+================================================================================
 net_rx_action:
 
 When an interrupt is triggered by a NIC, probably a packet is received, driver
@@ -20,6 +22,8 @@ Then net_rx_action will handle each napi_struct structure on its local
 poll_list and finally invoke the napi_struct->poll function, which is set in
 driver.
 
+0.1.1.2 netif_receive_skb()
+================================================================================
 netif_receive_skb:
 
 In the napi_struct->poll function, driver will prepare the skb and then call
@@ -27,6 +31,8 @@ netif_receive_skb to hand over the packet to kernel. Then kernel will do some
 check and process it according to their packet type.
 
 0.1.2 egress path
+================================================================================
+0.1.2.1 net_tx_action
 ================================================================================
 net_tx_action:
 
@@ -37,6 +43,8 @@ qdisc one by one on this list, then run qdisc_run() on an individual qdisc.
 qdisc_restart() will pick up a proper queue, then do the real transmit by
 dev_hard_start_xmit().
 
+0.1.2.2 netif_wake_queue/netif_tx_wake_all_queues
+================================================================================
 Then the next question is who raise the NET_TX_SOFTIRQ and wake up
 net_tx_action?
 
@@ -55,6 +63,8 @@ Then I believe the magic locates in:
 Device driver would call these three functions to schedule a qdisc to system
 and trigger the NET_TX_SOFTIRQ.
 
+0.1.2.3 dev_queue_xmit()
+================================================================================
 Hope I am correct in the above, I forget the meaning of following part:
 
 ---------------
@@ -71,12 +81,12 @@ over the skb to a device directly, NET_TX_SOFTIRQ is not involved.
 0.1.3 netdev up flow
 ================================================================================
 
-net_device_ops->ndo_open()
+net_device_ops->ndo_open()      prepare and bring up the device
    netif_carrier_on()
       linkwatch_fire_event()
       ...
       linkwatch_do_dev()
-         dev_activate()
+         dev_activate()         create qdisc for each netdev_queue
 
 1. net_namespace_list/pernet_list
 ================================================================================

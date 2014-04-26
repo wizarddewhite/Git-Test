@@ -626,11 +626,11 @@ static int netif_alloc_rx_queues(struct net_device *dev)
    | (struct list_head)      |
    +-------------------------+
    |ethtool_ops              |
-   | (struct ethtool_ops*)   |
-   +-------------------------+
-   |_tx                      |
-   | (struct netdev_queue*)  |
-   |                         |
+   | (struct ethtool_ops*)   |      netdev_queue
+   +-------------------------+      +--------------+      +--------------+
+   |_tx                      |----->|qdisc         |----->|qdisc         |
+   | (struct netdev_queue*)  |      |              |      |              |
+   |                         |      +--------------+      +--------------+
    |                         |
    |                         |
    |                         |
@@ -649,9 +649,12 @@ static int netif_alloc_rx_queues(struct net_device *dev)
    |npinfo                   | -------->|                       |
    |  (struct netpoll_info)  |          +-----------------------+
    +-------------------------+           
-   |                         |           
-   |                         |           
+   |state                    |  __LINK_STATE_START, __LINK_STATE_NOCARRIER          
+   |  (netdev_state_t)       |           
    +-------------------------+           
+   |qdisc                    |
+   |  (struct Qdisc*)        |
+   +-------------------------+
 
 
 0.2 netdev_queue

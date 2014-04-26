@@ -1,5 +1,6 @@
 1. linkwatch_fire_event(), only symbol exported to other module
 ================================================================================
+; this event is mostly sent by netif_carrier_on
 void linkwatch_fire_event(struct net_device *dev)
 {
 	bool urgent = linkwatch_urgent_event(dev);
