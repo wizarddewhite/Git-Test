@@ -9,6 +9,6 @@ all: $(PROGRAM)
 	g++ -Wall -g $< -o $@ -lncurses
 
 %: %.c
-	gcc -Wall -g $< -o $@ -lncurses
+	gcc -Wall -g $< -o $@ -lncurses -lm
 clean:
 	rm -f $(PROGRAM)
