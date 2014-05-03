@@ -40,7 +40,8 @@ struct dummy_struct hlist_entry[ENTRY_NUM];
  *
  * The concept is simple,
  * first find a 'slot' through a hash function
- * then insert/search an element in this slot
+ * then insert/search an element in this slot.
+ * And there is no order in a slot.(No sure there would be some special case.)
  *
  */
 
