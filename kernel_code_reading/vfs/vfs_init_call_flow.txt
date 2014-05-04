@@ -1,0 +1,436 @@
+1. from start_kernel()
+================================================================================
+start_kernel()
+	vfs_caches_init_early();
+	vfs_caches_init(totalram_pages);
+
+2. vfs_caches_init_early()
+================================================================================
+void __init vfs_caches_init_early(void)
+{
+	dcache_init_early();
+	inode_init_early();
+}
+
+2.1 dcache_init_early()
+================================================================================
+static void __init dcache_init_early(void)
+{
+	unsigned int loop;
+
+	/* If hashes are distributed across NUMA nodes, defer
+	 * hash allocation until vmalloc space is available.
+	 */
+	if (hashdist)
+		return;
+
+	dentry_hashtable =
+		alloc_large_system_hash("Dentry cache",
+					sizeof(struct hlist_bl_head),
+					dhash_entries,
+					13,
+					HASH_EARLY,
+					&d_hash_shift,
+					&d_hash_mask,
+					0,
+					0);
+
+	for (loop = 0; loop < (1U << d_hash_shift); loop++)
+		INIT_HLIST_BL_HEAD(dentry_hashtable + loop);
+}
+
+2.2 inode_init_early()
+================================================================================
+void __init inode_init_early(void)
+{
+	unsigned int loop;
+
+	/* If hashes are distributed across NUMA nodes, defer
+	 * hash allocation until vmalloc space is available.
+	 */
+	if (hashdist)
+		return;
+
+	inode_hashtable =
+		alloc_large_system_hash("Inode-cache",
+					sizeof(struct hlist_head),
+					ihash_entries,
+					14,
+					HASH_EARLY,
+					&i_hash_shift,
+					&i_hash_mask,
+					0,
+					0);
+
+	for (loop = 0; loop < (1U << i_hash_shift); loop++)
+		INIT_HLIST_HEAD(&inode_hashtable[loop]);
+}
+
+3. vfs_caches_init()
+================================================================================
+void __init vfs_caches_init(unsigned long mempages)
+{
+	unsigned long reserve;
+
+	/* Base hash sizes on available memory, with a reserve equal to
+           150% of current kernel size */
+
+	reserve = min((mempages - nr_free_pages()) * 3/2, mempages - 1);
+	mempages -= reserve;
+
+	names_cachep = kmem_cache_create("names_cache", PATH_MAX, 0,
+			SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+
+	dcache_init();
+	inode_init();
+	files_init(mempages);
+	mnt_init();
+	bdev_cache_init();
+	chrdev_init();
+}
+
+3.1 names_cache
+================================================================================
+names_cachep = kmem_cache_create("names_cache", PATH_MAX, 0,
+		SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+
+3.2 dcache_init(), init dentry_hashtable & dentry kmem_cache
+================================================================================
+static void __init dcache_init(void)
+{
+	unsigned int loop;
+
+	/* 
+	 * A constructor could be added for stable state like the lists,
+	 * but it is probably not worth it because of the cache nature
+	 * of the dcache. 
+	 */
+	dentry_cache = KMEM_CACHE(dentry,
+		SLAB_RECLAIM_ACCOUNT|SLAB_PANIC|SLAB_MEM_SPREAD);
+
+	/* Hash may have been set up in dcache_init_early */
+	if (!hashdist)
+		return;
+
+	dentry_hashtable =
+		alloc_large_system_hash("Dentry cache",
+					sizeof(struct hlist_bl_head),
+					dhash_entries,
+					13,
+					0,
+					&d_hash_shift,
+					&d_hash_mask,
+					0,
+					0);
+
+	for (loop = 0; loop < (1U << d_hash_shift); loop++)
+		INIT_HLIST_BL_HEAD(dentry_hashtable + loop);
+}
+
+3.3 inode_init(), create inode_hashtable & inode_cache
+================================================================================
+void __init inode_init(void)
+{
+	unsigned int loop;
+
+	/* inode slab cache */
+	inode_cachep = kmem_cache_create("inode_cache",
+					 sizeof(struct inode),
+					 0,
+					 (SLAB_RECLAIM_ACCOUNT|SLAB_PANIC|
+					 SLAB_MEM_SPREAD),
+					 init_once);
+
+	/* Hash may have been set up in inode_init_early */
+	if (!hashdist)
+		return;
+
+	inode_hashtable =
+		alloc_large_system_hash("Inode-cache",
+					sizeof(struct hlist_head),
+					ihash_entries,
+					14,
+					0,
+					&i_hash_shift,
+					&i_hash_mask,
+					0,
+					0);
+
+	for (loop = 0; loop < (1U << i_hash_shift); loop++)
+		INIT_HLIST_HEAD(&inode_hashtable[loop]);
+}
+
+3.4 files_init(), filp cache and 
+================================================================================
+void __init files_init(unsigned long mempages)
+{ 
+	unsigned long n;
+
+	filp_cachep = kmem_cache_create("filp", sizeof(struct file), 0,
+			SLAB_HWCACHE_ALIGN | SLAB_PANIC, NULL);
+
+	/*
+	 * One file with associated inode and dcache is very roughly 1K.
+	 * Per default don't use more than 10% of our memory for files. 
+	 */ 
+
+	n = (mempages * (PAGE_SIZE / 1024)) / 10;
+	files_stat.max_files = max_t(unsigned long, n, NR_FILE);
+	files_defer_init();
+	percpu_counter_init(&nr_files, 0);
+} 
+
+3.4.1 files_defer_init()
+================================================================================
+void __init files_defer_init(void)
+{
+	sysctl_nr_open_max = min((size_t)INT_MAX, ~(size_t)0/sizeof(void *)) &
+			     -BITS_PER_LONG;
+}
+
+3.5 mnt_init()
+================================================================================
+void __init mnt_init(void)
+{
+	unsigned u;
+	int err;
+
+	mnt_cache = kmem_cache_create("mnt_cache", sizeof(struct mount),
+			0, SLAB_HWCACHE_ALIGN | SLAB_PANIC, NULL);
+
+	mount_hashtable = alloc_large_system_hash("Mount-cache",
+				sizeof(struct hlist_head),
+				mhash_entries, 19,
+				0,
+				&m_hash_shift, &m_hash_mask, 0, 0);
+	mountpoint_hashtable = alloc_large_system_hash("Mountpoint-cache",
+				sizeof(struct hlist_head),
+				mphash_entries, 19,
+				0,
+				&mp_hash_shift, &mp_hash_mask, 0, 0);
+
+	if (!mount_hashtable || !mountpoint_hashtable)
+		panic("Failed to allocate mount hash table\n");
+
+	for (u = 0; u <= m_hash_mask; u++)
+		INIT_HLIST_HEAD(&mount_hashtable[u]);
+	for (u = 0; u <= mp_hash_mask; u++)
+		INIT_HLIST_HEAD(&mountpoint_hashtable[u]);
+
+	kernfs_init();
+
+	err = sysfs_init();
+	if (err)
+		printk(KERN_WARNING "%s: sysfs_init error: %d\n",
+			__func__, err);
+	fs_kobj = kobject_create_and_add("fs", NULL);
+	if (!fs_kobj)
+		printk(KERN_WARNING "%s: kobj create error\n", __func__);
+	init_rootfs();
+	init_mount_tree();
+}
+
+3.5.1 kernfs_init()
+================================================================================
+void __init kernfs_init(void)
+{
+	kernfs_node_cache = kmem_cache_create("kernfs_node_cache",
+					      sizeof(struct kernfs_node),
+					      0, SLAB_PANIC, NULL);
+	kernfs_inode_init();
+}
+
+3.5.1.1 kernfs_inode_init()
+================================================================================
+void __init kernfs_inode_init(void)
+{
+	if (bdi_init(&kernfs_bdi))
+		panic("failed to init kernfs_bdi");
+}
+
+3.5.2 sysfs_init(), register sysfs_fs_type
+================================================================================
+int __init sysfs_init(void)
+{
+	int err;
+
+	sysfs_root = kernfs_create_root(NULL, NULL);
+	if (IS_ERR(sysfs_root))
+		return PTR_ERR(sysfs_root);
+
+	sysfs_root_kn = sysfs_root->kn;
+
+	err = register_filesystem(&sysfs_fs_type);
+	if (err) {
+		kernfs_destroy_root(sysfs_root);
+		return err;
+	}
+
+	return 0;
+}
+
+3.5.3 fs_kobj, /sys/fs/
+================================================================================
+fs_kobj = kobject_create_and_add("fs", NULL);
+
+3.5.4 init_rootfs(), register rootfs_fs_type
+================================================================================
+int __init init_rootfs(void)
+{
+	int err = register_filesystem(&rootfs_fs_type);
+
+	if (err)
+		return err;
+
+	if (IS_ENABLED(CONFIG_TMPFS) && !saved_root_name[0] &&
+		(!root_fs_names || strstr(root_fs_names, "tmpfs"))) {
+		err = shmem_init();
+		is_tmpfs = true;
+	} else {
+		err = init_ramfs_fs();
+	}
+
+	if (err)
+		unregister_filesystem(&rootfs_fs_type);
+
+	return err;
+}
+
+3.5.4.1 init_ramfs_fs()
+================================================================================
+
+3.5.5 init_mount_tree()
+================================================================================
+static void __init init_mount_tree(void)
+{
+	struct vfsmount *mnt;
+	struct mnt_namespace *ns;
+	struct path root;
+	struct file_system_type *type;
+
+	type = get_fs_type("rootfs");
+	if (!type)
+		panic("Can't find rootfs type");
+	mnt = vfs_kern_mount(type, 0, "rootfs", NULL);
+	put_filesystem(type);
+	if (IS_ERR(mnt))
+		panic("Can't create rootfs");
+
+	ns = create_mnt_ns(mnt);
+	if (IS_ERR(ns))
+		panic("Can't allocate initial namespace");
+
+	init_task.nsproxy->mnt_ns = ns;
+	get_mnt_ns(ns);
+
+	root.mnt = mnt;
+	root.dentry = mnt->mnt_root;
+
+	set_fs_pwd(current->fs, &root);
+	set_fs_root(current->fs, &root);
+}
+
+3.6 bdev_cache_init(), block device
+================================================================================
+void __init bdev_cache_init(void)
+{
+	int err;
+	static struct vfsmount *bd_mnt;
+
+	bdev_cachep = kmem_cache_create("bdev_cache", sizeof(struct bdev_inode),
+			0, (SLAB_HWCACHE_ALIGN|SLAB_RECLAIM_ACCOUNT|
+				SLAB_MEM_SPREAD|SLAB_PANIC),
+			init_once);
+	err = register_filesystem(&bd_type);
+	if (err)
+		panic("Cannot register bdev pseudo-fs");
+	bd_mnt = kern_mount(&bd_type);
+	if (IS_ERR(bd_mnt))
+		panic("Cannot create bdev pseudo-fs");
+	blockdev_superblock = bd_mnt->mnt_sb;   /* For writeback */
+}
+
+3.6 chrdev_init(), char device
+================================================================================
+void __init chrdev_init(void)
+{
+	cdev_map = kobj_map_init(base_probe, &chrdevs_lock);
+	if (bdi_init(&directly_mappable_cdev_bdi))
+		panic("Failed to init directly mappable cdev bdi");
+}
+
+0. data structure
+================================================================================
+0.1. bl hash tables
+================================================================================
+0.1.1. dentry_hashtable
+================================================================================
+    dentry_hashtable(struct hlist_bl_head)
+    +-----------------+        
+    |                 |------->
+    |                 |        
+    +-----------------+          
+    |                 |------->
+    |                 |        
+    +-----------------+          
+
+
+0.1.2. inode_hashtable
+================================================================================
+    inode_hashtable(struct hlist_bl_head)
+    +-----------------+        
+    |                 |------->
+    |                 |        
+    +-----------------+          
+    |                 |------->
+    |                 |        
+    +-----------------+          
+
+0.1.3. mount_hashtable, Mount-cache
+================================================================================
+
+0.1.4. mountpoint_hashtable, Mountpoint-cache
+================================================================================
+
+0.2. kmem_cache
+================================================================================
+0.2.1 names_cache, names_cachep
+================================================================================
+
+0.2.2 dentry, dentry_cache
+================================================================================
+struct dentry
+
+0.2.3 inode_cache, inode_cachep
+================================================================================
+struct inode
+
+0.2.4 filp, filp_cachep
+================================================================================
+struct file
+
+0.2.5 mnt_cache, mnt_cache
+================================================================================
+struct mount
+
+0.2.6 kernfs_node_cache, kernfs_node_cache
+================================================================================
+struct kernfs_node
+
+0.2.7 bdev_cache, bdev_cachep
+================================================================================
+struct bdev_inode
+
+0.3. files_stat
+================================================================================
+    files_stat(struct files_stat_struct)
+    +------------------------+
+    |nr_files                |
+    |  (unsigned long)       |
+    +------------------------+
+    |nr_free_files           |
+    |  (unsigned long)       |
+    +------------------------+
+    |max_files               |
+    |  (unsigned long)       |
+    +------------------------+
