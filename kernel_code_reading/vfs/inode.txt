@@ -1,0 +1,552 @@
+1. new_inode()
+================================================================================
+struct inode *new_inode(struct super_block *sb)
+{
+	struct inode *inode;
+
+	spin_lock_prefetch(&inode_sb_list_lock);
+
+	inode = new_inode_pseudo(sb);
+	if (inode)
+		inode_sb_list_add(inode);
+	return inode;
+}
+
+1.1 new_inode_pseudo()
+================================================================================
+struct inode *new_inode_pseudo(struct super_block *sb)
+{
+	struct inode *inode = alloc_inode(sb);
+
+	if (inode) {
+		spin_lock(&inode->i_lock);
+		inode->i_state = 0;
+		spin_unlock(&inode->i_lock);
+		INIT_LIST_HEAD(&inode->i_sb_list);
+	}
+	return inode;
+}
+
+1.1.1 alloc_inode(), super_block or inode_cachp allocate it
+================================================================================
+static struct inode *alloc_inode(struct super_block *sb)
+{
+	struct inode *inode;
+
+	if (sb->s_op->alloc_inode)
+		inode = sb->s_op->alloc_inode(sb);
+	else
+		inode = kmem_cache_alloc(inode_cachep, GFP_KERNEL);
+
+	if (!inode)
+		return NULL;
+
+	if (unlikely(inode_init_always(sb, inode))) {
+		if (inode->i_sb->s_op->destroy_inode)
+			inode->i_sb->s_op->destroy_inode(inode);
+		else
+			kmem_cache_free(inode_cachep, inode);
+		return NULL;
+	}
+
+	return inode;
+}
+
+1.1.1.1 inode_init_always()
+================================================================================
+int inode_init_always(struct super_block *sb, struct inode *inode)
+{
+	static const struct inode_operations empty_iops;
+	static const struct file_operations empty_fops;
+	struct address_space *const mapping = &inode->i_data;
+
+	inode->i_sb = sb;
+	inode->i_blkbits = sb->s_blocksize_bits;
+	inode->i_flags = 0;
+	atomic_set(&inode->i_count, 1);
+	inode->i_op = &empty_iops;
+	inode->i_fop = &empty_fops;
+	inode->__i_nlink = 1;
+	inode->i_opflags = 0;
+	i_uid_write(inode, 0);
+	i_gid_write(inode, 0);
+	atomic_set(&inode->i_writecount, 0);
+	inode->i_size = 0;
+	inode->i_blocks = 0;
+	inode->i_bytes = 0;
+	inode->i_generation = 0;
+#ifdef CONFIG_QUOTA
+	memset(&inode->i_dquot, 0, sizeof(inode->i_dquot));
+#endif
+	inode->i_pipe = NULL;
+	inode->i_bdev = NULL;
+	inode->i_cdev = NULL;
+	inode->i_rdev = 0;
+	inode->dirtied_when = 0;
+
+	if (security_inode_alloc(inode))
+		goto out;
+	spin_lock_init(&inode->i_lock);
+	lockdep_set_class(&inode->i_lock, &sb->s_type->i_lock_key);
+
+	mutex_init(&inode->i_mutex);
+	lockdep_set_class(&inode->i_mutex, &sb->s_type->i_mutex_key);
+
+	atomic_set(&inode->i_dio_count, 0);
+
+	mapping->a_ops = &empty_aops;
+	mapping->host = inode;
+	mapping->flags = 0;
+	mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE);
+	mapping->private_data = NULL;
+	mapping->backing_dev_info = &default_backing_dev_info;
+	mapping->writeback_index = 0;
+
+	/*
+	 * If the block_device provides a backing_dev_info for client
+	 * inodes then use that.  Otherwise the inode share the bdev's
+	 * backing_dev_info.
+	 */
+	if (sb->s_bdev) {
+		struct backing_dev_info *bdi;
+
+		bdi = sb->s_bdev->bd_inode->i_mapping->backing_dev_info;
+		mapping->backing_dev_info = bdi;
+	}
+	inode->i_private = NULL;
+	inode->i_mapping = mapping;
+	INIT_HLIST_HEAD(&inode->i_dentry);	/* buggered by rcu freeing */
+#ifdef CONFIG_FS_POSIX_ACL
+	inode->i_acl = inode->i_default_acl = ACL_NOT_CACHED;
+#endif
+
+#ifdef CONFIG_FSNOTIFY
+	inode->i_fsnotify_mask = 0;
+#endif
+
+	this_cpu_inc(nr_inodes);
+
+	return 0;
+out:
+	return -ENOMEM;
+}
+
+1.2 inode_sb_list_add(), add to super_block inode list
+================================================================================
+void inode_sb_list_add(struct inode *inode)
+{
+	spin_lock(&inode_sb_list_lock);
+	list_add(&inode->i_sb_list, &inode->i_sb->s_inodes);
+	spin_unlock(&inode_sb_list_lock);
+}
+
+2. destroy_inode
+================================================================================
+static void destroy_inode(struct inode *inode)
+{
+	BUG_ON(!list_empty(&inode->i_lru));
+	__destroy_inode(inode);
+	if (inode->i_sb->s_op->destroy_inode)
+		inode->i_sb->s_op->destroy_inode(inode);
+	else
+		call_rcu(&inode->i_rcu, i_callback);
+}
+
+2.1 __destroy_inode()
+================================================================================
+void __destroy_inode(struct inode *inode)
+{
+	BUG_ON(inode_has_buffers(inode));
+	security_inode_free(inode);
+	fsnotify_inode_delete(inode);
+	if (!inode->i_nlink) {
+		WARN_ON(atomic_long_read(&inode->i_sb->s_remove_count) == 0);
+		atomic_long_dec(&inode->i_sb->s_remove_count);
+	}
+
+#ifdef CONFIG_FS_POSIX_ACL
+	if (inode->i_acl && inode->i_acl != ACL_NOT_CACHED)
+		posix_acl_release(inode->i_acl);
+	if (inode->i_default_acl && inode->i_default_acl != ACL_NOT_CACHED)
+		posix_acl_release(inode->i_default_acl);
+#endif
+	this_cpu_dec(nr_inodes);
+}
+
+3. Insertion
+================================================================================
+3.1 __insert_inode_hash, Add an inode to the inode hash for this superblock.
+================================================================================
+void __insert_inode_hash(struct inode *inode, unsigned long hashval)
+{
+	struct hlist_head *b = inode_hashtable + hash(inode->i_sb, hashval);
+
+	spin_lock(&inode_hash_lock);
+	spin_lock(&inode->i_lock);
+	hlist_add_head(&inode->i_hash, b);
+	spin_unlock(&inode->i_lock);
+	spin_unlock(&inode_hash_lock);
+}
+
+3.2 insert_inode_locked, 
+================================================================================
+int insert_inode_locked(struct inode *inode)
+{
+	struct super_block *sb = inode->i_sb;
+	ino_t ino = inode->i_ino;
+	struct hlist_head *head = inode_hashtable + hash(sb, ino);
+
+	while (1) {
+		struct inode *old = NULL;
+		spin_lock(&inode_hash_lock);
+		hlist_for_each_entry(old, head, i_hash) {
+			if (old->i_ino != ino)
+				continue;
+			if (old->i_sb != sb)
+				continue;
+			spin_lock(&old->i_lock);
+			if (old->i_state & (I_FREEING|I_WILL_FREE)) {
+				spin_unlock(&old->i_lock);
+				continue;
+			}
+			break;
+		}
+		if (likely(!old)) {
+			spin_lock(&inode->i_lock);
+			inode->i_state |= I_NEW;
+			hlist_add_head(&inode->i_hash, head);
+			spin_unlock(&inode->i_lock);
+			spin_unlock(&inode_hash_lock);
+			return 0;
+		}
+		__iget(old);
+		spin_unlock(&old->i_lock);
+		spin_unlock(&inode_hash_lock);
+		wait_on_inode(old);
+		if (unlikely(!inode_unhashed(old))) {
+			iput(old);
+			return -EBUSY;
+		}
+		iput(old);
+	}
+}
+
+3.3 insert_inode_locked4, 
+================================================================================
+int insert_inode_locked4(struct inode *inode, unsigned long hashval,
+		int (*test)(struct inode *, void *), void *data)
+{
+	struct super_block *sb = inode->i_sb;
+	struct hlist_head *head = inode_hashtable + hash(sb, hashval);
+
+	while (1) {
+		struct inode *old = NULL;
+
+		spin_lock(&inode_hash_lock);
+		hlist_for_each_entry(old, head, i_hash) {
+			if (old->i_sb != sb)
+				continue;
+			if (!test(old, data))
+				continue;
+			spin_lock(&old->i_lock);
+			if (old->i_state & (I_FREEING|I_WILL_FREE)) {
+				spin_unlock(&old->i_lock);
+				continue;
+			}
+			break;
+		}
+		if (likely(!old)) {
+			spin_lock(&inode->i_lock);
+			inode->i_state |= I_NEW;
+			hlist_add_head(&inode->i_hash, head);
+			spin_unlock(&inode->i_lock);
+			spin_unlock(&inode_hash_lock);
+			return 0;
+		}
+		__iget(old);
+		spin_unlock(&old->i_lock);
+		spin_unlock(&inode_hash_lock);
+		wait_on_inode(old);
+		if (unlikely(!inode_unhashed(old))) {
+			iput(old);
+			return -EBUSY;
+		}
+		iput(old);
+	}
+}
+
+4. Removal
+================================================================================
+4.1 __remove_inode_hash,
+================================================================================
+void __remove_inode_hash(struct inode *inode)
+{
+	spin_lock(&inode_hash_lock);
+	spin_lock(&inode->i_lock);
+	hlist_del_init(&inode->i_hash);
+	spin_unlock(&inode->i_lock);
+	spin_unlock(&inode_hash_lock);
+}
+
+5. Find
+================================================================================
+5.1 find_inode_fast(), find by inode number
+================================================================================
+static struct inode *find_inode_fast(struct super_block *sb,
+				struct hlist_head *head, unsigned long ino)
+{
+	struct inode *inode = NULL;
+
+repeat:
+	hlist_for_each_entry(inode, head, i_hash) {
+		if (inode->i_ino != ino)
+			continue;
+		if (inode->i_sb != sb)
+			continue;
+		spin_lock(&inode->i_lock);
+		if (inode->i_state & (I_FREEING|I_WILL_FREE)) {
+			__wait_on_freeing_inode(inode);
+			goto repeat;
+		}
+		__iget(inode);
+		spin_unlock(&inode->i_lock);
+		return inode;
+	}
+	return NULL;
+}
+
+5.1 find_inode(), find by data
+================================================================================
+static struct inode *find_inode(struct super_block *sb,
+				struct hlist_head *head,
+				int (*test)(struct inode *, void *),
+				void *data)
+{
+	struct inode *inode = NULL;
+
+repeat:
+	hlist_for_each_entry(inode, head, i_hash) {
+		if (inode->i_sb != sb)
+			continue;
+		if (!test(inode, data))
+			continue;
+		spin_lock(&inode->i_lock);
+		if (inode->i_state & (I_FREEING|I_WILL_FREE)) {
+			__wait_on_freeing_inode(inode);
+			goto repeat;
+		}
+		__iget(inode);
+		spin_unlock(&inode->i_lock);
+		return inode;
+	}
+	return NULL;
+}
+
+6. Lookup, hmm any difference from find?
+================================================================================
+6.1 ilookup, search for an inode in the inode cache
+================================================================================
+struct inode *ilookup(struct super_block *sb, unsigned long ino)
+{
+	struct hlist_head *head = inode_hashtable + hash(sb, ino);
+	struct inode *inode;
+
+	spin_lock(&inode_hash_lock);
+	inode = find_inode_fast(sb, head, ino);
+	spin_unlock(&inode_hash_lock);
+
+	if (inode)
+		wait_on_inode(inode);
+	return inode;
+}
+
+6.2 ilookup5
+================================================================================
+struct inode *ilookup5(struct super_block *sb, unsigned long hashval,
+		int (*test)(struct inode *, void *), void *data)
+{
+	struct inode *inode = ilookup5_nowait(sb, hashval, test, data);
+
+	if (inode)
+		wait_on_inode(inode);
+	return inode;
+}
+
+6.3 ilookup5_nowait
+================================================================================
+struct inode *ilookup5_nowait(struct super_block *sb, unsigned long hashval,
+		int (*test)(struct inode *, void *), void *data)
+{
+	struct hlist_head *head = inode_hashtable + hash(sb, hashval);
+	struct inode *inode;
+
+	spin_lock(&inode_hash_lock);
+	inode = find_inode(sb, head, test, data);
+	spin_unlock(&inode_hash_lock);
+
+	return inode;
+}
+EXPORT_SYMBOL(ilookup5_nowait);
+
+7. iput, put an inode
+================================================================================
+void iput(struct inode *inode)
+{
+	if (inode) {
+		BUG_ON(inode->i_state & I_CLEAR);
+
+		if (atomic_dec_and_lock(&inode->i_count, &inode->i_lock))
+			iput_final(inode);
+	}
+}
+
+7.1 iput_final
+================================================================================
+static void iput_final(struct inode *inode)
+{
+	struct super_block *sb = inode->i_sb;
+	const struct super_operations *op = inode->i_sb->s_op;
+	int drop;
+
+	WARN_ON(inode->i_state & I_NEW);
+
+	if (op->drop_inode)
+		drop = op->drop_inode(inode);
+	else
+		drop = generic_drop_inode(inode);
+
+	if (!drop && (sb->s_flags & MS_ACTIVE)) {
+		inode->i_state |= I_REFERENCED;
+		inode_add_lru(inode);
+		spin_unlock(&inode->i_lock);
+		return;
+	}
+
+	if (!drop) {
+		inode->i_state |= I_WILL_FREE;
+		spin_unlock(&inode->i_lock);
+		write_inode_now(inode, 1);
+		spin_lock(&inode->i_lock);
+		WARN_ON(inode->i_state & I_NEW);
+		inode->i_state &= ~I_WILL_FREE;
+	}
+
+	inode->i_state |= I_FREEING;
+	if (!list_empty(&inode->i_lru))
+		inode_lru_list_del(inode);
+	spin_unlock(&inode->i_lock);
+
+	evict(inode);
+}
+
+7.1.1 generic_drop_inode()
+================================================================================
+static inline int generic_drop_inode(struct inode *inode)
+{
+	return !inode->i_nlink || inode_unhashed(inode);
+}
+
+7.1.2 inode_add_lru()
+================================================================================
+void inode_add_lru(struct inode *inode)
+{
+	if (!(inode->i_state & (I_DIRTY | I_SYNC | I_FREEING | I_WILL_FREE)) &&
+	    !atomic_read(&inode->i_count) && inode->i_sb->s_flags & MS_ACTIVE)
+		inode_lru_list_add(inode);
+}
+
+7.1.3 write_inode_now()
+================================================================================
+int write_inode_now(struct inode *inode, int sync)
+{
+	struct bdi_writeback *wb = &inode_to_bdi(inode)->wb;
+	struct writeback_control wbc = {
+		.nr_to_write = LONG_MAX,
+		.sync_mode = sync ? WB_SYNC_ALL : WB_SYNC_NONE,
+		.range_start = 0,
+		.range_end = LLONG_MAX,
+	};
+
+	if (!mapping_cap_writeback_dirty(inode->i_mapping))
+		wbc.nr_to_write = 0;
+
+	might_sleep();
+	return writeback_single_inode(inode, wb, &wbc);
+}
+
+7.1.4 evict()
+================================================================================
+static void evict(struct inode *inode)
+{
+	const struct super_operations *op = inode->i_sb->s_op;
+
+	BUG_ON(!(inode->i_state & I_FREEING));
+	BUG_ON(!list_empty(&inode->i_lru));
+
+	if (!list_empty(&inode->i_wb_list))
+		inode_wb_list_del(inode);
+
+	inode_sb_list_del(inode);
+
+	/*
+	 * Wait for flusher thread to be done with the inode so that filesystem
+	 * does not start destroying it while writeback is still running. Since
+	 * the inode has I_FREEING set, flusher thread won't start new work on
+	 * the inode.  We just have to wait for running writeback to finish.
+	 */
+	inode_wait_for_writeback(inode);
+
+	if (op->evict_inode) {
+		op->evict_inode(inode);
+	} else {
+		truncate_inode_pages_final(&inode->i_data);
+		clear_inode(inode);
+	}
+	if (S_ISBLK(inode->i_mode) && inode->i_bdev)
+		bd_forget(inode);
+	if (S_ISCHR(inode->i_mode) && inode->i_cdev)
+		cd_forget(inode);
+
+	remove_inode_hash(inode);
+
+	spin_lock(&inode->i_lock);
+	wake_up_bit(&inode->i_state, __I_NEW);
+	BUG_ON(inode->i_state != (I_FREEING | I_CLEAR));
+	spin_unlock(&inode->i_lock);
+
+	destroy_inode(inode);
+}
+
+0. data structure
+================================================================================
+0.1 inode
+================================================================================
+     struct inode
+     +------------------------------+
+     |i_sb                          |  point to the super block
+     |  (struct super_block*)       |
+     +------------------------------+
+     |i_sb_list                     |  link to super_block->s_inodes
+     |  (struct list_head)          |
+     +------------------------------+
+     |i_ino                         |
+     |  (unsigned long )            |
+     +------------------------------+
+     |i_state                       |
+     |  (unsigned long )            |
+     +------------------------------+
+     |i_data                        |
+     |  (struct address_space)      |
+     +------------------------------+
+     |i_op                          |
+     |  (struct inode_operations*)  |
+     +------------------------------+
+     |i_fop                         |
+     |  (struct file_operations*)   |
+     +------------------------------+
+     |                              |
+     |                              |
+     +------------------------------+
+     |                              |
+     |                              |
+     +------------------------------+
