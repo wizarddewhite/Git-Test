@@ -1,0 +1,427 @@
+1. rpaphp_init(), go through the device node with name pci*
+================================================================================
+static int __init rpaphp_init(void)
+{
+	struct device_node *dn = NULL;
+
+	info(DRIVER_DESC " version: " DRIVER_VERSION "\n");
+
+	while ((dn = of_find_node_by_name(dn, "pci")))
+		rpaphp_add_slot(dn);
+
+	return 0;
+}
+
+1.1 rpaphp_add_slot(), create a pci hotplug slot for each device node
+================================================================================
+int rpaphp_add_slot(struct device_node *dn)
+{
+	struct slot *slot;
+	int retval = 0;
+	int i;
+	const int *indexes, *names, *types, *power_domains;
+	char *name, *type;
+
+	if (!dn->name || strcmp(dn->name, "pci"))
+		return 0;
+
+	/* If this is not a hotplug slot, return without doing anything. */
+	if (!is_php_dn(dn, &indexes, &names, &types, &power_domains))
+		return 0;
+
+	dbg("Entry %s: dn->full_name=%s\n", __func__, dn->full_name);
+
+	/* register PCI devices */
+	name = (char *) &names[1];
+	type = (char *) &types[1];
+	for (i = 0; i < indexes[0]; i++) {
+
+		slot = alloc_slot_struct(dn, indexes[i + 1], name, power_domains[i + 1]);
+		if (!slot)
+			return -ENOMEM;
+
+		slot->type = simple_strtoul(type, NULL, 10);
+
+		dbg("Found drc-index:0x%x drc-name:%s drc-type:%s\n",
+				indexes[i + 1], name, type);
+
+		retval = rpaphp_enable_slot(slot);
+		if (!retval)
+			retval = rpaphp_register_slot(slot);
+
+		if (retval)
+			dealloc_slot_struct(slot);
+
+		name += strlen(name) + 1;
+		type += strlen(type) + 1;
+	}
+	dbg("%s - Exit: rc[%d]\n", __func__, retval);
+
+	/* XXX FIXME: reports a failure only if last entry in loop failed */
+	return retval;
+}
+
+1.1.1 alloc_slot_struct(), assign those ops
+================================================================================
+struct slot *alloc_slot_struct(struct device_node *dn,
+                       int drc_index, char *drc_name, int power_domain)
+{
+	struct slot *slot;
+
+	slot = kzalloc(sizeof(struct slot), GFP_KERNEL);
+	if (!slot)
+		goto error_nomem;
+	slot->hotplug_slot = kzalloc(sizeof(struct hotplug_slot), GFP_KERNEL);
+	if (!slot->hotplug_slot)
+		goto error_slot;
+	slot->hotplug_slot->info = kzalloc(sizeof(struct hotplug_slot_info),
+					   GFP_KERNEL);
+	if (!slot->hotplug_slot->info)
+		goto error_hpslot;
+	slot->name = kstrdup(drc_name, GFP_KERNEL);
+	if (!slot->name)
+		goto error_info;
+	slot->dn = dn;
+	slot->index = drc_index;
+	slot->power_domain = power_domain;
+	slot->hotplug_slot->private = slot;
+	slot->hotplug_slot->ops = &rpaphp_hotplug_slot_ops;
+	slot->hotplug_slot->release = &rpaphp_release_slot;
+
+	return (slot);
+
+error_info:
+	kfree(slot->hotplug_slot->info);
+error_hpslot:
+	kfree(slot->hotplug_slot);
+error_slot:
+	kfree(slot);
+error_nomem:
+	return NULL;
+}
+
+1.1.2 rpaphp_enable_slot()
+================================================================================
+int rpaphp_enable_slot(struct slot *slot)
+{
+	int rc, level, state;
+	struct pci_bus *bus;
+	struct hotplug_slot_info *info = slot->hotplug_slot->info;
+
+	info->adapter_status = NOT_VALID;
+	slot->state = EMPTY;
+
+	/* Find out if the power is turned on for the slot */
+	rc = rtas_get_power_level(slot->power_domain, &level);
+	if (rc)
+		return rc;
+	info->power_status = level;
+
+	/* Figure out if there is an adapter in the slot */
+	rc = rpaphp_get_sensor_state(slot, &state);
+	if (rc)
+		return rc;
+
+	bus = pcibios_find_pci_bus(slot->dn);
+	if (!bus) {
+		err("%s: no pci_bus for dn %s\n", __func__, slot->dn->full_name);
+		return -EINVAL;
+	}
+
+	info->adapter_status = EMPTY;
+	slot->bus = bus;
+	slot->pci_devs = &bus->devices;
+
+	/* if there's an adapter in the slot, go add the pci devices */
+	if (state == PRESENT) {
+		info->adapter_status = NOT_CONFIGURED;
+		slot->state = NOT_CONFIGURED;
+
+		/* non-empty slot has to have child */
+		if (!slot->dn->child) {
+			err("%s: slot[%s]'s device_node doesn't have child for adapter\n",
+			    __func__, slot->name);
+			return -EINVAL;
+		}
+
+		if (list_empty(&bus->devices))
+			pcibios_add_pci_devices(bus);
+
+		if (!list_empty(&bus->devices)) {
+			info->adapter_status = CONFIGURED;
+			slot->state = CONFIGURED;
+		}
+
+		if (rpaphp_debug) {
+			struct pci_dev *dev;
+			dbg("%s: pci_devs of slot[%s]\n", __func__, slot->dn->full_name);
+			list_for_each_entry (dev, &bus->devices, bus_list)
+				dbg("\t%s\n", pci_name(dev));
+		}
+	}
+
+	return 0;
+}
+
+1.1.3 rpaphp_register_slot()
+================================================================================
+int rpaphp_register_slot(struct slot *slot)
+{
+	struct hotplug_slot *php_slot = slot->hotplug_slot;
+	int retval;
+	int slotno;
+
+	dbg("%s registering slot:path[%s] index[%x], name[%s] pdomain[%x] type[%d]\n",
+		__func__, slot->dn->full_name, slot->index, slot->name,
+		slot->power_domain, slot->type);
+
+	/* should not try to register the same slot twice */
+	if (is_registered(slot)) {
+		err("rpaphp_register_slot: slot[%s] is already registered\n", slot->name);
+		return -EAGAIN;
+	}
+
+	if (slot->dn->child)
+		slotno = PCI_SLOT(PCI_DN(slot->dn->child)->devfn);
+	else
+		slotno = -1;
+	retval = pci_hp_register(php_slot, slot->bus, slotno, slot->name);
+	if (retval) {
+		err("pci_hp_register failed with error %d\n", retval);
+		return retval;
+	}
+
+	/* add slot to our internal list */
+	list_add(&slot->rpaphp_slot_list, &rpaphp_slot_head);
+	info("Slot [%s] registered\n", slot->name);
+	return 0;
+}
+
+1.1.3.1 pci_hp_register(), register it in pci system
+================================================================================
+#define pci_hp_register(slot, pbus, devnr, name) \
+	__pci_hp_register(slot, pbus, devnr, name, THIS_MODULE, KBUILD_MODNAME)
+
+int __pci_hp_register(struct hotplug_slot *slot, struct pci_bus *bus,
+		      int devnr, const char *name,
+		      struct module *owner, const char *mod_name)
+{
+	int result;
+	struct pci_slot *pci_slot;
+
+	if (slot == NULL)
+		return -ENODEV;
+	if ((slot->info == NULL) || (slot->ops == NULL))
+		return -EINVAL;
+	if (slot->release == NULL) {
+		dbg("Why are you trying to register a hotplug slot "
+		    "without a proper release function?\n");
+		return -EINVAL;
+	}
+
+	slot->ops->owner = owner;
+	slot->ops->mod_name = mod_name;
+
+	mutex_lock(&pci_hp_mutex);
+	/*
+	 * No problems if we call this interface from both ACPI_PCI_SLOT
+	 * driver and call it here again. If we've already created the
+	 * pci_slot, the interface will simply bump the refcount.
+	 */
+	pci_slot = pci_create_slot(bus, devnr, name, slot);
+	if (IS_ERR(pci_slot)) {
+		result = PTR_ERR(pci_slot);
+		goto out;
+	}
+
+	slot->pci_slot = pci_slot;
+	pci_slot->hotplug = slot;
+
+	list_add(&slot->slot_list, &pci_hotplug_slot_list);
+
+	result = fs_add_slot(pci_slot);
+	kobject_uevent(&pci_slot->kobj, KOBJ_ADD);
+	dbg("Added slot %s to the list\n", name);
+out:
+	mutex_unlock(&pci_hp_mutex);
+	return result;
+}
+
+2. enable_slot(), triggered by write on /sys/bus/pci/slots/power
+================================================================================
+drivers/pci/hotplug/rpaphp_core.c
+
+static int enable_slot(struct hotplug_slot *hotplug_slot)
+{
+	struct slot *slot = (struct slot *)hotplug_slot->private;
+	int state;
+	int retval;
+
+	if (slot->state == CONFIGURED)
+		return 0;
+
+	retval = rpaphp_get_sensor_state(slot, &state);
+	if (retval)
+		return retval;
+
+	if (state == PRESENT) {
+		pci_lock_rescan_remove();
+		pcibios_add_pci_devices(slot->bus);
+		pci_unlock_rescan_remove();
+		slot->state = CONFIGURED;
+	} else if (state == EMPTY) {
+		slot->state = EMPTY;
+	} else {
+		err("%s: slot[%s] is in invalid state\n", __func__, slot->name);
+		slot->state = NOT_VALID;
+		return -EINVAL;
+	}
+
+	slot->bus->max_bus_speed = get_max_bus_speed(slot);
+	return 0;
+}
+
+2.1 pcibios_add_pci_devices()
+================================================================================
+void pcibios_add_pci_devices(struct pci_bus * bus)
+{
+	int slotno, mode, pass, max;
+	struct pci_dev *dev;
+	struct device_node *dn = pci_bus_to_OF_node(bus);
+
+	eeh_add_device_tree_early(dn);
+
+	mode = PCI_PROBE_NORMAL;
+	if (ppc_md.pci_probe_mode)
+		mode = ppc_md.pci_probe_mode(bus);
+
+	if (mode == PCI_PROBE_DEVTREE) {
+		/* use ofdt-based probe */
+		of_rescan_bus(dn, bus);
+	} else if (mode == PCI_PROBE_NORMAL) {
+		/*
+		 * Use legacy probe. In the partial hotplug case, we
+		 * probably have grandchildren devices unplugged. So
+		 * we don't check the return value from pci_scan_slot() in
+		 * order for fully rescan all the way down to pick them up.
+		 * They can have been removed during partial hotplug.
+		 */
+		slotno = PCI_SLOT(PCI_DN(dn->child)->devfn);
+		pci_scan_slot(bus, PCI_DEVFN(slotno, 0));
+		max = bus->busn_res.start;
+		for (pass = 0; pass < 2; pass++) {
+			list_for_each_entry(dev, &bus->devices, bus_list) {
+				if (dev->hdr_type == PCI_HEADER_TYPE_BRIDGE ||
+				    dev->hdr_type == PCI_HEADER_TYPE_CARDBUS)
+					max = pci_scan_bridge(bus, dev,
+							      max, pass);
+			}
+		}
+	}
+	pcibios_finish_adding_to_bus(bus);
+}
+
+2.1.1 of_rescan_bus()
+================================================================================
+void of_rescan_bus(struct device_node *node, struct pci_bus *bus)
+{
+	__of_scan_bus(node, bus, 1);
+}
+
+static void __of_scan_bus(struct device_node *node, struct pci_bus *bus,
+			  int rescan_existing)
+{
+	struct device_node *child;
+	struct pci_dev *dev;
+
+	pr_debug("of_scan_bus(%s) bus no %d...\n",
+		 node->full_name, bus->number);
+
+	/* Scan direct children */
+	for_each_child_of_node(node, child) {
+		dev = of_scan_pci_dev(bus, child);
+		if (!dev)
+			continue;
+		pr_debug("    dev header type: %x\n", dev->hdr_type);
+	}
+
+	/* Apply all fixups necessary. We don't fixup the bus "self"
+	 * for an existing bridge that is being rescanned
+	 */
+	if (!rescan_existing)
+		pcibios_setup_bus_self(bus);
+	pcibios_setup_bus_devices(bus);
+
+	/* Now scan child busses */
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		if (dev->hdr_type == PCI_HEADER_TYPE_BRIDGE ||
+		    dev->hdr_type == PCI_HEADER_TYPE_CARDBUS) {
+			of_scan_pci_bridge(dev);
+		}
+	}
+}
+
+0. data structure
+================================================================================
+
+0.1 slot, drivers/pci/hotplug/rpaphp.h
+================================================================================
+
+rpaphp_slot_head
+ |
+ |  struct slot                         struct slot            struct slot    
+ |  +--------------------------+        +-------------+        +-------------+
+ +->|rpaphp_slot_list          | ------>|             | ------>|             |
+    |   (struct list_head)     |        +-------------+        +-------------+
+    +--------------------------+                       
+    |dn                        |
+    |   (struct device_node)   |   <---------------------------------------+
+    +--------------------------+                                           |
+    |bus                       |                                           |
+    |   (struct pci_bus*)      |                                           |
+    +--------------------------+          struct hotplug_slot              |
+    |hotplug_slot              |--------->+----------------------------+   |
+    |   (struct hotplug_slot*) |          |private                     | --+
+    +--------------------------+          |   (void *)                 |
+                                          +----------------------------+
+                                          |ops                         | = rpaphp_hotplug_slot_ops
+                                          |   (struct hotplug_slot_ops)|
+                                          +----------------------------+
+                                          |info                        | = rpaphp_release_slot
+                                          |  (struct hotplug_slot_info)|
+                                          +----------------------------+
+                                          |release                     | = rpaphp_release_slot
+                                          |void(*)(struct hotplug_slot)|
+                                          +----------------------------+
+                                          |pci_slot                    |
+                                          |  (struct pci_slot*)        |
+                                          +----------------------------+
+                                          |slot_list                   |
+                                          |  (struct list_head)        |
+                                          +----------------------------+
+
+0.2 hotplut_slot, include/linux/pci_hotplug.h
+================================================================================
+pci_hotplug_slot_list
+  |
+  |
+  |    struct hotplut_slot                 struct hotplug_slot     struct hotplug_slot
+  |    +---------------------------+       +---------------+       +---------------+
+  +--->|slot_list                  |------>|               |------>|               |
+       |   (struct list_head)      |       |               |       |               |
+       +---------------------------+       +---------------+       +---------------+
+       |                           |
+       |                           |
+       |                           | <-----------------------------------+
+       |                           |                                     |
+       |                           |       struct pci_slot               |
+       +---------------------------+       +------------------------+    |
+       |pci_slot                   |------>|hotplut                 |----+
+       |   (struct pci_slot*)      |       |  (struct hotplug_slot*)|
+       +---------------------------+       +------------------------+
+       |                           |       |bus                     |
+       |                           |       |  (struct pci_bus*)     |
+       +---------------------------+       +------------------------+
+                                           |                        |
+                                           |                        |
+                                           +------------------------+
