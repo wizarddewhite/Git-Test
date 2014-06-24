@@ -27,7 +27,7 @@ void *tmp;
 static void init_once(void *foo)
 {
 	static int num;
-	printk(KERN_ERR "%s: [%d]%p is created\n", __func__, num++, foo);
+	printk(KERN_ERR "%s: [%02d]%p is created\n", __func__, num++, foo);
 }
 
 static int kmem_cache_test_init(void)
@@ -37,6 +37,7 @@ static int kmem_cache_test_init(void)
 	if (test_cache == NULL)
 		return -ENOMEM;
 
+	printk(KERN_ERR "Fetch a cache from kmem_cache\n", __func__);
 	tmp = kmem_cache_zalloc(test_cache, GFP_KERNEL);
 
 	return 0;
