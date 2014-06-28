@@ -86,7 +86,7 @@ static struct file_system_type *__get_fs_type(const char *name, int len)
 	return fs;
 }
 
-4. proc_filesystems_init, /proc/filesystems
+4. proc_filesystems_init, /proc/filesystems, list the fs supported
 ================================================================================
 static const struct file_operations filesystems_proc_fops = {
 	.open		= filesystems_proc_open,
@@ -131,17 +131,18 @@ static int filesystems_proc_show(struct seq_file *m, void *v)
 0.1 file_system_type
 ================================================================================
    file_systems (struct file_system_type)
-   +-----------------------------------+
-   |name                               |
-   |   (char *name)                    |
-   +-----------------------------------+
-   |next                               |
-   |   (struct *file_system_type)      |
-   +-----------------------------------+
-   |mount                              |
-   |   (struct dentry *(mount))        |
-   +-----------------------------------+
-   |owner                              |
-   |   (struct module *)               |
-   +-----------------------------------+
+      |
+      |   +-----------------------------------+
+      +-->|next                               | -----> 
+          |   (struct *file_system_type)      |
+          +-----------------------------------+
+          |name                               |
+          |   (char *name)                    |
+          +-----------------------------------+
+          |mount                              |
+          |   (struct dentry *(mount))        |
+          +-----------------------------------+
+          |owner                              |
+          |   (struct module *)               |
+          +-----------------------------------+
                           
