@@ -1,4 +1,4 @@
-1. new_inode()
+1. new_inode(), create an inode for a specific super_block
 ================================================================================
 struct inode *new_inode(struct super_block *sb)
 {
@@ -175,7 +175,7 @@ void __destroy_inode(struct inode *inode)
 
 3. Insertion
 ================================================================================
-3.1 __insert_inode_hash, Add an inode to the inode hash for this superblock.
+3.1 __insert_inode_hash, Add an inode to the inode hash
 ================================================================================
 void __insert_inode_hash(struct inode *inode, unsigned long hashval)
 {
@@ -400,7 +400,7 @@ void iput(struct inode *inode)
 	}
 }
 
-7.1 iput_final
+7.1 iput_final, Called when we're dropping the last reference
 ================================================================================
 static void iput_final(struct inode *inode)
 {
@@ -455,7 +455,7 @@ void inode_add_lru(struct inode *inode)
 		inode_lru_list_add(inode);
 }
 
-7.1.3 write_inode_now()
+7.1.3 write_inode_now(), write an inode to disk
 ================================================================================
 int write_inode_now(struct inode *inode, int sync)
 {
@@ -472,6 +472,63 @@ int write_inode_now(struct inode *inode, int sync)
 
 	might_sleep();
 	return writeback_single_inode(inode, wb, &wbc);
+}
+
+7.1.3.1 writeback_single_inode()
+================================================================================
+static int
+writeback_single_inode(struct inode *inode, struct bdi_writeback *wb,
+		       struct writeback_control *wbc)
+{
+	int ret = 0;
+
+	spin_lock(&inode->i_lock);
+	if (!atomic_read(&inode->i_count))
+		WARN_ON(!(inode->i_state & (I_WILL_FREE|I_FREEING)));
+	else
+		WARN_ON(inode->i_state & I_WILL_FREE);
+
+	if (inode->i_state & I_SYNC) {
+		if (wbc->sync_mode != WB_SYNC_ALL)
+			goto out;
+		/*
+		 * It's a data-integrity sync. We must wait. Since callers hold
+		 * inode reference or inode has I_WILL_FREE set, it cannot go
+		 * away under us.
+		 */
+		__inode_wait_for_writeback(inode);
+	}
+	WARN_ON(inode->i_state & I_SYNC);
+	/*
+	 * Skip inode if it is clean and we have no outstanding writeback in
+	 * WB_SYNC_ALL mode. We don't want to mess with writeback lists in this
+	 * function since flusher thread may be doing for example sync in
+	 * parallel and if we move the inode, it could get skipped. So here we
+	 * make sure inode is on some writeback list and leave it there unless
+	 * we have completely cleaned the inode.
+	 */
+	if (!(inode->i_state & I_DIRTY) &&
+	    (wbc->sync_mode != WB_SYNC_ALL ||
+	     !mapping_tagged(inode->i_mapping, PAGECACHE_TAG_WRITEBACK)))
+		goto out;
+	inode->i_state |= I_SYNC;
+	spin_unlock(&inode->i_lock);
+
+	ret = __writeback_single_inode(inode, wbc);
+
+	spin_lock(&wb->list_lock);
+	spin_lock(&inode->i_lock);
+	/*
+	 * If inode is clean, remove it from writeback lists. Otherwise don't
+	 * touch it. See comment above for explanation.
+	 */
+	if (!(inode->i_state & I_DIRTY))
+		list_del_init(&inode->i_wb_list);
+	spin_unlock(&wb->list_lock);
+	inode_sync_complete(inode);
+out:
+	spin_unlock(&inode->i_lock);
+	return ret;
 }
 
 7.1.4 evict()
@@ -521,32 +578,72 @@ static void evict(struct inode *inode)
 ================================================================================
 0.1 inode
 ================================================================================
-     struct inode
-     +------------------------------+
-     |i_sb                          |  point to the super block
-     |  (struct super_block*)       |
-     +------------------------------+
-     |i_sb_list                     |  link to super_block->s_inodes
-     |  (struct list_head)          |
-     +------------------------------+
-     |i_ino                         |
-     |  (unsigned long )            |
-     +------------------------------+
-     |i_state                       |
-     |  (unsigned long )            |
-     +------------------------------+
-     |i_data                        |
-     |  (struct address_space)      |
-     +------------------------------+
-     |i_op                          |
-     |  (struct inode_operations*)  |
-     +------------------------------+
-     |i_fop                         |
-     |  (struct file_operations*)   |
-     +------------------------------+
-     |                              |
-     |                              |
-     +------------------------------+
-     |                              |
-     |                              |
-     +------------------------------+
+     super_block
+     +--------------------------+
+     |s_inodes                  | ---+
+     +--------------------------+    |
+                                     |
+         +---------------------------+
+         |
+         |      struct inode
+         |      +------------------------------+
+         |      |i_sb                          |  point to the super block
+         |      |  (struct super_block*)       |
+         |      +------------------------------+
+         +----> |i_sb_list                     |  link to super_block->s_inodes
+                |  (struct list_head)          |
+                +------------------------------+
+                |i_ino                         |
+                |  (unsigned long )            |
+                +------------------------------+
+                |i_state                       |
+                |  (unsigned long )            |
+                +------------------------------+
+                |i_data                        |
+                |  (struct address_space)      |
+                +------------------------------+
+                |                              |
+                |                              |
+                +------------------------------+
+                |i_op                          |
+                |  (struct inode_operations*)  |
+                +------------------------------+
+                |i_fop                         |
+                |  (struct file_operations*)   |
+                +------------------------------+
+                |                              |
+                |                              |
+                +------------------------------+
+                |i_size                        |
+                |                              |
+                +------------------------------+
+                |i_blocks                      |
+                |                              |
+                +------------------------------+
+                |i_bytes                       |
+                |                              |
+                +------------------------------+
+                |                              |
+                |                              |
+                +------------------------------+
+                |i_pipe                        |
+                |                              |
+                +------------------------------+
+                |i_bdev                        |
+                |                              |
+                +------------------------------+
+                |i_cdev                        |
+                |                              |
+                +------------------------------+
+                |i_rdev                        |
+                |                              |
+                +------------------------------+
+                |                              |
+                |                              |
+                +------------------------------+
+                |                              |
+                |                              |
+                +------------------------------+
+                |                              |
+                |                              |
+                +------------------------------+
