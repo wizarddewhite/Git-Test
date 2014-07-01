@@ -1,0 +1,180 @@
+1. sget(), find or create a superblock
+================================================================================
+struct super_block *sget(struct file_system_type *type,
+			int (*test)(struct super_block *,void *),
+			int (*set)(struct super_block *,void *),
+			int flags,
+			void *data)
+{
+	struct super_block *s = NULL;
+	struct super_block *old;
+	int err;
+
+retry:
+	spin_lock(&sb_lock);
+	if (test) {
+		hlist_for_each_entry(old, &type->fs_supers, s_instances) {
+			if (!test(old, data))
+				continue;
+			if (!grab_super(old))
+				goto retry;
+			if (s) {
+				up_write(&s->s_umount);
+				destroy_super(s);
+				s = NULL;
+			}
+			return old;
+		}
+	}
+	if (!s) {
+		spin_unlock(&sb_lock);
+		s = alloc_super(type, flags);
+		if (!s)
+			return ERR_PTR(-ENOMEM);
+		goto retry;
+	}
+		
+	err = set(s, data);
+	if (err) {
+		spin_unlock(&sb_lock);
+		up_write(&s->s_umount);
+		destroy_super(s);
+		return ERR_PTR(err);
+	}
+	s->s_type = type;
+	strlcpy(s->s_id, type->name, sizeof(s->s_id));
+	list_add_tail(&s->s_list, &super_blocks);
+	hlist_add_head(&s->s_instances, &type->fs_supers);
+	spin_unlock(&sb_lock);
+	get_filesystem(type);
+	register_shrinker(&s->s_shrink);
+	return s;
+}
+
+1.1 alloc_super()
+================================================================================
+static struct super_block *alloc_super(struct file_system_type *type, int flags)
+{
+	struct super_block *s = kzalloc(sizeof(struct super_block),  GFP_USER);
+	static const struct super_operations default_op;
+	int i;
+
+	if (!s)
+		return NULL;
+
+	INIT_LIST_HEAD(&s->s_mounts);
+
+	if (security_sb_alloc(s))
+		goto fail;
+
+	for (i = 0; i < SB_FREEZE_LEVELS; i++) {
+		if (percpu_counter_init(&s->s_writers.counter[i], 0) < 0)
+			goto fail;
+		lockdep_init_map(&s->s_writers.lock_map[i], sb_writers_name[i],
+				 &type->s_writers_key[i], 0);
+	}
+	init_waitqueue_head(&s->s_writers.wait);
+	init_waitqueue_head(&s->s_writers.wait_unfrozen);
+	s->s_flags = flags;
+	s->s_bdi = &default_backing_dev_info;
+	INIT_HLIST_NODE(&s->s_instances);
+	INIT_HLIST_BL_HEAD(&s->s_anon);
+	INIT_LIST_HEAD(&s->s_inodes);
+
+	if (list_lru_init(&s->s_dentry_lru))
+		goto fail;
+	if (list_lru_init(&s->s_inode_lru))
+		goto fail;
+
+	init_rwsem(&s->s_umount);
+	lockdep_set_class(&s->s_umount, &type->s_umount_key);
+	/*
+	 * sget() can have s_umount recursion.
+	 *
+	 * When it cannot find a suitable sb, it allocates a new
+	 * one (this one), and tries again to find a suitable old
+	 * one.
+	 *
+	 * In case that succeeds, it will acquire the s_umount
+	 * lock of the old one. Since these are clearly distrinct
+	 * locks, and this object isn't exposed yet, there's no
+	 * risk of deadlocks.
+	 *
+	 * Annotate this by putting this lock in a different
+	 * subclass.
+	 */
+	down_write_nested(&s->s_umount, SINGLE_DEPTH_NESTING);
+	s->s_count = 1;
+	atomic_set(&s->s_active, 1);
+	mutex_init(&s->s_vfs_rename_mutex);
+	lockdep_set_class(&s->s_vfs_rename_mutex, &type->s_vfs_rename_key);
+	mutex_init(&s->s_dquot.dqio_mutex);
+	mutex_init(&s->s_dquot.dqonoff_mutex);
+	init_rwsem(&s->s_dquot.dqptr_sem);
+	s->s_maxbytes = MAX_NON_LFS;
+	s->s_op = &default_op;
+	s->s_time_gran = 1000000000;
+	s->cleancache_poolid = -1;
+
+	s->s_shrink.seeks = DEFAULT_SEEKS;
+	s->s_shrink.scan_objects = super_cache_scan;
+	s->s_shrink.count_objects = super_cache_count;
+	s->s_shrink.batch = 1024;
+	s->s_shrink.flags = SHRINKER_NUMA_AWARE;
+	return s;
+
+fail:
+	destroy_super(s);
+	return NULL;
+}
+
+0. data structure
+================================================================================
+
+0.1 super_block
+================================================================================
+   super_blocks
+   +------------------+
+   |struct list_head  |
+   +------------------+
+          |
+          |      super_block           super_block           super_block           
+          |      +--------------+      +--------------+      +--------------+
+          +----> |s_list        |----> |s_list        |----> |s_list        |
+                 +--------------+      +--------------+      +--------------+
+
+
+
+   file_system_type    
+   +-------------------------+
+   |fs_supers                |
+   | (struct hlist_head)     |
+   +-------------------------+
+          |
+          |      super_block           super_block           super_block           
+          |      +--------------+      +--------------+      +--------------+
+          +----> |s_instances   |----> |s_instances   |----> |s_instances   |
+                 +--------------+      +--------------+      +--------------+
+
+
+
+   super_block
+   +------------------------+
+   |s_list                  |
+   |                        |
+   +------------------------+
+   |s_instance              |
+   |                        |
+   +------------------------+      file_system_type
+   |s_type                  | ---> 
+   |                        |
+   +------------------------+
+   |s_mounts                | ---> a list of struct mount
+   |                        |
+   +------------------------+
+   |s_inodes                | ---> a list of inode
+   |                        |
+   +------------------------+
+   |                        |
+   |                        |
+   +------------------------+
