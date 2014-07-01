@@ -1,0 +1,511 @@
+1. mnt_init()
+================================================================================
+void __init mnt_init(void)
+{
+	unsigned u;
+	int err;
+
+	mnt_cache = kmem_cache_create("mnt_cache", sizeof(struct mount),
+			0, SLAB_HWCACHE_ALIGN | SLAB_PANIC, NULL);
+
+	mount_hashtable = alloc_large_system_hash("Mount-cache",
+				sizeof(struct hlist_head),
+				mhash_entries, 19,
+				0,
+				&m_hash_shift, &m_hash_mask, 0, 0);
+	mountpoint_hashtable = alloc_large_system_hash("Mountpoint-cache",
+				sizeof(struct hlist_head),
+				mphash_entries, 19,
+				0,
+				&mp_hash_shift, &mp_hash_mask, 0, 0);
+
+	if (!mount_hashtable || !mountpoint_hashtable)
+		panic("Failed to allocate mount hash table\n");
+
+	for (u = 0; u <= m_hash_mask; u++)
+		INIT_HLIST_HEAD(&mount_hashtable[u]);
+	for (u = 0; u <= mp_hash_mask; u++)
+		INIT_HLIST_HEAD(&mountpoint_hashtable[u]);
+
+	kernfs_init();
+
+	err = sysfs_init();
+	if (err)
+		printk(KERN_WARNING "%s: sysfs_init error: %d\n",
+			__func__, err);
+	fs_kobj = kobject_create_and_add("fs", NULL);
+	if (!fs_kobj)
+		printk(KERN_WARNING "%s: kobj create error\n", __func__);
+	init_rootfs();
+	init_mount_tree();
+}
+
+1.1 kernfs_init()
+================================================================================
+void __init kernfs_init(void)
+{
+	kernfs_node_cache = kmem_cache_create("kernfs_node_cache",
+					      sizeof(struct kernfs_node),
+					      0, SLAB_PANIC, NULL);
+	kernfs_inode_init();
+}
+
+1.1.1 kernfs_inode_init()
+================================================================================
+void __init kernfs_inode_init(void)
+{
+	if (bdi_init(&kernfs_bdi))
+		panic("failed to init kernfs_bdi");
+}
+
+1.2 sysfs_init(), register sysfs filesystem
+================================================================================
+int __init sysfs_init(void)
+{
+	int err;
+
+	sysfs_root = kernfs_create_root(NULL, KERNFS_ROOT_EXTRA_OPEN_PERM_CHECK,
+					NULL);
+	if (IS_ERR(sysfs_root))
+		return PTR_ERR(sysfs_root);
+
+	sysfs_root_kn = sysfs_root->kn;
+
+	err = register_filesystem(&sysfs_fs_type);
+	if (err) {
+		kernfs_destroy_root(sysfs_root);
+		return err;
+	}
+
+	return 0;
+}
+
+1.3 init_rootfs()
+================================================================================
+int __init init_rootfs(void)
+{
+	int err = register_filesystem(&rootfs_fs_type);
+
+	if (err)
+		return err;
+
+	if (IS_ENABLED(CONFIG_TMPFS) && !saved_root_name[0] &&
+		(!root_fs_names || strstr(root_fs_names, "tmpfs"))) {
+		err = shmem_init();
+		is_tmpfs = true;
+	} else {
+		err = init_ramfs_fs();
+	}
+
+	if (err)
+		unregister_filesystem(&rootfs_fs_type);
+
+	return err;
+}
+
+1.3.1 init_ramfs_fs()
+================================================================================
+int __init init_ramfs_fs(void)
+{
+	static unsigned long once;
+	int err;
+
+	printk(KERN_ERR "%s: called\n", __func__);
+	if (test_and_set_bit(0, &once))
+		return 0;
+
+	err = bdi_init(&ramfs_backing_dev_info);
+	if (err)
+		return err;
+
+	err = register_filesystem(&ramfs_fs_type);
+	if (err)
+		bdi_destroy(&ramfs_backing_dev_info);
+
+	return err;
+}
+
+1.4 init_mount_tree()
+================================================================================
+static void __init init_mount_tree(void)
+{
+	struct vfsmount *mnt;
+	struct mnt_namespace *ns;
+	struct path root;
+	struct file_system_type *type;
+
+	type = get_fs_type("rootfs");
+	if (!type)
+		panic("Can't find rootfs type");
+	mnt = vfs_kern_mount(type, 0, "rootfs", NULL);
+	put_filesystem(type);
+	if (IS_ERR(mnt))
+		panic("Can't create rootfs");
+
+	ns = create_mnt_ns(mnt);
+	if (IS_ERR(ns))
+		panic("Can't allocate initial namespace");
+
+	init_task.nsproxy->mnt_ns = ns;
+	get_mnt_ns(ns);
+
+	root.mnt = mnt;
+	root.dentry = mnt->mnt_root;
+
+	set_fs_pwd(current->fs, &root);
+	set_fs_root(current->fs, &root);
+}
+
+1.4.1 vfs_kern_mount()
+================================================================================
+1.4.2 create_mnt_ns()
+================================================================================
+static struct mnt_namespace *create_mnt_ns(struct vfsmount *m)
+{
+	struct mnt_namespace *new_ns = alloc_mnt_ns(&init_user_ns);
+	if (!IS_ERR(new_ns)) {
+		struct mount *mnt = real_mount(m);
+		mnt->mnt_ns = new_ns;
+		new_ns->root = mnt;
+		list_add(&mnt->mnt_list, &new_ns->list);
+	} else {
+		mntput(m);
+	}
+	return new_ns;
+}
+
+1.4.2.1 alloc_mnt_ns()
+================================================================================
+static struct mnt_namespace *alloc_mnt_ns(struct user_namespace *user_ns)
+{
+	struct mnt_namespace *new_ns;
+	int ret;
+
+	new_ns = kmalloc(sizeof(struct mnt_namespace), GFP_KERNEL);
+	if (!new_ns)
+		return ERR_PTR(-ENOMEM);
+	ret = proc_alloc_inum(&new_ns->proc_inum);
+	if (ret) {
+		kfree(new_ns);
+		return ERR_PTR(ret);
+	}
+	new_ns->seq = atomic64_add_return(1, &mnt_ns_seq);
+	atomic_set(&new_ns->count, 1);
+	new_ns->root = NULL;
+	INIT_LIST_HEAD(&new_ns->list);
+	init_waitqueue_head(&new_ns->poll);
+	new_ns->event = 0;
+	new_ns->user_ns = get_user_ns(user_ns);
+	return new_ns;
+}
+
+1.4.3 set_fs_pwd()
+================================================================================
+void set_fs_pwd(struct fs_struct *fs, const struct path *path)
+{
+	struct path old_pwd;
+
+	path_get(path);
+	spin_lock(&fs->lock);
+	write_seqcount_begin(&fs->seq);
+	old_pwd = fs->pwd;
+	fs->pwd = *path;
+	write_seqcount_end(&fs->seq);
+	spin_unlock(&fs->lock);
+
+	if (old_pwd.dentry)
+		path_put(&old_pwd);
+}
+
+1.4.4 set_fs_root()
+================================================================================
+void set_fs_root(struct fs_struct *fs, const struct path *path)
+{
+	struct path old_root;
+
+	path_get(path);
+	spin_lock(&fs->lock);
+	write_seqcount_begin(&fs->seq);
+	old_root = fs->root;
+	fs->root = *path;
+	write_seqcount_end(&fs->seq);
+	spin_unlock(&fs->lock);
+	if (old_root.dentry)
+		path_put(&old_root);
+}
+
+2. vfs_kern_mount(), an example on rootfs
+================================================================================
+struct vfsmount *
+vfs_kern_mount(struct file_system_type *type, int flags, const char *name, void *data)
+{
+	struct mount *mnt;
+	struct dentry *root;
+
+	if (!type)
+		return ERR_PTR(-ENODEV);
+
+	mnt = alloc_vfsmnt(name);
+	if (!mnt)
+		return ERR_PTR(-ENOMEM);
+
+	if (flags & MS_KERNMOUNT)
+		mnt->mnt.mnt_flags = MNT_INTERNAL;
+
+	root = mount_fs(type, flags, name, data);
+	if (IS_ERR(root)) {
+		free_vfsmnt(mnt);
+		return ERR_CAST(root);
+	}
+
+	mnt->mnt.mnt_root = root;
+	mnt->mnt.mnt_sb = root->d_sb;
+	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
+	mnt->mnt_parent = mnt;
+	lock_mount_hash();
+	list_add_tail(&mnt->mnt_instance, &root->d_sb->s_mounts);
+	unlock_mount_hash();
+	return &mnt->mnt;
+}
+
+2.1 alloc_vfsmnt()
+================================================================================
+static struct mount *alloc_vfsmnt(const char *name)
+{
+	struct mount *mnt = kmem_cache_zalloc(mnt_cache, GFP_KERNEL);
+	if (mnt) {
+		int err;
+
+		err = mnt_alloc_id(mnt);
+		if (err)
+			goto out_free_cache;
+
+		if (name) {
+			mnt->mnt_devname = kstrdup(name, GFP_KERNEL);
+			if (!mnt->mnt_devname)
+				goto out_free_id;
+		}
+
+#ifdef CONFIG_SMP
+		mnt->mnt_pcp = alloc_percpu(struct mnt_pcp);
+		if (!mnt->mnt_pcp)
+			goto out_free_devname;
+
+		this_cpu_add(mnt->mnt_pcp->mnt_count, 1);
+#else
+		mnt->mnt_count = 1;
+		mnt->mnt_writers = 0;
+#endif
+
+		INIT_HLIST_NODE(&mnt->mnt_hash);
+		INIT_LIST_HEAD(&mnt->mnt_child);
+		INIT_LIST_HEAD(&mnt->mnt_mounts);
+		INIT_LIST_HEAD(&mnt->mnt_list);
+		INIT_LIST_HEAD(&mnt->mnt_expire);
+		INIT_LIST_HEAD(&mnt->mnt_share);
+		INIT_LIST_HEAD(&mnt->mnt_slave_list);
+		INIT_LIST_HEAD(&mnt->mnt_slave);
+#ifdef CONFIG_FSNOTIFY
+		INIT_HLIST_HEAD(&mnt->mnt_fsnotify_marks);
+#endif
+	}
+	return mnt;
+
+#ifdef CONFIG_SMP
+out_free_devname:
+	kfree(mnt->mnt_devname);
+#endif
+out_free_id:
+	mnt_free_id(mnt);
+out_free_cache:
+	kmem_cache_free(mnt_cache, mnt);
+	return NULL;
+}
+
+2.1.1 mnt_alloc_id(), set mount->mnt_id
+================================================================================
+static int mnt_alloc_id(struct mount *mnt)
+{
+	int res;
+
+retry:
+	ida_pre_get(&mnt_id_ida, GFP_KERNEL);
+	spin_lock(&mnt_id_lock);
+	res = ida_get_new_above(&mnt_id_ida, mnt_id_start, &mnt->mnt_id);
+	if (!res)
+		mnt_id_start = mnt->mnt_id + 1;
+	spin_unlock(&mnt_id_lock);
+	if (res == -EAGAIN)
+		goto retry;
+
+	return res;
+}
+
+2.2 mount_fs()
+================================================================================
+struct dentry *
+mount_fs(struct file_system_type *type, int flags, const char *name, void *data)
+{
+	struct dentry *root;
+	struct super_block *sb;
+	char *secdata = NULL;
+	int error = -ENOMEM;
+
+	if (data && !(type->fs_flags & FS_BINARY_MOUNTDATA)) {
+		secdata = alloc_secdata();
+		if (!secdata)
+			goto out;
+
+		error = security_sb_copy_data(data, secdata);
+		if (error)
+			goto out_free_secdata;
+	}
+
+	root = type->mount(type, flags, name, data);
+	if (IS_ERR(root)) {
+		error = PTR_ERR(root);
+		goto out_free_secdata;
+	}
+	sb = root->d_sb;
+	BUG_ON(!sb);
+	WARN_ON(!sb->s_bdi);
+	WARN_ON(sb->s_bdi == &default_backing_dev_info);
+	sb->s_flags |= MS_BORN;
+
+	error = security_sb_kern_mount(sb, flags, secdata);
+	if (error)
+		goto out_sb;
+
+	/*
+	 * filesystems should never set s_maxbytes larger than MAX_LFS_FILESIZE
+	 * but s_maxbytes was an unsigned long long for many releases. Throw
+	 * this warning for a little while to try and catch filesystems that
+	 * violate this rule.
+	 */
+	WARN((sb->s_maxbytes < 0), "%s set sb->s_maxbytes to "
+		"negative value (%lld)\n", type->name, sb->s_maxbytes);
+
+	up_write(&sb->s_umount);
+	free_secdata(secdata);
+	return root;
+out_sb:
+	dput(root);
+	deactivate_locked_super(sb);
+out_free_secdata:
+	free_secdata(secdata);
+out:
+	return ERR_PTR(error);
+}
+
+2.2.1 type->mount(), rootfs_mount
+================================================================================
+static struct dentry *rootfs_mount(struct file_system_type *fs_type,
+	int flags, const char *dev_name, void *data)
+{
+	static unsigned long once;
+	void *fill = ramfs_fill_super;
+
+	if (test_and_set_bit(0, &once))
+		return ERR_PTR(-ENODEV);
+
+	if (IS_ENABLED(CONFIG_TMPFS) && is_tmpfs)
+		fill = shmem_fill_super;
+
+	return mount_nodev(fs_type, flags, data, fill);
+}
+
+2.2.1.1 mount_nodev()
+================================================================================
+struct dentry *mount_nodev(struct file_system_type *fs_type,
+	int flags, void *data,
+	int (*fill_super)(struct super_block *, void *, int))
+{
+	int error;
+	struct super_block *s = sget(fs_type, NULL, set_anon_super, flags, NULL);
+
+	if (IS_ERR(s))
+		return ERR_CAST(s);
+
+	error = fill_super(s, data, flags & MS_SILENT ? 1 : 0);
+	if (error) {
+		deactivate_locked_super(s);
+		return ERR_PTR(error);
+	}
+	s->s_flags |= MS_ACTIVE;
+	return dget(s->s_root);
+}
+
+3. create_mnt_ns()
+================================================================================
+static struct mnt_namespace *create_mnt_ns(struct vfsmount *m)
+{
+	struct mnt_namespace *new_ns = alloc_mnt_ns(&init_user_ns);
+	if (!IS_ERR(new_ns)) {
+		struct mount *mnt = real_mount(m);
+		mnt->mnt_ns = new_ns;
+		new_ns->root = mnt;
+		list_add(&mnt->mnt_list, &new_ns->list);
+	} else {
+		mntput(m);
+	}
+	return new_ns;
+}
+
+
+0. data structure
+================================================================================
+0.1 mount, allocate from mnt_cache
+================================================================================
+    struct mount
+    +-----------------------+
+    |mnt_id                 |
+    |mnt_group_id           |
+    |   (int)               |
+    +-----------------------+
+    |mnt_devname            |   eg. rootfs
+    |   (char *)            |
+    +-----------------------+
+    |mnt                    | --> struct vfsmount
+    |   (struct vfsmount)   |
+    +-----------------------+
+    |mnt_mountpoint         | --> struct dentry
+    |   (struct dentry)     |
+    +-----------------------+
+    |mnt_ns                 |
+    | (struct mnt_namespace)|
+    +-----------------------+
+    |                       |
+    |                       |
+    +-----------------------+
+    |mnt_parent             |
+    |   (struct mount*)     |
+    +-----------------------+
+
+0.1.1 vfsmount 
+================================================================================
+    struct vfsmount
+    +------------------------+
+    |mnt_root                |
+    |   (struct dentry *)    |
+    +------------------------+
+    |mnt_sb                  |
+    |   (struct super_block*)|
+    +------------------------+
+    |mnt_flags               |
+    |   (int)                |
+    +------------------------+
+
+0.1.2 mnt_namespace
+================================================================================
+
+
+0.2 path
+================================================================================
+    path
+    +--------------------------+
+    |mnt                       |
+    |  (struct vfsmount*)      |
+    +--------------------------+
+    |dentry                    |
+    |  (struct dentry*)        |
+    +--------------------------+
