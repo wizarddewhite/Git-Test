@@ -1,0 +1,110 @@
+1. super_block/dentry/inode
+================================================================================
+
+   struct super_block
+   +----------------------+  <-------------------------------------+
+   |                      |  <------------------------------+      |
+   |                      |                                 |      |
+   +----------------------+      struct dentry              |      |
+   |s_root                |      +----------------------+   |      |
+   |  (struct dentry*)    | ---->|d_sb                  | --+      |
+   +----------------------+      | (struct super_block*)|          |
+                                 +----------------------+          |
+                                 |d_inode               | --+      |
+                                 | (struct inode*)      |   |      |
+                                 +----------------------+   |      |
+                                                            |      |
+                             +------------------------------+      |
+                             |                                     |
+                             |                                     |
+                             |                                     |
+                             |   struct inode                      |                   
+                             |   +----------------------+          |
+                             +-->|i_sb                  | ---------+
+                                 |(struct super_block*) |
+                                 +----------------------+
+                                 |                      |
+                                 |                      |
+                                 +----------------------+
+
+
+a. root dentry is created by d_make_root()
+   this creates relationship between super_block <--> dentry
+b. inode is created by new_inode()
+   this creates relationship between super_block <--> inode
+c. __d_instantiate() connect dentry <--> inode
+d. super_block is create/get by sget()
+   now, we have one confusion, how we could create a super_block?
+   one super_block represent one partition? or one filesystem instance?
+
+2. inode/dentry
+================================================================================
+
+   inode
+   +---------------------+                                          
+   |i_dentry             |   <--------------------------------------+
+   |  (struct hlist_head)|                                          |
+   +---------------------+   <------------------+                   |
+              |                                 |                   |
+ +------------+         ^                       |                   |
+ |                      |                       |                   |
+ |   dentry             |    dentry             |   dentry          |
+ |   +----------------+ |    +----------------+ |   +-------------+ |
+ |   |d_inode         |-+    |d_inode         |-+   |d_inode      |-+
+ |   |                |      |                |     |             |
+ |   +----------------+      +----------------+     +-------------+
+ +-->|d_alias         |----->|d_alias         |---->|d_alias      |
+     |                |      |                |     |             |
+     +----------------+      +----------------+     +-------------+
+
+     This relationship is created in __d_instantiate()
+
+This means one inode could be mounted at different point?
+
+
+3. dentry/dentry
+================================================================================
+
+   dentry
+   +---------------------+                                          
+   |d_subdirs            |   <--------------------------------------+
+   |  (struct list_head) |                                          |
+   +---------------------+   <------------------+                   |
+              |                                 |                   |
+ +------------+         ^                       |                   |
+ |                      |                       |                   |
+ |   dentry             |    dentry             |   dentry          |
+ |   +----------------+ |    +----------------+ |   +-------------+ |
+ |   |d_parent        |-+    |d_parent        |-+   |d_parent     |-+
+ |   |                |      |                |     |             |
+ |   +----------------+      +----------------+     +-------------+
+ +-->|d_child         |----->|d_child         |---->|d_child      |
+     |                |      |                |     |             |
+     +----------------+      +----------------+     +-------------+
+
+     This relationship is created in d_alloc()
+
+Looks like the directory hierarcy.
+
+4. super_block/inode
+================================================================================
+   super_block
+   +---------------------+                                          
+   |s_inodes             |   <--------------------------------------+
+   |  (struct list_head) |                                          |
+   +---------------------+   <------------------+                   |
+              |                                 |                   |
+ +------------+         ^                       |                   |
+ |                      |                       |                   |
+ |   inode              |    inode              |   inode           |
+ |   +----------------+ |    +----------------+ |   +-------------+ |
+ |   |i_sb            |-+    |i_sb            |-+   |i_sb         |-+
+ |   |                |      |                |     |             |
+ |   +----------------+      +----------------+     +-------------+
+ +-->|i_sb_list       |----->|i_sb_list       |---->|i_sb_list    |
+     |                |      |                |     |             |
+     +----------------+      +----------------+     +-------------+
+
+     This relationship is created in new_inode()
+
+So the superblock maintains all the inode info of its partition?
