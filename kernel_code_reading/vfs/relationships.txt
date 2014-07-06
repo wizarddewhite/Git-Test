@@ -86,6 +86,10 @@ This means one inode could be mounted at different point?
 
 Looks like the directory hierarcy.
 
+Then who represents the file? and symlink? In ramfs_get_inode(), we found it
+is the inode, who has different operations to dir/file/symlink. But inode
+itself doesn't form a tree hierarchy.
+
 4. super_block/inode
 ================================================================================
    super_block
