@@ -1,0 +1,113 @@
+1. sysfs_init()
+================================================================================
+int __init sysfs_init(void)
+{
+	int err;
+
+	sysfs_root = kernfs_create_root(NULL, KERNFS_ROOT_EXTRA_OPEN_PERM_CHECK,
+					NULL);
+	if (IS_ERR(sysfs_root))
+		return PTR_ERR(sysfs_root);
+
+	sysfs_root_kn = sysfs_root->kn;
+
+	err = register_filesystem(&sysfs_fs_type);
+	if (err) {
+		kernfs_destroy_root(sysfs_root);
+		return err;
+	}
+
+	return 0;
+}
+
+1.1 kernfs_create_root()
+================================================================================
+struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
+				       unsigned int flags, void *priv)
+{
+	struct kernfs_root *root;
+	struct kernfs_node *kn;
+
+	root = kzalloc(sizeof(*root), GFP_KERNEL);
+	if (!root)
+		return ERR_PTR(-ENOMEM);
+
+	ida_init(&root->ino_ida);
+	INIT_LIST_HEAD(&root->supers);
+
+	kn = __kernfs_new_node(root, "", S_IFDIR | S_IRUGO | S_IXUGO,
+			       KERNFS_DIR);
+	if (!kn) {
+		ida_destroy(&root->ino_ida);
+		kfree(root);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	kn->priv = priv;
+	kn->dir.root = root;
+
+	root->syscall_ops = scops;
+	root->flags = flags;
+	root->kn = kn;
+	init_waitqueue_head(&root->deactivate_waitq);
+
+	if (!(root->flags & KERNFS_ROOT_CREATE_DEACTIVATED))
+		kernfs_activate(kn);
+
+	return root;
+}
+
+1.1.1 __kernfs_new_node()
+================================================================================
+static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
+					     const char *name, umode_t mode,
+					     unsigned flags)
+{
+	char *dup_name = NULL;
+	struct kernfs_node *kn;
+	int ret;
+
+	if (!(flags & KERNFS_STATIC_NAME)) {
+		name = dup_name = kstrdup(name, GFP_KERNEL);
+		if (!name)
+			return NULL;
+	}
+
+	kn = kmem_cache_zalloc(kernfs_node_cache, GFP_KERNEL);
+	if (!kn)
+		goto err_out1;
+
+	ret = ida_simple_get(&root->ino_ida, 1, 0, GFP_KERNEL);
+	if (ret < 0)
+		goto err_out2;
+	kn->ino = ret;
+
+	atomic_set(&kn->count, 1);
+	atomic_set(&kn->active, KN_DEACTIVATED_BIAS);
+	RB_CLEAR_NODE(&kn->rb);
+
+	kn->name = name;
+	kn->mode = mode;
+	kn->flags = flags;
+
+	return kn;
+
+ err_out2:
+	kmem_cache_free(kernfs_node_cache, kn);
+ err_out1:
+	kfree(dup_name);
+	return NULL;
+}
+
+2. sysfs and kobject
+================================================================================
+when creating a kobject, it will call kobject_add_internal(). In this
+function, it will call create_dir(), then this is the magic.
+
+sysfs_create_dir_ns() -> kernfs_create_dir_ns().
+
+0. data structure
+================================================================================
+   sysfs_root(struct kernfs_root)
+
+
