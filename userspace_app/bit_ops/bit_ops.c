@@ -192,8 +192,24 @@ void test_lowest_highest_bit_value()
 			765, highest_bit_value(765));
 }
 
+/* calculate the maximum number of continuous 1 */
+int maxstr1(unsigned x)
+{
+	int k;
+	for (k = 0; x != 0; k++)
+		x = x & 2*x;
+	return k;
+}
+
+void test_maxstr1()
+{
+	printf("max continuous 1 of %x is %d\n", 0xff0000ff, maxstr1(0xff0000ff));
+	printf("max continuous 1 of %x is %d\n", 0xff1000ff, maxstr1(0xff1000ff));
+	printf("max continuous 1 of %x is %d\n", 0xff8000ff, maxstr1(0xff8000ff));
+}
+
 int main()
 {
-	test_lowest_highest_bit_value();
+	test_maxstr1();
 	return 0;
 }
