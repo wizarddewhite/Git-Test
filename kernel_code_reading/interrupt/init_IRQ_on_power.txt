@@ -1722,7 +1722,7 @@ allocated_irqs(DECLARE_BITMAP)
 
 irq_desc                           struct irq_data
   +-----------------------+        +--------------------+
-  |irq_data               |--------+irq                 | irq in kernel
+  |irq_data               |--------+irq                 | kernel irq 
   |   (struct irq_data)   |        |hwirq               | hardware irq
   |                       |        +--------------------+
   +-----------------------+        |chip                | -> ics_opal_irq_chip
@@ -1736,9 +1736,12 @@ irq_desc                           struct irq_data
   |                       |                              
   |handle_irq             | -> handle_fasteoi_irq
   |                       |
-  |                       |        struct irqaction
-  +-----------------------+        +--------------------+
-  |action                 |--------+handler             | handler set by driver
+  |                       |        struct irqaction              irqaction chain          irqaction chain  
+  +-----------------------+        +--------------------+       +----------------+       +----------------+
+  |                       |------->|next                |  ---> |                |  ---> |                |
+  |                       |        | (struct irqaction*)|       +----------------+       +----------------+
+  |                       |        +--------------------+      
+  |action                 |        +handler             | handler set by driver
   |  (struct irqaction*)  |        +--------------------+
   +-----------------------+        |thread_fn           |
   |                       |        +--------------------+
