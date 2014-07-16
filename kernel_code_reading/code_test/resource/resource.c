@@ -25,8 +25,6 @@
 
 void dump(struct resource *root, int level)
 {
-	struct resource *tmp    = NULL;
-
 	if (!root)
 		return;
 
