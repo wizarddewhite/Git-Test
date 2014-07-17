@@ -28,26 +28,30 @@ static struct rb_root tree_root;
 
 struct dummy_struct tree_nodes[50];
 
-void dump_rb_tree(struct rb_node *node, int level)
+void dump_rb_tree(struct rb_node *node, int level, enum child_dir state)
 {
 	struct dummy_struct *this;
-	char prefix[30] = {0};
+	char prefix[40] = {0};
 	int  i;
 
 	if (!node)
 		return;
 
-	dump_rb_tree(node->rb_left, level+1);
+	dump_rb_tree(node->rb_left, level+1, left_child);
 
 	for (i = 0; i < level && i < 10; i++)
 		strcat(prefix, "   ");
 
+	if (state == right_child)
+		printk(KERN_ERR "   %s| \n", prefix);
 	this = rb_to_dummy(node);
-	printk(KERN_ERR "%02d %s %02d(%c)\n",
+	printk(KERN_ERR "%02d %s -%02d(%c)\n",
 			level, prefix, this->idx,
 			rb_is_red(node)?'r':'b');
+	if (state == left_child)
+		printk(KERN_ERR "   %s| \n", prefix);
 
-	dump_rb_tree(node->rb_right, level+1);
+	dump_rb_tree(node->rb_right, level+1, right_child);
 }
 
 static int insert_dummy_to_tree(struct dummy_struct *node)
@@ -87,7 +91,7 @@ static int rb_tree_init(void)
 		insert_dummy_to_tree(&tree_nodes[i]);
 	}
 
-	dump_rb_tree(tree_root.rb_node, 0);
+	dump_rb_tree(tree_root.rb_node, 0, root_node);
 
 	return 0;
 }

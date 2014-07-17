@@ -21,6 +21,12 @@
 
 #include <linux/rbtree.h>
 
+enum child_dir {
+	left_child,
+	right_child,
+	root_node
+};
+
 struct dummy_struct {
 	int idx;
 	struct rb_node rb;
