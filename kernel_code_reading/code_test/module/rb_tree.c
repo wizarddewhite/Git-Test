@@ -37,21 +37,21 @@ void dump_rb_tree(struct rb_node *node, int level, enum child_dir state)
 	if (!node)
 		return;
 
-	dump_rb_tree(node->rb_left, level+1, left_child);
+	dump_rb_tree(node->rb_right, level+1, right_child);
 
 	for (i = 0; i < level && i < 10; i++)
 		strcat(prefix, "   ");
 
-	if (state == right_child)
+	if (state == left_child)
 		printk(KERN_ERR "   %s| \n", prefix);
 	this = rb_to_dummy(node);
 	printk(KERN_ERR "%02d %s -%02d(%c)\n",
 			level, prefix, this->idx,
 			rb_is_red(node)?'r':'b');
-	if (state == left_child)
+	if (state == right_child)
 		printk(KERN_ERR "   %s| \n", prefix);
 
-	dump_rb_tree(node->rb_right, level+1, right_child);
+	dump_rb_tree(node->rb_left, level+1, left_child);
 }
 
 static int insert_dummy_to_tree(struct dummy_struct *node)
