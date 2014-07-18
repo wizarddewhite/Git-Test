@@ -1,0 +1,390 @@
+1. kernfs_init()
+================================================================================
+void __init kernfs_init(void)
+{
+	kernfs_node_cache = kmem_cache_create("kernfs_node_cache",
+					      sizeof(struct kernfs_node),
+					      0, SLAB_PANIC, NULL);
+	kernfs_inode_init();
+}
+
+1.1 kernfs_inode_init()
+================================================================================
+void __init kernfs_inode_init(void)
+{
+	if (bdi_init(&kernfs_bdi))
+		panic("failed to init kernfs_bdi");
+}
+
+2. kernfs_create_root()
+================================================================================
+struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
+				       unsigned int flags, void *priv)
+{
+	struct kernfs_root *root;
+	struct kernfs_node *kn;
+
+	root = kzalloc(sizeof(*root), GFP_KERNEL);
+	if (!root)
+		return ERR_PTR(-ENOMEM);
+
+	ida_init(&root->ino_ida);
+	INIT_LIST_HEAD(&root->supers);
+
+	kn = __kernfs_new_node(root, "", S_IFDIR | S_IRUGO | S_IXUGO,
+			       KERNFS_DIR);
+	if (!kn) {
+		ida_destroy(&root->ino_ida);
+		kfree(root);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	kn->priv = priv;
+	kn->dir.root = root;
+
+	root->syscall_ops = scops;
+	root->flags = flags;
+	root->kn = kn;
+	init_waitqueue_head(&root->deactivate_waitq);
+
+	if (!(root->flags & KERNFS_ROOT_CREATE_DEACTIVATED))
+		kernfs_activate(kn);
+
+	return root;
+}
+
+2.1 __kernfs_new_node()
+================================================================================
+static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
+					     const char *name, umode_t mode,
+					     unsigned flags)
+{
+	char *dup_name = NULL;
+	struct kernfs_node *kn;
+	int ret;
+
+	if (!(flags & KERNFS_STATIC_NAME)) {
+		name = dup_name = kstrdup(name, GFP_KERNEL);
+		if (!name)
+			return NULL;
+	}
+
+	kn = kmem_cache_zalloc(kernfs_node_cache, GFP_KERNEL);
+	if (!kn)
+		goto err_out1;
+
+	ret = ida_simple_get(&root->ino_ida, 1, 0, GFP_KERNEL);
+	if (ret < 0)
+		goto err_out2;
+	kn->ino = ret;
+
+	atomic_set(&kn->count, 1);
+	atomic_set(&kn->active, KN_DEACTIVATED_BIAS);
+	RB_CLEAR_NODE(&kn->rb);
+
+	kn->name = name;
+	kn->mode = mode;
+	kn->flags = flags;
+
+	return kn;
+
+ err_out2:
+	kmem_cache_free(kernfs_node_cache, kn);
+ err_out1:
+	kfree(dup_name);
+	return NULL;
+}
+
+2.2 kernfs_activate()
+================================================================================
+void kernfs_activate(struct kernfs_node *kn)
+{
+	struct kernfs_node *pos;
+
+	mutex_lock(&kernfs_mutex);
+
+	pos = NULL;
+	while ((pos = kernfs_next_descendant_post(pos, kn))) {
+		if (!pos || (pos->flags & KERNFS_ACTIVATED))
+			continue;
+
+		WARN_ON_ONCE(pos->parent && RB_EMPTY_NODE(&pos->rb));
+		WARN_ON_ONCE(atomic_read(&pos->active) != KN_DEACTIVATED_BIAS);
+
+		atomic_sub(KN_DEACTIVATED_BIAS, &pos->active);
+		pos->flags |= KERNFS_ACTIVATED;
+	}
+
+	mutex_unlock(&kernfs_mutex);
+}
+
+3. kernfs_destroy_root()
+================================================================================
+void kernfs_destroy_root(struct kernfs_root *root)
+{
+	kernfs_remove(root->kn);	/* will also free @root */
+}
+
+3.1 kernfs_remove()
+================================================================================
+void kernfs_remove(struct kernfs_node *kn)
+{
+	mutex_lock(&kernfs_mutex);
+	__kernfs_remove(kn);
+	mutex_unlock(&kernfs_mutex);
+}
+
+static void __kernfs_remove(struct kernfs_node *kn)
+{
+	struct kernfs_node *pos;
+
+	lockdep_assert_held(&kernfs_mutex);
+
+	/*
+	 * Short-circuit if non-root @kn has already finished removal.
+	 * This is for kernfs_remove_self() which plays with active ref
+	 * after removal.
+	 */
+	if (!kn || (kn->parent && RB_EMPTY_NODE(&kn->rb)))
+		return;
+
+	pr_debug("kernfs %s: removing\n", kn->name);
+
+	/* prevent any new usage under @kn by deactivating all nodes */
+	pos = NULL;
+	while ((pos = kernfs_next_descendant_post(pos, kn)))
+		if (kernfs_active(pos))
+			atomic_add(KN_DEACTIVATED_BIAS, &pos->active);
+
+	/* deactivate and unlink the subtree node-by-node */
+	do {
+		pos = kernfs_leftmost_descendant(kn);
+
+		/*
+		 * kernfs_drain() drops kernfs_mutex temporarily and @pos's
+		 * base ref could have been put by someone else by the time
+		 * the function returns.  Make sure it doesn't go away
+		 * underneath us.
+		 */
+		kernfs_get(pos);
+
+		/*
+		 * Drain iff @kn was activated.  This avoids draining and
+		 * its lockdep annotations for nodes which have never been
+		 * activated and allows embedding kernfs_remove() in create
+		 * error paths without worrying about draining.
+		 */
+		if (kn->flags & KERNFS_ACTIVATED)
+			kernfs_drain(pos);
+		else
+			WARN_ON_ONCE(atomic_read(&kn->active) != KN_DEACTIVATED_BIAS);
+
+		/*
+		 * kernfs_unlink_sibling() succeeds once per node.  Use it
+		 * to decide who's responsible for cleanups.
+		 */
+		if (!pos->parent || kernfs_unlink_sibling(pos)) {
+			struct kernfs_iattrs *ps_iattr =
+				pos->parent ? pos->parent->iattr : NULL;
+
+			/* update timestamps on the parent */
+			if (ps_iattr) {
+				ps_iattr->ia_iattr.ia_ctime = CURRENT_TIME;
+				ps_iattr->ia_iattr.ia_mtime = CURRENT_TIME;
+			}
+
+			kernfs_put(pos);
+		}
+
+		kernfs_put(pos);
+	} while (pos != kn);
+}
+
+4. kernfs_create_dir_ns()
+================================================================================
+struct kernfs_node *kernfs_create_dir_ns(struct kernfs_node *parent,
+					 const char *name, umode_t mode,
+					 void *priv, const void *ns)
+{
+	struct kernfs_node *kn;
+	int rc;
+
+	/* allocate */
+	kn = kernfs_new_node(parent, name, mode | S_IFDIR, KERNFS_DIR);
+	if (!kn)
+		return ERR_PTR(-ENOMEM);
+
+	kn->dir.root = parent->dir.root;
+	kn->ns = ns;
+	kn->priv = priv;
+
+	/* link in */
+	rc = kernfs_add_one(kn);
+	if (!rc)
+		return kn;
+
+	kernfs_put(kn);
+	return ERR_PTR(rc);
+}
+
+4.1 kernfs_new_node()
+================================================================================
+struct kernfs_node *kernfs_new_node(struct kernfs_node *parent,
+				    const char *name, umode_t mode,
+				    unsigned flags)
+{
+	struct kernfs_node *kn;
+
+	kn = __kernfs_new_node(kernfs_root(parent), name, mode, flags);
+	if (kn) {
+		kernfs_get(parent);
+		kn->parent = parent;
+	}
+	return kn;
+}
+
+4.2 kernfs_add_one()
+================================================================================
+int kernfs_add_one(struct kernfs_node *kn)
+{
+	struct kernfs_node *parent = kn->parent;
+	struct kernfs_iattrs *ps_iattr;
+	bool has_ns;
+	int ret;
+
+	mutex_lock(&kernfs_mutex);
+
+	ret = -EINVAL;
+	has_ns = kernfs_ns_enabled(parent);
+	if (WARN(has_ns != (bool)kn->ns, KERN_WARNING "kernfs: ns %s in '%s' for '%s'\n",
+		 has_ns ? "required" : "invalid", parent->name, kn->name))
+		goto out_unlock;
+
+	if (kernfs_type(parent) != KERNFS_DIR)
+		goto out_unlock;
+
+	ret = -ENOENT;
+	if ((parent->flags & KERNFS_ACTIVATED) && !kernfs_active(parent))
+		goto out_unlock;
+
+	kn->hash = kernfs_name_hash(kn->name, kn->ns);
+
+	ret = kernfs_link_sibling(kn);
+	if (ret)
+		goto out_unlock;
+
+	/* Update timestamps on the parent */
+	ps_iattr = parent->iattr;
+	if (ps_iattr) {
+		struct iattr *ps_iattrs = &ps_iattr->ia_iattr;
+		ps_iattrs->ia_ctime = ps_iattrs->ia_mtime = CURRENT_TIME;
+	}
+
+	mutex_unlock(&kernfs_mutex);
+
+	/*
+	 * Activate the new node unless CREATE_DEACTIVATED is requested.
+	 * If not activated here, the kernfs user is responsible for
+	 * activating the node with kernfs_activate().  A node which hasn't
+	 * been activated is not visible to userland and its removal won't
+	 * trigger deactivation.
+	 */
+	if (!(kernfs_root(kn)->flags & KERNFS_ROOT_CREATE_DEACTIVATED))
+		kernfs_activate(kn);
+	return 0;
+
+out_unlock:
+	mutex_unlock(&kernfs_mutex);
+	return ret;
+}
+
+4.2.1 kernfs_link_sibling()
+================================================================================
+static int kernfs_link_sibling(struct kernfs_node *kn)
+{
+	struct rb_node **node = &kn->parent->dir.children.rb_node;
+	struct rb_node *parent = NULL;
+
+	while (*node) {
+		struct kernfs_node *pos;
+		int result;
+
+		pos = rb_to_kn(*node);
+		parent = *node;
+		result = kernfs_sd_compare(kn, pos);
+		if (result < 0)
+			node = &pos->rb.rb_left;
+		else if (result > 0)
+			node = &pos->rb.rb_right;
+		else
+			return -EEXIST;
+	}
+
+	/* add new node and rebalance the tree */
+	rb_link_node(&kn->rb, parent, node);
+	rb_insert_color(&kn->rb, &kn->parent->dir.children);
+
+	/* successfully added, account subdir number */
+	if (kernfs_type(kn) == KERNFS_DIR)
+		kn->parent->dir.subdirs++;
+
+	return 0;
+}
+
+0. data structure
+================================================================================
+
+    kernfs_root                     <--------------------------------------------+
+    +----------------------------+                                               |
+    |supers                      |                                               |
+    |   (struct list_head)       |                                               |
+    +----------------------------+                                               |
+    |syscall_ops                 |                                               |
+    |(struct kernfs_syscall_ops*)|                                               |
+    +----------------------------+                                               |
+    |                            |                                               |
+    |                            |                                               |
+    +----------------------------+                                               |
+    |                            |                                               |
+    |                            |                                               |
+    +----------------------------+                                               |
+    |                            |                                               |
+    |                            |         struct kernfs_node                    |
+    +----------------------------+         +----------------------------+        |
+    |kn                          |-------->|parent                      |  NULL  |
+    |  (struct kernfs_node*)     |      +->| (struct kernfs_node*)      |        |
+    +----------------------------+      |  +----------------------------+        |
+                                        |  |name                        |        |
+                                        |  | (char *)                   |        |
+                                        |  +----------------------------+        |
+                                        |  |                            |        |
+                                        |  |                            |        |
+                                        |  +----------------------------+        |
+                                        |  |                            |        |
+                                        |  |                            |        |
+                                        |  +----------------------------+        |
+                                        |  |symlink                     |        |
+                                        |  |(struct kernfs_elem_symlink)|        |
+                                        |  |     target_kn              |        |
+                                        |  |attr                        |        |
+                                        |  |(struct kernfs_elem_attr)   |        |
+                                        |  |     size                   |        |
+                                        |  |     open                   |        |
+                                        |  |     ops                    |        |
+                                        |  |dir                         |        |
+                                        |  |(struct kernfs_elem_dir)    |        |
+                                        |  |     root                   | -------+
+                                        |  |     subdirs                |         
+                                        |  |     children(rb_root)      |         
+                                        |  +----------------------------+
+                                        |   /        |                 \
+                                        | /          |                  \
+                                        |            |                   \
+                                       /|            |                    \
+                                     /  |            |                     \
+       struct kernfs_node               |  struct kernfs_node               struct kernfs_node             
+       +----------------------------+   |  +----------------------------+   +----------------------------+ 
+       |parent                      | --+  |parent                      |   |parent                      | 
+       | (struct kernfs_node*)      |      | (struct kernfs_node*)      |   | (struct kernfs_node*)      |
+       +----------------------------+      +----------------------------+   +----------------------------+
+
