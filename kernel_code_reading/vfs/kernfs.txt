@@ -331,6 +331,154 @@ static int kernfs_link_sibling(struct kernfs_node *kn)
 	return 0;
 }
 
+5. kernfs_mount_ns(), mount -t sysfs sysfs dir
+================================================================================
+struct dentry *kernfs_mount_ns(struct file_system_type *fs_type, int flags,
+				struct kernfs_root *root, unsigned long magic,
+				bool *new_sb_created, const void *ns)
+{
+	struct super_block *sb;
+	struct kernfs_super_info *info;
+	int error;
+
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info)
+		return ERR_PTR(-ENOMEM);
+
+	info->root = root;
+	info->ns = ns;
+
+	sb = sget(fs_type, kernfs_test_super, kernfs_set_super, flags, info);
+	if (IS_ERR(sb) || sb->s_fs_info != info)
+		kfree(info);
+	if (IS_ERR(sb))
+		return ERR_CAST(sb);
+
+	if (new_sb_created)
+		*new_sb_created = !sb->s_root;
+
+	if (!sb->s_root) {
+		struct kernfs_super_info *info = kernfs_info(sb);
+
+		error = kernfs_fill_super(sb, magic);
+		if (error) {
+			deactivate_locked_super(sb);
+			return ERR_PTR(error);
+		}
+		sb->s_flags |= MS_ACTIVE;
+
+		mutex_lock(&kernfs_mutex);
+		list_add(&info->node, &root->supers);
+		mutex_unlock(&kernfs_mutex);
+	}
+
+	return dget(sb->s_root);
+}
+
+5.1 kernfs_test_super()
+================================================================================
+static int kernfs_test_super(struct super_block *sb, void *data)
+{
+	struct kernfs_super_info *sb_info = kernfs_info(sb);
+	struct kernfs_super_info *info = data;
+
+	return sb_info->root == info->root && sb_info->ns == info->ns;
+}
+
+5.2 kernfs_set_super()
+================================================================================
+static int kernfs_set_super(struct super_block *sb, void *data)
+{
+	int error;
+	error = set_anon_super(sb, data);
+	if (!error)
+		sb->s_fs_info = data;
+	return error;
+}
+
+5.3 kernfs_fill_super(), root inode and create root dentry
+================================================================================
+static int kernfs_fill_super(struct super_block *sb, unsigned long magic)
+{
+	struct kernfs_super_info *info = kernfs_info(sb);
+	struct inode *inode;
+	struct dentry *root;
+
+	info->sb = sb;
+	sb->s_blocksize = PAGE_CACHE_SIZE;
+	sb->s_blocksize_bits = PAGE_CACHE_SHIFT;
+	sb->s_magic = magic;
+	sb->s_op = &kernfs_sops;
+	sb->s_time_gran = 1;
+
+	/* get root inode, initialize and unlock it */
+	mutex_lock(&kernfs_mutex);
+	inode = kernfs_get_inode(sb, info->root->kn);
+	mutex_unlock(&kernfs_mutex);
+	if (!inode) {
+		pr_debug("kernfs: could not get root inode\n");
+		return -ENOMEM;
+	}
+
+	/* instantiate and link root dentry */
+	root = d_make_root(inode);
+	if (!root) {
+		pr_debug("%s: could not get root dentry!\n", __func__);
+		return -ENOMEM;
+	}
+	kernfs_get(info->root->kn);
+	root->d_fsdata = info->root->kn;
+	sb->s_root = root;
+	sb->s_d_op = &kernfs_dops;
+	return 0;
+}
+
+5.3.1 kernfs_get_inode()
+================================================================================
+struct inode *kernfs_get_inode(struct super_block *sb, struct kernfs_node *kn)
+{
+	struct inode *inode;
+
+	inode = iget_locked(sb, kn->ino);
+	if (inode && (inode->i_state & I_NEW))
+		kernfs_init_inode(kn, inode);
+
+	return inode;
+}
+
+5.3.1.1 kernfs_init_inode(), create an kernfs inode
+================================================================================
+static void kernfs_init_inode(struct kernfs_node *kn, struct inode *inode)
+{
+	kernfs_get(kn);
+	inode->i_private = kn;
+	inode->i_mapping->a_ops = &kernfs_aops;
+	inode->i_mapping->backing_dev_info = &kernfs_bdi;
+	inode->i_op = &kernfs_iops;
+
+	set_default_inode_attr(inode, kn->mode);
+	kernfs_refresh_inode(kn, inode);
+
+	/* initialize inode according to type */
+	switch (kernfs_type(kn)) {
+	case KERNFS_DIR:
+		inode->i_op = &kernfs_dir_iops;
+		inode->i_fop = &kernfs_dir_fops;
+		break;
+	case KERNFS_FILE:
+		inode->i_size = kn->attr.size;
+		inode->i_fop = &kernfs_file_fops;
+		break;
+	case KERNFS_LINK:
+		inode->i_op = &kernfs_symlink_iops;
+		break;
+	default:
+		BUG();
+	}
+
+	unlock_new_inode(inode);
+}
+
 0. data structure
 ================================================================================
 
