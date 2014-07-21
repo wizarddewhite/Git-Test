@@ -1,0 +1,169 @@
+1. getcwd(), pwd
+================================================================================
+SYSCALL_DEFINE2(getcwd, char __user *, buf, unsigned long, size)
+{
+	int error;
+	struct path pwd, root;
+	char *page = __getname();
+
+	if (!page)
+		return -ENOMEM;
+
+	rcu_read_lock();
+	get_fs_root_and_pwd_rcu(current->fs, &root, &pwd);
+
+	error = -ENOENT;
+	if (!d_unlinked(pwd.dentry)) {
+		unsigned long len;
+		char *cwd = page + PATH_MAX;
+		int buflen = PATH_MAX;
+
+		prepend(&cwd, &buflen, "\0", 1);
+		error = prepend_path(&pwd, &root, &cwd, &buflen);
+		rcu_read_unlock();
+
+		if (error < 0)
+			goto out;
+
+		/* Unreachable from current root */
+		if (error > 0) {
+			error = prepend_unreachable(&cwd, &buflen);
+			if (error)
+				goto out;
+		}
+
+		error = -ERANGE;
+		len = PATH_MAX + page - cwd;
+		if (len <= size) {
+			error = len;
+			if (copy_to_user(buf, cwd, len))
+				error = -EFAULT;
+		}
+	} else {
+		rcu_read_unlock();
+	}
+
+out:
+	__putname(page);
+	return error;
+}
+
+1.1 __getname()
+================================================================================
+#define __getname()		kmem_cache_alloc(names_cachep, GFP_KERNEL)
+
+1.2 get_fs_root_and_pwd_rcu()
+================================================================================
+static void get_fs_root_and_pwd_rcu(struct fs_struct *fs, struct path *root,
+				    struct path *pwd)
+{
+	unsigned seq;
+
+	do {
+		seq = read_seqcount_begin(&fs->seq);
+		*root = fs->root;
+		*pwd = fs->pwd;
+	} while (read_seqcount_retry(&fs->seq, seq));
+}
+
+1.3 prepend()
+================================================================================
+static int prepend(char **buffer, int *buflen, const char *str, int namelen)
+{
+	*buflen -= namelen;
+	if (*buflen < 0)
+		return -ENAMETOOLONG;
+	*buffer -= namelen;
+	memcpy(*buffer, str, namelen);
+	return 0;
+}
+
+1.4 prepend_path(), go up the dentry tree, prepend the path name
+================================================================================
+static int prepend_path(const struct path *path,
+			const struct path *root,
+			char **buffer, int *buflen)
+{
+	struct dentry *dentry;
+	struct vfsmount *vfsmnt;
+	struct mount *mnt;
+	int error = 0;
+	unsigned seq, m_seq = 0;
+	char *bptr;
+	int blen;
+
+	rcu_read_lock();
+restart_mnt:
+	read_seqbegin_or_lock(&mount_lock, &m_seq);
+	seq = 0;
+	rcu_read_lock();
+restart:
+	bptr = *buffer;
+	blen = *buflen;
+	error = 0;
+	dentry = path->dentry;
+	vfsmnt = path->mnt;
+	mnt = real_mount(vfsmnt);
+	read_seqbegin_or_lock(&rename_lock, &seq);
+	while (dentry != root->dentry || vfsmnt != root->mnt) {
+		struct dentry * parent;
+
+		if (dentry == vfsmnt->mnt_root || IS_ROOT(dentry)) {
+			struct mount *parent = ACCESS_ONCE(mnt->mnt_parent);
+			/* Global root? */
+			if (mnt != parent) {
+				dentry = ACCESS_ONCE(mnt->mnt_mountpoint);
+				mnt = parent;
+				vfsmnt = &mnt->mnt;
+				continue;
+			}
+			/*
+			 * Filesystems needing to implement special "root names"
+			 * should do so with ->d_dname()
+			 */
+			if (IS_ROOT(dentry) &&
+			   (dentry->d_name.len != 1 ||
+			    dentry->d_name.name[0] != '/')) {
+				WARN(1, "Root dentry has weird name <%.*s>\n",
+				     (int) dentry->d_name.len,
+				     dentry->d_name.name);
+			}
+			if (!error)
+				error = is_mounted(vfsmnt) ? 1 : 2;
+			break;
+		}
+		parent = dentry->d_parent;
+		prefetch(parent);
+		error = prepend_name(&bptr, &blen, &dentry->d_name);
+		if (error)
+			break;
+
+		dentry = parent;
+	}
+	if (!(seq & 1))
+		rcu_read_unlock();
+	if (need_seqretry(&rename_lock, seq)) {
+		seq = 1;
+		goto restart;
+	}
+	done_seqretry(&rename_lock, seq);
+
+	if (!(m_seq & 1))
+		rcu_read_unlock();
+	if (need_seqretry(&mount_lock, m_seq)) {
+		m_seq = 1;
+		goto restart_mnt;
+	}
+	done_seqretry(&mount_lock, m_seq);
+
+	if (error >= 0 && bptr == *buffer) {
+		if (--blen < 0)
+			error = -ENAMETOOLONG;
+		else
+			*--bptr = '/';
+	}
+	*buffer = bptr;
+	*buflen = blen;
+	return error;
+}
+
