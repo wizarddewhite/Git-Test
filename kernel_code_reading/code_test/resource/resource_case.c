@@ -174,7 +174,7 @@ void realloc_test(struct resource *root, struct resource *res)
             break;
         default:
             for (index = 0; index < 3; index++)
-                printf("%x\n", (unsigned int)&res[index]);
+                printf("%lx\n", (unsigned long)&res[index]);
             printf("------------\n");
             remove_old(root, &res[2]);
             break;
@@ -494,20 +494,25 @@ void request_region_test()
 {
 	init2();
 
-	printf("this test is used to show the difference between "
-			"request_resource_conflict and __request_region\n");
+	printf("\nThis test is used to show the difference between \n"
+		"\trequest_resource_conflict()\n\t__request_region()\n\n\n");
 
 	struct resource tmp;
 	tmp.start = 105;
 	tmp.end = 114;
-	printf("try to use request_resource_conflict to request resource %lu-%lu\n", tmp.start, tmp.end);
+	printf("1. try to use request_resource_conflict to request resource %lu-%lu\n", tmp.start, tmp.end);
 	if (request_resource_conflict(&root, &tmp))
-		printf("failed to request resource %lu-%lu by request_resource_conflict\n", tmp.start, tmp.end);
-
-	/* this will allocate [105,114] deep in the tree */
-	printf("try to use request_region to request resource %lu-%lu\n", tmp.start, tmp.end);
-	__request_region(&root, 105, 10, "test", 0);
+		printf("   failed to request resource %lu-%lu by request_resource_conflict\n", tmp.start, tmp.end);
 	dump(&root, 0);
+
+	printf("\n\n\n");
+	/* this will allocate [105,114] deep in the tree */
+	printf("2. try to use request_region to request resource %lu-%lu\n", tmp.start, tmp.end);
+	__request_region(&root, tmp.start, resource_size(&tmp), "test", 0);
+	dump(&root, 0);
+
+	printf("\n---The difference is request_region() will go down the tree,\n"
+		"   while request_resource_conflict() will just allocate at first level\n");
 }
 
 void reserve_region_with_split_test()
