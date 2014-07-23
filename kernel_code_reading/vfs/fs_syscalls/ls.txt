@@ -1,0 +1,251 @@
+1. getdents(), ls will call this
+================================================================================
+SYSCALL_DEFINE3(getdents, unsigned int, fd,
+		struct linux_dirent __user *, dirent, unsigned int, count)
+{
+	struct fd f;
+	struct linux_dirent __user * lastdirent;
+	struct getdents_callback buf = {
+		.ctx.actor = filldir,
+		.count = count,
+		.current_dir = dirent
+	};
+	int error;
+
+	if (!access_ok(VERIFY_WRITE, dirent, count))
+		return -EFAULT;
+
+	f = fdget(fd);
+	if (!f.file)
+		return -EBADF;
+
+	error = iterate_dir(f.file, &buf.ctx);
+	if (error >= 0)
+		error = buf.error;
+	lastdirent = buf.previous;
+	if (lastdirent) {
+		if (put_user(buf.ctx.pos, &lastdirent->d_off))
+			error = -EFAULT;
+		else
+			error = count - buf.count;
+	}
+	fdput(f);
+	return error;
+}
+
+1.1 fdget()
+================================================================================
+static inline struct fd fdget(unsigned int fd)
+{
+	return __to_fd(__fdget(fd));
+}
+
+1.2 iterate_dir()
+================================================================================
+int iterate_dir(struct file *file, struct dir_context *ctx)
+{
+	struct inode *inode = file_inode(file);
+	int res = -ENOTDIR;
+	if (!file->f_op->iterate)
+		goto out;
+
+	res = security_file_permission(file, MAY_READ);
+	if (res)
+		goto out;
+
+	res = mutex_lock_killable(&inode->i_mutex);
+	if (res)
+		goto out;
+
+	res = -ENOENT;
+	if (!IS_DEADDIR(inode)) {
+		ctx->pos = file->f_pos;
+		res = file->f_op->iterate(file, ctx);
+		file->f_pos = ctx->pos;
+		fsnotify_access(file);
+		file_accessed(file);
+	}
+	mutex_unlock(&inode->i_mutex);
+out:
+	return res;
+}
+
+1.2.1 file->f_op->iterate()
+================================================================================
+static int kernfs_fop_readdir(struct file *file, struct dir_context *ctx)
+{
+	struct dentry *dentry = file->f_path.dentry;
+	struct kernfs_node *parent = dentry->d_fsdata;
+	struct kernfs_node *pos = file->private_data;
+	const void *ns = NULL;
+
+	if (!dir_emit_dots(file, ctx))
+		return 0;
+	mutex_lock(&kernfs_mutex);
+
+	if (kernfs_ns_enabled(parent))
+		ns = kernfs_info(dentry->d_sb)->ns;
+
+	for (pos = kernfs_dir_pos(ns, parent, ctx->pos, pos);
+	     pos;
+	     pos = kernfs_dir_next_pos(ns, parent, ctx->pos, pos)) {
+		const char *name = pos->name;
+		unsigned int type = dt_type(pos);
+		int len = strlen(name);
+		ino_t ino = pos->ino;
+
+		ctx->pos = pos->hash;
+		file->private_data = pos;
+		kernfs_get(pos);
+
+		mutex_unlock(&kernfs_mutex);
+		if (!dir_emit(ctx, name, len, ino, type))
+			return 0;
+		mutex_lock(&kernfs_mutex);
+	}
+	mutex_unlock(&kernfs_mutex);
+	file->private_data = NULL;
+	ctx->pos = INT_MAX;
+	return 0;
+}
+
+1.2.1.1 kernfs_dir_pos()
+================================================================================
+static struct kernfs_node *kernfs_dir_pos(const void *ns,
+	struct kernfs_node *parent, loff_t hash, struct kernfs_node *pos)
+{
+	if (pos) {
+		int valid = kernfs_active(pos) &&
+			pos->parent == parent && hash == pos->hash;
+		kernfs_put(pos);
+		if (!valid)
+			pos = NULL;
+	}
+	if (!pos && (hash > 1) && (hash < INT_MAX)) {
+		struct rb_node *node = parent->dir.children.rb_node;
+		while (node) {
+			pos = rb_to_kn(node);
+
+			if (hash < pos->hash)
+				node = node->rb_left;
+			else if (hash > pos->hash)
+				node = node->rb_right;
+			else
+				break;
+		}
+	}
+	/* Skip over entries which are dying/dead or in the wrong namespace */
+	while (pos && (!kernfs_active(pos) || pos->ns != ns)) {
+		struct rb_node *node = rb_next(&pos->rb);
+		if (!node)
+			pos = NULL;
+		else
+			pos = rb_to_kn(node);
+	}
+	return pos;
+}
+
+1.2.1.2 kernfs_dir_next_pos()
+================================================================================
+static struct kernfs_node *kernfs_dir_next_pos(const void *ns,
+	struct kernfs_node *parent, ino_t ino, struct kernfs_node *pos)
+{
+	pos = kernfs_dir_pos(ns, parent, ino, pos);
+	if (pos) {
+		do {
+			struct rb_node *node = rb_next(&pos->rb);
+			if (!node)
+				pos = NULL;
+			else
+				pos = rb_to_kn(node);
+		} while (pos && (!kernfs_active(pos) || pos->ns != ns));
+	}
+	return pos;
+}
+
+1.2.1.3 dir_emit()
+================================================================================
+static inline bool dir_emit(struct dir_context *ctx,
+			    const char *name, int namelen,
+			    u64 ino, unsigned type)
+{
+	return ctx->actor(ctx, name, namelen, ctx->pos, ino, type) == 0;
+}
+
+static int filldir(void * __buf, const char * name, int namlen, loff_t offset,
+		   u64 ino, unsigned int d_type)
+{
+	struct linux_dirent __user * dirent;
+	struct getdents_callback * buf = (struct getdents_callback *) __buf;
+	unsigned long d_ino;
+	int reclen = ALIGN(offsetof(struct linux_dirent, d_name) + namlen + 2,
+		sizeof(long));
+
+	buf->error = -EINVAL;	/* only used if we fail.. */
+	if (reclen > buf->count)
+		return -EINVAL;
+	d_ino = ino;
+	if (sizeof(d_ino) < sizeof(ino) && d_ino != ino) {
+		buf->error = -EOVERFLOW;
+		return -EOVERFLOW;
+	}
+	dirent = buf->previous;
+	if (dirent) {
+		if (__put_user(offset, &dirent->d_off))
+			goto efault;
+	}
+	dirent = buf->current_dir;
+	if (__put_user(d_ino, &dirent->d_ino))
+		goto efault;
+	if (__put_user(reclen, &dirent->d_reclen))
+		goto efault;
+	if (copy_to_user(dirent->d_name, name, namlen))
+		goto efault;
+	if (__put_user(0, dirent->d_name + namlen))
+		goto efault;
+	if (__put_user(d_type, (char __user *) dirent + reclen - 1))
+		goto efault;
+	buf->previous = dirent;
+	dirent = (void __user *)dirent + reclen;
+	buf->current_dir = dirent;
+	buf->count -= reclen;
+	return 0;
+efault:
+	buf->error = -EFAULT;
+	return -EFAULT;
+}
+
+1.3 fdput()
+================================================================================
+static inline void fdput(struct fd fd)
+{
+	if (fd.flags & FDPUT_FPUT)
+		fput(fd.file);
+}
+
+0. data struct
+================================================================================
+
+0.1 file 
+================================================================================
+
+    struct file
+    +-----------------------+
+    |f_inode                |
+    | (struct inode*)       |
+    +-----------------------+
+    |f_path                 |
+    | (struct path)         |
+    +-----------------------+
+    |                       |
+    |                       |
+    +-----------------------+
+    |                       |
+    |                       |
+    +-----------------------+
+    |                       |
+    |                       |
+    +-----------------------+
+    |                       |
+    |                       |
+    +-----------------------+
