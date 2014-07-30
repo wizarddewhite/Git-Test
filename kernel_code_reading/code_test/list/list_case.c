@@ -74,11 +74,11 @@ void list_del_test()
 {
 	printf("prepare the list for test: \n");
 	list_add_tail_test();
-	list_for_each_entry_safe_test();
+	list_for_each_entry_safe_test(0);
 
 	list_del(&elem[7].list_node);
 	printf("after delete the elment 7: \n");
-	list_for_each_entry_safe_test();
+	list_for_each_entry_safe_test(0);
 }
 
 void list_add_tail_test()
@@ -103,11 +103,12 @@ void list_for_each_test()
 		printf("%d\n", i++);
 }
 
-void list_for_each_entry_test()
+void list_for_each_entry_test(int create)
 {
 	struct list_dummy *iter;
 
-	list_add_tail_test();
+	if (create)
+		list_add_tail_test();
 
 	list_for_each_entry(iter, &test_list, list_node)
 	{
@@ -166,12 +167,13 @@ void list_for_each_entry_reverse_test()
 
 }
 
-void list_for_each_entry_safe_test()
+void list_for_each_entry_safe_test(int create)
 {
 	struct list_dummy *iter;
 	struct list_dummy *tmp;
 
-	list_add_tail_test();
+	if (create)
+		list_add_tail_test();
 
 	list_for_each_entry_safe(iter, tmp, &test_list, list_node)
 	{
@@ -184,7 +186,7 @@ void list_move_test()
 	struct list_dummy *iter, *iter2;
 	struct list_dummy *tmp;
 
-	list_for_each_entry_test();
+	list_for_each_entry_test(0);
 
 	printf("---   we want to move 5 after 8\n");
 	list_for_each_entry_safe(iter, tmp, &test_list, list_node) {
@@ -236,7 +238,7 @@ void list_splice_tail_test()
 
 int main()
 {
-	list_move_test();
+	list_for_each_entry_test(1);
 
 	return 0;
 }
