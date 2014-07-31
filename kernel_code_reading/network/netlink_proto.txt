@@ -382,6 +382,49 @@ out_sock_release_nosk:
 	return NULL;
 }
 
+1.5.2 rtnl_register(), register a rtnetlink message type
+================================================================================
+void rtnl_register(int protocol, int msgtype,
+		   rtnl_doit_func doit, rtnl_dumpit_func dumpit,
+		   rtnl_calcit_func calcit)
+{
+	if (__rtnl_register(protocol, msgtype, doit, dumpit, calcit) < 0)
+		panic("Unable to register rtnetlink message handler, "
+		      "protocol = %d, message type = %d\n",
+		      protocol, msgtype);
+}
+
+int __rtnl_register(int protocol, int msgtype,
+		    rtnl_doit_func doit, rtnl_dumpit_func dumpit,
+		    rtnl_calcit_func calcit)
+{
+	struct rtnl_link *tab;
+	int msgindex;
+
+	BUG_ON(protocol < 0 || protocol > RTNL_FAMILY_MAX);
+	msgindex = rtm_msgindex(msgtype);
+
+	tab = rtnl_msg_handlers[protocol];
+	if (tab == NULL) {
+		tab = kcalloc(RTM_NR_MSGTYPES, sizeof(*tab), GFP_KERNEL);
+		if (tab == NULL)
+			return -ENOBUFS;
+
+		rtnl_msg_handlers[protocol] = tab;
+	}
+
+	if (doit)
+		tab[msgindex].doit = doit;
+
+	if (dumpit)
+		tab[msgindex].dumpit = dumpit;
+
+	if (calcit)
+		tab[msgindex].calcit = calcit;
+
+	return 0;
+}
+
 2. netlink_table, max number of netlink in system
 ================================================================================
 #define MAX_LINKS 32		
