@@ -1,7 +1,7 @@
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
-    obj-m := register_netdev.o each_netdev.o
+    obj-m := register_netdev.o each_netdev.o netdevice_notifier.o
 # hello_world-objs :=
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
