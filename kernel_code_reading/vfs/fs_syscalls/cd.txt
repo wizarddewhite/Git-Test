@@ -1,0 +1,45 @@
+1. chdir, called by cd
+================================================================================
+SYSCALL_DEFINE1(chdir, const char __user *, filename)
+{
+	struct path path;
+	int error;
+	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
+retry:
+	error = user_path_at(AT_FDCWD, filename, lookup_flags, &path);
+	if (error)
+		goto out;
+
+	error = inode_permission(path.dentry->d_inode, MAY_EXEC | MAY_CHDIR);
+	if (error)
+		goto dput_and_out;
+
+	set_fs_pwd(current->fs, &path);
+
+dput_and_out:
+	path_put(&path);
+	if (retry_estale(error, lookup_flags)) {
+		lookup_flags |= LOOKUP_REVAL;
+		goto retry;
+	}
+out:
+	return error;
+}
+
+1.3 set_fs_pwd()
+================================================================================
+void set_fs_pwd(struct fs_struct *fs, const struct path *path)
+{
+	struct path old_pwd;
+
+	path_get(path);
+	spin_lock(&fs->lock);
+	write_seqcount_begin(&fs->seq);
+	old_pwd = fs->pwd;
+	fs->pwd = *path;
+	write_seqcount_end(&fs->seq);
+	spin_unlock(&fs->lock);
+
+	if (old_pwd.dentry)
+		path_put(&old_pwd);
+}
