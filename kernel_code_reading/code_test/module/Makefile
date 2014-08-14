@@ -9,7 +9,7 @@ ifneq ($(KERNELRELEASE),)
     obj-m += pci_driver.o register_netdev.o my_debugfs.o
     obj-m += idr_index.o percpu_test.o reboot_notifier.o
     obj-m += semaphor.o kmem_cache.o ida_idr_test.o
-    obj-m += rb_tree.o
+    obj-m += rb_tree.o radix_tree.o
 # hello_world-objs :=
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
