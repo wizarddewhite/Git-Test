@@ -6,7 +6,7 @@ CFLAGS = -g -I../
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: list_case hlist_case
+all: list_case hlist_case list_tree
 
 %: %.o
 	gcc $(CFLAGS) $<  -o $@ 
