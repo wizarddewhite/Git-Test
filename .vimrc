@@ -219,3 +219,5 @@ vmap sb "zdi<b><C-R>z</b><ESC>
 " configuration for txtbrowser.vim
 au BufEnter *.txt setlocal ft=txt
 let TxtBrowser_Title_Level = 5
+
+set mouse=a
