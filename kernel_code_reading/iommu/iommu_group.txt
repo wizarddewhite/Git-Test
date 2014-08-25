@@ -204,7 +204,68 @@ static void iommu_bus_init(struct bus_type *bus, struct iommu_ops *ops)
 	bus_for_each_dev(bus, NULL, ops, add_iommu_group);
 }
 
-6.1.1 add_iommu_group(), invode ops->add_device on dev
+6.1.1 iommu_bus_nb, a bus notification
+================================================================================
+static struct notifier_block iommu_bus_nb = {
+	.notifier_call = iommu_bus_notifier,
+};
+
+; other system like vfio will register a notifier on a iommu group
+; then at this place, it will be invoked
+static int iommu_bus_notifier(struct notifier_block *nb,
+			      unsigned long action, void *data)
+{
+	struct device *dev = data;
+	const struct iommu_ops *ops = dev->bus->iommu_ops;
+	struct iommu_group *group;
+	unsigned long group_action = 0;
+
+	/*
+	 * ADD/DEL call into iommu driver ops if provided, which may
+	 * result in ADD/DEL notifiers to group->notifier
+	 */
+	if (action == BUS_NOTIFY_ADD_DEVICE) {
+		if (ops->add_device)
+			return ops->add_device(dev);
+	} else if (action == BUS_NOTIFY_DEL_DEVICE) {
+		if (ops->remove_device && dev->iommu_group) {
+			ops->remove_device(dev);
+			return 0;
+		}
+	}
+
+	/*
+	 * Remaining BUS_NOTIFYs get filtered and republished to the
+	 * group, if anyone is listening
+	 */
+	group = iommu_group_get(dev);
+	if (!group)
+		return 0;
+
+	switch (action) {
+	case BUS_NOTIFY_BIND_DRIVER:
+		group_action = IOMMU_GROUP_NOTIFY_BIND_DRIVER;
+		break;
+	case BUS_NOTIFY_BOUND_DRIVER:
+		group_action = IOMMU_GROUP_NOTIFY_BOUND_DRIVER;
+		break;
+	case BUS_NOTIFY_UNBIND_DRIVER:
+		group_action = IOMMU_GROUP_NOTIFY_UNBIND_DRIVER;
+		break;
+	case BUS_NOTIFY_UNBOUND_DRIVER:
+		group_action = IOMMU_GROUP_NOTIFY_UNBOUND_DRIVER;
+		break;
+	}
+
+	if (group_action)
+		blocking_notifier_call_chain(&group->notifier,
+					     group_action, dev);
+
+	iommu_group_put(group);
+	return 0;
+}
+
+6.1.2 add_iommu_group(), invode ops->add_device on dev
 ================================================================================
 int bus_for_each_dev(struct bus_type *bus, struct device *start,
 		     void *data, int (*fn)(struct device *, void *))
@@ -377,8 +438,9 @@ static size_t iommu_pgsize(struct iommu_domain *domain,
      |id(int)                     |                                     |
      +----------------------------+                                     |
      |kobj                        |                                     |
-     |                            |                                     |
-     |devices_kobj                |     struct iommu_device             |
+     |   (struct kobject)         |                                     |
+     |devices_kobj                |                                     |
+     |   (struct kobject*)        |     struct iommu_device             |
      +----------------------------+     +-----------------------+       |
      |devices(list_head)          |---->+list(list_head)        |       |
      | (list struct iommu_device) |     +-----------------------+       |
