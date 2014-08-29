@@ -406,7 +406,7 @@ over:
 	return ERR_PTR(-ENFILE);
 }
 
-2.2 path_init, init the nameidata->path
+2.2 path_init, init the nameidata->path, pointing to pwd or root
 ================================================================================
 static int path_init(int dfd, const char *name, unsigned int flags,
 		     struct nameidata *nd, struct file **fp)
@@ -628,6 +628,20 @@ out_path_put:
 out_err:
 	terminate_walk(nd);
 	return err;
+}
+
+2.3.2 terminate_walk()
+================================================================================
+static void terminate_walk(struct nameidata *nd)
+{
+	if (!(nd->flags & LOOKUP_RCU)) {
+		path_put(&nd->path);
+	} else {
+		nd->flags &= ~LOOKUP_RCU;
+		if (!(nd->flags & LOOKUP_ROOT))
+			nd->root.mnt = NULL;
+		rcu_read_unlock();
+	}
 }
 
 2.4 do_last()
@@ -862,7 +876,7 @@ stale_open:
 	goto retry_lookup;
 }
 
-2.4.1 lookup_fast()
+2.4.1 lookup_fast(), path->dentry is set to the dentry to the real file
 ================================================================================
 static int lookup_fast(struct nameidata *nd,
 		       struct path *path, struct inode **inode)
@@ -957,7 +971,10 @@ need_lookup:
 	return 1;
 }
 
-2.4.2 lookup_open(), get the file's dentry
+2.4.1.1 __d_lookup()
+================================================================================
+
+2.4.2 lookup_open(), for a new file it will be created and opened here
 ================================================================================
 static int lookup_open(struct nameidata *nd, struct path *path,
 			struct file *file,
@@ -1027,7 +1044,108 @@ out_dput:
 	return error;
 }
 
-2.4.3 finish_open()
+2.4.3 complete_walk()
+================================================================================
+static int complete_walk(struct nameidata *nd)
+{
+	struct dentry *dentry = nd->path.dentry;
+	int status;
+
+	if (nd->flags & LOOKUP_RCU) {
+		nd->flags &= ~LOOKUP_RCU;
+		if (!(nd->flags & LOOKUP_ROOT))
+			nd->root.mnt = NULL;
+
+		if (!legitimize_mnt(nd->path.mnt, nd->m_seq)) {
+			rcu_read_unlock();
+			return -ECHILD;
+		}
+		if (unlikely(!lockref_get_not_dead(&dentry->d_lockref))) {
+			rcu_read_unlock();
+			mntput(nd->path.mnt);
+			return -ECHILD;
+		}
+		if (read_seqcount_retry(&dentry->d_seq, nd->seq)) {
+			rcu_read_unlock();
+			dput(dentry);
+			mntput(nd->path.mnt);
+			return -ECHILD;
+		}
+		rcu_read_unlock();
+	}
+
+	if (likely(!(nd->flags & LOOKUP_JUMPED)))
+		return 0;
+
+	if (likely(!(dentry->d_flags & DCACHE_OP_WEAK_REVALIDATE)))
+		return 0;
+
+	status = dentry->d_op->d_weak_revalidate(dentry, nd->flags);
+	if (status > 0)
+		return 0;
+
+	if (!status)
+		status = -ESTALE;
+
+	path_put(&nd->path);
+	return status;
+}
+
+2.4.4 may_open(), check permission
+================================================================================
+static int may_open(struct path *path, int acc_mode, int flag)
+{
+	struct dentry *dentry = path->dentry;
+	struct inode *inode = dentry->d_inode;
+	int error;
+
+	/* O_PATH? */
+	if (!acc_mode)
+		return 0;
+
+	if (!inode)
+		return -ENOENT;
+
+	switch (inode->i_mode & S_IFMT) {
+	case S_IFLNK:
+		return -ELOOP;
+	case S_IFDIR:
+		if (acc_mode & MAY_WRITE)
+			return -EISDIR;
+		break;
+	case S_IFBLK:
+	case S_IFCHR:
+		if (path->mnt->mnt_flags & MNT_NODEV)
+			return -EACCES;
+		/*FALLTHRU*/
+	case S_IFIFO:
+	case S_IFSOCK:
+		flag &= ~O_TRUNC;
+		break;
+	}
+
+	error = inode_permission(inode, acc_mode);
+	if (error)
+		return error;
+
+	/*
+	 * An append-only file must be opened in append mode for writing.
+	 */
+	if (IS_APPEND(inode)) {
+		if  ((flag & O_ACCMODE) != O_RDONLY && !(flag & O_APPEND))
+			return -EPERM;
+		if (flag & O_TRUNC)
+			return -EPERM;
+	}
+
+	/* O_NOATIME can only be set by the owner or superuser */
+	if (flag & O_NOATIME && !inode_owner_or_capable(inode))
+		return -EPERM;
+
+	return 0;
+}
+
+2.4.5 finish_open(), set file->f_path.dentry to real one and open
 ================================================================================
 int finish_open(struct file *file, struct dentry *dentry,
 		int (*open)(struct inode *, struct file *),
@@ -1044,7 +1162,7 @@ int finish_open(struct file *file, struct dentry *dentry,
 	return error;
 }
 
-2.4.3.1 do_dentry_open(), f->f_op = inode->i_fop, call f_op->open()
+2.4.5.1 do_dentry_open(), f->f_op = inode->i_fop, call f_op->open()
 ================================================================================
 static int do_dentry_open(struct file *f,
 			  int (*open)(struct inode *, struct file *),
