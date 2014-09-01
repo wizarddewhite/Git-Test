@@ -50,7 +50,7 @@ static ssize_t foo_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 static struct kobj_attribute foo_attribute =
-	__ATTR(foo, 0666, foo_show, foo_store);
+	__ATTR(foo, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, foo_show, foo_store);
 
 /*
  * More complex function where we determine which variable is being accessed by
@@ -82,9 +82,9 @@ static ssize_t b_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 static struct kobj_attribute baz_attribute =
-	__ATTR(baz, 0666, b_show, b_store);
+	__ATTR(baz, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, b_show, b_store);
 static struct kobj_attribute bar_attribute =
-	__ATTR(bar, 0666, b_show, b_store);
+	__ATTR(bar, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, b_show, b_store);
 
 
 /*
@@ -126,7 +126,7 @@ static ssize_t ltc_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 static struct kobj_attribute ltc_attribute =
-	__ATTR(ltc, 0666, ltc_show, ltc_store);
+	__ATTR(ltc, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, ltc_show, ltc_store);
 
 static int ltc1;
 static ssize_t ltc1_show(struct kobject *kobj, struct kobj_attribute *attr,
@@ -143,7 +143,7 @@ static ssize_t ltc1_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 static struct kobj_attribute ltc1_attribute =
-	__ATTR(ltc1, 0666, ltc1_show, ltc1_store);
+	__ATTR(ltc1, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, ltc1_show, ltc1_store);
 
 static struct kobject *example_kobj;
 static struct kobject *example_link_kobj;
