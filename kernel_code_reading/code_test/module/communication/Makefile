@@ -1,7 +1,7 @@
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
-    obj-m += timer.o workqueue_test.o
+    obj-m += timer.o workqueue_test.o completion_test.o
     obj-m += reboot_notifier.o semaphor.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
