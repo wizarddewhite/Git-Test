@@ -71,7 +71,7 @@ static struct miscdevice my_misc = {
 	.minor = MY_MISC_MINOR,
 	.name = "misc_dev",
 	.fops = &my_misc_fops,
-	.nodename = "my_misc/misc",
+	//.nodename = "my_misc/misc",
 	.mode = S_IRUGO | S_IWUGO,
 };
 
