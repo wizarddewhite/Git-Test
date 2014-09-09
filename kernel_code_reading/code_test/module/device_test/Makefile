@@ -3,6 +3,7 @@
 ifneq ($(KERNELRELEASE),)
     obj-m += scull.o char_dev.o
     scull-objs := scull_sysfs.o
+    obj-m += misc_dev.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
