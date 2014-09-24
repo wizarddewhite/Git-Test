@@ -1,0 +1,96 @@
+1. virtio_pci_driver, I guess virtual pci devices are with vendor 0x1af4
+================================================================================
+/* Qumranet donated their vendor ID for devices 0x1000 thru 0x10FF. */
+static const struct pci_device_id virtio_pci_id_table[] = {
+	{ PCI_DEVICE(0x1af4, PCI_ANY_ID) },
+	{ 0 }
+};
+
+static struct pci_driver virtio_pci_driver = {
+	.name		= "virtio-pci",
+	.id_table	= virtio_pci_id_table,
+	.probe		= virtio_pci_probe,
+	.remove		= virtio_pci_remove,
+#ifdef CONFIG_PM_SLEEP
+	.driver.pm	= &virtio_pci_pm_ops,
+#endif
+};
+
+2. virtio_pci_probe, 
+================================================================================
+static int virtio_pci_probe(struct pci_dev *pci_dev,
+			    const struct pci_device_id *id)
+{
+	struct virtio_pci_device *vp_dev;
+	int err;
+
+	/* We only own devices >= 0x1000 and <= 0x103f: leave the rest. */
+	if (pci_dev->device < 0x1000 || pci_dev->device > 0x103f)
+		return -ENODEV;
+
+	if (pci_dev->revision != VIRTIO_PCI_ABI_VERSION) {
+		printk(KERN_ERR "virtio_pci: expected ABI version %d, got %d\n",
+		       VIRTIO_PCI_ABI_VERSION, pci_dev->revision);
+		return -ENODEV;
+	}
+
+	/* allocate our structure and fill it out */
+	vp_dev = kzalloc(sizeof(struct virtio_pci_device), GFP_KERNEL);
+	if (vp_dev == NULL)
+		return -ENOMEM;
+
+	vp_dev->vdev.dev.parent = &pci_dev->dev;
+	vp_dev->vdev.dev.release = virtio_pci_release_dev;
+	vp_dev->vdev.config = &virtio_pci_config_ops;
+	vp_dev->pci_dev = pci_dev;
+	INIT_LIST_HEAD(&vp_dev->virtqueues);
+	spin_lock_init(&vp_dev->lock);
+
+	/* Disable MSI/MSIX to bring device to a known good state. */
+	pci_msi_off(pci_dev);
+
+	/* enable the device */
+	err = pci_enable_device(pci_dev);
+	if (err)
+		goto out;
+
+	err = pci_request_regions(pci_dev, "virtio-pci");
+	if (err)
+		goto out_enable_device;
+
+	vp_dev->ioaddr = pci_iomap(pci_dev, 0, 0);
+	if (vp_dev->ioaddr == NULL) {
+		err = -ENOMEM;
+		goto out_req_regions;
+	}
+
+	pci_set_drvdata(pci_dev, vp_dev);
+	pci_set_master(pci_dev);
+
+	/* we use the subsystem vendor/device id as the virtio vendor/device
+	 * id.  this allows us to use the same PCI vendor/device id for all
+	 * virtio devices and to identify the particular virtio driver by
+	 * the subsystem ids */
+	vp_dev->vdev.id.vendor = pci_dev->subsystem_vendor;
+	vp_dev->vdev.id.device = pci_dev->subsystem_device;
+
+	/* finally register the virtio device */
+	err = register_virtio_device(&vp_dev->vdev);
+	if (err)
+		goto out_set_drvdata;
+
+	return 0;
+
+out_set_drvdata:
+	pci_iounmap(pci_dev, vp_dev->ioaddr);
+out_req_regions:
+	pci_release_regions(pci_dev);
+out_enable_device:
+	pci_disable_device(pci_dev);
+out:
+	kfree(vp_dev);
+	return err;
+}
+
+2.1 register_virtio_device
+================================================================================

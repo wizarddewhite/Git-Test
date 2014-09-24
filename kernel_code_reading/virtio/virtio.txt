@@ -1,0 +1,160 @@
+1. virtio_init
+================================================================================
+static int virtio_init(void)
+{
+	if (bus_register(&virtio_bus) != 0)
+		panic("virtio bus registration failed");
+	return 0;
+}
+
+1.1 virtio_bus
+================================================================================
+static struct bus_type virtio_bus = {
+	.name  = "virtio",
+	.match = virtio_dev_match,
+	.dev_groups = virtio_dev_groups,
+	.uevent = virtio_uevent,
+	.probe = virtio_dev_probe,
+	.remove = virtio_dev_remove,
+};
+
+1.1.1 virtio_dev_match
+================================================================================
+static int virtio_dev_match(struct device *_dv, struct device_driver *_dr)
+{
+	unsigned int i;
+	struct virtio_device *dev = dev_to_virtio(_dv);
+	const struct virtio_device_id *ids;
+
+	ids = drv_to_virtio(_dr)->id_table;
+	for (i = 0; ids[i].device; i++)
+		if (virtio_id_match(dev, &ids[i]))
+			return 1;
+	return 0;
+}
+
+1.1.1.1 virtio_id_match
+================================================================================
+static inline int virtio_id_match(const struct virtio_device *dev,
+				  const struct virtio_device_id *id)
+{
+	if (id->device != dev->id.device && id->device != VIRTIO_DEV_ANY_ID)
+		return 0;
+
+	return id->vendor == VIRTIO_DEV_ANY_ID || id->vendor == dev->id.vendor;
+}
+
+1.1.2 virtio_dev_groups, sysfs attributes
+================================================================================
+static struct attribute *virtio_dev_attrs[] = {
+	&dev_attr_device.attr,
+	&dev_attr_vendor.attr,
+	&dev_attr_status.attr,
+	&dev_attr_modalias.attr,
+	&dev_attr_features.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(virtio_dev);
+
+1.1.3 virtio_dev_uevent, invoked in dev_uevent()
+================================================================================
+static int virtio_uevent(struct device *_dv, struct kobj_uevent_env *env)
+{
+	struct virtio_device *dev = dev_to_virtio(_dv);
+
+	return add_uevent_var(env, "MODALIAS=virtio:d%08Xv%08X",
+			      dev->id.device, dev->id.vendor);
+}
+
+1.1.4 virtio_dev_probe, invoked in really_probe()
+================================================================================
+static int virtio_dev_probe(struct device *_d)
+{
+	int err, i;
+	struct virtio_device *dev = dev_to_virtio(_d);
+	struct virtio_driver *drv = drv_to_virtio(dev->dev.driver);
+	u32 device_features;
+
+	/* We have a driver! */
+	add_status(dev, VIRTIO_CONFIG_S_DRIVER);
+
+	/* Figure out what features the device supports. */
+	device_features = dev->config->get_features(dev);
+
+	/* Features supported by both device and driver into dev->features. */
+	memset(dev->features, 0, sizeof(dev->features));
+	for (i = 0; i < drv->feature_table_size; i++) {
+		unsigned int f = drv->feature_table[i];
+		BUG_ON(f >= 32);
+		if (device_features & (1 << f))
+			set_bit(f, dev->features);
+	}
+
+	/* Transport features always preserved to pass to finalize_features. */
+	for (i = VIRTIO_TRANSPORT_F_START; i < VIRTIO_TRANSPORT_F_END; i++)
+		if (device_features & (1 << i))
+			set_bit(i, dev->features);
+
+	dev->config->finalize_features(dev);
+
+	err = drv->probe(dev);
+	if (err)
+		add_status(dev, VIRTIO_CONFIG_S_FAILED);
+	else {
+		add_status(dev, VIRTIO_CONFIG_S_DRIVER_OK);
+		if (drv->scan)
+			drv->scan(dev);
+	}
+
+	return err;
+}
+
+2. register_virtio_device, register virtio device and try to probe it
+================================================================================
+int register_virtio_device(struct virtio_device *dev)
+{
+	int err;
+
+	dev->dev.bus = &virtio_bus;
+
+	/* Assign a unique device index and hence name. */
+	err = ida_simple_get(&virtio_index_ida, 0, 0, GFP_KERNEL);
+	if (err < 0)
+		goto out;
+
+	dev->index = err;
+	dev_set_name(&dev->dev, "virtio%u", dev->index);
+
+	/* We always start by resetting the device, in case a previous
+	 * driver messed it up.  This also tests that code path a little. */
+	dev->config->reset(dev);
+
+	/* Acknowledge that we've seen the device. */
+	add_status(dev, VIRTIO_CONFIG_S_ACKNOWLEDGE);
+
+	INIT_LIST_HEAD(&dev->vqs);
+
+	/* device_register() causes the bus infrastructure to look for a
+	 * matching driver. */
+	err = device_register(&dev->dev);
+out:
+	if (err)
+		add_status(dev, VIRTIO_CONFIG_S_FAILED);
+	return err;
+}
+
+3. register_virtio_driver
+================================================================================
+int register_virtio_driver(struct virtio_driver *driver)
+{
+	/* Catch this early. */
+	BUG_ON(driver->feature_table_size && !driver->feature_table);
+	driver->driver.bus = &virtio_bus;
+	return driver_register(&driver->driver);
+}
+
+0. Data Structure
+================================================================================
+
+0.1. Data Structure
+================================================================================
