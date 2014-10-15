@@ -247,7 +247,7 @@ out:
 	return result;
 }
 
-2. enable_slot(), triggered by write on /sys/bus/pci/slots/power
+2. enable_slot(), triggered by write on /sys/bus/pci/slots/Slot X/power
 ================================================================================
 drivers/pci/hotplug/rpaphp_core.c
 
@@ -367,7 +367,7 @@ static void __of_scan_bus(struct device_node *node, struct pci_bus *bus,
 0.1 slot, drivers/pci/hotplug/rpaphp.h
 ================================================================================
 
-rpaphp_slot_head
+rpaphp_slot_head (arch dependent)
  |
  |  struct slot                         struct slot            struct slot    
  |  +--------------------------+        +-------------+        +-------------+

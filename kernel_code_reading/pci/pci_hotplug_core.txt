@@ -16,8 +16,18 @@ err_cpci:
 	return result;
 }
 
-2. __pci_hp_register(), add hotplug_slot to list and create sysfs
+1.1 cpci_hotplug_init()
 ================================================================================
+int __init
+cpci_hotplug_init(int debug)
+{
+	cpci_debug = debug;
+	return 0;
+}
+
+2. __pci_hp_register(), this is called by arch dependent code to create slot
+================================================================================
+; add hotplug_slot to list and create sysfs
 int __pci_hp_register(struct hotplug_slot *slot, struct pci_bus *bus,
 		      int devnr, const char *name,
 		      struct module *owner, const char *mod_name)
@@ -259,7 +269,12 @@ pci_hotplug_slot_list
   +--->|slot_list                  |------>|               |------>|               |
        |   (struct list_head)      |       |               |       |               |
        +---------------------------+       +---------------+       +---------------+
-       |                           |
+       |info                       |
+       |(struct hotplug_slot_info*)|
+       +---------------------------+
+       |ops                        |
+       |(struct hotplug_slot_ops*) |
+       +---------------------------+
        |                           |
        |                           | <-----------------------------------+
        |                           |                                     |
