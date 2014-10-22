@@ -58,6 +58,8 @@ void screen_init(int debug)
 	clear();
 	noecho();
 	cbreak();	/* Line buffering disabled. pass on everything */
+	/* enable win scrolling */
+	scrollok(win, TRUE);
 
 	getmaxyx(win, nrows, ncols);
 	if (dbg) {
@@ -107,6 +109,11 @@ int get_command(char *command, int n)
 			if (c == (ncols - 1)) {
 				c = -1;
 				r++;
+			}
+			/* end of the window */
+			if (r == (nrows - 1)) {
+				wscrl(win, 1);
+				r--;
 			}
 			move(r, ++c);
 			/* we just store n# of chars */
