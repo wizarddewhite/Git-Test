@@ -33,6 +33,18 @@ static void prompt(char *s)
 	refresh();
 }
 
+static void dbg_dump(char *comm, char d)
+{
+	if (!dbg)
+		return;
+
+	mvwprintw(dbg_win, 0, 0, "command: %s", comm);
+	mvwprintw(dbg_win, 1, 0,
+		"window size: (%03d, %03d) current pos: (%03d, %03d), char: %03d",
+		nrows, ncols, r, c, d);
+	wrefresh(dbg_win);
+}
+
 void screen_init(int debug)
 {
 	static int inited = 0;
@@ -101,18 +113,12 @@ int get_command(char *command, int n)
 			if (i < n)
 				command[i++] = d;
 		}
+		dbg_dump(command, d);
 
-		if (dbg) {
-			mvwprintw(dbg_win, 1, 0, "row: %03d, col: %03d", r, c);
-			wrefresh(dbg_win);
-		}
 	} while (d != '\n');
 	r++;
 	prompt("ftp");
-	if (dbg) {
-		mvwprintw(dbg_win, 0, 0, "command: %s", command);
-		wrefresh(dbg_win);
-	}
+	dbg_dump(command, '\n');
 	wrefresh(win);
 	return 0;
 }
