@@ -78,6 +78,10 @@ int get_command(char *command, int n)
 			/* we are at the beginning and the command is empty */
 			if (i == 0)
 				continue;
+			if (c == 0) {
+				r--;
+				c = ncols;
+			}
 			/* move cursor to the point */
 			move(r, --c);
 			/* delete the char under the cursor */
@@ -99,7 +103,7 @@ int get_command(char *command, int n)
 		}
 
 		if (dbg) {
-			mvwprintw(dbg_win, 1, 0, "row: %02d, col: %02d", r, c);
+			mvwprintw(dbg_win, 1, 0, "row: %03d, col: %03d", r, c);
 			wrefresh(dbg_win);
 		}
 	} while (d != '\n');
