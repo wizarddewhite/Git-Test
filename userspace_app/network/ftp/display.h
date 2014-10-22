@@ -18,7 +18,7 @@
 #ifndef _CLI_H_
 #define _CLI_H_
 
-void screen_init();
+void screen_init(int debug);
 void screen_dest();
 int get_command(char *command, int n);
 

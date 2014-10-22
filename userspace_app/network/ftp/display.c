@@ -21,7 +21,8 @@
 
 int nrows, ncols;
 int r = 0, c = 0;
-WINDOW *win;
+WINDOW *win, *dbg_win;
+int dbg = 0;
 
 static void prompt(char *s)
 {
@@ -32,12 +33,14 @@ static void prompt(char *s)
 	refresh();
 }
 
-void screen_init()
+void screen_init(int debug)
 {
 	static int inited = 0;
 
 	if (inited)
 		return;
+
+	dbg = debug;
 
 	win = initscr();
 	clear();
@@ -45,6 +48,11 @@ void screen_init()
 	cbreak();	/* Line buffering disabled. pass on everything */
 
 	getmaxyx(win, nrows, ncols);
+	if (dbg) {
+		nrows -= 2;
+		dbg_win = newwin(2, ncols, nrows, 0);
+	}
+
 	clear();
 	prompt("ftp");
 
@@ -89,9 +97,18 @@ int get_command(char *command, int n)
 			if (i < n)
 				command[i++] = d;
 		}
+
+		if (dbg) {
+			mvwprintw(dbg_win, 1, 0, "row: %02d, col: %02d", r, c);
+			wrefresh(dbg_win);
+		}
 	} while (d != '\n');
 	r++;
 	prompt("ftp");
+	if (dbg) {
+		mvwprintw(dbg_win, 0, 0, "command: %s", command);
+		wrefresh(dbg_win);
+	}
 	wrefresh(win);
 	return 0;
 }

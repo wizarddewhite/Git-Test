@@ -25,7 +25,7 @@ char command[64];
 
 int main()
 {
-	screen_init();
+	screen_init(1);
 	while (1) {
 		get_command(command, sizeof(command));
 		if (strncmp("quit", command, strlen("quit")) == 0)
