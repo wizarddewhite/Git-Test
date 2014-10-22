@@ -1,0 +1,47 @@
+This is a play project to have a ftp server/client. Not sure how long it would
+take, hope it could be done soon. Here I will write done the design document
+to track the whole system.
+
+
+Client:
+
+   Display
+  +-----------------+
+  |                 |
+  |                 |
+  +-----------------+             FTP Function
+           ^                     +----------------------+
+           |              +----> |                      |
+           v             /       |                      |
+   Command              /        +----------------------+
+  +-----------------+  /
+  |                 |             Network Connection         FTP Protocol
+  |                 |            +----------------------+    +----------------+
+  +-----------------+            |                      |    |                |
+                                 |                      |    |                |
+                                 +----------------------+    +----------------+
+
+
+
+
+Server:
+
+   User Info(access control)     Files
+  +-----------------+           +------------------+
+  |                 |           |                  |
+  |                 |           |                  |
+  |                 |           |                  |
+  +-----------------+           +------------------+
+
+
+   Connection Control            FTP Function
+  +-----------------+           +----------------------+
+  |                 |---------> |                      |
+  |                 |           |                      |
+  |                 |           +----------------------+
+  +-----------------+                                                          
+                                 Network Connection         FTP Protocol
+                                +----------------------+    +----------------+
+                                |                      |    |                |
+                                |                      |    |                |
+                                +----------------------+    +----------------+
