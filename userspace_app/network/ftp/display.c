@@ -75,6 +75,8 @@ void screen_init(int debug)
 
 void screen_dest()
 {
+	if (dbg)
+		delwin(dbg_win);
 	delwin(win);
 	clrtoeol();
 	refresh();
