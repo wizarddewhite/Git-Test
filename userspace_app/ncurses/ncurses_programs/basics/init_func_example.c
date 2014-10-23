@@ -14,6 +14,8 @@ int main()
 					 * gets to the program 		*/
 	if(ch == KEY_F(1))		/* Without keypad enabled this will */
 		printw("F1 Key pressed");/*  not get to us either	*/
+	if(ch == KEY_F(2))		/* Without keypad enabled this will */
+		printw("F2 Key pressed");/*  not get to us either	*/
 					/* Without noecho() some ugly escape
 					 * charachters might have been printed
 					 * on screen			*/
