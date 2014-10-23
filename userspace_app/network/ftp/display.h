@@ -21,5 +21,6 @@
 void screen_init(int debug);
 void screen_dest();
 int get_command(char *command, int n);
+void print_help();
 
 #endif //_CLI_H_

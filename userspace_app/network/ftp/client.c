@@ -26,11 +26,15 @@ char command[64];
 
 int main()
 {
+	int ret;
 	screen_init(1);
 	while (1) {
 		get_command(command, sizeof(command));
-		if (handle_command(command))
+		ret = handle_command(command);
+		if (ret == -RET_QUIT)
 			break;
+		if (ret == -RET_NOCMD)
+			print_help();
 	}
 	screen_dest();
 	return 0;

@@ -27,7 +27,7 @@ static int open(char *host)
 
 static int quit(char *host)
 {
-	return -1;
+	return -RET_QUIT;
 }
 
 static struct command commands[] = {
@@ -39,13 +39,11 @@ static struct command commands[] = {
 int handle_command(char *raw)
 {
 	struct command *cmd;
-	int ret = 0;
 
 	for (cmd = commands; cmd->name; cmd++) {
-		if (!strncmp(cmd->name, raw, strlen(cmd->name))) {
-			ret = cmd->handle(raw);
-			break;
-		}
+		if (!strncmp(cmd->name, raw, strlen(cmd->name)))
+			return cmd->handle(raw);
 	}
-	return ret;
+
+	return -RET_NOCMD;
 }

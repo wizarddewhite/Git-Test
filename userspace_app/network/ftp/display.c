@@ -146,3 +146,10 @@ int get_command(char *command, int n)
 	wrefresh(win);
 	return 0;
 }
+
+void print_help()
+{
+	mvwprintw(win, r, 0, "No such command\n");
+	r++;
+	prompt("ftp");
+}

@@ -20,6 +20,9 @@
 
 #include <stdio.h>
 
+#define RET_QUIT      0xFF
+#define RET_NOCMD     0xFE
+
 typedef int (*command_t)(char *);
 
 struct command {
