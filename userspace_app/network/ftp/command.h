@@ -1,12 +1,12 @@
 /*
  * =====================================================================================
  *
- *       Filename:  client.c
+ *       Filename:  command.h
  *
  *    Description:  
  *
  *        Version:  1.0
- *        Created:  10/22/2014 08:30:11 PM
+ *        Created:  10/23/2014 11:31:09 PM
  *       Revision:  none
  *       Compiler:  gcc
  *
@@ -15,23 +15,18 @@
  *
  * =====================================================================================
  */
+#ifndef _COMMAND_H_
+#define _COMMAND_H_
 
 #include <stdio.h>
-#include <string.h>
 
-#include "display.h"
-#include "command.h"
+typedef int (*command_t)(char *);
 
-char command[64];
+struct command {
+	char *name;
+	command_t handle;
+};
 
-int main()
-{
-	screen_init(1);
-	while (1) {
-		get_command(command, sizeof(command));
-		if (handle_command(command))
-			break;
-	}
-	screen_dest();
-	return 0;
-}
+int handle_command(char *raw);
+
+#endif //_COMMAND_H_
