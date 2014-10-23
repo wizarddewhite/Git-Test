@@ -58,6 +58,7 @@ void screen_init(int debug)
 	clear();
 	noecho();
 	cbreak();	/* Line buffering disabled. pass on everything */
+	keypad(win, TRUE);
 	/* enable win scrolling */
 	scrollok(win, TRUE);
 
@@ -83,6 +84,29 @@ void screen_dest()
 	endwin();
 }
 
+void move_cursor(int step)
+{
+	if (step == -1) {
+		if (c == 0) {
+			r--;
+			c = ncols;
+		}
+		move(r, --c);
+	} else if (step == 1) {
+		/* we are at the end of this line */
+		if (c == (ncols - 1)) {
+			c = -1;
+			r++;
+		}
+		/* end of the window */
+		if (r == (nrows - 1)) {
+			wscrl(win, 1);
+			r--;
+		}
+		move(r, ++c);
+	}
+}
+
 int get_command(char *command, int n)
 {
 	int d;
@@ -90,34 +114,21 @@ int get_command(char *command, int n)
 	do  {
 		/* we could display as many as possible */
 		d = getch();
-		if (d == KEY_BACKSPACE || d == KEY_DC || d == 127) {
+		if (d == KEY_LEFT || d == KEY_RIGHT
+			  || d == KEY_UP || d == KEY_DOWN) {
+			continue;
+		} else if (d == KEY_BACKSPACE || d == KEY_DC || d == 127) {
 			/* we are at the beginning and the command is empty */
 			if (i == 0)
 				continue;
-			if (c == 0) {
-				r--;
-				c = ncols;
-			}
-			/* move cursor to the point */
-			move(r, --c);
+			move_cursor(-1);
 			/* delete the char under the cursor */
 			delch();
 			/* clear the content in command */
-			if (i > 0)
-				command[--i] = '\0';
+			command[--i] = '\0';
 		} else {
 			insch(d);
-			/* when more than one line */
-			if (c == (ncols - 1)) {
-				c = -1;
-				r++;
-			}
-			/* end of the window */
-			if (r == (nrows - 1)) {
-				wscrl(win, 1);
-				r--;
-			}
-			move(r, ++c);
+			move_cursor(+1);
 			/* we just store n# of chars */
 			if (i < n)
 				command[i++] = d;
