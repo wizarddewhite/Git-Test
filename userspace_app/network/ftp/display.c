@@ -38,7 +38,7 @@ static void dbg_dump(char *comm, char d)
 	if (!dbg)
 		return;
 
-	mvwprintw(dbg_win, 0, 0, "command: %s", comm);
+	mvwprintw(dbg_win, 0, 0, "command: %s\n", comm);
 	mvwprintw(dbg_win, 1, 0,
 		"window size: (%03d, %03d) current pos: (%03d, %03d), char: %03d",
 		nrows, ncols, r, c, d);
@@ -111,6 +111,7 @@ int get_command(char *command, int n)
 {
 	int d;
 	int i = 0;
+	memset(command, n, 0);
 	do  {
 		/* we could display as many as possible */
 		d = getch();
@@ -125,13 +126,16 @@ int get_command(char *command, int n)
 			/* delete the char under the cursor */
 			delch();
 			/* clear the content in command */
-			command[--i] = '\0';
+			if (i < n - 1)
+				command[i] = '\0';
+			i--;
 		} else {
 			insch(d);
 			move_cursor(+1);
 			/* we just store n# of chars */
-			if (i < n)
-				command[i++] = d;
+			if (i < n - 1)
+				command[i] = d;
+			i++;
 		}
 		dbg_dump(command, d);
 
