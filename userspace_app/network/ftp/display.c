@@ -27,8 +27,10 @@ int dbg = 0;
 static void prompt(char *s)
 {
 	c = 0;
+	attron(A_BOLD | A_BLINK | A_REVERSE);
 	mvwprintw(win, r, c, "%s>", s);
-	c = c + strlen(s) + 1;
+	attroff(A_BOLD | A_BLINK | A_REVERSE);
+	c = c + strlen(s) + 2;
 	move(r, c);
 	refresh();
 }
