@@ -29,6 +29,11 @@ void init_session(struct session *sess, char *name,
 	return;
 }
 
+void deinit_session(struct session *sess)
+{
+	sess->type = SESS_NONE;
+}
+
 struct session *create_session()
 {
 	struct session *new_sess = 
@@ -43,3 +48,11 @@ struct session *create_session()
 	return new_sess;
 }
 
+int release_session(struct session *sess)
+{
+	if (!sess)
+		return 0;
+	deinit_session(sess);
+	free(sess);
+	return 0;
+}

@@ -4,7 +4,10 @@ PROGRAM := $(basename $(SOURCES))
 .PHONY: all clean
 all: server client
 
-client: client.c display.o command.o session.o
+session_client.o: session.o
+
+client: client.c display.o command.o session.o \
+	session_client.o
 	gcc -Wall -g $^ -o $@ -lncurses
 
 %.o : %.c %.h

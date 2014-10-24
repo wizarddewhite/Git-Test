@@ -24,8 +24,15 @@
 #include <netinet/in.h>
 
 enum session_type {
+	SESS_NONE,
 	SESS_USER,
 	SESS_SERV
+};
+
+enum session_ret {
+	RET_SESS_INIED,
+	RET_SESS_UNINIED,
+	RET_SESS_SUCCESS
 };
 
 struct session {
@@ -37,6 +44,8 @@ struct session {
 
 void init_session(struct session *sess, char *name,
 		struct sockaddr_in *addr, enum session_type);
+void deinit_session(struct session *sess);
 struct session *create_session();
+int release_session(struct session *sess);
 
 #endif //_SESSION_H_
