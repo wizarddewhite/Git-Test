@@ -24,7 +24,6 @@
 void init_session(struct session *sess, char *name,
 		struct sockaddr_in *addr, enum session_type type)
 {
-	strncpy(sess->remote_host, name, strlen(name));
 	sess->type = type;
 	return;
 }

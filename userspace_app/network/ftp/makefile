@@ -6,8 +6,8 @@ all: server client
 
 session_client.o: session.o
 
-client: client.c display.o command.o session.o \
-	session_client.o
+client: client.c display.o command.o session.o session_client.o \
+	net_connection.o
 	gcc -Wall -g $^ -o $@ -lncurses
 
 %.o : %.c %.h

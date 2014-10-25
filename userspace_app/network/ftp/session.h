@@ -23,6 +23,8 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 
+#include "net_connection.h"
+
 enum session_type {
 	SESS_NONE,
 	SESS_USER,
@@ -37,9 +39,7 @@ enum session_ret {
 
 struct session {
 	enum session_type type;
-	char remote_host[64];
-	struct sockaddr_in remote_addr;
-	struct sockaddr_in local_addr;
+	struct net_connection conn;
 };
 
 void init_session(struct session *sess, char *name,
