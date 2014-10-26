@@ -22,5 +22,7 @@ void screen_init(int debug);
 void screen_dest();
 int get_command(char *command, int n);
 void print_help();
+void print_message(char *message);
+void print_vmessage(char *message, ...);
 
 #endif //_CLI_H_

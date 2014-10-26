@@ -18,6 +18,7 @@
 
 #include <ncurses.h>
 #include <string.h>
+#include <stdarg.h>
 
 int nrows, ncols;
 int r = 0, c = 0;
@@ -149,9 +150,35 @@ int get_command(char *command, int n)
 	return 0;
 }
 
+/* The message must end with '\n' */
+void print_message(char *message)
+{
+	char *limit = message + strlen(message);
+
+	mvwprintw(win, r, 0, message);
+	while ((message = strchr(message,'\n'))) {
+		message++;
+		if (message >= limit)
+			break;
+		r++;
+	}
+	r++;
+}
+
+void print_vmessage(char *message, ...)
+{
+	va_list args;
+	
+	move(r, 0);
+	va_start(args, message);
+	vwprintw(win, message, args);
+	va_end(args);
+	r++;
+}
+
 void print_help()
 {
-	mvwprintw(win, r, 0, "No such command\n");
-	r++;
+	char help[] = "No such command\n";
+	print_message(help);
 	prompt("ftp");
 }
