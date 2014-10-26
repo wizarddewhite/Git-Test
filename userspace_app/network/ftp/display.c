@@ -87,7 +87,17 @@ void screen_dest()
 	endwin();
 }
 
-void move_cursor(int step)
+static void move_cursor_v(int step)
+{
+	if (step == 1) {
+		if (r == (nrows - 1)) {
+			wscrl(win, 1);
+			r--;
+		}
+	}
+}
+
+static void move_cursor_h(int step)
 {
 	if (step == -1) {
 		if (c == 0) {
@@ -102,10 +112,7 @@ void move_cursor(int step)
 			r++;
 		}
 		/* end of the window */
-		if (r == (nrows - 1)) {
-			wscrl(win, 1);
-			r--;
-		}
+		move_cursor_v(1);
 		move(r, ++c);
 	}
 }
@@ -125,7 +132,7 @@ int get_command(char *command, int n)
 			/* we are at the beginning and the command is empty */
 			if (i == 0)
 				continue;
-			move_cursor(-1);
+			move_cursor_h(-1);
 			/* delete the char under the cursor */
 			delch();
 			/* clear the content in command */
@@ -134,7 +141,7 @@ int get_command(char *command, int n)
 			i--;
 		} else {
 			insch(d);
-			move_cursor(+1);
+			move_cursor_h(+1);
 			/* we just store n# of chars */
 			if (i < n - 1)
 				command[i] = d;
@@ -144,6 +151,7 @@ int get_command(char *command, int n)
 
 	} while (d != '\n');
 	r++;
+	move_cursor_v(1);
 	prompt("ftp");
 	dbg_dump(command, '\n');
 	wrefresh(win);
