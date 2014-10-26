@@ -169,8 +169,11 @@ void print_message(char *message)
 		if (message >= limit)
 			break;
 		r++;
+		move_cursor_v(1);
 	}
 	r++;
+	move_cursor_v(1);
+	refresh();
 }
 
 void print_vmessage(char *message, ...)
@@ -182,6 +185,8 @@ void print_vmessage(char *message, ...)
 	vwprintw(win, message, args);
 	va_end(args);
 	r++;
+	move_cursor_v(1);
+	refresh();
 }
 
 void print_help()
