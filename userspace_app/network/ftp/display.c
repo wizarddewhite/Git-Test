@@ -25,7 +25,7 @@ int r = 0, c = 0;
 WINDOW *win, *dbg_win;
 int dbg = 0;
 
-static void prompt(char *s)
+void prompt(char *s)
 {
 	c = 0;
 	attron(A_BOLD | A_BLINK | A_REVERSE);

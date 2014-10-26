@@ -20,19 +20,65 @@
 #include "command.h"
 #include "display.h"
 
-static int open(char *host)
+static struct command commands[];
+
+static int open(struct command *comm, char *command)
 {
-	return 0;
+	return RET_SUSS;
 }
 
-static int quit(char *host)
+static int quit(struct command *comm, char *command)
 {
 	return -RET_QUIT;
 }
 
+static int help(struct command *comm, char *command)
+{
+	char *index;
+	struct command *cmd;
+
+	index = command + strlen("help");
+
+	while (*index == ' ')
+		index++;
+
+	if (*index == '\n') {
+		print_message(comm->help);
+		prompt("ftp");
+		return RET_SUSS;
+	}
+
+	for (cmd = commands; cmd->name; cmd++) {
+		if (!strncmp(index, cmd->name, strlen(cmd->name))) {
+			print_message(cmd->help);
+			break;
+		}
+	}
+
+	if (!cmd->name) {
+		print_vmessage("Not a valid command: %s\n", index);
+		print_message("The commands we support now:\n");
+		for (cmd = commands; cmd->name; cmd++)
+			print_vmessage("\t%s\n", cmd->name);
+	}
+	prompt("ftp");
+
+	return RET_SUSS;
+}
+
 static struct command commands[] = {
-	{"quit", quit},
-	{"open", open},
+	{"quit", quit,
+	 "Exit the program\n"
+	},
+	{"open", open,
+	 "Open a ftp connection:\n"
+	 "\topen host_addr\n"
+	},
+	{"help", help,
+	 "Print help message of a valid command:\n"
+	 "\thelp\n"
+	 "\thelp command_name\n"
+	},
 	{NULL, NULL},
 };
 
@@ -42,7 +88,7 @@ int handle_command(char *raw)
 
 	for (cmd = commands; cmd->name; cmd++) {
 		if (!strncmp(cmd->name, raw, strlen(cmd->name)))
-			return cmd->handle(raw);
+			return cmd->handle(cmd, raw);
 	}
 
 	return -RET_NOCMD;
