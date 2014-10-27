@@ -158,21 +158,24 @@ int get_command(char *command, int n)
 	return 0;
 }
 
-/* The message must end with '\n' */
-void print_message(char *message)
+/* move cursor according to the message format */
+static inline void adjust_cursor(char *message)
 {
 	char *limit = message + strlen(message);
 
-	mvwprintw(win, r, 0, message);
 	while ((message = strchr(message,'\n'))) {
-		message++;
 		if (message >= limit)
 			break;
+		message++;
 		r++;
 		move_cursor_v(1);
 	}
-	r++;
-	move_cursor_v(1);
+}
+
+void print_message(char *message)
+{
+	mvwprintw(win, r, 0, message);
+	adjust_cursor(message);
 	refresh();
 }
 
@@ -184,8 +187,7 @@ void print_vmessage(char *message, ...)
 	va_start(args, message);
 	vwprintw(win, message, args);
 	va_end(args);
-	r++;
-	move_cursor_v(1);
+	adjust_cursor(message);
 	refresh();
 }
 
