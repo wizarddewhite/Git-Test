@@ -42,7 +42,7 @@ struct session *create_session()
 		return NULL;
 
 	memset(new_sess, 0, sizeof(struct session));
-	init_session(new_sess, NULL, NULL, SESS_USER);
+	init_session(new_sess, NULL, NULL, SESS_CLIENT);
 
 	return new_sess;
 }

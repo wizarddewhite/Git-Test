@@ -27,7 +27,7 @@
 
 enum session_type {
 	SESS_NONE,
-	SESS_USER,
+	SESS_CLIENT,
 	SESS_SERV
 };
 

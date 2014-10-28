@@ -27,7 +27,7 @@ int init_client_sess(char *serv_name, struct sockaddr_in *serv_addr)
 	if (client_session.type != SESS_NONE)
 		return -RET_SESS_INIED;
 
-	init_session(&client_session, serv_name, serv_addr, SESS_USER);
+	init_session(&client_session, serv_name, serv_addr, SESS_CLIENT);
 	return RET_SESS_SUCCESS;
 }
 
