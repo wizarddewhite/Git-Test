@@ -29,7 +29,7 @@ int main()
 	int ret;
 	screen_init(1);
 	while (1) {
-		get_command(command, sizeof(command));
+		get_command("ftp", command, sizeof(command));
 		ret = handle_command(command);
 		if (ret == -RET_QUIT)
 			break;

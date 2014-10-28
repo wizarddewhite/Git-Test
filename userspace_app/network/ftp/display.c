@@ -117,7 +117,7 @@ static void move_cursor_h(int step)
 	}
 }
 
-int get_command(char *command, int n)
+int get_command(char *prompt_message, char *command, int n)
 {
 	int d;
 	int i = 0;
@@ -152,7 +152,7 @@ int get_command(char *command, int n)
 	} while (d != '\n');
 	r++;
 	move_cursor_v(1);
-	prompt("ftp");
+	prompt(prompt_message);
 	dbg_dump(command, '\n');
 	wrefresh(win);
 	return 0;
