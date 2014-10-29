@@ -38,4 +38,5 @@ struct net_connection {
 
 int create_server_conn(struct net_connection *serv_conn, int port);
 int create_client_conn(struct net_connection *conn, char *addr, int port);
+int destroy_conn(struct net_connection *conn);
 #endif // _NET_CONN_H_

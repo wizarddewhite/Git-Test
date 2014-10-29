@@ -90,3 +90,12 @@ int create_client_conn(struct net_connection *conn, char *addr, int port)
 	conn->sock = sock;
 	return 0;
 }
+
+int destroy_conn(struct net_connection *conn)
+{
+	if (!(conn->state & CONN_CREATED))
+		return -1;
+
+	close(conn->sock);
+	return 0;
+}

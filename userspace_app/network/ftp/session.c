@@ -51,7 +51,7 @@ int init_session(struct session *sess, enum session_type type,
 void deinit_session(struct session *sess)
 {
 	/* Release the connection */
-	/* Fix ME */
+	destroy_conn(&sess->conn);
 
 	/* Cleanup the state */
 	sess->state = SESS_UNINITED;
