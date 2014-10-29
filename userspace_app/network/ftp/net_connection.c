@@ -47,11 +47,13 @@ int create_server_conn(struct net_connection *serv_conn, int port)
 	bzero(&(serv_conn->addr.sin_zero),8);
 
 	if (bind(sock, (struct sockaddr *)&serv_conn->addr, sizeof(struct sockaddr)) == -1) {
+		serv_conn->state &= ~CONN_CREATED;
 		perror("Unable to bind");
 		return -1;
 	}
 
 	if (listen(sock, 5) == -1) {
+		serv_conn->state &= ~CONN_CREATED;
 		perror("Listen");
 		return -1;
 	}
@@ -79,10 +81,10 @@ int create_client_conn(struct net_connection *conn, char *addr, int port)
 	bzero(&(conn->addr.sin_zero),8);
 
         if (connect(sock, (struct sockaddr *)&conn->addr,
-                    sizeof(struct sockaddr)) == -1)
-        {
-            perror("Connect");
-            exit(1);
+                    sizeof(struct sockaddr)) == -1) {
+		conn->state &= ~CONN_CREATED;
+		perror("Connect");
+		return -1;
         }
 	conn->state |= CONN_CONNECT;
 	conn->sock = sock;

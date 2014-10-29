@@ -24,7 +24,6 @@
 #include <netinet/in.h>
 
 enum conn_state {
-	CONN_UNUSE   = 0x00,
 	CONN_CREATED = 0x01,
 	CONN_LISTEN  = 0x02,
 	CONN_CONNECT = 0x04,
