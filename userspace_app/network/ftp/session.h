@@ -26,26 +26,25 @@
 #include "net_connection.h"
 
 enum session_type {
-	SESS_NONE,
 	SESS_CLIENT,
 	SESS_SERV
 };
 
-enum session_ret {
-	RET_SESS_INIED,
-	RET_SESS_UNINIED,
-	RET_SESS_SUCCESS
+enum session_state {
+	SESS_INITED,
+	SESS_UNINITED,
 };
 
 struct session {
 	enum session_type type;
+	enum session_state state;
 	struct net_connection conn;
 };
 
-void init_session(struct session *sess, char *name,
-		struct sockaddr_in *addr, enum session_type);
+int init_session(struct session *sess, enum session_type type,
+		char *addr, int port);
 void deinit_session(struct session *sess);
 struct session *create_session();
-int release_session(struct session *sess);
+void release_session(struct session *sess);
 
 #endif //_SESSION_H_

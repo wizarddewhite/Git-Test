@@ -21,20 +21,50 @@
 #include <string.h>
 #include "session.h"
 
-void init_session(struct session *sess, char *name,
-		struct sockaddr_in *addr, enum session_type type)
+/* 
+ * return 0 on success
+ */
+int init_session(struct session *sess, enum session_type type,
+		char *addr, int port)
 {
+	int ret;
 	sess->type = type;
-	return;
+
+	/* Check the statuts. If it is already used, skip it. */
+	if (sess->state == SESS_INITED)
+		return -1;
+
+	/* Create the connection */
+	if (type == SESS_CLIENT)
+		ret = create_client_conn(&sess->conn, addr, port);
+	else if (type == SESS_SERV)
+		ret = create_server_conn(&sess->conn, port);
+
+	if (!ret)
+		sess->state = SESS_INITED;
+	else
+		return -1;
+
+	return 0;
 }
 
 void deinit_session(struct session *sess)
 {
-	sess->type = SESS_NONE;
+	/* Release the connection */
+	/* Fix ME */
+
+	/* Cleanup the state */
+	sess->state = SESS_UNINITED;
+	return;
 }
 
-struct session *create_session()
+/* 
+ * return the session pointer when succeed
+ * return NULL when fails
+ */
+struct session *create_session(enum session_type type, char *addr, int port)
 {
+	int ret;
 	struct session *new_sess = 
 			(struct session*)malloc(sizeof(struct session));
 
@@ -42,16 +72,21 @@ struct session *create_session()
 		return NULL;
 
 	memset(new_sess, 0, sizeof(struct session));
-	init_session(new_sess, NULL, NULL, SESS_CLIENT);
+	ret = init_session(new_sess, type, addr, port);
+	
+	if (ret) {
+		deinit_session(new_sess);
+		new_sess = NULL;
+	}
 
 	return new_sess;
 }
 
-int release_session(struct session *sess)
+void release_session(struct session *sess)
 {
 	if (!sess)
-		return 0;
+		return;
 	deinit_session(sess);
 	free(sess);
-	return 0;
+	return; 
 }

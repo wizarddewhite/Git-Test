@@ -22,20 +22,27 @@
 
 static struct session client_session;
 
-int init_client_sess(char *serv_name, struct sockaddr_in *serv_addr)
+int init_client_sess(char *serv_addr, int port)
 {
-	if (client_session.type != SESS_NONE)
-		return -RET_SESS_INIED;
+	int ret;
 
-	init_session(&client_session, serv_name, serv_addr, SESS_CLIENT);
-	return RET_SESS_SUCCESS;
+	/* If it has been initialized, just return */
+	if (client_session.state != SESS_UNINITED)
+		return -1;
+
+	ret = init_session(&client_session, SESS_CLIENT, serv_addr, port);
+	if (ret)
+		return -1;
+
+	return 0;
 }
 
 int deinit_client_sess()
 {
-	if (client_session.type != SESS_NONE)
-		return -RET_SESS_UNINIED;
+	/* If it has not initialized, just return */
+	if (client_session.state != SESS_INITED)
+		return -1;
 
 	deinit_session(&client_session);
-	return RET_SESS_SUCCESS;
+	return 0;
 }
