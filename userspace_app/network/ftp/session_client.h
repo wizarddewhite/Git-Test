@@ -22,7 +22,11 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-int init_client_sess(char *serv_name, struct sockaddr_in *serv_addr);
+#include "session.h"
+#include "net_connection.h"
+
+int init_client_sess(char *serv_name, int port, struct net_ops *ops);
 int deinit_client_sess();
+struct session *get_client_sess();
 
 #endif // _SESS_CLIENT_
