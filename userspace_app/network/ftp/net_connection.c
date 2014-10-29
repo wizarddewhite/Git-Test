@@ -28,6 +28,21 @@
 #include "session.h"
 #include "net_connection.h"
 
+int raw_tcp_read(struct net_connection *conn, char *buff, int len)
+{
+	return recv(conn->sock, buff, len, 0);
+}
+
+int raw_tcp_write(struct net_connection *conn, char *buff, int len)
+{
+	return send(conn->sock, buff, len, 0);
+}
+
+struct net_ops raw_tcp_ops = {
+	.read = raw_tcp_read,
+	.write = raw_tcp_write,
+};
+
 int create_server_conn(struct net_connection *serv_conn, int port)
 {
 	int sock;
@@ -98,4 +113,27 @@ int destroy_conn(struct net_connection *conn)
 
 	close(conn->sock);
 	return 0;
+}
+
+void set_net_ops(struct net_connection *conn, struct net_ops *ops)
+{
+	if (!conn)
+		return;
+
+	if (!ops)
+		ops = &raw_tcp_ops;
+
+	conn->ops = ops;
+
+	return;
+}
+
+int net_conn_read(struct net_connection *conn, char *buff, int len)
+{
+	return conn->ops->read(conn, buff, len);
+}
+
+int net_conn_write(struct net_connection *conn, char *buff, int len)
+{
+	return conn->ops->write(conn, buff, len);
 }
