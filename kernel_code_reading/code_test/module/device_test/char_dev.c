@@ -33,13 +33,7 @@ MODULE_AUTHOR("ranjmis");
 MODULE_DESCRIPTION("A simple char device");
 MODULE_LICENSE("Dual BSD/GPL");
 
-static int r_init(void);
-static void r_cleanup(void);
-
-module_init(r_init);
-module_exit(r_cleanup);
-
-char my_data[80]="hi from kernel"; /* our device */
+char my_data[80]="hi from kernel\n"; /* our device */
 
 int my_open(struct inode *inode,struct file *filep)
 {
@@ -52,20 +46,41 @@ int my_release(struct inode *inode,struct file *filep)
 	/*MOD_DEC_USE_COUNT;*/ /* decrements usage count of module */
 	return 0;
 }
-ssize_t my_read(struct file *filep,char *buff,size_t count,loff_t *offp )
+
+/* function to copy kernel space buffer to user space*/
+ssize_t my_read(struct file *filep, char *buff, size_t count, loff_t *offp)
 {
-	/* function to copy kernel space buffer to user space*/
-	if ( copy_to_user(buff,my_data,strlen(my_data)) != 0 )
-		printk( "Kernel -> userspace copy failed!\n" );
-	return strlen(my_data);
+	int bytes_to_read, bytes_read;
+
+	if (*offp >= strlen(my_data))
+		return 0;
+
+	bytes_to_read = strlen(my_data) - *offp;
+	bytes_read = bytes_to_read -
+		copy_to_user(buff, my_data + *offp, bytes_to_read);
+
+	*offp += bytes_read;
+	return bytes_read;
 
 }
-ssize_t my_write(struct file *filep,const char *buff,size_t count,loff_t *offp )
+
+/* function to copy user space buffer to kernel space*/
+ssize_t my_write(struct file *filep, const char *buff, size_t count, loff_t *offp)
 {
-	/* function to copy user space buffer to kernel space*/
-	if ( copy_from_user(my_data,buff,count) != 0 )
-		printk( "Userspace -> kernel copy failed!\n" );
-	return 0;
+	int bytes_to_write, bytes_write;
+
+	if (*offp >= (sizeof(my_data) - 2))
+		return 0;
+
+	if ((*offp + count) >= (sizeof(my_data) - 2))
+		bytes_to_write = sizeof(my_data) - 2 - *offp;
+	else
+		bytes_to_write = count;
+	bytes_write = bytes_to_write -
+		copy_from_user(my_data, buff, bytes_to_write);
+
+	*offp += bytes_write;
+	return bytes_write;
 }
 
 struct file_operations my_fops={
@@ -133,3 +148,7 @@ static void r_cleanup(void)
 	class_destroy(my_class);
 	return ;
 }
+
+module_init(r_init);
+module_exit(r_cleanup);
+
