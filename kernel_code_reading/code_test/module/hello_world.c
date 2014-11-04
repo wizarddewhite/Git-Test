@@ -37,6 +37,8 @@ static int hello_init(void)
 	for (i=0; i < narr; i++)
 		printk(KERN_ALERT "int_array[%d] %d\n", i, int_array[i]);
 
+	request_module("e1000e");
+
 	return 0;
 }
 static void hello_exit(void)
