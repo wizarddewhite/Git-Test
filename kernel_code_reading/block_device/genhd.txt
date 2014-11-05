@@ -1,0 +1,65 @@
+1. genhd_device_init(), create /sys/class/block and /sys/dev/block
+================================================================================
+static int __init genhd_device_init(void)
+{
+	int error;
+
+	block_class.dev_kobj = sysfs_dev_block_kobj;
+	error = class_register(&block_class);
+	if (unlikely(error))
+		return error;
+	bdev_map = kobj_map_init(base_probe, &block_class_lock);
+	blk_dev_init();
+
+	register_blkdev(BLOCK_EXT_MAJOR, "blkext");
+
+	/* create top-level block dir */
+	if (!sysfs_deprecated)
+		block_depr = kobject_create_and_add("block", NULL);
+	return 0;
+}
+
+1.1 kobj_map_init(), base_probe
+================================================================================
+struct kobj_map *kobj_map_init(kobj_probe_t *base_probe, struct mutex *lock)
+{
+	struct kobj_map *p = kmalloc(sizeof(struct kobj_map), GFP_KERNEL);
+	struct probe *base = kzalloc(sizeof(*base), GFP_KERNEL);
+	int i;
+
+	if ((p == NULL) || (base == NULL)) {
+		kfree(p);
+		kfree(base);
+		return NULL;
+	}
+
+	base->dev = 1;
+	base->range = ~0;
+	base->get = base_probe;
+	for (i = 0; i < 255; i++)
+		p->probes[i] = base;
+	p->lock = lock;
+	return p;
+}
+
+1.2 blk_dev_init(), create workqueue and some kmem_cache
+================================================================================
+int __init blk_dev_init(void)
+{
+	BUILD_BUG_ON(__REQ_NR_BITS > 8 *
+			sizeof(((struct request *)0)->cmd_flags));
+
+	/* used for unplugging and affects IO latency/throughput - HIGHPRI */
+	kblockd_workqueue = alloc_workqueue("kblockd",
+					    WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
+	if (!kblockd_workqueue)
+		panic("Failed to create kblockd\n");
+
+	request_cachep = kmem_cache_create("blkdev_requests",
+			sizeof(struct request), 0, SLAB_PANIC, NULL);
+
+	blk_requestq_cachep = kmem_cache_create("blkdev_queue",
+			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
+
+	return 0;
+}
