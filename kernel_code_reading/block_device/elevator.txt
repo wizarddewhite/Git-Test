@@ -1,0 +1,252 @@
+1. elv_register(), register an elevator type by name
+================================================================================
+
+2. elevator_find(), find an elevator by name
+================================================================================
+static struct elevator_type *elevator_find(const char *name)
+{
+	struct elevator_type *e;
+
+	list_for_each_entry(e, &elv_list, list) {
+		if (!strcmp(e->elevator_name, name))
+			return e;
+	}
+
+	return NULL;
+}
+
+3. elevator_init(), initialize the request_queue->elevator
+================================================================================
+int elevator_init(struct request_queue *q, char *name)
+{
+	struct elevator_type *e = NULL;
+	int err;
+
+	/*
+	 * q->sysfs_lock must be held to provide mutual exclusion between
+	 * elevator_switch() and here.
+	 */
+	lockdep_assert_held(&q->sysfs_lock);
+
+	if (unlikely(q->elevator))
+		return 0;
+
+	INIT_LIST_HEAD(&q->queue_head);
+	q->last_merge = NULL;
+	q->end_sector = 0;
+	q->boundary_rq = NULL;
+
+	if (name) {
+		e = elevator_get(name, true);
+		if (!e)
+			return -EINVAL;
+	}
+
+	/*
+	 * Use the default elevator specified by config boot param or
+	 * config option.  Don't try to load modules as we could be running
+	 * off async and request_module() isn't allowed from async.
+	 */
+	if (!e && *chosen_elevator) {
+		e = elevator_get(chosen_elevator, false);
+		if (!e)
+			printk(KERN_ERR "I/O scheduler %s not found\n",
+							chosen_elevator);
+	}
+
+	if (!e) {
+		e = elevator_get(CONFIG_DEFAULT_IOSCHED, false);
+		if (!e) {
+			printk(KERN_ERR
+				"Default I/O scheduler not found. " \
+				"Using noop.\n");
+			e = elevator_get("noop", false);
+		}
+	}
+
+	err = e->ops.elevator_init_fn(q, e);
+	return 0;
+}
+
+3.1 e->ops.elevator_init_fn()
+================================================================================
+
+4. __elv_next_request(), get the next request to proceed by elevator
+================================================================================
+; called in blk_peek_request() only
+static inline struct request *__elv_next_request(struct request_queue *q)
+{
+	struct request *rq;
+	struct blk_flush_queue *fq = blk_get_flush_queue(q, NULL);
+
+	while (1) {
+		if (!list_empty(&q->queue_head)) {
+			rq = list_entry_rq(q->queue_head.next);
+			return rq;
+		}
+
+		/*
+		 * Flush request is running and flush request isn't queueable
+		 * in the drive, we can hold the queue till flush request is
+		 * finished. Even we don't do this, driver can't dispatch next
+		 * requests and will requeue them. And this can improve
+		 * throughput too. For example, we have request flush1, write1,
+		 * flush 2. flush1 is dispatched, then queue is hold, write1
+		 * isn't inserted to queue. After flush1 is finished, flush2
+		 * will be dispatched. Since disk cache is already clean,
+		 * flush2 will be finished very soon, so looks like flush2 is
+		 * folded to flush1.
+		 * Since the queue is hold, a flag is set to indicate the queue
+		 * should be restarted later. Please see flush_end_io() for
+		 * details.
+		 */
+		if (fq->flush_pending_idx != fq->flush_running_idx &&
+				!queue_flush_queueable(q)) {
+			fq->flush_queue_delayed = 1;
+			return NULL;
+		}
+		if (unlikely(blk_queue_bypass(q)) ||
+		    !q->elevator->type->ops.elevator_dispatch_fn(q, 0))
+			return NULL;
+	}
+}
+
+4.1 blk_get_flush_queue()
+================================================================================
+static inline struct blk_flush_queue *blk_get_flush_queue(
+		struct request_queue *q, struct blk_mq_ctx *ctx)
+{
+	struct blk_mq_hw_ctx *hctx;
+
+	if (!q->mq_ops)
+		return q->fq;
+
+	hctx = q->mq_ops->map_queue(q, ctx->cpu);
+
+	return hctx->fq;
+}
+
+4.2 elevator_dispatch_fn(), for example noop_dispatch()
+================================================================================
+static int noop_dispatch(struct request_queue *q, int force)
+{
+	struct noop_data *nd = q->elevator->elevator_data;
+
+	if (!list_empty(&nd->queue)) {
+		struct request *rq;
+		rq = list_entry(nd->queue.next, struct request, queuelist);
+		list_del_init(&rq->queuelist);
+		elv_dispatch_sort(q, rq);
+		return 1;
+	}
+	return 0;
+}
+
+4.2.1 elv_dispatch_sort(), dispatch a request on a request_queue
+================================================================================
+
+5. elv_dispatch_sort(), dispatch a request on a request_queue
+================================================================================
+; actually it is doing the elevator calculation to put the request on
+; request_queue->queue_head
+void elv_dispatch_sort(struct request_queue *q, struct request *rq)
+{
+	sector_t boundary;
+	struct list_head *entry;
+	int stop_flags;
+
+	if (q->last_merge == rq)
+		q->last_merge = NULL;
+
+	elv_rqhash_del(q, rq);
+
+	q->nr_sorted--;
+
+	boundary = q->end_sector;
+	stop_flags = REQ_SOFTBARRIER | REQ_STARTED;
+	list_for_each_prev(entry, &q->queue_head) {
+		struct request *pos = list_entry_rq(entry);
+
+		if ((rq->cmd_flags & REQ_DISCARD) !=
+		    (pos->cmd_flags & REQ_DISCARD))
+			break;
+		if (rq_data_dir(rq) != rq_data_dir(pos))
+			break;
+		if (pos->cmd_flags & stop_flags)
+			break;
+		if (blk_rq_pos(rq) >= boundary) {
+			if (blk_rq_pos(pos) < boundary)
+				continue;
+		} else {
+			if (blk_rq_pos(pos) >= boundary)
+				break;
+		}
+		if (blk_rq_pos(rq) >= blk_rq_pos(pos))
+			break;
+	}
+
+	list_add(&rq->queuelist, entry);
+}
+
+0. data structure
+================================================================================
+0.1 elv_list/elv_list_lock
+================================================================================
+   elv_list
+    |
+    |
+    v
+   elevator_type          elevator_type          elevator_type
+   +----------------+     +----------------+     +----------------+
+   |list            | --> |list            | --> |list            | -->  
+   +----------------+     +----------------+     +----------------+    
+
+0.2 elevator_type
+================================================================================
+    elevator_type
+    +---------------------------+
+    |ops                        |
+    |   (struct elevator_ops)   |
+    +---------------------------+
+    |elevator_name              |
+    |   (char [])               |
+    +---------------------------+
+    |icq_cache                  |
+    |   (struct kmem_cache*)    |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+
+0.3 elevator_queue
+================================================================================
+
+
+   request_queue          elevator_queue
+  +----------------+      +---------------------------+
+  |elevator        |----->|type                       |
+  |                |      |  (struct elevator_type*)  |
+  +----------------+      +---------------------------+  like
+                          |elevator_data              | ---> cfq_data
+                          |  (void *)                 |
+                          +---------------------------+
+                          |                           |
+                          |                           |
+                          +---------------------------+
+                          |hash                       |
+                          |                           |
+                          +---------------------------+
+
+0.4 request_queue
+================================================================================
+    request_queue
+    +--------------------------+
+    |queue_head                |   point to a list of struct request
+    |    (struct list_head)    |
+    +--------------------------+
+    |                          |
+    |                          |
+    +--------------------------+
