@@ -37,7 +37,7 @@ static int kmem_cache_test_init(void)
 	if (test_cache == NULL)
 		return -ENOMEM;
 
-	printk(KERN_ERR "Fetch a cache from kmem_cache\n", __func__);
+	printk(KERN_ERR "%s: Fetch a cache from kmem_cache\n", __func__);
 	tmp = kmem_cache_zalloc(test_cache, GFP_KERNEL);
 
 	return 0;
