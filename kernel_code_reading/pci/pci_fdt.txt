@@ -1,0 +1,311 @@
+1. how pci dt is created in skiboot
+================================================================================
+pci_init_slot()
+	pci_add_nodes()
+
+2. how fdt is passed to kernel by skiboot
+================================================================================
+void __noreturn load_and_boot_kernel(bool is_reboot)
+{
+	const struct dt_property *memprop;
+	uint64_t mem_top;
+
+	memprop = dt_find_property(dt_root, DT_PRIVATE "maxmem");
+	if (memprop)
+		mem_top = (u64)dt_property_get_cell(memprop, 0) << 32
+			| dt_property_get_cell(memprop, 1);
+	else /* XXX HB hack, might want to calc it */
+		mem_top = 0x40000000;
+
+	op_display(OP_LOG, OP_MOD_INIT, 0x000A);
+
+	/* Load kernel LID */
+	if (!load_kernel()) {
+		op_display(OP_FATAL, OP_MOD_INIT, 1);
+		abort();
+	}
+
+	load_initramfs();
+
+	if (!is_reboot) {
+		/* We wait for the nvram read to complete here so we can
+		 * grab stuff from there such as the kernel arguments
+		 */
+		fsp_nvram_wait_open();
+
+		/* Wait for FW VPD data read to complete */
+		fsp_code_update_wait_vpd(true);
+	}
+	fsp_console_select_stdout();
+
+	/* 
+	 * OCC takes few secs to boot.  Call this as late as
+	 * as possible to avoid delay.
+	 */
+	occ_pstates_init();
+
+	/* Set kernel command line argument if specified */
+#ifdef KERNEL_COMMAND_LINE
+	dt_add_property_string(dt_chosen, "bootargs", KERNEL_COMMAND_LINE);
+#endif
+
+	op_display(OP_LOG, OP_MOD_INIT, 0x000B);
+
+	/* Create the device tree blob to boot OS. */
+	fdt = create_dtb(dt_root);
+	if (!fdt) {
+		op_display(OP_FATAL, OP_MOD_INIT, 2);
+		abort();
+	}
+
+	op_display(OP_LOG, OP_MOD_INIT, 0x000C);
+
+	/* Start the kernel */
+	if (!is_reboot)
+		op_panel_disable_src_echo();
+
+	/* Clear SRCs on the op-panel when Linux starts */
+	op_panel_clear_src();
+
+	cpu_give_self_os();
+
+	printf("INIT: Starting kernel at 0x%llx, fdt at %p (size 0x%x)\n",
+	       kernel_entry, fdt, fdt_totalsize(fdt));
+
+	fdt_set_boot_cpuid_phys(fdt, this_cpu()->pir);
+	if (kernel_32bit)
+		start_kernel32(kernel_entry, fdt, mem_top);
+	start_kernel(kernel_entry, fdt, mem_top);
+}
+
+2.1 load_kernel()
+================================================================================
+static bool load_kernel(void)
+{
+	struct elf_hdr *kh;
+	size_t ksize = 0;
+
+	/* Try to load an external kernel payload through the platform hooks */
+	if (platform.load_resource) {
+		ksize = KERNEL_LOAD_SIZE;
+		if (!platform.load_resource(RESOURCE_ID_KERNEL,
+				KERNEL_LOAD_BASE, &ksize)) {
+			printf("INIT: platform kernel load failed\n");
+			ksize = 0;
+		}
+	}
+
+	/* Try embedded kernel payload */
+	if (!ksize) {
+		ksize = __builtin_kernel_end - __builtin_kernel_start;
+		if (ksize) {
+			/* Move the built-in kernel up */
+			uint64_t builtin_base =
+				((uint64_t)__builtin_kernel_start) -
+				SKIBOOT_BASE + boot_offset;
+			printf("Using built-in kernel\n");
+			memmove(KERNEL_LOAD_BASE, (void*)builtin_base, ksize);
+		}
+	}
+
+	if (!ksize)
+		printf("Assuming kernel at 0x%p\n", KERNEL_LOAD_BASE);
+
+	printf("INIT: Kernel loaded, size: %zu bytes (0 = unknown preload)\n",
+	       ksize);
+
+	kh = (struct elf_hdr *)KERNEL_LOAD_BASE;
+	if (kh->ei_class == ELF_CLASS_64)
+		return try_load_elf64(kh);
+	else if (kh->ei_class == ELF_CLASS_32)
+		return try_load_elf32(kh);
+
+	printf("INIT: Neither ELF32 not ELF64 ?\n");
+	return false;
+}
+
+2.1.1 try_load_elf64(), set kernel_entry
+================================================================================
+static bool try_load_elf64(struct elf_hdr *header)
+{
+	struct elf64_hdr *kh = (struct elf64_hdr *)header;
+	uint64_t load_base = (uint64_t)kh;
+	struct elf64_phdr *ph;
+	unsigned int i;
+
+	/* Check it's a ppc64 LE ELF */
+	if (kh->ei_ident == ELF_IDENT		&&
+	    kh->ei_data == ELF_DATA_LSB		&&
+	    kh->e_machine == le16_to_cpu(ELF_MACH_PPC64)) {
+		return try_load_elf64_le(header);
+	}
+
+	/* Check it's a ppc64 ELF */
+	if (kh->ei_ident != ELF_IDENT		||
+	    kh->ei_data != ELF_DATA_MSB		||
+	    kh->e_machine != ELF_MACH_PPC64) {
+		prerror("INIT: Kernel doesn't look like an ppc64 ELF\n");
+		return false;
+	}
+
+	/* Look for a loadable program header that has our entry in it
+	 *
+	 * Note that we execute the kernel in-place, we don't actually
+	 * obey the load informations in the headers. This is expected
+	 * to work for the Linux Kernel because it's a fairly dumb ELF
+	 * but it will not work for any ELF binary.
+	 */
+	ph = (struct elf64_phdr *)(load_base + kh->e_phoff);
+	for (i = 0; i < kh->e_phnum; i++, ph++) {
+		if (ph->p_type != ELF_PTYPE_LOAD)
+			continue;
+		if (ph->p_vaddr > kh->e_entry ||
+		    (ph->p_vaddr + ph->p_memsz) < kh->e_entry)
+			continue;
+
+		/* Get our entry */
+		kernel_entry = kh->e_entry - ph->p_vaddr + ph->p_offset;
+		break;
+	}
+
+	if (!kernel_entry) {
+		prerror("INIT: Failed to find kernel entry !\n");
+		return false;
+	}
+	kernel_entry += load_base;
+	kernel_32bit = false;
+
+	printf("INIT: 64-bit kernel entry at 0x%llx\n", kernel_entry);
+
+	return true;
+}
+
+2.2 load_initramfs()
+================================================================================
+static void load_initramfs(void)
+{
+	size_t size;
+	bool loaded;
+
+	if (!platform.load_resource)
+		return;
+
+	size = INITRAMFS_LOAD_SIZE;
+	loaded = platform.load_resource(RESOURCE_ID_INITRAMFS,
+			INITRAMFS_LOAD_BASE, &size);
+
+	if (!loaded || !size)
+		return;
+
+	printf("INIT: Initramfs loaded, size: %zu bytes\n", size);
+
+	dt_add_property_u64(dt_chosen, "linux,initrd-start",
+			(uint64_t)INITRAMFS_LOAD_BASE);
+	dt_add_property_u64(dt_chosen, "linux,initrd-end",
+			(uint64_t)INITRAMFS_LOAD_BASE + size);
+}
+
+2.3 create_dtb()
+================================================================================
+void *create_dtb(const struct dt_node *root)
+{
+	size_t len = DEVICE_TREE_MAX_SIZE;
+	uint32_t old_last_phandle = last_phandle;
+
+	do {
+		if (fdt)
+			free(fdt);
+		last_phandle = old_last_phandle;
+		fdt_error = 0;
+		fdt = malloc(len);
+		if (!fdt) {
+			prerror("dtb: could not malloc %lu\n", (long)len);
+			return NULL;
+		}
+
+		fdt_create(fdt, len);
+
+		create_dtb_reservemap(root);
+
+		/* Open root node */
+		dt_begin_node(root->name, root->phandle);
+
+		/* Unflatten our live tree */
+		flatten_dt_node(root);
+
+		/* Close root node */
+		dt_end_node();
+
+		save_err(fdt_finish(fdt));
+
+		if (!fdt_error)
+			break;
+
+		len *= 2;
+	} while (fdt_error == -FDT_ERR_NOSPACE);
+
+	dump_fdt();
+
+	if (fdt_error) {
+		prerror("dtb: error %s\n", fdt_strerror(fdt_error));
+		return NULL;
+	}
+	return fdt;
+}
+
+2.3.1 fdt_create()
+================================================================================
+int fdt_create(void *buf, int bufsize)
+{
+	void *fdt = buf;
+
+	if (bufsize < sizeof(struct fdt_header))
+		return -FDT_ERR_NOSPACE;
+
+	memset(buf, 0, bufsize);
+
+	fdt_set_magic(fdt, FDT_SW_MAGIC);
+	fdt_set_version(fdt, FDT_LAST_SUPPORTED_VERSION);
+	fdt_set_last_comp_version(fdt, FDT_FIRST_SUPPORTED_VERSION);
+	fdt_set_totalsize(fdt,  bufsize);
+
+	fdt_set_off_mem_rsvmap(fdt, FDT_ALIGN(sizeof(struct fdt_header),
+					      sizeof(struct fdt_reserve_entry)));
+	fdt_set_off_dt_struct(fdt, fdt_off_mem_rsvmap(fdt));
+	fdt_set_off_dt_strings(fdt, bufsize);
+
+	return 0;
+}
+
+2.3.2 create_dtb_reservemap()
+================================================================================
+
+2.3.3 dt_begin_node()
+================================================================================
+
+2.3.4 flatten_dt_node()
+================================================================================
+
+2.3.5 dt_end_node()
+================================================================================
+
+2.3.6 fdt_finish()
+================================================================================
+
+2.4 fdt_set_boot_cpuid_phys()
+================================================================================
+
+2.5 start_kernel()
+================================================================================
+
+3. how kernel get the fdt
+================================================================================
+void __init unflatten_device_tree(void)
+{
+	__unflatten_device_tree(initial_boot_params, &of_allnodes,
+				early_init_dt_alloc_memory_arch);
+
+	/* Get pointer to "/chosen" and "/aliases" nodes for use everywhere */
+	of_alias_scan(early_init_dt_alloc_memory_arch);
+}
+
