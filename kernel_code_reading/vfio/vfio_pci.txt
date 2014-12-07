@@ -28,9 +28,12 @@ out_virqfd:
 	return ret;
 }
 
-1.1 vfio_pci_init_perm_bits()
+1.1 vfio_pci_init_perm_bits(), set permition and operation for config space
 ================================================================================
 ; initialize the cap_perms array
+; one trick is use cap list number 0, which is reserved in SPEC to represent
+; basi configure space
+
 int __init vfio_pci_init_perm_bits(void)
 {
 	int ret;
@@ -174,8 +177,10 @@ static int vfio_user_config_read(struct pci_dev *pdev, int offset,
 	return pcibios_err_to_errno(ret);
 }
 
-1.1.2.1 vfio_user_config_read()
+1.1.2.1 vfio_user_config_read(), drivers/pci/access.c
 ================================================================================
+; actually, the read is the same procedure as pci_bus_read_config_XXX
+
 #define PCI_USER_READ_CONFIG(size,type)					\
 int pci_user_read_config_##size						\
 	(struct pci_dev *dev, int pos, type *val)			\
@@ -198,6 +203,8 @@ int pci_user_read_config_##size						\
 
 1.2 vfio_pci_virqfd_init(), create a work queue, vfio-irqfd-cleanup
 ================================================================================
+; will come back later
+
 int __init vfio_pci_virqfd_init(void)
 {
 	vfio_irqfd_cleanup_wq =
@@ -256,7 +263,19 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	return ret;
 }
 
-2.1 vfio_add_group_dev(), add this dev to the proper vfio_group
+2.1 iommu_group_get()
+================================================================================
+struct iommu_group *iommu_group_get(struct device *dev)
+{
+	struct iommu_group *group = dev->iommu_group;
+
+	if (group)
+		kobject_get(group->devices_kobj);
+
+	return group;
+}
+
+2.2 vfio_add_group_dev(), add this dev to the proper vfio_group
 ================================================================================
 ; one vfio_group maps one iommu_group
 int vfio_add_group_dev(struct device *dev,
@@ -304,6 +323,174 @@ int vfio_add_group_dev(struct device *dev,
 	vfio_group_put(group);
 
 	return 0;
+}
+
+2.2.1 iommu_group_get()
+================================================================================
+struct iommu_group *iommu_group_get(struct device *dev)
+{
+	struct iommu_group *group = dev->iommu_group;
+
+	if (group)
+		kobject_get(group->devices_kobj);
+
+	return group;
+}
+
+2.2.2 vfio_group_get_from_iommu()
+================================================================================
+static
+struct vfio_group *vfio_group_get_from_iommu(struct iommu_group *iommu_group)
+{
+	struct vfio_group *group;
+
+	mutex_lock(&vfio.group_lock);
+	list_for_each_entry(group, &vfio.group_list, vfio_next) {
+		if (group->iommu_group == iommu_group) {
+			vfio_group_get(group);
+			mutex_unlock(&vfio.group_lock);
+			return group;
+		}
+	}
+	mutex_unlock(&vfio.group_lock);
+
+	return NULL;
+}
+
+2.2.3 vfio_create_group(), create the vfio_group
+================================================================================
+static struct vfio_group *vfio_create_group(struct iommu_group *iommu_group)
+{
+	struct vfio_group *group, *tmp;
+	struct device *dev;
+	int ret, minor;
+
+	group = kzalloc(sizeof(*group), GFP_KERNEL);
+	if (!group)
+		return ERR_PTR(-ENOMEM);
+
+	kref_init(&group->kref);
+	INIT_LIST_HEAD(&group->device_list);
+	mutex_init(&group->device_lock);
+	atomic_set(&group->container_users, 0);
+	atomic_set(&group->opened, 0);
+	group->iommu_group = iommu_group;
+
+	group->nb.notifier_call = vfio_iommu_group_notifier;
+
+	/*
+	 * blocking notifiers acquire a rwsem around registering and hold
+	 * it around callback.  Therefore, need to register outside of
+	 * vfio.group_lock to avoid A-B/B-A contention.  Our callback won't
+	 * do anything unless it can find the group in vfio.group_list, so
+	 * no harm in registering early.
+	 */
+	ret = iommu_group_register_notifier(iommu_group, &group->nb);
+	if (ret) {
+		kfree(group);
+		return ERR_PTR(ret);
+	}
+
+	mutex_lock(&vfio.group_lock);
+
+	minor = vfio_alloc_group_minor(group);
+	if (minor < 0) {
+		vfio_group_unlock_and_free(group);
+		return ERR_PTR(minor);
+	}
+
+	/* Did we race creating this group? */
+	list_for_each_entry(tmp, &vfio.group_list, vfio_next) {
+		if (tmp->iommu_group == iommu_group) {
+			vfio_group_get(tmp);
+			vfio_free_group_minor(minor);
+			vfio_group_unlock_and_free(group);
+			return tmp;
+		}
+	}
+
+	dev = device_create(vfio.class, NULL,
+			    MKDEV(MAJOR(vfio.group_devt), minor),
+			    group, "%d", iommu_group_id(iommu_group));
+	if (IS_ERR(dev)) {
+		vfio_free_group_minor(minor);
+		vfio_group_unlock_and_free(group);
+		return (struct vfio_group *)dev; /* ERR_PTR */
+	}
+
+	group->minor = minor;
+	group->dev = dev;
+
+	list_add(&group->vfio_next, &vfio.group_list);
+
+	mutex_unlock(&vfio.group_lock);
+
+	return group;
+}
+
+2.2.3.1 iommu_group_register_notifier()
+================================================================================
+int iommu_group_register_notifier(struct iommu_group *group,
+				  struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&group->notifier, nb);
+}
+
+2.2.3.2 vfio_alloc_group_minor(), why not use the iommu_group number?
+================================================================================
+static int vfio_alloc_group_minor(struct vfio_group *group)
+{
+	return idr_alloc(&vfio.group_idr, group, 0, MINORMASK + 1, GFP_KERNEL);
+}
+
+2.2.4 vfio_group_get_device()
+================================================================================
+static struct vfio_device *vfio_group_get_device(struct vfio_group *group,
+						 struct device *dev)
+{
+	struct vfio_device *device;
+
+	mutex_lock(&group->device_lock);
+	list_for_each_entry(device, &group->device_list, group_next) {
+		if (device->dev == dev) {
+			vfio_device_get(device);
+			mutex_unlock(&group->device_lock);
+			return device;
+		}
+	}
+	mutex_unlock(&group->device_lock);
+	return NULL;
+}
+
+2.2.5 vfio_group_create_device(), create vfio_device and add to vfio_group
+================================================================================
+static
+struct vfio_device *vfio_group_create_device(struct vfio_group *group,
+					     struct device *dev,
+					     const struct vfio_device_ops *ops,
+					     void *device_data)
+{
+	struct vfio_device *device;
+
+	device = kzalloc(sizeof(*device), GFP_KERNEL);
+	if (!device)
+		return ERR_PTR(-ENOMEM);
+
+	kref_init(&device->kref);
+	device->dev = dev;
+	device->group = group;
+	device->ops = ops;
+	device->device_data = device_data;
+	dev_set_drvdata(dev, device);
+
+	/* No need to get group_lock, caller has group reference */
+	vfio_group_get(group);
+
+	mutex_lock(&group->device_lock);
+	list_add(&device->group_next, &group->device_list);
+	mutex_unlock(&group->device_lock);
+
+	return device;
 }
 
 3. echo 1102 0002 > /sys/bus/pci/drivers/vfio-pci/new_id
@@ -551,20 +738,39 @@ out:
 0. Data Structure
 ================================================================================
 
-       struct vfio_pci_device
+0.1 vfio_pci_device
+================================================================================
+  vfio_device                       struct vfio_pci_device
+  +-------------------+             +---------------------------+
+  |device_data        |------------>|pdev(struct pci_dev*)      |
+  |  (void*)          |   +---------|--->dev(struct device*)    |
+  +-------------------+   |         +---------------------------+
+  |dev                |---+         |pci_saved_state            |
+  |  (void*)          |             |reset_works                |
+  +-------------------+             |                           |
+  |ops                |vfio_pci_ops |                           |
+  | struct            |             +---------------------------+
+  |(vfio_device_ops*) |             |                           |
+  +-------------------+             |pci_config_map             |
+                                    |vconfig                    | -> config space is copied here
+                                    |   (u8*)                   |
+                                    +---------------------------+
+                                    |rbar[7]                    |
+                                    |   (u32)                   |
+                                    +---------------------------+
+
+0.2 perm_bits, global parameter
+================================================================================
+virt and write is bitmap to indicate whether the bit is vitualized and whether
+it could be writen
+
+       struct perm_bits
        +---------------------------+
-       |pdev(struct pci_dev*)      |
-       |                           |
+       |virt                       |
+       |write                      |
+       |    (u8*)                  |
        +---------------------------+
-       |pci_saved_state            |
-       |reset_works                |
-       |                           |
-       |                           |
+       |readfn                     |
+       |writefn                    |
        +---------------------------+
-       |pci_config_map             |
-       |vconfig                    | -> config space is copied here
-       |   (u8*)                   |
-       +---------------------------+
-       |rbar[7]                    |
-       |   (u32)                   |
-       +---------------------------+
+
