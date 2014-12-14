@@ -573,6 +573,15 @@ int pci_add_dynid(struct pci_driver *drv,
 
 4. vfio_pci_ops{} 
 ================================================================================
+static const struct vfio_device_ops vfio_pci_ops = {
+	.name		= "vfio-pci",
+	.open		= vfio_pci_open,
+	.release	= vfio_pci_release,
+	.ioctl		= vfio_pci_ioctl,
+	.read		= vfio_pci_read,
+	.write		= vfio_pci_write,
+	.mmap		= vfio_pci_mmap,
+};
 
 4.1 vfio_pci_open() 
 ================================================================================
@@ -731,9 +740,182 @@ out:
 
 4.1.1.2.1 vfio_fill_vconfig_bytes(), copy 64 byte config space to vconfig
 ================================================================================
+static int vfio_fill_vconfig_bytes(struct vfio_pci_device *vdev,
+				   int offset, int size)
+{
+	struct pci_dev *pdev = vdev->pdev;
+	int ret = 0;
+
+	/*
+	 * We try to read physical config space in the largest chunks
+	 * we can, assuming that all of the fields support dword access.
+	 * pci_save_state() makes this same assumption and seems to do ok.
+	 */
+	while (size) {
+		int filled;
+
+		if (size >= 4 && !(offset % 4)) {
+			__le32 *dwordp = (__le32 *)&vdev->vconfig[offset];
+			u32 dword;
+
+			ret = pci_read_config_dword(pdev, offset, &dword);
+			if (ret)
+				return ret;
+			*dwordp = cpu_to_le32(dword);
+			filled = 4;
+		} else if (size >= 2 && !(offset % 2)) {
+			__le16 *wordp = (__le16 *)&vdev->vconfig[offset];
+			u16 word;
+
+			ret = pci_read_config_word(pdev, offset, &word);
+			if (ret)
+				return ret;
+			*wordp = cpu_to_le16(word);
+			filled = 2;
+		} else {
+			u8 *byte = &vdev->vconfig[offset];
+			ret = pci_read_config_byte(pdev, offset, byte);
+			if (ret)
+				return ret;
+			filled = 1;
+		}
+
+		offset += filled;
+		size -= filled;
+	}
+
+	return ret;
+}
 
 4.1.1.2.2 vfio_cap_init(), copy cap list to vconfig
 ================================================================================
+static int vfio_cap_init(struct vfio_pci_device *vdev)
+{
+	struct pci_dev *pdev = vdev->pdev;
+	u8 *map = vdev->pci_config_map;
+	u16 status;
+	u8 pos, *prev, cap;
+	int loops, ret, caps = 0;
+
+	/* Any capabilities? */
+	ret = pci_read_config_word(pdev, PCI_STATUS, &status);
+	if (ret)
+		return ret;
+
+	if (!(status & PCI_STATUS_CAP_LIST))
+		return 0; /* Done */
+
+	ret = pci_read_config_byte(pdev, PCI_CAPABILITY_LIST, &pos);
+	if (ret)
+		return ret;
+
+	/* Mark the previous position in case we want to skip a capability */
+	prev = &vdev->vconfig[PCI_CAPABILITY_LIST];
+
+	/* We can bound our loop, capabilities are dword aligned */
+	loops = (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF;
+	while (pos && loops--) {
+		u8 next;
+		int i, len = 0;
+
+		ret = pci_read_config_byte(pdev, pos, &cap);
+		if (ret)
+			return ret;
+
+		ret = pci_read_config_byte(pdev,
+					   pos + PCI_CAP_LIST_NEXT, &next);
+		if (ret)
+			return ret;
+
+		if (cap <= PCI_CAP_ID_MAX) {
+			len = pci_cap_length[cap];
+			if (len == 0xFF) { /* Variable length */
+				len = vfio_cap_len(vdev, cap, pos);
+				if (len < 0)
+					return len;
+			}
+		}
+
+		if (!len) {
+			pr_info("%s: %s hiding cap 0x%x\n",
+				__func__, dev_name(&pdev->dev), cap);
+			*prev = next;
+			pos = next;
+			continue;
+		}
+
+		/* Sanity check, do we overlap other capabilities? */
+		for (i = 0; i < len; i++) {
+			if (likely(map[pos + i] == PCI_CAP_ID_INVALID))
+				continue;
+
+			pr_warn("%s: %s pci config conflict @0x%x, was cap 0x%x now cap 0x%x\n",
+				__func__, dev_name(&pdev->dev),
+				pos + i, map[pos + i], cap);
+		}
+
+		memset(map + pos, cap, len);
+		ret = vfio_fill_vconfig_bytes(vdev, pos, len);
+		if (ret)
+			return ret;
+
+		prev = &vdev->vconfig[pos + PCI_CAP_LIST_NEXT];
+		pos = next;
+		caps++;
+	}
+
+	/* If we didn't fill any capabilities, clear the status flag */
+	if (!caps) {
+		__le16 *vstatus = (__le16 *)&vdev->vconfig[PCI_STATUS];
+		*vstatus &= ~cpu_to_le16(PCI_STATUS_CAP_LIST);
+	}
+
+	return 0;
+}
+
+4.1.1.2.3 vfio_ecap_init(), copy cap list to vconfig
+================================================================================
+
+4.2 vfio_pci_read() 
+================================================================================
+static ssize_t vfio_pci_read(void *device_data, char __user *buf,
+			     size_t count, loff_t *ppos)
+{
+	if (!count)
+		return 0;
+
+	return vfio_pci_rw(device_data, buf, count, ppos, false);
+}
+
+4.2.1 vfio_pci_rw() 
+================================================================================
+static ssize_t vfio_pci_rw(void *device_data, char __user *buf,
+			   size_t count, loff_t *ppos, bool iswrite)
+{
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
+	struct vfio_pci_device *vdev = device_data;
+
+	if (index >= VFIO_PCI_NUM_REGIONS)
+		return -EINVAL;
+
+	switch (index) {
+	case VFIO_PCI_CONFIG_REGION_INDEX:
+		return vfio_pci_config_rw(vdev, buf, count, ppos, iswrite);
+
+	case VFIO_PCI_ROM_REGION_INDEX:
+		if (iswrite)
+			return -EINVAL;
+		return vfio_pci_bar_rw(vdev, buf, count, ppos, false);
+
+	case VFIO_PCI_BAR0_REGION_INDEX ... VFIO_PCI_BAR5_REGION_INDEX:
+		return vfio_pci_bar_rw(vdev, buf, count, ppos, iswrite);
+
+	case VFIO_PCI_VGA_REGION_INDEX:
+		return vfio_pci_vga_rw(vdev, buf, count, ppos, iswrite);
+	}
+
+	return -EINVAL;
+}
 
 0. Data Structure
 ================================================================================
@@ -755,11 +937,25 @@ out:
                                     |vconfig                    | -> config space is copied here
                                     |   (u8*)                   |
                                     +---------------------------+
-                                    |rbar[7]                    |
+                                    |rbar[7]                    | -> BAR for restore after reset
                                     |   (u32)                   |
                                     +---------------------------+
 
-0.2 perm_bits, global parameter
+0.2 vfio_group / vfio_device
+================================================================================
+
+    vfio_group
+    +----------------------------+
+    |device_list                 |
+    |   (struct list_head)       |
+    +----------------------------+
+         |      vfio_device                  vfio_device
+         |      +----------------------+     +----------------------+
+         +----->|                      |---->|                      |
+                |                      |     |                      |
+                +----------------------+     +----------------------+
+
+0.3 perm_bits, global parameter
 ================================================================================
 virt and write is bitmap to indicate whether the bit is vitualized and whether
 it could be writen
