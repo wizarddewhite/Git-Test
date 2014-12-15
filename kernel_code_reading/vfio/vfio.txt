@@ -86,7 +86,7 @@ static const struct file_operations vfio_fops = {
 	.mmap		= vfio_fops_mmap,
 };
 
-1.1.1 vfio_fops_open(), ,file->private_data = vfio_container
+1.1.1 vfio_fops_open(), ,create a vfio_container
 ================================================================================
 static int vfio_fops_open(struct inode *inode, struct file *filep)
 {
@@ -105,7 +105,7 @@ static int vfio_fops_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-1.1.2 vfio_fops_read(), iommu_driver->ops->read
+1.1.2 vfio_fops_read(), iommu_driver(vfio_iommu_type1)->ops->read
 ================================================================================
 static ssize_t vfio_fops_read(struct file *filep, char __user *buf,
 			      size_t count, loff_t *ppos)
@@ -126,7 +126,7 @@ static ssize_t vfio_fops_read(struct file *filep, char __user *buf,
 	return ret;
 }
 
-1.1.3 vfio_fops_write(), iommu_driver->ops->write
+1.1.3 vfio_fops_write(), iommu_driver(vfio_iommu_type1)->ops->write
 ================================================================================
 static ssize_t vfio_fops_write(struct file *filep, const char __user *buf,
 			       size_t count, loff_t *ppos)
@@ -187,9 +187,36 @@ static long vfio_fops_unl_ioctl(struct file *filep,
 
 1.1.4.1 VFIO_SET_IOMMU, container->iommu_driver = driver
 ================================================================================
+
+1.1.5 vfio_fops_release(), release vfio_container when no one use it
+================================================================================
+static int vfio_fops_release(struct inode *inode, struct file *filep)
+{
+	struct vfio_container *container = filep->private_data;
+
+	filep->private_data = NULL;
+
+	vfio_container_put(container);
+
+	return 0;
+}
+
+1.1.5.1 vfio_container_release()
+================================================================================
+static void vfio_container_release(struct kref *kref)
+{
+	struct vfio_container *container;
+	container = container_of(kref, struct vfio_container, kref);
+
+	kfree(container);
+}
+
+1.2 vfio_ioctl_set_iommu()
+================================================================================
 ; iterate on vfio.iommu_drivers_list
 ; call iommu_driver.open
 ; for each iommu_driver iterate on each group in group_list, call attach_group
+
 static long vfio_ioctl_set_iommu(struct vfio_container *container,
 				 unsigned long arg)
 {
@@ -259,7 +286,31 @@ skip_drivers_unlock:
 	return ret;
 }
 
-1.1.4.1.1 __vfio_container_attach_groups(), vfio_iommu_driver->attach_group
+1.2.1 vfio_iommu_powerpc->ops->ioctl(VFIO_CHECK_EXTENSION), extension check
+================================================================================
+
+1.2.2 vfio_iommu_powerpc->ops->open(), give vfio_iommu_driver a chance to init
+================================================================================
+; create a tce_container
+static void *tce_iommu_open(unsigned long arg)
+{
+	struct tce_container *container;
+
+	if (arg != VFIO_SPAPR_TCE_IOMMU) {
+		pr_err("tce_vfio: Wrong IOMMU type\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	container = kzalloc(sizeof(*container), GFP_KERNEL);
+	if (!container)
+		return ERR_PTR(-ENOMEM);
+
+	mutex_init(&container->lock);
+
+	return container;
+}
+
+1.2.3 __vfio_container_attach_groups(), vfio_iommu_driver->attach_group
 ================================================================================
 static int __vfio_container_attach_groups(struct vfio_container *container,
 					  struct vfio_iommu_driver *driver,
@@ -285,20 +336,45 @@ unwind:
 	return ret;
 }
 
-1.1.5 vfio_fops_release(), release vfio_container when no one use it
+1.2.3.1 tce_iommu_attach_group(), do init and take iommu ownership from host
 ================================================================================
-static int vfio_fops_release(struct inode *inode, struct file *filep)
+; this is one of the magic
+; iommu group will "disconnect" the iommu from host, so that give the chance
+; for guest to take over it
+
+static int tce_iommu_attach_group(void *iommu_data,
+		struct iommu_group *iommu_group)
 {
-	struct vfio_container *container = filep->private_data;
+	int ret;
+	struct tce_container *container = iommu_data;
+	struct iommu_table *tbl = iommu_group_get_iommudata(iommu_group);
 
-	filep->private_data = NULL;
+	BUG_ON(!tbl);
+	mutex_lock(&container->lock);
 
-	vfio_container_put(container);
+	/* pr_debug("tce_vfio: Attaching group #%u to iommu %p\n",
+			iommu_group_id(iommu_group), iommu_group); */
+	if (container->tbl) {
+		pr_warn("tce_vfio: Only one group per IOMMU container is allowed, existing id=%d, attaching id=%d\n",
+				iommu_group_id(container->tbl->it_group),
+				iommu_group_id(iommu_group));
+		ret = -EBUSY;
+	} else if (container->enabled) {
+		pr_err("tce_vfio: attaching group #%u to enabled container\n",
+				iommu_group_id(iommu_group));
+		ret = -EBUSY;
+	} else {
+		ret = iommu_take_ownership(tbl);
+		if (!ret)
+			container->tbl = tbl;
+	}
 
-	return 0;
+	mutex_unlock(&container->lock);
+
+	return ret;
 }
 
-1.2 vfio_group_fops(), /dev/vfio/$GROUP
+1.3 vfio_group_fops(), /dev/vfio/$GROUP
 ================================================================================
 static const struct file_operations vfio_group_fops = {
 	.owner		= THIS_MODULE,
@@ -310,8 +386,10 @@ static const struct file_operations vfio_group_fops = {
 	.release	= vfio_group_fops_release,
 };
 
-1.2.1 vfio_group_fops_open(), file->private_data = vfio_group
+1.3.1 vfio_group_fops_open(), file->private_data = vfio_group
 ================================================================================
+; get the vfio_group and check whether it is available
+
 static int vfio_group_fops_open(struct inode *inode, struct file *filep)
 {
 	struct vfio_group *group;
@@ -340,7 +418,7 @@ static int vfio_group_fops_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-1.2.2 vfio_group_fops_release(), release
+1.3.2 vfio_group_fops_release(), release
 ================================================================================
 static int vfio_group_fops_release(struct inode *inode, struct file *filep)
 {
@@ -355,6 +433,207 @@ static int vfio_group_fops_release(struct inode *inode, struct file *filep)
 	vfio_group_put(group);
 
 	return 0;
+}
+
+1.3.3 vfio_group_fops_unl_ioctl()
+================================================================================
+static long vfio_group_fops_unl_ioctl(struct file *filep,
+				      unsigned int cmd, unsigned long arg)
+{
+	struct vfio_group *group = filep->private_data;
+	long ret = -ENOTTY;
+
+	switch (cmd) {
+	case VFIO_GROUP_GET_STATUS:
+	{
+		struct vfio_group_status status;
+		unsigned long minsz;
+
+		minsz = offsetofend(struct vfio_group_status, flags);
+
+		if (copy_from_user(&status, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (status.argsz < minsz)
+			return -EINVAL;
+
+		status.flags = 0;
+
+		if (vfio_group_viable(group))
+			status.flags |= VFIO_GROUP_FLAGS_VIABLE;
+
+		if (group->container)
+			status.flags |= VFIO_GROUP_FLAGS_CONTAINER_SET;
+
+		if (copy_to_user((void __user *)arg, &status, minsz))
+			return -EFAULT;
+
+		ret = 0;
+		break;
+	}
+	case VFIO_GROUP_SET_CONTAINER:
+	{
+		int fd;
+
+		if (get_user(fd, (int __user *)arg))
+			return -EFAULT;
+
+		if (fd < 0)
+			return -EINVAL;
+
+		ret = vfio_group_set_container(group, fd);
+		break;
+	}
+	case VFIO_GROUP_UNSET_CONTAINER:
+		ret = vfio_group_unset_container(group);
+		break;
+	case VFIO_GROUP_GET_DEVICE_FD:
+	{
+		char *buf;
+
+		buf = strndup_user((const char __user *)arg, PAGE_SIZE);
+		if (IS_ERR(buf))
+			return PTR_ERR(buf);
+
+		ret = vfio_group_get_device_fd(group, buf);
+		kfree(buf);
+		break;
+	}
+	}
+
+	return ret;
+}
+
+1.4 vfio_group_set_container(), connect vfio_group and vfio_container
+================================================================================
+static int vfio_group_set_container(struct vfio_group *group, int container_fd)
+{
+	struct fd f;
+	struct vfio_container *container;
+	struct vfio_iommu_driver *driver;
+	int ret = 0;
+
+	if (atomic_read(&group->container_users))
+		return -EINVAL;
+
+	f = fdget(container_fd);
+	if (!f.file)
+		return -EBADF;
+
+	/* Sanity check, is this really our fd? */
+	if (f.file->f_op != &vfio_fops) {
+		fdput(f);
+		return -EINVAL;
+	}
+
+	container = f.file->private_data;
+	WARN_ON(!container); /* fget ensures we don't race vfio_release */
+
+	down_write(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (driver) {
+		ret = driver->ops->attach_group(container->iommu_data,
+						group->iommu_group);
+		if (ret)
+			goto unlock_out;
+	}
+
+	group->container = container;
+	list_add(&group->container_next, &container->group_list);
+
+	/* Get a reference on the container and mark a user within the group */
+	vfio_container_get(container);
+	atomic_inc(&group->container_users);
+
+unlock_out:
+	up_write(&container->group_lock);
+	fdput(f);
+	return ret;
+}
+
+1.5 vfio_group_get_device_fd()
+================================================================================
+static int vfio_group_get_device_fd(struct vfio_group *group, char *buf)
+{
+	struct vfio_device *device;
+	struct file *filep;
+	int ret = -ENODEV;
+
+	if (0 == atomic_read(&group->container_users) ||
+	    !group->container->iommu_driver || !vfio_group_viable(group))
+		return -EINVAL;
+
+	mutex_lock(&group->device_lock);
+	list_for_each_entry(device, &group->device_list, group_next) {
+		if (strcmp(dev_name(device->dev), buf))
+			continue;
+
+		ret = device->ops->open(device->device_data);
+		if (ret)
+			break;
+		/*
+		 * We can't use anon_inode_getfd() because we need to modify
+		 * the f_mode flags directly to allow more than just ioctls
+		 */
+		ret = get_unused_fd_flags(O_CLOEXEC);
+		if (ret < 0) {
+			device->ops->release(device->device_data);
+			break;
+		}
+
+		filep = anon_inode_getfile("[vfio-device]", &vfio_device_fops,
+					   device, O_RDWR);
+		if (IS_ERR(filep)) {
+			put_unused_fd(ret);
+			ret = PTR_ERR(filep);
+			device->ops->release(device->device_data);
+			break;
+		}
+
+		/*
+		 * TODO: add an anon_inode interface to do this.
+		 * Appears to be missing by lack of need rather than
+		 * explicitly prevented.  Now there's need.
+		 */
+		filep->f_mode |= (FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
+
+		vfio_device_get(device);
+		atomic_inc(&group->container_users);
+
+		fd_install(ret, filep);
+		break;
+	}
+	mutex_unlock(&group->device_lock);
+
+	return ret;
+}
+
+1.5.1 vfio_device->ops->open(), create connection between vfio_device with fd
+================================================================================
+static int vfio_pci_open(void *device_data)
+{
+	struct vfio_pci_device *vdev = device_data;
+	int ret = 0;
+
+	if (!try_module_get(THIS_MODULE))
+		return -ENODEV;
+
+	mutex_lock(&driver_lock);
+
+	if (!vdev->refcnt) {
+		ret = vfio_pci_enable(vdev);
+		if (ret)
+			goto error;
+
+		vfio_spapr_pci_eeh_open(vdev->pdev);
+	}
+	vdev->refcnt++;
+error:
+	mutex_unlock(&driver_lock);
+	if (ret)
+		module_put(THIS_MODULE);
+	return ret;
 }
 
 2. vfio_add_group_dev(), add a device to vfio_group->device_list
@@ -547,8 +826,8 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
 0. data structure
 ================================================================================
 
-   struct vfio; /dev/vfio/vfio
-   +-----------------------------+    list of struct vfio_iommu_driver
+   struct vfio(this is a global variable); /dev/vfio/vfio 
+   +-----------------------------+    list of struct vfio_iommu_driver(registered by vfio_register_iommu_driver)
    |iommu_drivers_list        ---|--> vfio_iommu_type1 --> vfio_iommu_spapr_tce
    |                             |
    +-----------------------------+    
@@ -559,8 +838,8 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
    |                             |    |                                 |                                     |
    |                             |    |kref(struct kref)                |                                     |
    +-----------------------------+    +---------------------------------+                                     |
-   |relsease_q                   |    |                                 |                                     |
-   |                             |    +---------------------------------+   struct vfio_device                |
+   |relsease_q                   |    |                                 |   struct vfio_device                |
+   |                             |    +---------------------------------+   one fd with vfio_device_ops       |
    |                             |    |device_list                   ---|-->+-----------------------------+   |
    |                             |    | (list of struct vfio_device)    |   |group                     ---|---+
    +-----------------------------+    +---------------------------------+   | (struct vfio_group*)        |
@@ -589,7 +868,8 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
                           |     |     +---------------------------------+    |                             |
                           |     |                                            |                             |
                           |     |                                            +-----------------------------+
-    struct vfio_container |     v
+    struct vfio_container |     |
+                          |     v
     +---------------------|-------+       
     |group_list           |       |
     | (list of struct vfio_group) |
@@ -601,10 +881,32 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
     |  (void *)                   |    +-------------------------------+
     +-----------------------------+    |tbl(struct iommu_tbl)          |
                                        |                               |
-         vfio_container                +-------------------------------+
+                                       +-------------------------------+
                                        |                               |
                                        |                               |
                                        +-------------------------------+
 
 
-					Figure vfio
+					Figure.0 vfio
+
+
+vfio_group is created in vfio_create_group(), in turns by vfio_add_group_dev()
+	vfio_add_group_dev() will be called by vfio_pci_probe() when we attach
+	a device with vfio_pci driver.
+vfio_device is added to vfio_group in vfio_add_group_dev()
+	when probing a pci device with vfio_pci driver, a vfio_device will be
+	created
+
+vfio_container is created on open /dev/vfio/vfio(vfio_fops_open())
+vfio_container->iommu_driver is set in vfio_ioctl_set_iommu()
+	this will iterate on all vfio_iommu_driver list and do attach if
+	possible. And here looks like the only place to call
+	iommu_driver->ops->open(), which create the vfio_container->iommu_data.
+vfio_group is added to vfio_container's group_list in vfio_group_set_container()
+	vfio_group_set_container() is an ioctl on /dev/vfio/$GROUP
+	since the vfio_container's group_list is a list, looks a
+	vfio_container could control several vfio_group
+
+vfio_device is retrieved by the name and then exported to userspace as a fd
+	user space access the device with vfio_device_fops, with in turn use
+	vfio_device->ops.
