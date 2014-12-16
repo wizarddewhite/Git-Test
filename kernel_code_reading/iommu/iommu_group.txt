@@ -71,7 +71,7 @@ again:
 	return group;
 }
 
-3. iommu_group_get_by_id()
+3. iommu_group_get_by_id(), search the iommu_group_kset and match the name
 ================================================================================
 struct iommu_group *iommu_group_get_by_id(int id)
 {
@@ -103,6 +103,9 @@ struct iommu_group *iommu_group_get_by_id(int id)
 
 4. iommu_group_add_device(), add a device to this group
 ================================================================================
+; create a symlink in original dev to the iommu_group
+; create a symlink in iommu_device to the real dev
+
 int iommu_group_add_device(struct iommu_group *group, struct device *dev)
 {
 	int ret, i = 0;
@@ -433,27 +436,28 @@ static size_t iommu_pgsize(struct iommu_domain *domain,
 0. Data structures
 ================================================================================
 
-     struct iommu_group
-     +----------------------------+<------------------------------------+
-     |id(int)                     |                                     |
-     +----------------------------+                                     |
-     |kobj                        |                                     |
-     |   (struct kobject)         |                                     |
-     |devices_kobj                |                                     |
-     |   (struct kobject*)        |     struct iommu_device             |
-     +----------------------------+     +-----------------------+       |
-     |devices(list_head)          |---->+list(list_head)        |       |
-     | (list struct iommu_device) |     +-----------------------+       |
-     +----------------------------+     |dev(struct device)     |       |
-     |notifier                    |     |      iommu_group   -----------+
+     struct iommu_group /sys/kernel/iommu_group/G
+     +----------------------------+<----------------------------------------+
+     |id(int)                     |                                         |
+     +----------------------------+                                         |
+     |kobj                        |                                         |
+     |   (struct kobject)         |                                         |
+     |devices_kobj                |                                         |
+     |   (struct kobject*)        |     struct iommu_device                 |
+     |                            |     /sys/kernel/iommu_group/G/devices/d |
+     +----------------------------+     +-----------------------+           |
+     |devices(list_head)          |---->+list(list_head)        |           |
+     | (list struct iommu_device) |     +-----------------------+           |
+     +----------------------------+     |dev(struct device)     |           |
+     |notifier                    |     |      iommu_group   ---------------+
      |   (blocking_notifier_head) |     +-----------------------+ 
      |                            |     |name                   |
      |                            |     +-----------------------+
      |                            |
      +----------------------------+     arch specific data
      |iommu_data                  |---->+---------------------+
-     |   (void *)                 |     |                     |
-     |iommu_data_release          |     |                     |
+     |   (void *)                 |     |tbl                  |
+     |iommu_data_release          |     |(iommu_tbl on power) |
      |   (void (*)(void *))       |     |                     |
      |                            |     +---------------------+
      +----------------------------+

@@ -77,98 +77,114 @@ static int iommu_group_create_file(struct iommu_group *group,
 	return sysfs_create_file(&group->kobj, &attr->attr);
 }
 
-1.2 set_iommu_table_base(), set iommu_group arch specific data
+1.2 set_iommu_table_base_and_group(), set iommu_group arch specific data
+================================================================================
+static inline void set_iommu_table_base_and_group(struct device *dev,
+						  void *base)
+{
+	set_iommu_table_base(dev, base);
+	iommu_add_device(dev);
+}
+
+1.2.1 set_iommu_table_base(), set iommu_group arch specific data
 ================================================================================
 static inline void set_iommu_table_base(struct device *dev, void *base)
 {
 	dev->archdata.dma_data.iommu_table_base = base;
 }
 
-2. tce_iommu_init(), add device to iommu_group, done after pci tree enumerated
+1.2.2 iommu_add_device, add the device into the iommu_group
 ================================================================================
-subsys_initcall_sync(tce_iommu_init);
-#define subsys_initcall_sync(fn)	__define_initcall(fn, 4s)
-
-; one thing to be noticed, this call is called after pcibios_init which 
-; subsys_initcall(). 
-; which means when it is called, the pci device tree is created.
-
-static int __init tce_iommu_init(void)
-
-	struct pci_dev *pdev = NULL;
-
-	BUILD_BUG_ON(PAGE_SIZE < IOMMU_PAGE_SIZE);
-
-	for_each_pci_dev(pdev)
-		iommu_add_device(&pdev->dev);
-
-	bus_register_notifier(&pci_bus_type, &tce_iommu_bus_nb);
-	return 0;
-}
-
-2.1 iommu_add_device(), add already created devices to the iommu_group
-================================================================================
-; iommu_group are already there
-static int iommu_add_device(struct device *dev)
+int iommu_add_device(struct device *dev)
 {
 	struct iommu_table *tbl;
-	int ret = 0;
 
-	if (WARN_ON(dev->iommu_group)) {
-		pr_warn("iommu_tce: device %s is already in iommu group %d, skipping\n",
-				dev_name(dev),
-				iommu_group_id(dev->iommu_group));
+	/*
+	 * The sysfs entries should be populated before
+	 * binding IOMMU group. If sysfs entries isn't
+	 * ready, we simply bail.
+	 */
+	if (!device_is_registered(dev))
+		return -ENOENT;
+
+	if (dev->iommu_group) {
+		pr_debug("%s: Skipping device %s with iommu group %d\n",
+			 __func__, dev_name(dev),
+			 iommu_group_id(dev->iommu_group));
 		return -EBUSY;
 	}
 
 	tbl = get_iommu_table_base(dev);
 	if (!tbl || !tbl->it_group) {
-		pr_debug("iommu_tce: skipping device %s with no tbl\n",
-				dev_name(dev));
+		pr_debug("%s: Skipping device %s with no tbl\n",
+			 __func__, dev_name(dev));
 		return 0;
 	}
 
-	pr_debug("iommu_tce: adding %s to iommu group %d\n",
-			dev_name(dev), iommu_group_id(tbl->it_group));
+	pr_debug("%s: Adding %s to iommu group %d\n",
+		 __func__, dev_name(dev),
+		 iommu_group_id(tbl->it_group));
 
-	ret = iommu_group_add_device(tbl->it_group, dev);
-	if (ret < 0)
-		pr_err("iommu_tce: %s has not been added, ret=%d\n",
-				dev_name(dev), ret);
+	if (PAGE_SIZE < IOMMU_PAGE_SIZE(tbl)) {
+		pr_err("%s: Invalid IOMMU page size %lx (%lx) on %s\n",
+		       __func__, IOMMU_PAGE_SIZE(tbl),
+		       PAGE_SIZE, dev_name(dev));
+		return -EINVAL;
+	}
 
-	return ret;
+	return iommu_group_add_device(tbl->it_group, dev);
 }
 
-2.1.1 get_iommu_table_base(), check whether a iommu_table is associated
+2. How iommu_group take effect
 ================================================================================
 
-2.1.2 iommu_group_add_device()
+2.1 pnv_pci_ioda_dma_set_mask()
 ================================================================================
+static int pnv_pci_ioda_dma_set_mask(struct pnv_phb *phb,
+				     struct pci_dev *pdev, u64 dma_mask)
+{
+	struct pci_dn *pdn = pci_get_pdn(pdev);
+	struct pnv_ioda_pe *pe;
+	uint64_t top;
+	bool bypass = false;
 
-2.2 tce_iommu_bus_nb(), this is called in device_add/device_del for each device
+	if (WARN_ON(!pdn || pdn->pe_number == IODA_INVALID_PE))
+		return -ENODEV;;
+
+	pe = &phb->ioda.pe_array[pdn->pe_number];
+	if (pe->tce_bypass_enabled) {
+		top = pe->tce_bypass_base + memblock_end_of_DRAM() - 1;
+		bypass = (dma_mask >= top);
+	}
+
+	if (bypass) {
+		dev_info(&pdev->dev, "Using 64-bit DMA iommu bypass\n");
+		set_dma_ops(&pdev->dev, &dma_direct_ops);
+		set_dma_offset(&pdev->dev, pe->tce_bypass_base);
+	} else {
+		dev_info(&pdev->dev, "Using 32-bit DMA via iommu\n");
+		set_dma_ops(&pdev->dev, &dma_iommu_ops);
+		set_iommu_table_base(&pdev->dev, &pe->tce32_table);
+	}
+	*pdev->dev.dma_mask = dma_mask;
+	return 0;
+}
+
+2.2 dma_iommu_ops{}
 ================================================================================
-static struct notifier_block tce_iommu_bus_nb = {
-	.notifier_call = iommu_bus_notifier,
+struct dma_map_ops dma_iommu_ops = {
+	.alloc			= dma_iommu_alloc_coherent,
+	.free			= dma_iommu_free_coherent,
+	.mmap			= dma_direct_mmap_coherent,
+	.map_sg			= dma_iommu_map_sg,
+	.unmap_sg		= dma_iommu_unmap_sg,
+	.dma_supported		= dma_iommu_dma_supported,
+	.map_page		= dma_iommu_map_page,
+	.unmap_page		= dma_iommu_unmap_page,
+	.get_required_mask	= dma_iommu_get_required_mask,
 };
 
-static int iommu_bus_notifier(struct notifier_block *nb,
-			      unsigned long action, void *data)
-{
-	struct device *dev = data;
-
-	switch (action) {
-	case BUS_NOTIFY_ADD_DEVICE:
-		return iommu_add_device(dev);
-	case BUS_NOTIFY_DEL_DEVICE:
-		iommu_del_device(dev);
-		return 0;
-	default:
-		return 0;
-	}
-}
-
-2.2.1 iommu_add_device(), add dev into a iommu_group
-================================================================================
+the alloc function is based on the iommu_table.
 
 0. Data structures
 ================================================================================
