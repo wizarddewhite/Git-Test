@@ -138,8 +138,10 @@ int iommu_add_device(struct device *dev)
 2. How iommu_group take effect
 ================================================================================
 
-2.1 pnv_pci_ioda_dma_set_mask()
+2.1 pnv_pci_ioda_dma_set_mask(), set dma ops
 ================================================================================
+; when dma ops is set to dma_iommu_ops, the iommu_group will jump in 
+
 static int pnv_pci_ioda_dma_set_mask(struct pnv_phb *phb,
 				     struct pci_dev *pdev, u64 dma_mask)
 {
@@ -186,9 +188,288 @@ struct dma_map_ops dma_iommu_ops = {
 
 the alloc function is based on the iommu_table.
 
+2.2.1 dma_iommu_alloc_coherent()
+================================================================================
+static void *dma_iommu_alloc_coherent(struct device *dev, size_t size,
+				      dma_addr_t *dma_handle, gfp_t flag,
+				      struct dma_attrs *attrs)
+{
+	return iommu_alloc_coherent(dev, get_iommu_table_base(dev), size,
+				    dma_handle, dev->coherent_dma_mask, flag,
+				    dev_to_node(dev));
+}
+
+void *iommu_alloc_coherent(struct device *dev, struct iommu_table *tbl,
+			   size_t size,	dma_addr_t *dma_handle,
+			   unsigned long mask, gfp_t flag, int node)
+{
+	void *ret = NULL;
+	dma_addr_t mapping;
+	unsigned int order;
+	unsigned int nio_pages, io_order;
+	struct page *page;
+
+	size = PAGE_ALIGN(size);
+	order = get_order(size);
+
+ 	/*
+	 * Client asked for way too much space.  This is checked later
+	 * anyway.  It is easier to debug here for the drivers than in
+	 * the tce tables.
+	 */
+	if (order >= IOMAP_MAX_ORDER) {
+		dev_info(dev, "iommu_alloc_consistent size too large: 0x%lx\n",
+			 size);
+		return NULL;
+	}
+
+	if (!tbl)
+		return NULL;
+
+	/* Alloc enough pages (and possibly more) */
+	page = alloc_pages_node(node, flag, order);
+	if (!page)
+		return NULL;
+	ret = page_address(page);
+	memset(ret, 0, size);
+
+	/* Set up tces to cover the allocated range */
+	nio_pages = size >> tbl->it_page_shift;
+	io_order = get_iommu_order(size, tbl);
+	mapping = iommu_alloc(dev, tbl, ret, nio_pages, DMA_BIDIRECTIONAL,
+			      mask >> tbl->it_page_shift, io_order, NULL);
+	if (mapping == DMA_ERROR_CODE) {
+		free_pages((unsigned long)ret, order);
+		return NULL;
+	}
+	*dma_handle = mapping;
+	return ret;
+}
+
+2.2.1.1 iommu_alloc()
+================================================================================
+static dma_addr_t iommu_alloc(struct device *dev, struct iommu_table *tbl,
+			      void *page, unsigned int npages,
+			      enum dma_data_direction direction,
+			      unsigned long mask, unsigned int align_order,
+			      struct dma_attrs *attrs)
+{
+	unsigned long entry;
+	dma_addr_t ret = DMA_ERROR_CODE;
+	int build_fail;
+
+	entry = iommu_range_alloc(dev, tbl, npages, NULL, mask, align_order);
+
+	if (unlikely(entry == DMA_ERROR_CODE))
+		return DMA_ERROR_CODE;
+
+	entry += tbl->it_offset;	/* Offset into real TCE table */
+	ret = entry << tbl->it_page_shift;	/* Set the return dma address */
+
+	/* Put the TCEs in the HW table */
+	build_fail = ppc_md.tce_build(tbl, entry, npages,
+				      (unsigned long)page &
+				      IOMMU_PAGE_MASK(tbl), direction, attrs);
+
+	/* ppc_md.tce_build() only returns non-zero for transient errors.
+	 * Clean up the table bitmap in this case and return
+	 * DMA_ERROR_CODE. For all other errors the functionality is
+	 * not altered.
+	 */
+	if (unlikely(build_fail)) {
+		__iommu_free(tbl, ret, npages);
+		return DMA_ERROR_CODE;
+	}
+
+	/* Flush/invalidate TLB caches if necessary */
+	if (ppc_md.tce_flush)
+		ppc_md.tce_flush(tbl);
+
+	/* Make sure updates are seen by hardware */
+	mb();
+
+	return ret;
+}
+
+3. TCE
+================================================================================
+
+3.1 pnv_pci_ioda2_setup_dma_pe()
+================================================================================
+static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
+				       struct pnv_ioda_pe *pe)
+{
+	struct page *tce_mem = NULL;
+	void *addr;
+	const __be64 *swinvp;
+	struct iommu_table *tbl;
+	unsigned int tce_table_size, end;
+	int64_t rc;
+
+	/* We shouldn't already have a 32-bit DMA associated */
+	if (WARN_ON(pe->tce32_seg >= 0))
+		return;
+
+	/* The PE will reserve all possible 32-bits space */
+	pe->tce32_seg = 0;
+	end = (1 << ilog2(phb->ioda.m32_pci_base));
+	tce_table_size = (end / 0x1000) * 8;
+	pe_info(pe, "Setting up 32-bit TCE table at 0..%08x\n",
+		end);
+
+	/* Allocate TCE table */
+	tce_mem = alloc_pages_node(phb->hose->node, GFP_KERNEL,
+				   get_order(tce_table_size));
+	if (!tce_mem) {
+		pe_err(pe, "Failed to allocate a 32-bit TCE memory\n");
+		goto fail;
+	}
+	addr = page_address(tce_mem);
+	memset(addr, 0, tce_table_size);
+
+	/*
+	 * Map TCE table through TVT. The TVE index is the PE number
+	 * shifted by 1 bit for 32-bits DMA space.
+	 */
+	rc = opal_pci_map_pe_dma_window(phb->opal_id, pe->pe_number,
+					pe->pe_number << 1, 1, __pa(addr),
+					tce_table_size, 0x1000);
+	if (rc) {
+		pe_err(pe, "Failed to configure 32-bit TCE table,"
+		       " err %ld\n", rc);
+		goto fail;
+	}
+
+	/* Setup linux iommu table */
+	tbl = pe->tce32_table;
+	pnv_pci_setup_iommu_table(tbl, addr, tce_table_size, 0,
+			IOMMU_PAGE_SHIFT_4K);
+
+	/* OPAL variant of PHB3 invalidated TCEs */
+	swinvp = of_get_property(phb->hose->dn, "ibm,opal-tce-kill", NULL);
+	if (swinvp) {
+		/* We need a couple more fields -- an address and a data
+		 * to or.  Since the bus is only printed out on table free
+		 * errors, and on the first pass the data will be a relative
+		 * bus number, print that out instead.
+		 */
+		pe->tce_inval_reg_phys = be64_to_cpup(swinvp);
+		tbl->it_index = (unsigned long)ioremap(pe->tce_inval_reg_phys,
+				8);
+		tbl->it_type |= (TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE);
+	}
+	iommu_init_table(tbl, phb->hose->node);
+
+	if (pe->flags & PNV_IODA_PE_DEV) {
+		iommu_register_group(tbl, phb->hose->global_number,
+				     pe->pe_number);
+		set_iommu_table_base_and_group(&pe->pdev->dev, tbl);
+	} else if (pe->flags & (PNV_IODA_PE_BUS | PNV_IODA_PE_BUS_ALL)) {
+		iommu_register_group(tbl, phb->hose->global_number,
+				     pe->pe_number);
+		pnv_ioda_setup_bus_dma(pe, pe->pbus, true);
+	} else if (pe->flags & PNV_IODA_PE_VF) {
+		iommu_register_group(tbl, phb->hose->global_number,
+				     pe->pe_number);
+	}
+
+	/* Also create a bypass window */
+	pnv_pci_ioda2_setup_bypass_pe(phb, pe);
+	return;
+fail:
+	if (pe->tce32_seg >= 0)
+		pe->tce32_seg = -1;
+	if (tce_mem)
+		__free_pages(tce_mem, get_order(tce_table_size));
+}
+
+3.1.1 alloc_pages_node(), allocate TCE table 
+================================================================================
+
+3.1.2 opal_pci_map_pe_dma_window()
+================================================================================
+
+3.1.3 iommu_init_table()
+================================================================================
+struct iommu_table *iommu_init_table(struct iommu_table *tbl, int nid)
+{
+	unsigned long sz;
+	static int welcomed = 0;
+	struct page *page;
+	unsigned int i;
+	struct iommu_pool *p;
+
+	/* number of bytes needed for the bitmap */
+	sz = BITS_TO_LONGS(tbl->it_size) * sizeof(unsigned long);
+
+	page = alloc_pages_node(nid, GFP_KERNEL, get_order(sz));
+	if (!page)
+		panic("iommu_init_table: Can't allocate %ld bytes\n", sz);
+	tbl->it_map = page_address(page);
+	memset(tbl->it_map, 0, sz);
+
+	/*
+	 * Reserve page 0 so it will not be used for any mappings.
+	 * This avoids buggy drivers that consider page 0 to be invalid
+	 * to crash the machine or even lose data.
+	 */
+	if (tbl->it_offset == 0)
+		set_bit(0, tbl->it_map);
+
+	/* We only split the IOMMU table if we have 1GB or more of space */
+	if ((tbl->it_size << tbl->it_page_shift) >= (1UL * 1024 * 1024 * 1024))
+		tbl->nr_pools = IOMMU_NR_POOLS;
+	else
+		tbl->nr_pools = 1;
+
+	/* We reserve the top 1/4 of the table for large allocations */
+	tbl->poolsize = (tbl->it_size * 3 / 4) / tbl->nr_pools;
+
+	for (i = 0; i < tbl->nr_pools; i++) {
+		p = &tbl->pools[i];
+		spin_lock_init(&(p->lock));
+		p->start = tbl->poolsize * i;
+		p->hint = p->start;
+		p->end = p->start + tbl->poolsize;
+	}
+
+	p = &tbl->large_pool;
+	spin_lock_init(&(p->lock));
+	p->start = tbl->poolsize * i;
+	p->hint = p->start;
+	p->end = tbl->it_size;
+
+	iommu_table_clear(tbl);
+
+	if (!welcomed) {
+		printk(KERN_INFO "IOMMU table initialized, virtual merging %s\n",
+		       novmerge ? "disabled" : "enabled");
+		welcomed = 1;
+	}
+
+	return tbl;
+}
+
+3.1.4 pnv_pci_ioda2_setup_bypass_pe()
+================================================================================
+static void pnv_pci_ioda2_setup_bypass_pe(struct pnv_phb *phb,
+					  struct pnv_ioda_pe *pe)
+{
+	/* TVE #1 is selected by PCI address bit 59 */
+	pe->tce_bypass_base = 1ull << 59;
+
+	/* Install set_bypass callback for VFIO */
+	pe->tce32_table->set_bypass = pnv_pci_ioda2_set_bypass;
+
+	/* Enable bypass by default */
+	pnv_pci_ioda2_set_bypass(pe->tce32_table, true);
+}
+
 0. Data structures
 ================================================================================
 
+0.1 iommu_group
+================================================================================
      struct iommu_group
      +----------------------------+<------------------------------------+
      |id(int)                     |                                     |
@@ -213,3 +494,27 @@ the alloc function is based on the iommu_table.
      |                            |     +---------------------+
      +----------------------------+
 	Figure 2.1 iommu_group
+
+
+0.2 TCE
+================================================================================
+
+    TVT
+    +------------------------+
+    |                        |
+    |                        |
+    +------------------------+
+    |TVE                     |                 TCE Table(tce_mem)
+    |   TTA     -------------|---------------->+------------------------+
+    |   Table Size           |                 |                        |
+    |                        |                 |                        |
+    |                        |                 +------------------------+
+    +------------------------+                 |                        |
+    |                        |                 |                        |
+    |                        |                 +------------------------+
+    +------------------------+                 |                        |
+    |                        |                 |                        |
+    |                        |                 +------------------------+
+    +------------------------+                 |                        |
+                                               |                        |
+                                               +------------------------+
