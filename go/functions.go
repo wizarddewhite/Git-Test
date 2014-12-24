@@ -17,4 +17,5 @@ func main() {
 	w = 1
 	fmt.Println(add(1, 3))
 	fmt.Println("The World is ", w.get_val())
+	fmt.Println("The World is ", new(World).get_val())
 }
