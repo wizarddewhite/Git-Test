@@ -908,5 +908,6 @@ vfio_group is added to vfio_container's group_list in vfio_group_set_container()
 	vfio_container could control several vfio_group
 
 vfio_device is retrieved by the name and then exported to userspace as a fd
+	the vfio_device fd is retrieved by vfio_group_get_device_fd()
 	user space access the device with vfio_device_fops, with in turn use
 	vfio_device->ops.
