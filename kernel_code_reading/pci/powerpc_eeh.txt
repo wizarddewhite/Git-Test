@@ -492,6 +492,8 @@ static int powernv_eeh_post_init(void)
 ================================================================================
 ; set notifier register
 ; create eeh error injection debugfs
+
+; the opal notifier is a registered interrupt?
 static int ioda_eeh_post_init(struct pci_controller *hose)
 {
 	struct pnv_phb *phb = hose->private_data;
@@ -2374,3 +2376,38 @@ struct pnv_eeh_ops ioda_eeh_ops = {
 
 0.6 pci_io_addr_cache_root
 ================================================================================
+
+0.7 timeline
+================================================================================
+
+dev_node    ; unflatten_device_tree()
+pci_dn      ; update_dn_pci_info()
+eeh_dev     ; eeh_dev_init()
+eeh_pe      ; eeh_pe_alloc()
+
+0.7.1 timeline
+================================================================================
+setup_system
+    unflatten_device_tree()                             dev_node created
+start_kernel
+    setup_arch()
+        pnv_setup_arch()
+            pnv_pci_init()
+            pci_devs_phb_init()
+                pci_devs_phb_init_dynamic()             pci_dn created
+    rest_init()
+        kernel_init()
+        do_pre_smp_initcalls
+            eeh_dev_phb_init()
+                eeh_dev_phb_init_dynamic()              eeh_dev created
+                    eeh_phb_pe_create()                 phb's eeh_pe
+            pcibios_init()
+                pcibios_scan_phb()                      pci_dev enumerate
+                pcibios_resource_survey()
+                    pnv_pci_ioda_fixup()
+                        pnv_pci_ioda_setup_PEs()
+                        pnv_pci_ioda_setup_seg()
+                        pnv_pci_ioda_setup_DMA()
+                        eeh_init()
+                            powernv_eeh_dev_probe()
+                                eeh_add_to_parent_pe()  eeh_pe created
