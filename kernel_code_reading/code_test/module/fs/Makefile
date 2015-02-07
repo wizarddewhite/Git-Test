@@ -2,7 +2,7 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
     obj-m += proc_fs.o seq_fs.o
-    obj-m += kobject-example.o my_debugfs.o
+    obj-m += kobject-example.o my_debugfs.o event_fd.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
