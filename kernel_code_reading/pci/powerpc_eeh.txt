@@ -1081,9 +1081,13 @@ phb->eeh_ops->get_log is not implemented on powernv.
 ================================================================================
 3.1.5.3 eeh_reset_device(NULL), PCI_ERS_RESULT_NEED_RESET
 ================================================================================
-3.1.5.4 eeh_report_failure(), failed
+3.1.5.4 eeh_report_reset(NULL), tell driver to recover
 ================================================================================
-3.1.5.5 pcibios_remove_pci_devices(), remove the device if failed
+3.1.5.5 eeh_report_resume(), ok, driver come back to work
+================================================================================
+3.1.5.6 eeh_report_failure(), failed to recover, driver go home
+================================================================================
+3.1.5.7 pcibios_remove_pci_devices(), remove the device after trying every way
 ================================================================================
 
 3.2 eeh_handle_special_event()
@@ -1179,6 +1183,187 @@ static void eeh_handle_special_event(void)
 			break;
 	} while (rc != EEH_NEXT_ERR_NONE);
 }
+
+3.3 eeh_handle_normal_event(), on pseries platform
+================================================================================
+
+3.3.1 eeh_pe_bus_get()
+================================================================================
+3.3.2 eeh_report_error()
+================================================================================
+3.3.2.1 pci_driver->err_handler->error_detected()
+================================================================================
+3.3.3 eeh_ops->wait_state(), pseries_eeh_wait_state()
+================================================================================
+static int pseries_eeh_wait_state(struct eeh_pe *pe, int max_wait)
+{
+	int ret;
+	int mwait;
+
+	/*
+	 * According to PAPR, the state of PE might be temporarily
+	 * unavailable. Under the circumstance, we have to wait
+	 * for indicated time determined by firmware. The maximal
+	 * wait time is 5 minutes, which is acquired from the original
+	 * EEH implementation. Also, the original implementation
+	 * also defined the minimal wait time as 1 second.
+	 */
+#define EEH_STATE_MIN_WAIT_TIME	(1000)
+#define EEH_STATE_MAX_WAIT_TIME	(300 * 1000)
+
+	while (1) {
+		ret = pseries_eeh_get_state(pe, &mwait);
+
+		/*
+		 * If the PE's state is temporarily unavailable,
+		 * we have to wait for the specified time. Otherwise,
+		 * the PE's state will be returned immediately.
+		 */
+		if (ret != EEH_STATE_UNAVAILABLE)
+			return ret;
+
+		if (max_wait <= 0) {
+			pr_warn("%s: Timeout when getting PE's state (%d)\n",
+				__func__, max_wait);
+			return EEH_STATE_NOT_SUPPORT;
+		}
+
+		if (mwait <= 0) {
+			pr_warn("%s: Firmware returned bad wait value %d\n",
+				__func__, mwait);
+			mwait = EEH_STATE_MIN_WAIT_TIME;
+		} else if (mwait > EEH_STATE_MAX_WAIT_TIME) {
+			pr_warn("%s: Firmware returned too long wait value %d\n",
+				__func__, mwait);
+			mwait = EEH_STATE_MAX_WAIT_TIME;
+		}
+
+		max_wait -= mwait;
+		msleep(mwait);
+	}
+
+	return EEH_STATE_NOT_SUPPORT;
+}
+
+3.3.3.1 pseries_eeh_get_state() ---> finally call eeh_pe_get_state() on host
+================================================================================
+static int pseries_eeh_get_state(struct eeh_pe *pe, int *state)
+{
+	int config_addr;
+	int ret;
+	int rets[4];
+	int result;
+
+	/* Figure out PE config address if possible */
+	config_addr = pe->config_addr;
+	if (pe->addr)
+		config_addr = pe->addr;
+
+	if (ibm_read_slot_reset_state2 != RTAS_UNKNOWN_SERVICE) {
+		ret = rtas_call(ibm_read_slot_reset_state2, 3, 4, rets,
+				config_addr, BUID_HI(pe->phb->buid),
+				BUID_LO(pe->phb->buid));
+	} else if (ibm_read_slot_reset_state != RTAS_UNKNOWN_SERVICE) {
+		/* Fake PE unavailable info */
+		rets[2] = 0;
+		ret = rtas_call(ibm_read_slot_reset_state, 3, 3, rets,
+				config_addr, BUID_HI(pe->phb->buid),
+				BUID_LO(pe->phb->buid));
+	} else {
+		return EEH_STATE_NOT_SUPPORT;
+	}
+
+	if (ret)
+		return ret;
+
+	/* Parse the result out */
+	result = 0;
+	if (rets[1]) {
+		switch(rets[0]) {
+		case 0:
+			result &= ~EEH_STATE_RESET_ACTIVE;
+			result |= EEH_STATE_MMIO_ACTIVE;
+			result |= EEH_STATE_DMA_ACTIVE;
+			break;
+		case 1:
+			result |= EEH_STATE_RESET_ACTIVE;
+			result |= EEH_STATE_MMIO_ACTIVE;
+			result |= EEH_STATE_DMA_ACTIVE;
+			break;
+		case 2:
+			result &= ~EEH_STATE_RESET_ACTIVE;
+			result &= ~EEH_STATE_MMIO_ACTIVE;
+			result &= ~EEH_STATE_DMA_ACTIVE;
+			break;
+		case 4:
+			result &= ~EEH_STATE_RESET_ACTIVE;
+			result &= ~EEH_STATE_MMIO_ACTIVE;
+			result &= ~EEH_STATE_DMA_ACTIVE;
+			result |= EEH_STATE_MMIO_ENABLED;
+			break;
+		case 5:
+			if (rets[2]) {
+				if (state) *state = rets[2];
+				result = EEH_STATE_UNAVAILABLE;
+			} else {
+				result = EEH_STATE_NOT_SUPPORT;
+			}
+			break;
+		default:
+			result = EEH_STATE_NOT_SUPPORT;
+		}
+	} else {
+		result = EEH_STATE_NOT_SUPPORT;
+	}
+
+	return result;
+}
+
+3.3.4 eeh_slot_error_detail(), may have potential problem
+================================================================================
+void eeh_slot_error_detail(struct eeh_pe *pe, int severity)
+{
+	size_t loglen = 0;
+
+	/*
+	 * When the PHB is fenced or dead, it's pointless to collect
+	 * the data from PCI config space because it should return
+	 * 0xFF's. For ER, we still retrieve the data from the PCI
+	 * config space.
+	 *
+	 * For pHyp, we have to enable IO for log retrieval. Otherwise,
+	 * 0xFF's is always returned from PCI config space.
+	 */
+	if (!(pe->type & EEH_PE_PHB)) {
+		if (eeh_has_flag(EEH_ENABLE_IO_FOR_LOG))
+			eeh_pci_enable(pe, EEH_OPT_THAW_MMIO);
+		eeh_ops->configure_bridge(pe);
+		eeh_pe_restore_bars(pe);
+
+		pci_regs_buf[0] = 0;
+		eeh_pe_traverse(pe, eeh_dump_pe_log, &loglen);
+	}
+
+	eeh_ops->get_log(pe, severity, pci_regs_buf, loglen);
+}
+
+3.3.4.1 eeh_pci_enable(), --> will call eeh_pe_set_option() on host
+================================================================================
+
+3.3.4.2 eeh_ops->configure_bridge(), --> will call eeh_pe_configure() on host
+================================================================================
+
+3.3.4.3 eeh_pe_restore_bars(), looks ok
+================================================================================
+
+3.3.4.4 eeh_ops->get_log(), 
+================================================================================
+
+3.3.5 Do action according to the result
+================================================================================
+
+3.3.5.1 eeh_reset_pe() --> will call eeh_pe_reset() on host
+================================================================================
 
 4. eeh_addr_cache_build(), build iommu address <-> PE map
 ================================================================================
@@ -2343,16 +2528,18 @@ struct pnv_eeh_ops ioda_eeh_ops = {
  eeh_pe
  +----------------------+
  |                      | <----------------------------------------+
- |                      |                                          |
- +----------------------+                                          |
- |edevs                 |---+                                      |
+ |                      | <-+                                      |
+ +----------------------+   |                                      |
+ |edevs                 |   |                                      |
  | (struct list_head)   |   |           +------+    +------+       |
  +----------------------+   |     +---->|list  |--->|list  |       |
-                            |     |     +------+    +------+       |
-   +------------------------+     |     |pe    |----|pe    |-------+
-   |                              |     +------+    +------+
-   |   struct eeh_dev             |
+   |                        |     |     +------+    +------+       |
+   |                        |     |     |pe    |----|pe    |-------+
+   |                        |     |     +------+    +------+
+   |   struct eeh_dev       |     |
    |   +----------------------+<--|---------------------------------------------+
+   |   |pe(struct eeh_pe*)    |   |                                             |
+   |   +----------------------+   |                                             |
    +-->|list                  |---+                                             |
        +----------------------+                                                 |
        |phb                   |                                                 |
@@ -2373,17 +2560,20 @@ struct pnv_eeh_ops ioda_eeh_ops = {
        |pe_config_addr        | PE#
        | (int)                |
        +----------------------+
+       |config_space[16]      | stored config space
+       | (u32)                |
+       +----------------------+
 
 0.6 pci_io_addr_cache_root
 ================================================================================
 
 0.7 timeline
 ================================================================================
-
-dev_node    ; unflatten_device_tree()
-pci_dn      ; update_dn_pci_info()
-eeh_dev     ; eeh_dev_init()
-eeh_pe      ; eeh_pe_alloc()
+                                              PF              VF
+dev_node    ; unflatten_device_tree()         static          dynamic
+pci_dn      ; update_dn_pci_info()            static          dynamic
+eeh_dev     ; eeh_dev_init()                  static          dynamic(?)
+eeh_pe      ; eeh_pe_alloc()                  static
 
 0.7.1 timeline
 ================================================================================
@@ -2411,3 +2601,8 @@ start_kernel
                         eeh_init()
                             powernv_eeh_dev_probe()
                                 eeh_add_to_parent_pe()  eeh_pe created
+				eeh_save_bars()
+                        eeh_addr_cache_build()
+
+
+
