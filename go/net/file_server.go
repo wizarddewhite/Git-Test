@@ -7,12 +7,16 @@ import (
 )
 
 func main() {
-	// deliver files from the directory /var/www
-	//fileServer := http.FileServer(http.Dir("/var/www"))
+	// use current dir as the root in web
 	fileServer := http.FileServer(http.Dir("."))
+	http.Handle("/", fileServer)
+
+	//use /tmp as /tmpfile/ in web
+	fileServer = http.FileServer(http.Dir("/tmp/"))
+	http.Handle("/tmpfile/", http.StripPrefix("/tmpfile/", fileServer))
 
 	// register the handler and deliver requests to it
-	err := http.ListenAndServe(":8000", fileServer)
+	err := http.ListenAndServe(":8000", nil)
 	checkError(err)
 	// That's it!
 }
