@@ -1,0 +1,32 @@
+<html>
+  <body>
+    <table border="1">
+      <tr>
+	<th>Word</th>
+	<th>Traditional</th>
+	<th>Simplified</th>
+	<th>Pinyin</th>
+	<th>English</th>
+      </tr>
+      {{with .Entries}}
+      {{range .}}
+      {.repeated section Entries}
+      <tr>
+	<td>{{.Word}}</td>
+	<td>{{.Traditional}}</td> 
+	<td>{{.Simplified}}</td>
+	<td>{{.Pinyin|pinyin}}</td>
+	<td>
+	  <pre>
+	    {.repeated section Translations} 
+	    {@|html} 
+	    {.end}
+	  </pre>
+	</td>
+      </tr>
+      {.end} 
+      {{end}}
+      {{end}}
+    </table>
+  </body>
+</html>
