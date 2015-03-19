@@ -163,6 +163,7 @@ static int __init example_init(void)
 	 */
 	example_kobj = kobject_create_and_add("kobject_example", kernel_kobj);
 	printk("the ktype of example_kobj is %p\n", example_kobj->ktype);
+	printk("the kset  of example_kobj is %p\n", example_kobj->kset);
 	example_link_kobj = kobject_create_and_add("kobject_link_example", kernel_kobj);
 	if (!example_kobj || !example_link_kobj)
 		return -ENOMEM;
