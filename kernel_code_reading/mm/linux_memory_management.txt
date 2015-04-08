@@ -1,0 +1,53 @@
+1. Physical world to software world
+===============================================================================
+
+Here is a brief chart to show the relationship between physical memory, page,
+and memory zone.
+
+Note:
+The value here is just copied from LKD to reflect the situation on x86 arch.
+
+
+         Physical Memory
+    0   +-----------------+                    -------   
+        |                 |     Page[0]           ^
+        |                 |                       |
+    4k  +-----------------+                       |
+        |                 |     Page[1]           |
+        |                 |                       |
+    8k  +-----------------+                       |     ZONE_DMA
+        |                 |     Page[2]           |
+        |                 |                       |
+        +-----------------+                       |
+                 .                                |
+                 .                                |
+                 .                                v
+    16M +-----------------+                       ^
+        |                 |                       |
+        |                 |                       |
+        +-----------------+                       |
+        |                 |                       |     ZONE_HIGH
+        |                 |                       |
+        +-----------------+                       |
+        |                 |                       |
+        |                 |                       |
+        +-----------------+                       |
+                 .                                |
+                 .                                |
+                 .                                v
+    896M+-----------------+                       ^
+        |                 |                       |
+        |                 |                       |
+        +-----------------+                       |
+        |                 |                       |     ZONE_HIGH
+        |                 |                       |
+        +-----------------+                       |
+        |                 |                       |
+        |                 |                       |
+        +-----------------+                       |
+        |                 |                       |
+        |                 |                       v
+        +-----------------+                    -------  
+
+
+
