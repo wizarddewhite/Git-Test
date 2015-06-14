@@ -1,3 +1,131 @@
+0. main()
+================================================================================
+void main(void)
+{
+	/* First, copy the boot header into the "zeropage" */
+	copy_boot_params();
+
+	/* Initialize the early-boot console */
+	console_init();
+	if (cmdline_find_option_bool("debug"))
+		puts("early console in setup code\n");
+
+	/* End of heap check */
+	init_heap();
+
+	/* Make sure we have all the proper CPU support */
+	if (validate_cpu()) {
+		puts("Unable to boot - please use a kernel appropriate "
+		     "for your CPU.\n");
+		die();
+	}
+
+	/* Tell the BIOS what CPU mode we intend to run in. */
+	set_bios_mode();
+
+	/* Detect memory layout */
+	detect_memory();
+
+	/* Set keyboard repeat rate (why?) and query the lock flags */
+	keyboard_init();
+
+	/* Query MCA information */
+	query_mca();
+
+	/* Query Intel SpeedStep (IST) information */
+	query_ist();
+
+	/* Query APM information */
+#if defined(CONFIG_APM) || defined(CONFIG_APM_MODULE)
+	query_apm_bios();
+#endif
+
+	/* Query EDD information */
+#if defined(CONFIG_EDD) || defined(CONFIG_EDD_MODULE)
+	query_edd();
+#endif
+
+	/* Set the video mode */
+	set_video();
+
+	/* Do the last things and invoke protected mode */
+	go_to_protected_mode();
+}
+
+0.1 detect_memory()
+================================================================================
+int detect_memory(void)
+{
+	int err = -1;
+
+	if (detect_memory_e820() > 0)
+		err = 0;
+
+	if (!detect_memory_e801())
+		err = 0;
+
+	if (!detect_memory_88())
+		err = 0;
+
+	return err;
+}
+
+0.1.1 detect_memory_e820(), set boot_params.e820_entries
+================================================================================
+static int detect_memory_e820(void)
+{
+	int count = 0;
+	struct biosregs ireg, oreg;
+	struct e820entry *desc = boot_params.e820_map;
+	static struct e820entry buf; /* static so it is zeroed */
+
+	initregs(&ireg);
+	ireg.ax  = 0xe820;
+	ireg.cx  = sizeof buf;
+	ireg.edx = SMAP;
+	ireg.di  = (size_t)&buf;
+
+	/*
+	 * Note: at least one BIOS is known which assumes that the
+	 * buffer pointed to by one e820 call is the same one as
+	 * the previous call, and only changes modified fields.  Therefore,
+	 * we use a temporary buffer and copy the results entry by entry.
+	 *
+	 * This routine deliberately does not try to account for
+	 * ACPI 3+ extended attributes.  This is because there are
+	 * BIOSes in the field which report zero for the valid bit for
+	 * all ranges, and we don't currently make any use of the
+	 * other attribute bits.  Revisit this if we see the extended
+	 * attribute bits deployed in a meaningful way in the future.
+	 */
+
+	do {
+		intcall(0x15, &ireg, &oreg);
+		ireg.ebx = oreg.ebx; /* for next iteration... */
+
+		/* BIOSes which terminate the chain with CF = 1 as opposed
+		   to %ebx = 0 don't always report the SMAP signature on
+		   the final, failing, probe. */
+		if (oreg.eflags & X86_EFLAGS_CF)
+			break;
+
+		/* Some BIOSes stop returning SMAP in the middle of
+		   the search loop.  We don't know exactly how the BIOS
+		   screwed up the map at that point, we might have a
+		   partial map, the full map, or complete garbage, so
+		   just return failure. */
+		if (oreg.eax != SMAP) {
+			count = 0;
+			break;
+		}
+
+		*desc++ = buf;
+		count++;
+	} while (ireg.ebx && count < ARRAY_SIZE(boot_params.e820_map));
+
+	return boot_params.e820_entries = count;
+}
+
 1. start_kernel()
 ================================================================================
 start_kernel
@@ -394,8 +522,108 @@ void __init setup_arch(char **cmdline_p)
 #endif
 }
 
-1.1.1 setup_memory_map()
+1.1.1 early_ioremap_init()
 ================================================================================
+void __init early_ioremap_init(void)
+{
+	pmd_t *pmd;
+
+#ifdef CONFIG_X86_64
+	BUILD_BUG_ON((fix_to_virt(0) + PAGE_SIZE) & ((1 << PMD_SHIFT) - 1));
+#else
+	WARN_ON((fix_to_virt(0) + PAGE_SIZE) & ((1 << PMD_SHIFT) - 1));
+#endif
+
+	early_ioremap_setup();
+
+	pmd = early_ioremap_pmd(fix_to_virt(FIX_BTMAP_BEGIN));
+	memset(bm_pte, 0, sizeof(bm_pte));
+	pmd_populate_kernel(&init_mm, pmd, bm_pte);
+
+	/*
+	 * The boot-ioremap range spans multiple pmds, for which
+	 * we are not prepared:
+	 */
+#define __FIXADDR_TOP (-PAGE_SIZE)
+	BUILD_BUG_ON((__fix_to_virt(FIX_BTMAP_BEGIN) >> PMD_SHIFT)
+		     != (__fix_to_virt(FIX_BTMAP_END) >> PMD_SHIFT));
+#undef __FIXADDR_TOP
+	if (pmd != early_ioremap_pmd(fix_to_virt(FIX_BTMAP_END))) {
+		WARN_ON(1);
+		printk(KERN_WARNING "pmd %p != %p\n",
+		       pmd, early_ioremap_pmd(fix_to_virt(FIX_BTMAP_END)));
+		printk(KERN_WARNING "fix_to_virt(FIX_BTMAP_BEGIN): %08lx\n",
+			fix_to_virt(FIX_BTMAP_BEGIN));
+		printk(KERN_WARNING "fix_to_virt(FIX_BTMAP_END):   %08lx\n",
+			fix_to_virt(FIX_BTMAP_END));
+
+		printk(KERN_WARNING "FIX_BTMAP_END:       %d\n", FIX_BTMAP_END);
+		printk(KERN_WARNING "FIX_BTMAP_BEGIN:     %d\n",
+		       FIX_BTMAP_BEGIN);
+	}
+}
+
+1.1.1.1 early_ioremap_setup()
+================================================================================
+void __init early_ioremap_setup(void)
+{
+	int i;
+
+	for (i = 0; i < FIX_BTMAPS_SLOTS; i++)
+		if (WARN_ON(prev_map[i]))
+			break;
+
+	for (i = 0; i < FIX_BTMAPS_SLOTS; i++)
+		slot_virt[i] = __fix_to_virt(FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*i);
+}
+
+1.1.1.2 pmd_populate_kernel()
+================================================================================
+static inline void pmd_populate_kernel(struct mm_struct *mm,
+				       pmd_t *pmd, pte_t *pte)
+{
+	paravirt_alloc_pte(mm, __pa(pte) >> PAGE_SHIFT);
+	set_pmd(pmd, __pmd(__pa(pte) | _PAGE_TABLE));
+}
+
+1.1.1.3 early_ioremap_pmd()
+================================================================================
+static inline pmd_t * __init early_ioremap_pmd(unsigned long addr)
+{
+	/* Don't assume we're using swapper_pg_dir at this point */
+	pgd_t *base = __va(read_cr3());
+	pgd_t *pgd = &base[pgd_index(addr)];
+	pud_t *pud = pud_offset(pgd, addr);
+	pmd_t *pmd = pmd_offset(pud, addr);
+
+	return pmd;
+}
+
+1.1.2 setup_memory_map(), setup e820 data from bios info
+================================================================================
+; see details in e820.txt
+
+kernel will return something like this:
+
+e820: BIOS-provided physical RAM map:
+BIOS-e820: [mem 0x0000000000000000-0x000000000009d7ff] usable
+BIOS-e820: [mem 0x000000000009d800-0x000000000009ffff] reserved
+BIOS-e820: [mem 0x00000000000e0000-0x00000000000fffff] reserved
+BIOS-e820: [mem 0x0000000000100000-0x00000000ba99efff] usable
+BIOS-e820: [mem 0x00000000ba99f000-0x00000000bae9efff] reserved
+BIOS-e820: [mem 0x00000000bae9f000-0x00000000baf9efff] ACPI NVS
+BIOS-e820: [mem 0x00000000baf9f000-0x00000000baffefff] ACPI data
+BIOS-e820: [mem 0x00000000bafff000-0x00000000baffffff] usable
+BIOS-e820: [mem 0x00000000bb000000-0x00000000bf9fffff] reserved
+BIOS-e820: [mem 0x00000000f8000000-0x00000000fbffffff] reserved
+BIOS-e820: [mem 0x00000000fec00000-0x00000000fec00fff] reserved
+BIOS-e820: [mem 0x00000000fed08000-0x00000000fed08fff] reserved
+BIOS-e820: [mem 0x00000000fed10000-0x00000000fed19fff] reserved
+BIOS-e820: [mem 0x00000000fed1c000-0x00000000fed1ffff] reserved
+BIOS-e820: [mem 0x00000000fee00000-0x00000000fee00fff] reserved
+BIOS-e820: [mem 0x00000000ffd20000-0x00000000ffffffff] reserved
+BIOS-e820: [mem 0x0000000100000000-0x000000013e5fffff] usable
+
 void __init setup_memory_map(void)
 {
 	char *who;
@@ -406,7 +634,186 @@ void __init setup_memory_map(void)
 	e820_print_map(who);
 }
 
-1.1.2 x86_init.paging.pagetable_init()
+1.1.3 memblock_x86_reserve_range_setup_data(), fill memblock.reserved
+================================================================================
+static void __init memblock_x86_reserve_range_setup_data(void)
+{
+	struct setup_data *data;
+	u64 pa_data;
+
+	pa_data = boot_params.hdr.setup_data;
+	while (pa_data) {
+		data = early_memremap(pa_data, sizeof(*data));
+		memblock_reserve(pa_data, sizeof(*data) + data->len);
+		pa_data = data->next;
+		early_iounmap(data, sizeof(*data));
+	}
+}
+
+1.1.4 e820_reserve_setup_data()
+================================================================================
+static void __init e820_reserve_setup_data(void)
+{
+	struct setup_data *data;
+	u64 pa_data;
+	int found = 0;
+
+	pa_data = boot_params.hdr.setup_data;
+	while (pa_data) {
+		data = early_memremap(pa_data, sizeof(*data));
+		e820_update_range(pa_data, sizeof(*data)+data->len,
+			 E820_RAM, E820_RESERVED_KERN);
+		found = 1;
+		pa_data = data->next;
+		early_iounmap(data, sizeof(*data));
+	}
+	if (!found)
+		return;
+
+	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
+	memcpy(&e820_saved, &e820, sizeof(struct e820map));
+	printk(KERN_INFO "extended physical RAM map:\n");
+	e820_print_map("reserve setup_data");
+}
+
+1.1.4.1 early_memremap()
+================================================================================
+void __init *
+early_memremap(resource_size_t phys_addr, unsigned long size)
+{
+	return (__force void *)__early_ioremap(phys_addr, size,
+					       FIXMAP_PAGE_NORMAL);
+}
+
+1.1.4.2 e820_update_range()
+================================================================================
+
+1.1.4.3 sanitize_e820_map()
+================================================================================
+
+1.1.5 finish_e820_parsing(), userdef e820 range
+================================================================================
+void __init finish_e820_parsing(void)
+{
+	if (userdef) {
+		if (sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map),
+					&e820.nr_map) < 0)
+			early_panic("Invalid user supplied memory map");
+
+		printk(KERN_INFO "e820: user-defined physical RAM map:\n");
+		e820_print_map("user");
+	}
+}
+
+1.1.6 e820_add_kernel_range(), check all mapped
+================================================================================
+static void __init e820_add_kernel_range(void)
+{
+	u64 start = __pa_symbol(_text);
+	u64 size = __pa_symbol(_end) - start;
+
+	/*
+	 * Complain if .text .data and .bss are not marked as E820_RAM and
+	 * attempt to fix it by adding the range. We may have a confused BIOS,
+	 * or the user may have used memmap=exactmap or memmap=xxM$yyM to
+	 * exclude kernel range. If we really are running on top non-RAM,
+	 * we will crash later anyways.
+	 */
+	if (e820_all_mapped(start, start + size, E820_RAM))
+		return;
+
+	pr_warn(".text .data .bss are not marked as E820_RAM!\n");
+	e820_remove_range(start, size, E820_RAM, 0);
+	e820_add_region(start, size, E820_RAM);
+}
+
+1.1.7 max_pfn = e820_end_of_ram_pfn();
+================================================================================
+unsigned long __init e820_end_of_ram_pfn(void)
+{
+	return e820_end_pfn(MAX_ARCH_PFN, E820_RAM);
+}
+
+1.1.8 max_low_pfn = e820_end_of_low_ram_pfn()
+================================================================================
+unsigned long __init e820_end_of_low_ram_pfn(void)
+{
+	return e820_end_pfn(1UL<<(32 - PAGE_SHIFT), E820_RAM);
+}
+
+1.1.9 memblock_x86_fill(), add e820 info to memblock
+================================================================================
+void __init memblock_x86_fill(void)
+{
+	int i;
+	u64 end;
+	pr_err("%s: ywtest called to init memblock\n", __func__);
+
+	/*
+	 * EFI may have more than 128 entries
+	 * We are safe to enable resizing, beause memblock_x86_fill()
+	 * is rather later for x86
+	 */
+	memblock_allow_resize();
+
+	for (i = 0; i < e820.nr_map; i++) {
+		struct e820entry *ei = &e820.map[i];
+
+		end = ei->addr + ei->size;
+		if (end != (resource_size_t)end)
+			continue;
+
+		if (ei->type != E820_RAM && ei->type != E820_RESERVED_KERN)
+			continue;
+
+		memblock_add(ei->addr, ei->size);
+	}
+
+	/* throw away partial pages */
+	memblock_trim_memory(PAGE_SIZE);
+
+	memblock_dump_all();
+}
+
+1.1.9.1 memblock_add(), add in memblock.memory
+================================================================================
+
+1.1.9.2 memblock_trim_memory()
+================================================================================
+void __init_memblock memblock_trim_memory(phys_addr_t align)
+{
+	phys_addr_t start, end, orig_start, orig_end;
+	struct memblock_region *r;
+
+	for_each_memblock(memory, r) {
+		orig_start = r->base;
+		orig_end = r->base + r->size;
+		start = round_up(orig_start, align);
+		end = round_down(orig_end, align);
+
+		if (start == orig_start && end == orig_end)
+			continue;
+
+		if (start < end) {
+			r->base = start;
+			r->size = end - start;
+		} else {
+			memblock_remove_region(&memblock.memory,
+					       r - memblock.memory.regions);
+			r--;
+		}
+	}
+}
+
+1.1.9.3 memblock_dump_all()
+================================================================================
+static inline void memblock_dump_all(void)
+{
+	if (memblock_debug)
+		__memblock_dump_all();
+}
+
+1.1.10 x86_init.paging.pagetable_init(), mmzone.txt
 ================================================================================
 void __init native_pagetable_init(void)
 {
@@ -455,75 +862,3 @@ void __init native_pagetable_init(void)
 	paging_init();
 }
 
-2. setup_memory_map()
-================================================================================
-void __init setup_memory_map(void)
-{
-	char *who;
-
-	who = x86_init.resources.memory_setup();
-	memcpy(&e820_saved, &e820, sizeof(struct e820map));
-	printk(KERN_INFO "e820: BIOS-provided physical RAM map:\n");
-	e820_print_map(who);
-}
-
-kernel will return something like this:
-
-e820: BIOS-provided physical RAM map:
-BIOS-e820: [mem 0x0000000000000000-0x000000000009d7ff] usable
-BIOS-e820: [mem 0x000000000009d800-0x000000000009ffff] reserved
-BIOS-e820: [mem 0x00000000000e0000-0x00000000000fffff] reserved
-BIOS-e820: [mem 0x0000000000100000-0x00000000ba99efff] usable
-BIOS-e820: [mem 0x00000000ba99f000-0x00000000bae9efff] reserved
-BIOS-e820: [mem 0x00000000bae9f000-0x00000000baf9efff] ACPI NVS
-BIOS-e820: [mem 0x00000000baf9f000-0x00000000baffefff] ACPI data
-BIOS-e820: [mem 0x00000000bafff000-0x00000000baffffff] usable
-BIOS-e820: [mem 0x00000000bb000000-0x00000000bf9fffff] reserved
-BIOS-e820: [mem 0x00000000f8000000-0x00000000fbffffff] reserved
-BIOS-e820: [mem 0x00000000fec00000-0x00000000fec00fff] reserved
-BIOS-e820: [mem 0x00000000fed08000-0x00000000fed08fff] reserved
-BIOS-e820: [mem 0x00000000fed10000-0x00000000fed19fff] reserved
-BIOS-e820: [mem 0x00000000fed1c000-0x00000000fed1ffff] reserved
-BIOS-e820: [mem 0x00000000fee00000-0x00000000fee00fff] reserved
-BIOS-e820: [mem 0x00000000ffd20000-0x00000000ffffffff] reserved
-BIOS-e820: [mem 0x0000000100000000-0x000000013e5fffff] usable
-
-2.1 x86_init.resources.memory_setup
-================================================================================
-char *__init default_machine_specific_memory_setup(void)
-{
-	char *who = "BIOS-e820";
-	u32 new_nr;
-	/*
-	 * Try to copy the BIOS-supplied E820-map.
-	 *
-	 * Otherwise fake a memory map; one section from 0k->640k,
-	 * the next section from 1mb->appropriate_mem_k
-	 */
-	new_nr = boot_params.e820_entries;
-	sanitize_e820_map(boot_params.e820_map,
-			ARRAY_SIZE(boot_params.e820_map),
-			&new_nr);
-	boot_params.e820_entries = new_nr;
-	if (append_e820_map(boot_params.e820_map, boot_params.e820_entries)
-	  < 0) {
-		u64 mem_size;
-
-		/* compare results from other methods and take the greater */
-		if (boot_params.alt_mem_k
-		    < boot_params.screen_info.ext_mem_k) {
-			mem_size = boot_params.screen_info.ext_mem_k;
-			who = "BIOS-88";
-		} else {
-			mem_size = boot_params.alt_mem_k;
-			who = "BIOS-e801";
-		}
-
-		e820.nr_map = 0;
-		e820_add_region(0, LOWMEMSIZE(), E820_RAM);
-		e820_add_region(HIGH_MEMORY, mem_size << 10, E820_RAM);
-	}
-
-	/* In case someone cares... */
-	return who;
-}
