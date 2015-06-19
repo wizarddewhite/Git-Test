@@ -1,4 +1,4 @@
-0. main()
+0. main(), arch/x86/boot/main.c, called from arch/x86/boot/header.S
 ================================================================================
 void main(void)
 {
@@ -861,4 +861,46 @@ void __init native_pagetable_init(void)
 	paravirt_alloc_pmd(&init_mm, __pa(base) >> PAGE_SHIFT);
 	paging_init();
 }
+
+1.2 mm_init()
+================================================================================
+static void __init mm_init(void)
+{
+	/*
+	 * page_ext requires contiguous pages,
+	 * bigger than MAX_ORDER unless SPARSEMEM.
+	 */
+	page_ext_init_flatmem();
+	mem_init();
+	kmem_cache_init();
+	percpu_init_late();
+	pgtable_init();
+	vmalloc_init();
+	ioremap_huge_init();
+}
+
+1.2.1 mem_init()
+================================================================================
+void __init mem_init(void)
+{
+	pci_iommu_alloc();
+
+	/* clear_bss() already clear the empty_zero_page */
+
+	register_page_bootmem_info();
+
+	/* this will put all memory onto the freelists */
+	free_all_bootmem();
+	after_bootmem = 1;
+
+	/* Register memory areas for /proc/kcore */
+	kclist_add(&kcore_vsyscall, (void *)VSYSCALL_ADDR,
+			 PAGE_SIZE, KCORE_OTHER);
+
+	mem_init_print_info(NULL);
+}
+
+1.2.1.1 free_all_bootmem(), bootmem is freed and added to free_list
+================================================================================
+
 
