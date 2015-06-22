@@ -1,3 +1,6 @@
+https://www.kernel.org/doc/gorman/html/understand/understand009.html
+
+
 1. __get_free_pages()
 ================================================================================
 unsigned long __get_free_pages(gfp_t gfp_mask, unsigned int order)
@@ -584,4 +587,246 @@ void zone_statistics(struct zone *preferred_zone, struct zone *z, gfp_t flags)
 ================================================================================
 
 2.2.9 kmemcheck_pagealloc_alloc()
+================================================================================
+
+3. free_all_bootmem(), release free pages to the buddy allocator
+================================================================================
+called by start_kernel->mm_init->mem_init
+unsigned long __init free_all_bootmem(void)
+{
+	unsigned long pages;
+
+	reset_all_zones_managed_pages();
+
+	/*
+	 * We need to use NUMA_NO_NODE instead of NODE_DATA(0)->node_id
+	 *  because in some case like Node0 doesn't have RAM installed
+	 *  low ram will be on Node1
+	 */
+	pages = free_low_memory_core_early();
+	totalram_pages += pages;
+
+	return pages;
+}
+
+3.1 reset_all_zones_managed_pages() 
+================================================================================
+void __init reset_all_zones_managed_pages(void)
+{
+	struct pglist_data *pgdat;
+
+	if (reset_managed_pages_done)
+		return;
+
+	for_each_online_pgdat(pgdat)
+		reset_node_managed_pages(pgdat);
+
+	reset_managed_pages_done = 1;
+}
+
+3.1.1 reset_node_managed_pages() 
+================================================================================
+void reset_node_managed_pages(pg_data_t *pgdat)
+{
+	struct zone *z;
+
+	for (z = pgdat->node_zones; z < pgdat->node_zones + MAX_NR_ZONES; z++)
+		z->managed_pages = 0;
+}
+
+3.2 free_low_memory_core_early()
+================================================================================
+static unsigned long __init free_low_memory_core_early(void)
+{
+	unsigned long count = 0;
+	phys_addr_t start, end;
+	u64 i;
+
+	memblock_clear_hotplug(0, -1);
+
+	for_each_free_mem_range(i, NUMA_NO_NODE, &start, &end, NULL)
+		count += __free_memory_core(start, end);
+
+#ifdef CONFIG_ARCH_DISCARD_MEMBLOCK
+	{
+		phys_addr_t size;
+
+		/* Free memblock.reserved array if it was allocated */
+		size = get_allocated_memblock_reserved_regions_info(&start);
+		if (size)
+			count += __free_memory_core(start, start + size);
+
+		/* Free memblock.memory array if it was allocated */
+		size = get_allocated_memblock_memory_regions_info(&start);
+		if (size)
+			count += __free_memory_core(start, start + size);
+	}
+#endif
+
+	return count;
+}
+
+3.2.1 for_each_free_mem_range()
+================================================================================
+#define for_each_free_mem_range(i, nid, p_start, p_end, p_nid)		\
+	for_each_mem_range(i, &memblock.memory, &memblock.reserved,	\
+			   nid, p_start, p_end, p_nid)
+
+
+#define for_each_mem_range(i, type_a, type_b, nid,			\
+			   p_start, p_end, p_nid)			\
+	for (i = 0, __next_mem_range(&i, nid, type_a, type_b,		\
+				     p_start, p_end, p_nid);		\
+	     i != (u64)ULLONG_MAX;					\
+	     __next_mem_range(&i, nid, type_a, type_b,			\
+			      p_start, p_end, p_nid))
+
+3.2.1.1 __next_mem_range()
+================================================================================
+void __init_memblock __next_mem_range(u64 *idx, int nid,
+				      struct memblock_type *type_a,
+				      struct memblock_type *type_b,
+				      phys_addr_t *out_start,
+				      phys_addr_t *out_end, int *out_nid)
+{
+	int idx_a = *idx & 0xffffffff;
+	int idx_b = *idx >> 32;
+
+	if (WARN_ONCE(nid == MAX_NUMNODES,
+	"Usage of MAX_NUMNODES is deprecated. Use NUMA_NO_NODE instead\n"))
+		nid = NUMA_NO_NODE;
+
+	for (; idx_a < type_a->cnt; idx_a++) {
+		struct memblock_region *m = &type_a->regions[idx_a];
+
+		phys_addr_t m_start = m->base;
+		phys_addr_t m_end = m->base + m->size;
+		int	    m_nid = memblock_get_region_node(m);
+
+		/* only memory regions are associated with nodes, check it */
+		if (nid != NUMA_NO_NODE && nid != m_nid)
+			continue;
+
+		/* skip hotpluggable memory regions if needed */
+		if (movable_node_is_enabled() && memblock_is_hotpluggable(m))
+			continue;
+
+		if (!type_b) {
+			if (out_start)
+				*out_start = m_start;
+			if (out_end)
+				*out_end = m_end;
+			if (out_nid)
+				*out_nid = m_nid;
+			idx_a++;
+			*idx = (u32)idx_a | (u64)idx_b << 32;
+			return;
+		}
+
+		/* scan areas before each reservation */
+		for (; idx_b < type_b->cnt + 1; idx_b++) {
+			struct memblock_region *r;
+			phys_addr_t r_start;
+			phys_addr_t r_end;
+
+			r = &type_b->regions[idx_b];
+			r_start = idx_b ? r[-1].base + r[-1].size : 0;
+			r_end = idx_b < type_b->cnt ?
+				r->base : ULLONG_MAX;
+
+			/*
+			 * if idx_b advanced past idx_a,
+			 * break out to advance idx_a
+			 */
+			if (r_start >= m_end)
+				break;
+			/* if the two regions intersect, we're done */
+			if (m_start < r_end) {
+				if (out_start)
+					*out_start =
+						max(m_start, r_start);
+				if (out_end)
+					*out_end = min(m_end, r_end);
+				if (out_nid)
+					*out_nid = m_nid;
+				/*
+				 * The region which ends first is
+				 * advanced for the next iteration.
+				 */
+				if (m_end <= r_end)
+					idx_a++;
+				else
+					idx_b++;
+				*idx = (u32)idx_a | (u64)idx_b << 32;
+				return;
+			}
+		}
+	}
+
+	/* signal end of iteration */
+	*idx = ULLONG_MAX;
+}
+
+3.2.2 __free_memory_core()
+================================================================================
+static unsigned long __init __free_memory_core(phys_addr_t start,
+				 phys_addr_t end)
+{
+	unsigned long start_pfn = PFN_UP(start);
+	unsigned long end_pfn = min_t(unsigned long,
+				      PFN_DOWN(end), max_low_pfn);
+
+	if (start_pfn > end_pfn)
+		return 0;
+
+	__free_pages_memory(start_pfn, end_pfn);
+
+	return end_pfn - start_pfn;
+}
+
+static void __init __free_pages_memory(unsigned long start, unsigned long end)
+{
+	int order;
+
+	while (start < end) {
+		order = min(MAX_ORDER - 1UL, __ffs(start));
+
+		while (start + (1UL << order) > end)
+			order--;
+
+		__free_pages_bootmem(pfn_to_page(start), order);
+
+		start += (1UL << order);
+	}
+}
+
+3.2.2.1 pfn_to_page(), the flat version
+================================================================================
+/* memmap is virtually contiguous.  */
+#define __pfn_to_page(pfn)	(vmemmap + (pfn))
+#define __page_to_pfn(page)	(unsigned long)((page) - vmemmap)
+
+3.2.2.2 __free_pages_bootmem()
+================================================================================
+void __init __free_pages_bootmem(struct page *page, unsigned int order)
+{
+	unsigned int nr_pages = 1 << order;
+	struct page *p = page;
+	unsigned int loop;
+
+	prefetchw(p);
+	for (loop = 0; loop < (nr_pages - 1); loop++, p++) {
+		prefetchw(p + 1);
+		__ClearPageReserved(p);
+		set_page_count(p, 0);
+	}
+	__ClearPageReserved(p);
+	set_page_count(p, 0);
+
+	page_zone(page)->managed_pages += nr_pages;
+	set_page_refcounted(page);
+	__free_pages(page, order);
+}
+
+3.3 totalram_pages += pages
 ================================================================================
