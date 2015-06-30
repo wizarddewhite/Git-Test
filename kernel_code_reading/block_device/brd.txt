@@ -1,0 +1,410 @@
+1. brd_init()
+================================================================================
+static int __init brd_init(void)
+{
+	int i, nr;
+	unsigned long range;
+	struct brd_device *brd, *next;
+
+	/*
+	 * brd module now has a feature to instantiate underlying device
+	 * structure on-demand, provided that there is an access dev node.
+	 * However, this will not work well with user space tool that doesn't
+	 * know about such "feature".  In order to not break any existing
+	 * tool, we do the following:
+	 *
+	 * (1) if rd_nr is specified, create that many upfront, and this
+	 *     also becomes a hard limit.
+	 * (2) if rd_nr is not specified, create CONFIG_BLK_DEV_RAM_COUNT
+	 *     (default 16) rd device on module load, user can further
+	 *     extend brd device by create dev node themselves and have
+	 *     kernel automatically instantiate actual device on-demand.
+	 */
+
+	part_shift = 0;
+	if (max_part > 0) {
+		part_shift = fls(max_part);
+
+		/*
+		 * Adjust max_part according to part_shift as it is exported
+		 * to user space so that user can decide correct minor number
+		 * if [s]he want to create more devices.
+		 *
+		 * Note that -1 is required because partition 0 is reserved
+		 * for the whole disk.
+		 */
+		max_part = (1UL << part_shift) - 1;
+	}
+
+	if ((1UL << part_shift) > DISK_MAX_PARTS)
+		return -EINVAL;
+
+	if (rd_nr > 1UL << (MINORBITS - part_shift))
+		return -EINVAL;
+
+	if (rd_nr) {
+		nr = rd_nr;
+		range = rd_nr << part_shift;
+	} else {
+		nr = CONFIG_BLK_DEV_RAM_COUNT;
+		range = 1UL << MINORBITS;
+	}
+	printk(KERN_ERR "%s: rd_nr is %d\n", __func__, rd_nr);
+	printk(KERN_ERR "%s: nr is %d\n", __func__, nr);
+
+	if (register_blkdev(RAMDISK_MAJOR, "ramdisk"))
+		return -EIO;
+
+	for (i = 0; i < nr; i++) {
+		brd = brd_alloc(i);
+		if (!brd)
+			goto out_free;
+		list_add_tail(&brd->brd_list, &brd_devices);
+	}
+
+	/* point of no return */
+
+	list_for_each_entry(brd, &brd_devices, brd_list)
+		add_disk(brd->brd_disk);
+
+	blk_register_region(MKDEV(RAMDISK_MAJOR, 0), range,
+				  THIS_MODULE, brd_probe, NULL, NULL);
+
+	printk(KERN_INFO "brd: module loaded\n");
+	return 0;
+
+out_free:
+	list_for_each_entry_safe(brd, next, &brd_devices, brd_list) {
+		list_del(&brd->brd_list);
+		brd_free(brd);
+	}
+	unregister_blkdev(RAMDISK_MAJOR, "ramdisk");
+
+	return -ENOMEM;
+}
+
+1.1 register_blkdev()
+================================================================================
+int register_blkdev(unsigned int major, const char *name)
+{
+	struct blk_major_name **n, *p;
+	int index, ret = 0;
+
+	mutex_lock(&block_class_lock);
+
+	/* temporary */
+	if (major == 0) {
+		for (index = ARRAY_SIZE(major_names)-1; index > 0; index--) {
+			if (major_names[index] == NULL)
+				break;
+		}
+
+		if (index == 0) {
+			printk("register_blkdev: failed to get major for %s\n",
+			       name);
+			ret = -EBUSY;
+			goto out;
+		}
+		major = index;
+		ret = major;
+	}
+
+	p = kmalloc(sizeof(struct blk_major_name), GFP_KERNEL);
+	if (p == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	p->major = major;
+	strlcpy(p->name, name, sizeof(p->name));
+	p->next = NULL;
+	index = major_to_index(major);
+
+	for (n = &major_names[index]; *n; n = &(*n)->next) {
+		if ((*n)->major == major)
+			break;
+	}
+	if (!*n)
+		*n = p;
+	else
+		ret = -EBUSY;
+
+	if (ret < 0) {
+		printk("register_blkdev: cannot get major %d for %s\n",
+		       major, name);
+		kfree(p);
+	}
+out:
+	mutex_unlock(&block_class_lock);
+	return ret;
+}
+
+1.2 brd_alloc()
+================================================================================
+static struct brd_device *brd_alloc(int i)
+{
+	struct brd_device *brd;
+	struct gendisk *disk;
+
+	brd = kzalloc(sizeof(*brd), GFP_KERNEL);
+	if (!brd)
+		goto out;
+	brd->brd_number		= i;
+	spin_lock_init(&brd->brd_lock);
+	INIT_RADIX_TREE(&brd->brd_pages, GFP_ATOMIC);
+
+	brd->brd_queue = blk_alloc_queue(GFP_KERNEL);
+	if (!brd->brd_queue)
+		goto out_free_dev;
+	blk_queue_make_request(brd->brd_queue, brd_make_request);
+	blk_queue_max_hw_sectors(brd->brd_queue, 1024);
+	blk_queue_bounce_limit(brd->brd_queue, BLK_BOUNCE_ANY);
+
+	brd->brd_queue->limits.discard_granularity = PAGE_SIZE;
+	brd->brd_queue->limits.max_discard_sectors = UINT_MAX;
+	brd->brd_queue->limits.discard_zeroes_data = 1;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, brd->brd_queue);
+
+	disk = brd->brd_disk = alloc_disk(1 << part_shift);
+	if (!disk)
+		goto out_free_queue;
+	disk->major		= RAMDISK_MAJOR;
+	disk->first_minor	= i << part_shift;
+	disk->fops		= &brd_fops;
+	disk->private_data	= brd;
+	disk->queue		= brd->brd_queue;
+	if (!part_show)
+		disk->flags |= GENHD_FL_SUPPRESS_PARTITION_INFO;
+	sprintf(disk->disk_name, "ram%d", i);
+	set_capacity(disk, rd_size * 2);
+
+	return brd;
+
+out_free_queue:
+	blk_cleanup_queue(brd->brd_queue);
+out_free_dev:
+	kfree(brd);
+out:
+	return NULL;
+}
+
+1.2.1 blk_alloc_queue()
+================================================================================
+struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
+{
+	return blk_alloc_queue_node(gfp_mask, NUMA_NO_NODE);
+}
+
+struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
+{
+	struct request_queue *q;
+	int err;
+
+	q = kmem_cache_alloc_node(blk_requestq_cachep,
+				gfp_mask | __GFP_ZERO, node_id);
+	if (!q)
+		return NULL;
+
+	q->id = ida_simple_get(&blk_queue_ida, 0, 0, gfp_mask);
+	if (q->id < 0)
+		goto fail_q;
+
+	q->backing_dev_info.ra_pages =
+			(VM_MAX_READAHEAD * 1024) / PAGE_CACHE_SIZE;
+	q->backing_dev_info.state = 0;
+	q->backing_dev_info.capabilities = BDI_CAP_MAP_COPY;
+	q->backing_dev_info.name = "block";
+	q->node = node_id;
+
+	err = bdi_init(&q->backing_dev_info);
+	if (err)
+		goto fail_id;
+
+	setup_timer(&q->backing_dev_info.laptop_mode_wb_timer,
+		    laptop_mode_timer_fn, (unsigned long) q);
+	setup_timer(&q->timeout, blk_rq_timed_out_timer, (unsigned long) q);
+	INIT_LIST_HEAD(&q->queue_head);
+	INIT_LIST_HEAD(&q->timeout_list);
+	INIT_LIST_HEAD(&q->icq_list);
+#ifdef CONFIG_BLK_CGROUP
+	INIT_LIST_HEAD(&q->blkg_list);
+#endif
+	INIT_DELAYED_WORK(&q->delay_work, blk_delay_work);
+
+	kobject_init(&q->kobj, &blk_queue_ktype);
+
+	mutex_init(&q->sysfs_lock);
+	spin_lock_init(&q->__queue_lock);
+
+	/*
+	 * By default initialize queue_lock to internal lock and driver can
+	 * override it later if need be.
+	 */
+	q->queue_lock = &q->__queue_lock;
+
+	/*
+	 * A queue starts its life with bypass turned on to avoid
+	 * unnecessary bypass on/off overhead and nasty surprises during
+	 * init.  The initial bypass will be finished when the queue is
+	 * registered by blk_register_queue().
+	 */
+	q->bypass_depth = 1;
+	__set_bit(QUEUE_FLAG_BYPASS, &q->queue_flags);
+
+	init_waitqueue_head(&q->mq_freeze_wq);
+
+	if (blkcg_init_queue(q))
+		goto fail_bdi;
+
+	return q;
+
+fail_bdi:
+	bdi_destroy(&q->backing_dev_info);
+fail_id:
+	ida_simple_remove(&blk_queue_ida, q->id);
+fail_q:
+	kmem_cache_free(blk_requestq_cachep, q);
+	return NULL;
+}
+
+1.2.2 blk_queue_make_request()
+================================================================================
+void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn)
+{
+	/*
+	 * set defaults
+	 */
+	q->nr_requests = BLKDEV_MAX_RQ;
+
+	q->make_request_fn = mfn;
+	blk_queue_dma_alignment(q, 511);
+	blk_queue_congestion_threshold(q);
+	q->nr_batching = BLK_BATCH_REQ;
+
+	blk_set_default_limits(&q->limits);
+
+	/*
+	 * by default assume old behaviour and bounce for any highmem page
+	 */
+	blk_queue_bounce_limit(q, BLK_BOUNCE_HIGH);
+}
+
+1.2.3 blk_queue_max_hw_sectors()
+================================================================================
+
+1.2.4 blk_queue_bounce_limit()
+================================================================================
+
+1.2.5 alloc_disk()
+================================================================================
+struct gendisk *alloc_disk(int minors)
+{
+	return alloc_disk_node(minors, NUMA_NO_NODE);
+}
+
+struct gendisk *alloc_disk_node(int minors, int node_id)
+{
+	struct gendisk *disk;
+
+	disk = kzalloc_node(sizeof(struct gendisk), GFP_KERNEL, node_id);
+	if (disk) {
+		if (!init_part_stats(&disk->part0)) {
+			kfree(disk);
+			return NULL;
+		}
+		disk->node_id = node_id;
+		if (disk_expand_part_tbl(disk, 0)) {
+			free_part_stats(&disk->part0);
+			kfree(disk);
+			return NULL;
+		}
+		disk->part_tbl->part[0] = &disk->part0;
+
+		/*
+		 * set_capacity() and get_capacity() currently don't use
+		 * seqcounter to read/update the part0->nr_sects. Still init
+		 * the counter as we can read the sectors in IO submission
+		 * patch using seqence counters.
+		 *
+		 * TODO: Ideally set_capacity() and get_capacity() should be
+		 * converted to make use of bd_mutex and sequence counters.
+		 */
+		seqcount_init(&disk->part0.nr_sects_seq);
+		hd_ref_init(&disk->part0);
+
+		disk->minors = minors;
+		rand_initialize_disk(disk);
+		disk_to_dev(disk)->class = &block_class;
+		disk_to_dev(disk)->type = &disk_type;
+		device_initialize(disk_to_dev(disk));
+	}
+	return disk;
+}
+
+1.2.6 set_capacity()
+================================================================================
+
+1.3 add_disk()
+================================================================================
+
+1.4 blk_register_region(), brd_probe
+================================================================================
+void blk_register_region(dev_t devt, unsigned long range, struct module *module,
+			 struct kobject *(*probe)(dev_t, int *, void *),
+			 int (*lock)(dev_t, void *), void *data)
+{
+	kobj_map(bdev_map, devt, range, module, probe, lock, data);
+}
+
+1.5 brd_probe
+================================================================================
+static struct kobject *brd_probe(dev_t dev, int *part, void *data)
+{
+	struct brd_device *brd;
+	struct kobject *kobj;
+
+	mutex_lock(&brd_devices_mutex);
+	brd = brd_init_one(MINOR(dev) >> part_shift);
+	kobj = brd ? get_disk(brd->brd_disk) : NULL;
+	mutex_unlock(&brd_devices_mutex);
+
+	*part = 0;
+	return kobj;
+}
+
+0. data structure
+================================================================================
+
+0.1 brd_devices
+================================================================================
+    brd_devices (LIST_HEAD)
+      |
+      |
+      v
+    brd(struct brd_device)
+    +---------------------+    +---------------------+    +---------------------+
+    |brd_list             |--->|brd_list             |--->|brd_list             |
+    +---------------------+    +---------------------+    +---------------------+
+
+0.2 brd_device
+================================================================================
+    brd_device
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+    |brd_queue                  |
+    |  (struct request_queue*)  |
+    +---------------------------+
+    |brd_disk                   |
+    |  (struct gendisk*)        |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+
+0.3 request_queue
+================================================================================
+
+0.4 gendisk
+================================================================================

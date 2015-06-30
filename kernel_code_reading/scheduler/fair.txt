@@ -1,0 +1,585 @@
+1. pick_next_task_fair()
+================================================================================
+static struct task_struct *
+pick_next_task_fair(struct rq *rq, struct task_struct *prev)
+{
+	struct cfs_rq *cfs_rq = &rq->cfs;
+	struct sched_entity *se;
+	struct task_struct *p;
+	int new_tasks;
+
+again:
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	if (!cfs_rq->nr_running)
+		goto idle;
+
+	if (prev->sched_class != &fair_sched_class)
+		goto simple;
+
+	/*
+	 * Because of the set_next_buddy() in dequeue_task_fair() it is rather
+	 * likely that a next task is from the same cgroup as the current.
+	 *
+	 * Therefore attempt to avoid putting and setting the entire cgroup
+	 * hierarchy, only change the part that actually changes.
+	 */
+
+	do {
+		struct sched_entity *curr = cfs_rq->curr;
+
+		/*
+		 * Since we got here without doing put_prev_entity() we also
+		 * have to consider cfs_rq->curr. If it is still a runnable
+		 * entity, update_curr() will update its vruntime, otherwise
+		 * forget we've ever seen it.
+		 */
+		if (curr && curr->on_rq)
+			update_curr(cfs_rq);
+		else
+			curr = NULL;
+
+		/*
+		 * This call to check_cfs_rq_runtime() will do the throttle and
+		 * dequeue its entity in the parent(s). Therefore the 'simple'
+		 * nr_running test will indeed be correct.
+		 */
+		if (unlikely(check_cfs_rq_runtime(cfs_rq)))
+			goto simple;
+
+		se = pick_next_entity(cfs_rq, curr);
+		cfs_rq = group_cfs_rq(se);
+	} while (cfs_rq);
+
+	p = task_of(se);
+
+	/*
+	 * Since we haven't yet done put_prev_entity and if the selected task
+	 * is a different task than we started out with, try and touch the
+	 * least amount of cfs_rqs.
+	 */
+	if (prev != p) {
+		struct sched_entity *pse = &prev->se;
+
+		while (!(cfs_rq = is_same_group(se, pse))) {
+			int se_depth = se->depth;
+			int pse_depth = pse->depth;
+
+			if (se_depth <= pse_depth) {
+				put_prev_entity(cfs_rq_of(pse), pse);
+				pse = parent_entity(pse);
+			}
+			if (se_depth >= pse_depth) {
+				set_next_entity(cfs_rq_of(se), se);
+				se = parent_entity(se);
+			}
+		}
+
+		put_prev_entity(cfs_rq, pse);
+		set_next_entity(cfs_rq, se);
+	}
+
+	if (hrtick_enabled(rq))
+		hrtick_start_fair(rq, p);
+
+	return p;
+simple:
+	cfs_rq = &rq->cfs;
+#endif
+
+	if (!cfs_rq->nr_running)
+		goto idle;
+
+	put_prev_task(rq, prev);
+
+	do {
+		se = pick_next_entity(cfs_rq, NULL);
+		set_next_entity(cfs_rq, se);
+		cfs_rq = group_cfs_rq(se);
+	} while (cfs_rq);
+
+	p = task_of(se);
+
+	if (hrtick_enabled(rq))
+		hrtick_start_fair(rq, p);
+
+	return p;
+
+idle:
+	new_tasks = idle_balance(rq);
+	/*
+	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
+	 * possible for any higher priority task to appear. In that case we
+	 * must re-start the pick_next_entity() loop.
+	 */
+	if (new_tasks < 0)
+		return RETRY_TASK;
+
+	if (new_tasks > 0)
+		goto again;
+
+	return NULL;
+}
+
+1.1 update_curr()
+================================================================================
+; now  : current time
+; delta: current - previous start
+static void update_curr(struct cfs_rq *cfs_rq)
+{
+	struct sched_entity *curr = cfs_rq->curr;
+	u64 now = rq_clock_task(rq_of(cfs_rq));
+	u64 delta_exec;
+
+	if (unlikely(!curr))
+		return;
+
+	delta_exec = now - curr->exec_start;
+	if (unlikely((s64)delta_exec <= 0))
+		return;
+
+	curr->exec_start = now;
+
+	schedstat_set(curr->statistics.exec_max,
+		      max(delta_exec, curr->statistics.exec_max));
+
+	curr->sum_exec_runtime += delta_exec;
+	schedstat_add(cfs_rq, exec_clock, delta_exec);
+
+	curr->vruntime += calc_delta_fair(delta_exec, curr);
+	update_min_vruntime(cfs_rq);
+
+	if (entity_is_task(curr)) {
+		struct task_struct *curtask = task_of(curr);
+
+		trace_sched_stat_runtime(curtask, delta_exec, curr->vruntime);
+		cpuacct_charge(curtask, delta_exec);
+		account_group_exec_runtime(curtask, delta_exec);
+	}
+
+	account_cfs_rq_runtime(cfs_rq, delta_exec);
+}
+
+1.1.1 rq_clock_task(), updated in update_rq_clock_task
+================================================================================
+static inline u64 rq_clock_task(struct rq *rq)
+{
+	return rq->clock_task;
+}
+
+1.1.2 curr->exec_start = now
+================================================================================
+
+1.1.3 schedstat_set(), update curr->statistics
+================================================================================
+
+1.1.4 schedstat_add()
+================================================================================
+
+1.1.5 calc_delta_fair()
+================================================================================
+static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
+{
+	if (unlikely(se->load.weight != NICE_0_LOAD))
+		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
+
+	return delta;
+}
+
+1.1.5.1 __calc_delta()
+================================================================================
+static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight *lw)
+{
+	u64 fact = scale_load_down(weight);
+	int shift = WMULT_SHIFT;
+
+	__update_inv_weight(lw);
+
+	if (unlikely(fact >> 32)) {
+		while (fact >> 32) {
+			fact >>= 1;
+			shift--;
+		}
+	}
+
+	/* hint to use a 32x32->64 mul */
+	fact = (u64)(u32)fact * lw->inv_weight;
+
+	while (fact >> 32) {
+		fact >>= 1;
+		shift--;
+	}
+
+	return mul_u64_u32_shr(delta_exec, fact, shift);
+}
+
+1.1.6 update_min_vruntime(), update cfs_rq->min_vruntime
+================================================================================
+static void update_min_vruntime(struct cfs_rq *cfs_rq)
+{
+	u64 vruntime = cfs_rq->min_vruntime;
+
+	if (cfs_rq->curr)
+		vruntime = cfs_rq->curr->vruntime;
+
+	if (cfs_rq->rb_leftmost) {
+		struct sched_entity *se = rb_entry(cfs_rq->rb_leftmost,
+						   struct sched_entity,
+						   run_node);
+
+		if (!cfs_rq->curr)
+			vruntime = se->vruntime;
+		else
+			vruntime = min_vruntime(vruntime, se->vruntime);
+	}
+
+	/* ensure we never gain time by being placed backwards. */
+	cfs_rq->min_vruntime = max_vruntime(cfs_rq->min_vruntime, vruntime);
+#ifndef CONFIG_64BIT
+	smp_wmb();
+	cfs_rq->min_vruntime_copy = cfs_rq->min_vruntime;
+#endif
+}
+
+1.1.7 cpuacct_charge()
+================================================================================
+
+1.1.8 account_group_exec_runtime()
+================================================================================
+
+1.1.9 account_cfs_rq_runtime()
+================================================================================
+static __always_inline
+void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
+{
+	if (!cfs_bandwidth_used() || !cfs_rq->runtime_enabled)
+		return;
+
+	__account_cfs_rq_runtime(cfs_rq, delta_exec);
+}
+
+1.1.9.1 __account_cfs_rq_runtime()
+================================================================================
+static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
+{
+	/* dock delta_exec before expiring quota (as it could span periods) */
+	cfs_rq->runtime_remaining -= delta_exec;
+	expire_cfs_rq_runtime(cfs_rq);
+
+	if (likely(cfs_rq->runtime_remaining > 0))
+		return;
+
+	/*
+	 * if we're unable to extend our runtime we resched so that the active
+	 * hierarchy can be throttled
+	 */
+	if (!assign_cfs_rq_runtime(cfs_rq) && likely(cfs_rq->curr))
+		resched_curr(rq_of(cfs_rq));
+}
+
+1.2 pick_next_entity()
+================================================================================
+static struct sched_entity *
+pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
+{
+	struct sched_entity *left = __pick_first_entity(cfs_rq);
+	struct sched_entity *se;
+
+	/*
+	 * If curr is set we have to see if its left of the leftmost entity
+	 * still in the tree, provided there was anything in the tree at all.
+	 */
+	if (!left || (curr && entity_before(curr, left)))
+		left = curr;
+
+	se = left; /* ideally we run the leftmost entity */
+
+	/*
+	 * Avoid running the skip buddy, if running something else can
+	 * be done without getting too unfair.
+	 */
+	if (cfs_rq->skip == se) {
+		struct sched_entity *second;
+
+		if (se == curr) {
+			second = __pick_first_entity(cfs_rq);
+		} else {
+			second = __pick_next_entity(se);
+			if (!second || (curr && entity_before(curr, second)))
+				second = curr;
+		}
+
+		if (second && wakeup_preempt_entity(second, left) < 1)
+			se = second;
+	}
+
+	/*
+	 * Prefer last buddy, try to return the CPU to a preempted task.
+	 */
+	if (cfs_rq->last && wakeup_preempt_entity(cfs_rq->last, left) < 1)
+		se = cfs_rq->last;
+
+	/*
+	 * Someone really wants this to run. If it's not unfair, run it.
+	 */
+	if (cfs_rq->next && wakeup_preempt_entity(cfs_rq->next, left) < 1)
+		se = cfs_rq->next;
+
+	clear_buddies(cfs_rq, se);
+
+	return se;
+}
+
+1.2.1 __pick_first_entity(), pick the left most rb_node
+================================================================================
+; this is very simple. In a sorted rb tree, the left most node has the smallest
+; value
+
+struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
+{
+	struct rb_node *left = cfs_rq->rb_leftmost;
+
+	if (!left)
+		return NULL;
+
+	return rb_entry(left, struct sched_entity, run_node);
+}
+
+1.2.2 clear_buddies()
+================================================================================
+static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	if (cfs_rq->last == se)
+		__clear_buddies_last(se);
+
+	if (cfs_rq->next == se)
+		__clear_buddies_next(se);
+
+	if (cfs_rq->skip == se)
+		__clear_buddies_skip(se);
+}
+
+1.3 group_cfs_rq()
+================================================================================
+
+1.4 put_prev_entity()
+================================================================================
+static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
+{
+	/*
+	 * If still on the runqueue then deactivate_task()
+	 * was not called and update_curr() has to be done:
+	 */
+	if (prev->on_rq)
+		update_curr(cfs_rq);
+
+	/* throttle cfs_rqs exceeding runtime */
+	check_cfs_rq_runtime(cfs_rq);
+
+	check_spread(cfs_rq, prev);
+	if (prev->on_rq) {
+		update_stats_wait_start(cfs_rq, prev);
+		/* Put 'current' back into the tree. */
+		__enqueue_entity(cfs_rq, prev);
+		/* in !on_rq case, update occurred at dequeue */
+		update_entity_load_avg(prev, 1);
+	}
+	cfs_rq->curr = NULL;
+}
+
+1.4.1 update_curr()
+================================================================================
+
+1.4.2 check_cfs_rq_runtime()
+================================================================================
+static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
+{
+	if (!cfs_bandwidth_used())
+		return false;
+
+	if (likely(!cfs_rq->runtime_enabled || cfs_rq->runtime_remaining > 0))
+		return false;
+
+	/*
+	 * it's possible for a throttled entity to be forced into a running
+	 * state (e.g. set_curr_task), in this case we're finished.
+	 */
+	if (cfs_rq_throttled(cfs_rq))
+		return true;
+
+	throttle_cfs_rq(cfs_rq);
+	return true;
+}
+
+1.4.3 check_spread()
+================================================================================
+
+1.4.4 __enqueue_entity()
+================================================================================
+static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	struct rb_node **link = &cfs_rq->tasks_timeline.rb_node;
+	struct rb_node *parent = NULL;
+	struct sched_entity *entry;
+	int leftmost = 1;
+
+	/*
+	 * Find the right place in the rbtree:
+	 */
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct sched_entity, run_node);
+		/*
+		 * We dont care about collisions. Nodes with
+		 * the same key stay together.
+		 */
+		if (entity_before(se, entry)) {
+			link = &parent->rb_left;
+		} else {
+			link = &parent->rb_right;
+			leftmost = 0;
+		}
+	}
+
+	/*
+	 * Maintain a cache of leftmost tree entries (it is frequently
+	 * used):
+	 */
+	if (leftmost)
+		cfs_rq->rb_leftmost = &se->run_node;
+
+	rb_link_node(&se->run_node, parent, link);
+	rb_insert_color(&se->run_node, &cfs_rq->tasks_timeline);
+}
+
+1.4.4.1 rb_link_node()
+================================================================================
+static inline void rb_link_node(struct rb_node * node, struct rb_node * parent,
+				struct rb_node ** rb_link)
+{
+	node->__rb_parent_color = (unsigned long)parent;
+	node->rb_left = node->rb_right = NULL;
+
+	*rb_link = node;
+}
+
+1.5 set_next_entity()
+================================================================================
+static void
+set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	/* 'current' is not kept within the tree. */
+	if (se->on_rq) {
+		/*
+		 * Any task has to be enqueued before it get to execute on
+		 * a CPU. So account for the time it spent waiting on the
+		 * runqueue.
+		 */
+		update_stats_wait_end(cfs_rq, se);
+		__dequeue_entity(cfs_rq, se);
+	}
+
+	update_stats_curr_start(cfs_rq, se);
+	cfs_rq->curr = se;
+#ifdef CONFIG_SCHEDSTATS
+	/*
+	 * Track our maximum slice length, if the CPU's load is at
+	 * least twice that of our own weight (i.e. dont track it
+	 * when there are only lesser-weight tasks around):
+	 */
+	if (rq_of(cfs_rq)->load.weight >= 2*se->load.weight) {
+		se->statistics.slice_max = max(se->statistics.slice_max,
+			se->sum_exec_runtime - se->prev_sum_exec_runtime);
+	}
+#endif
+	se->prev_sum_exec_runtime = se->sum_exec_runtime;
+}
+
+1.5.1 __dequeue_entity()
+================================================================================
+static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	if (cfs_rq->rb_leftmost == &se->run_node) {
+		struct rb_node *next_node;
+
+		next_node = rb_next(&se->run_node);
+		cfs_rq->rb_leftmost = next_node;
+	}
+
+	rb_erase(&se->run_node, &cfs_rq->tasks_timeline);
+}
+
+1.5.2 update_stats_curr_start()
+================================================================================
+static inline void
+update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	/*
+	 * We are starting a new run period:
+	 */
+	se->exec_start = rq_clock_task(rq_of(cfs_rq));
+}
+
+0. data structure
+================================================================================
+
+0.1 sched_entity, embedded in task_struct
+================================================================================
+    sched_entity
+    +----------------------------------+  
+    |run_node                          |  
+    |    (struct rb_node)              |  
+    +----------------------------------+  
+    |depth                             |  
+    |    (int)                         |  
+    +----------------------------------+  
+    |exec_start                        |  start for just this pick up
+    |sum_exec_runtime                  |  totol runtime: exec_start + delta
+    |vruntime                          |  
+    |prev_sum_exec_runtime             |  
+    |                                  |  
+    |    (u64)                         |  
+    +----------------------------------+  
+    |on_rq                             |  
+    |    (unsigned int)                |  
+    +----------------------------------+  
+    |                                  |  
+    |                                  |  
+    +----------------------------------+  
+    |                                  |  
+    |                                  |  
+    +----------------------------------+  
+    |cfs_rq                            | point to the cfs_rq 
+    |   (struct cfs_rq*)               |  
+    +----------------------------------+  
+    |my_q                              | would be non-null if it is not a task 
+    |   (struct cfs_rq*)               | like in cgroup case 
+    +----------------------------------+  
+
+0.2 cfs_rq, each CPU has a struct rq, which has a cfs_rq
+================================================================================
+    cfs_rq
+    +----------------------------------+  
+    |nr_running                        | number of runnable task  
+    |    (unsigned int)                |  
+    +----------------------------------+  
+    |tasks_timeline                    | rb_tree root on current cfs_rq
+    |    (struct rb_root)              |  
+    +----------------------------------+  
+    |rb_leftmost                       |  
+    |    (struct rb_node*)             |  
+    +----------------------------------+  
+    |curr                              |  
+    |next                              |  
+    |last                              |  
+    |skip                              |  
+    |    (struct sched_entity*)        |  
+    +----------------------------------+  
+    |                                  |  
+    |                                  |  
+    +----------------------------------+  
+    |rq                                |  
+    |    (struct rq*)                  |  
+    +----------------------------------+  
+    |                                  |  
+    |                                  |  
+    +----------------------------------+  

@@ -1,0 +1,105 @@
+1. pm_init()
+================================================================================
+core_initcall(pm_init);
+
+static int __init pm_init(void)
+{
+	int error = pm_start_workqueue();
+	if (error)
+		return error;
+	hibernate_image_size_init();
+	hibernate_reserved_size_init();
+	power_kobj = kobject_create_and_add("power", NULL);
+	if (!power_kobj)
+		return -ENOMEM;
+	error = sysfs_create_group(power_kobj, &attr_group);
+	if (error)
+		return error;
+	pm_print_times_init();
+	return pm_autosleep_init();
+}
+
+1.1 pm_start_workqueue()
+================================================================================
+static int __init pm_start_workqueue(void)
+{
+	pm_wq = alloc_workqueue("pm", WQ_FREEZABLE, 0);
+
+	return pm_wq ? 0 : -ENOMEM;
+}
+
+1.2 hibernate_image_size_init(), if hibernate supported
+================================================================================
+void __init hibernate_image_size_init(void)
+{
+	image_size = ((totalram_pages * 2) / 5) * PAGE_SIZE;
+}
+
+1.3 hibernate_reserved_size_init()
+================================================================================
+void __init hibernate_reserved_size_init(void)
+{
+	reserved_size = SPARE_PAGES * PAGE_SIZE;
+}
+
+1.4 kobject_create_add_add("power")
+================================================================================
+
+1.5 sysfs_create_group()
+================================================================================
+static struct attribute_group attr_group = {
+	.attrs = g,
+};
+
+static struct attribute * g[] = {
+	&state_attr.attr,
+#ifdef CONFIG_PM_TRACE
+	&pm_trace_attr.attr,
+	&pm_trace_dev_match_attr.attr,
+#endif
+#ifdef CONFIG_PM_SLEEP
+	&pm_async_attr.attr,
+	&wakeup_count_attr.attr,
+#ifdef CONFIG_PM_AUTOSLEEP
+	&autosleep_attr.attr,
+#endif
+#ifdef CONFIG_PM_WAKELOCKS
+	&wake_lock_attr.attr,
+	&wake_unlock_attr.attr,
+#endif
+#ifdef CONFIG_PM_DEBUG
+	&pm_test_attr.attr,
+#endif
+#ifdef CONFIG_PM_SLEEP_DEBUG
+	&pm_print_times_attr.attr,
+#endif
+#endif
+#ifdef CONFIG_FREEZER
+	&pm_freeze_timeout_attr.attr,
+#endif
+	NULL,
+};
+
+1.6 pm_print_times_init()
+================================================================================
+static inline void pm_print_times_init(void)
+{
+	pm_print_times_enabled = !!initcall_debug;
+}
+
+1.7 pm_autosleep_init()
+================================================================================
+int __init pm_autosleep_init(void)
+{
+	autosleep_ws = wakeup_source_register("autosleep");
+	if (!autosleep_ws)
+		return -ENOMEM;
+
+	autosleep_wq = alloc_ordered_workqueue("autosleep", 0);
+	if (autosleep_wq)
+		return 0;
+
+	wakeup_source_unregister(autosleep_ws);
+	return -ENOMEM;
+}
+

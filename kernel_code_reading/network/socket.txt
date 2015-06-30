@@ -1,0 +1,621 @@
+1. sock_init()
+================================================================================
+core_initcall(sock_init);	/* early initcall */
+#define core_initcall(fn)		__define_initcall(fn, 1)
+
+static int __init sock_init(void)
+{
+	int err;
+	/*
+	 *      Initialize the network sysctl infrastructure.
+	 */
+	err = net_sysctl_init();
+	if (err)
+		goto out;
+
+	/*
+	 *      Initialize skbuff SLAB cache
+	 */
+	skb_init();
+
+	/*
+	 *      Initialize the protocols module.
+	 */
+
+	init_inodecache();
+
+	err = register_filesystem(&sock_fs_type);
+	if (err)
+		goto out_fs;
+	sock_mnt = kern_mount(&sock_fs_type);
+	if (IS_ERR(sock_mnt)) {
+		err = PTR_ERR(sock_mnt);
+		goto out_mount;
+	}
+
+	/* The real protocol initialization is performed in later initcalls.
+	 */
+
+#ifdef CONFIG_NETFILTER
+	err = netfilter_init();
+	if (err)
+		goto out;
+#endif
+
+#ifdef CONFIG_NETWORK_PHY_TIMESTAMPING
+	skb_timestamping_init();
+#endif
+
+out:
+	return err;
+
+out_mount:
+	unregister_filesystem(&sock_fs_type);
+out_fs:
+	goto out;
+}
+
+1.1 net_sysctl_init(), /proc/sys/net
+================================================================================
+static struct ctl_table_header *net_header;
+__init int net_sysctl_init(void)
+{
+	static struct ctl_table empty[1];
+	int ret = -ENOMEM;
+	/* Avoid limitations in the sysctl implementation by
+	 * registering "/proc/sys/net" as an empty directory not in a
+	 * network namespace.
+	 */
+	net_header = register_sysctl("net", empty);
+	if (!net_header)
+		goto out;
+	ret = register_pernet_subsys(&sysctl_pernet_ops);
+	if (ret)
+		goto out;
+	register_sysctl_root(&net_sysctl_root);
+out:
+	return ret;
+}
+
+1.1.1 sysctl_pernet_ops()
+================================================================================
+static struct pernet_operations sysctl_pernet_ops = {
+	.init = sysctl_net_init,
+	.exit = sysctl_net_exit,
+};
+
+1.2 skb_init(), kmem_cache for skbuff_head_cache and skbuff_fclone_cache
+================================================================================
+void __init skb_init(void)
+{
+	skbuff_head_cache = kmem_cache_create("skbuff_head_cache",
+					      sizeof(struct sk_buff),
+					      0,
+					      SLAB_HWCACHE_ALIGN|SLAB_PANIC,
+					      NULL);
+	skbuff_fclone_cache = kmem_cache_create("skbuff_fclone_cache",
+						(2*sizeof(struct sk_buff)) +
+						sizeof(atomic_t),
+						0,
+						SLAB_HWCACHE_ALIGN|SLAB_PANIC,
+						NULL);
+}
+
+1.3 init_inodecache(), kmem_cache for sock_inode_cachep
+================================================================================
+static int init_inodecache(void)
+{
+	sock_inode_cachep = kmem_cache_create("sock_inode_cache",
+					      sizeof(struct socket_alloc),
+					      0,
+					      (SLAB_HWCACHE_ALIGN |
+					       SLAB_RECLAIM_ACCOUNT |
+					       SLAB_MEM_SPREAD),
+					      init_once);
+	if (sock_inode_cachep == NULL)
+		return -ENOMEM;
+	return 0;
+}
+
+1.4 register_filesystem(), register sock_fs_type to file_systems list
+================================================================================
+int register_filesystem(struct file_system_type * fs)
+{
+	int res = 0;
+	struct file_system_type ** p;
+
+	BUG_ON(strchr(fs->name, '.'));
+	if (fs->next)
+		return -EBUSY;
+	write_lock(&file_systems_lock);
+	p = find_filesystem(fs->name, strlen(fs->name));
+	if (*p)
+		res = -EBUSY;
+	else
+		*p = fs;
+	write_unlock(&file_systems_lock);
+	return res;
+}
+
+1.4.1 sock_fs_type()
+================================================================================
+static struct file_system_type sock_fs_type = {
+	.name =		"sockfs",
+	.mount =	sockfs_mount,
+	.kill_sb =	kill_anon_super,
+};
+
+1.5 kern_mount()
+================================================================================
+#define kern_mount(type) kern_mount_data(type, NULL)
+
+struct vfsmount *kern_mount_data(struct file_system_type *type, void *data)
+{
+	struct vfsmount *mnt;
+	mnt = vfs_kern_mount(type, MS_KERNMOUNT, type->name, data);
+	if (!IS_ERR(mnt)) {
+		/*
+		 * it is a longterm mount, don't release mnt until
+		 * we unmount before file sys is unregistered
+		*/
+		real_mount(mnt)->mnt_ns = MNT_NS_INTERNAL;
+	}
+	return mnt;
+}
+
+1.5.1 vfs_kern_mount(), MNT_INTERNAL
+================================================================================
+struct vfsmount *
+vfs_kern_mount(struct file_system_type *type, int flags, const char *name, void *data)
+{
+	struct mount *mnt;
+	struct dentry *root;
+
+	if (!type)
+		return ERR_PTR(-ENODEV);
+
+	mnt = alloc_vfsmnt(name);
+	if (!mnt)
+		return ERR_PTR(-ENOMEM);
+
+	if (flags & MS_KERNMOUNT)
+		mnt->mnt.mnt_flags = MNT_INTERNAL;
+
+	root = mount_fs(type, flags, name, data);
+	if (IS_ERR(root)) {
+		free_vfsmnt(mnt);
+		return ERR_CAST(root);
+	}
+
+	mnt->mnt.mnt_root = root;
+	mnt->mnt.mnt_sb = root->d_sb;
+	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
+	mnt->mnt_parent = mnt;
+	lock_mount_hash();
+	list_add_tail(&mnt->mnt_instance, &root->d_sb->s_mounts);
+	unlock_mount_hash();
+	return &mnt->mnt;
+}
+
+1.5.1.1 mount_fs()
+================================================================================
+struct dentry *
+mount_fs(struct file_system_type *type, int flags, const char *name, void *data)
+{
+	struct dentry *root;
+	struct super_block *sb;
+	char *secdata = NULL;
+	int error = -ENOMEM;
+
+	if (data && !(type->fs_flags & FS_BINARY_MOUNTDATA)) {
+		secdata = alloc_secdata();
+		if (!secdata)
+			goto out;
+
+		error = security_sb_copy_data(data, secdata);
+		if (error)
+			goto out_free_secdata;
+	}
+
+	root = type->mount(type, flags, name, data);
+	if (IS_ERR(root)) {
+		error = PTR_ERR(root);
+		goto out_free_secdata;
+	}
+	sb = root->d_sb;
+	BUG_ON(!sb);
+	WARN_ON(!sb->s_bdi);
+	WARN_ON(sb->s_bdi == &default_backing_dev_info);
+	sb->s_flags |= MS_BORN;
+
+	error = security_sb_kern_mount(sb, flags, secdata);
+	if (error)
+		goto out_sb;
+
+	/*
+	 * filesystems should never set s_maxbytes larger than MAX_LFS_FILESIZE
+	 * but s_maxbytes was an unsigned long long for many releases. Throw
+	 * this warning for a little while to try and catch filesystems that
+	 * violate this rule.
+	 */
+	WARN((sb->s_maxbytes < 0), "%s set sb->s_maxbytes to "
+		"negative value (%lld)\n", type->name, sb->s_maxbytes);
+
+	up_write(&sb->s_umount);
+	free_secdata(secdata);
+	return root;
+out_sb:
+	dput(root);
+	deactivate_locked_super(sb);
+out_free_secdata:
+	free_secdata(secdata);
+out:
+	return ERR_PTR(error);
+}
+
+1.6 netfilter_init()
+================================================================================
+
+1.7 skb_timestamping_init()
+================================================================================
+void __init skb_timestamping_init(void)
+{
+	BUG_ON(sk_chk_filter(ptp_filter, ARRAY_SIZE(ptp_filter)));
+}
+
+static struct sock_filter ptp_filter[] = {
+	PTP_FILTER
+};
+
+#define PTP_FILTER \
+	{OP_LDH,	0,   0, OFF_ETYPE		}, /*              */ \
+	{OP_JEQ,	0,  12, ETH_P_IP		}, /* f goto L20   */ \
+	{OP_LDB,	0,   0, OFF_PROTO4		}, /*              */ \
+	{OP_JEQ,	0,   9, IPPROTO_UDP		}, /* f goto L10   */ \
+	{OP_LDH,	0,   0, OFF_FRAG		}, /*              */ \
+	{OP_JSET,	7,   0, 0x1fff			}, /* t goto L11   */ \
+	{OP_LDX,	0,   0, OFF_IHL			}, /*              */ \
+	{OP_LDHI,	0,   0, RELOFF_DST4		}, /*              */ \
+	{OP_JEQ,	0,   4, PTP_EV_PORT		}, /* f goto L12   */ \
+	{OP_LDHI,	0,   0, ETH_HLEN + UDP_HLEN	}, /*              */ \
+	{OP_AND,	0,   0, PTP_CLASS_VMASK		}, /*              */ \
+	{OP_OR,		0,   0, PTP_CLASS_IPV4		}, /*              */ \
+	{OP_RETA,	0,   0, 0			}, /*              */ \
+/*L1x*/	{OP_RETK,	0,   0, PTP_CLASS_NONE		}, /*              */ \
+/*L20*/	{OP_JEQ,	0,   9, ETH_P_IPV6		}, /* f goto L40   */ \
+	{OP_LDB,	0,   0, ETH_HLEN + OFF_NEXT	}, /*              */ \
+	{OP_JEQ,	0,   6, IPPROTO_UDP		}, /* f goto L30   */ \
+	{OP_LDH,	0,   0, OFF_DST6		}, /*              */ \
+	{OP_JEQ,	0,   4, PTP_EV_PORT		}, /* f goto L31   */ \
+	{OP_LDH,	0,   0, OFF_PTP6		}, /*              */ \
+	{OP_AND,	0,   0, PTP_CLASS_VMASK		}, /*              */ \
+	{OP_OR,		0,   0, PTP_CLASS_IPV6		}, /*              */ \
+	{OP_RETA,	0,   0, 0			}, /*              */ \
+/*L3x*/	{OP_RETK,	0,   0, PTP_CLASS_NONE		}, /*              */ \
+/*L40*/	{OP_JEQ,	0,   9, ETH_P_8021Q		}, /* f goto L50   */ \
+	{OP_LDH,	0,   0, OFF_ETYPE + 4		}, /*              */ \
+	{OP_JEQ,	0,  15, ETH_P_1588		}, /* f goto L60   */ \
+	{OP_LDB,	0,   0, ETH_HLEN + VLAN_HLEN	}, /*              */ \
+	{OP_AND,	0,   0, PTP_GEN_BIT		}, /*              */ \
+	{OP_JEQ,	0,  12, 0			}, /* f goto L6x   */ \
+	{OP_LDH,	0,   0, ETH_HLEN + VLAN_HLEN	}, /*              */ \
+	{OP_AND,	0,   0, PTP_CLASS_VMASK		}, /*              */ \
+	{OP_OR,		0,   0, PTP_CLASS_VLAN		}, /*              */ \
+	{OP_RETA,	0,   0, 0			}, /*              */ \
+/*L50*/	{OP_JEQ,	0,   7, ETH_P_1588		}, /* f goto L61   */ \
+	{OP_LDB,	0,   0, ETH_HLEN		}, /*              */ \
+	{OP_AND,	0,   0, PTP_GEN_BIT		}, /*              */ \
+	{OP_JEQ,	0,   4, 0			}, /* f goto L6x   */ \
+	{OP_LDH,	0,   0, ETH_HLEN		}, /*              */ \
+	{OP_AND,	0,   0, PTP_CLASS_VMASK		}, /*              */ \
+	{OP_OR,		0,   0, PTP_CLASS_L2		}, /*              */ \
+	{OP_RETA,	0,   0, 0			}, /*              */ \
+/*L6x*/	{OP_RETK,	0,   0, PTP_CLASS_NONE		},
+
+1.7.1 sk_chk_filter()
+================================================================================
+int sk_chk_filter(struct sock_filter *filter, unsigned int flen)
+{
+	/*
+	 * Valid instructions are initialized to non-0.
+	 * Invalid instructions are initialized to 0.
+	 */
+	static const u8 codes[] = {
+		[BPF_ALU|BPF_ADD|BPF_K]  = BPF_S_ALU_ADD_K,
+		[BPF_ALU|BPF_ADD|BPF_X]  = BPF_S_ALU_ADD_X,
+		[BPF_ALU|BPF_SUB|BPF_K]  = BPF_S_ALU_SUB_K,
+		[BPF_ALU|BPF_SUB|BPF_X]  = BPF_S_ALU_SUB_X,
+		[BPF_ALU|BPF_MUL|BPF_K]  = BPF_S_ALU_MUL_K,
+		[BPF_ALU|BPF_MUL|BPF_X]  = BPF_S_ALU_MUL_X,
+		[BPF_ALU|BPF_DIV|BPF_X]  = BPF_S_ALU_DIV_X,
+		[BPF_ALU|BPF_MOD|BPF_K]  = BPF_S_ALU_MOD_K,
+		[BPF_ALU|BPF_MOD|BPF_X]  = BPF_S_ALU_MOD_X,
+		[BPF_ALU|BPF_AND|BPF_K]  = BPF_S_ALU_AND_K,
+		[BPF_ALU|BPF_AND|BPF_X]  = BPF_S_ALU_AND_X,
+		[BPF_ALU|BPF_OR|BPF_K]   = BPF_S_ALU_OR_K,
+		[BPF_ALU|BPF_OR|BPF_X]   = BPF_S_ALU_OR_X,
+		[BPF_ALU|BPF_XOR|BPF_K]  = BPF_S_ALU_XOR_K,
+		[BPF_ALU|BPF_XOR|BPF_X]  = BPF_S_ALU_XOR_X,
+		[BPF_ALU|BPF_LSH|BPF_K]  = BPF_S_ALU_LSH_K,
+		[BPF_ALU|BPF_LSH|BPF_X]  = BPF_S_ALU_LSH_X,
+		[BPF_ALU|BPF_RSH|BPF_K]  = BPF_S_ALU_RSH_K,
+		[BPF_ALU|BPF_RSH|BPF_X]  = BPF_S_ALU_RSH_X,
+		[BPF_ALU|BPF_NEG]        = BPF_S_ALU_NEG,
+		[BPF_LD|BPF_W|BPF_ABS]   = BPF_S_LD_W_ABS,
+		[BPF_LD|BPF_H|BPF_ABS]   = BPF_S_LD_H_ABS,
+		[BPF_LD|BPF_B|BPF_ABS]   = BPF_S_LD_B_ABS,
+		[BPF_LD|BPF_W|BPF_LEN]   = BPF_S_LD_W_LEN,
+		[BPF_LD|BPF_W|BPF_IND]   = BPF_S_LD_W_IND,
+		[BPF_LD|BPF_H|BPF_IND]   = BPF_S_LD_H_IND,
+		[BPF_LD|BPF_B|BPF_IND]   = BPF_S_LD_B_IND,
+		[BPF_LD|BPF_IMM]         = BPF_S_LD_IMM,
+		[BPF_LDX|BPF_W|BPF_LEN]  = BPF_S_LDX_W_LEN,
+		[BPF_LDX|BPF_B|BPF_MSH]  = BPF_S_LDX_B_MSH,
+		[BPF_LDX|BPF_IMM]        = BPF_S_LDX_IMM,
+		[BPF_MISC|BPF_TAX]       = BPF_S_MISC_TAX,
+		[BPF_MISC|BPF_TXA]       = BPF_S_MISC_TXA,
+		[BPF_RET|BPF_K]          = BPF_S_RET_K,
+		[BPF_RET|BPF_A]          = BPF_S_RET_A,
+		[BPF_ALU|BPF_DIV|BPF_K]  = BPF_S_ALU_DIV_K,
+		[BPF_LD|BPF_MEM]         = BPF_S_LD_MEM,
+		[BPF_LDX|BPF_MEM]        = BPF_S_LDX_MEM,
+		[BPF_ST]                 = BPF_S_ST,
+		[BPF_STX]                = BPF_S_STX,
+		[BPF_JMP|BPF_JA]         = BPF_S_JMP_JA,
+		[BPF_JMP|BPF_JEQ|BPF_K]  = BPF_S_JMP_JEQ_K,
+		[BPF_JMP|BPF_JEQ|BPF_X]  = BPF_S_JMP_JEQ_X,
+		[BPF_JMP|BPF_JGE|BPF_K]  = BPF_S_JMP_JGE_K,
+		[BPF_JMP|BPF_JGE|BPF_X]  = BPF_S_JMP_JGE_X,
+		[BPF_JMP|BPF_JGT|BPF_K]  = BPF_S_JMP_JGT_K,
+		[BPF_JMP|BPF_JGT|BPF_X]  = BPF_S_JMP_JGT_X,
+		[BPF_JMP|BPF_JSET|BPF_K] = BPF_S_JMP_JSET_K,
+		[BPF_JMP|BPF_JSET|BPF_X] = BPF_S_JMP_JSET_X,
+	};
+	int pc;
+	bool anc_found;
+
+	if (flen == 0 || flen > BPF_MAXINSNS)
+		return -EINVAL;
+
+	/* check the filter code now */
+	for (pc = 0; pc < flen; pc++) {
+		struct sock_filter *ftest = &filter[pc];
+		u16 code = ftest->code;
+
+		if (code >= ARRAY_SIZE(codes))
+			return -EINVAL;
+		code = codes[code];
+		if (!code)
+			return -EINVAL;
+		/* Some instructions need special checks */
+		switch (code) {
+		case BPF_S_ALU_DIV_K:
+		case BPF_S_ALU_MOD_K:
+			/* check for division by zero */
+			if (ftest->k == 0)
+				return -EINVAL;
+			break;
+		case BPF_S_LD_MEM:
+		case BPF_S_LDX_MEM:
+		case BPF_S_ST:
+		case BPF_S_STX:
+			/* check for invalid memory addresses */
+			if (ftest->k >= BPF_MEMWORDS)
+				return -EINVAL;
+			break;
+		case BPF_S_JMP_JA:
+			/*
+			 * Note, the large ftest->k might cause loops.
+			 * Compare this with conditional jumps below,
+			 * where offsets are limited. --ANK (981016)
+			 */
+			if (ftest->k >= (unsigned int)(flen-pc-1))
+				return -EINVAL;
+			break;
+		case BPF_S_JMP_JEQ_K:
+		case BPF_S_JMP_JEQ_X:
+		case BPF_S_JMP_JGE_K:
+		case BPF_S_JMP_JGE_X:
+		case BPF_S_JMP_JGT_K:
+		case BPF_S_JMP_JGT_X:
+		case BPF_S_JMP_JSET_X:
+		case BPF_S_JMP_JSET_K:
+			/* for conditionals both must be safe */
+			if (pc + ftest->jt + 1 >= flen ||
+			    pc + ftest->jf + 1 >= flen)
+				return -EINVAL;
+			break;
+		case BPF_S_LD_W_ABS:
+		case BPF_S_LD_H_ABS:
+		case BPF_S_LD_B_ABS:
+			anc_found = false;
+#define ANCILLARY(CODE) case SKF_AD_OFF + SKF_AD_##CODE:	\
+				code = BPF_S_ANC_##CODE;	\
+				anc_found = true;		\
+				break
+			switch (ftest->k) {
+			ANCILLARY(PROTOCOL);
+			ANCILLARY(PKTTYPE);
+			ANCILLARY(IFINDEX);
+			ANCILLARY(NLATTR);
+			ANCILLARY(NLATTR_NEST);
+			ANCILLARY(MARK);
+			ANCILLARY(QUEUE);
+			ANCILLARY(HATYPE);
+			ANCILLARY(RXHASH);
+			ANCILLARY(CPU);
+			ANCILLARY(ALU_XOR_X);
+			ANCILLARY(VLAN_TAG);
+			ANCILLARY(VLAN_TAG_PRESENT);
+			ANCILLARY(PAY_OFFSET);
+			}
+
+			/* ancillary operation unknown or unsupported */
+			if (anc_found == false && ftest->k >= SKF_AD_OFF)
+				return -EINVAL;
+		}
+		ftest->code = code;
+	}
+
+	/* last instruction must be a RET code */
+	switch (filter[flen - 1].code) {
+	case BPF_S_RET_K:
+	case BPF_S_RET_A:
+		return check_load_and_stores(filter, flen);
+	}
+	return -EINVAL;
+}
+
+2. socket
+================================================================================
+SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
+{
+	int retval;
+	struct socket *sock;
+	int flags;
+
+	/* Check the SOCK_* constants for consistency.  */
+	BUILD_BUG_ON(SOCK_CLOEXEC != O_CLOEXEC);
+	BUILD_BUG_ON((SOCK_MAX | SOCK_TYPE_MASK) != SOCK_TYPE_MASK);
+	BUILD_BUG_ON(SOCK_CLOEXEC & SOCK_TYPE_MASK);
+	BUILD_BUG_ON(SOCK_NONBLOCK & SOCK_TYPE_MASK);
+
+	flags = type & ~SOCK_TYPE_MASK;
+	if (flags & ~(SOCK_CLOEXEC | SOCK_NONBLOCK))
+		return -EINVAL;
+	type &= SOCK_TYPE_MASK;
+
+	if (SOCK_NONBLOCK != O_NONBLOCK && (flags & SOCK_NONBLOCK))
+		flags = (flags & ~SOCK_NONBLOCK) | O_NONBLOCK;
+
+	retval = sock_create(family, type, protocol, &sock);
+	if (retval < 0)
+		goto out;
+
+	retval = sock_map_fd(sock, flags & (O_CLOEXEC | O_NONBLOCK));
+	if (retval < 0)
+		goto out_release;
+
+out:
+	/* It may be already another descriptor 8) Not kernel problem. */
+	return retval;
+
+out_release:
+	sock_release(sock);
+	return retval;
+}
+
+3. bind
+================================================================================
+SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
+{
+	struct socket *sock;
+	struct sockaddr_storage address;
+	int err, fput_needed;
+
+	sock = sockfd_lookup_light(fd, &err, &fput_needed);
+	if (sock) {
+		err = move_addr_to_kernel(umyaddr, addrlen, &address);
+		if (err >= 0) {
+			err = security_socket_bind(sock,
+						   (struct sockaddr *)&address,
+						   addrlen);
+			if (!err)
+				err = sock->ops->bind(sock,
+						      (struct sockaddr *)
+						      &address, addrlen);
+		}
+		fput_light(sock->file, fput_needed);
+	}
+	return err;
+}
+
+4. recvfrom
+================================================================================
+SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
+		unsigned int, flags, struct sockaddr __user *, addr,
+		int __user *, addr_len)
+{
+	struct socket *sock;
+	struct iovec iov;
+	struct msghdr msg;
+	struct sockaddr_storage address;
+	int err, err2;
+	int fput_needed;
+
+	if (size > INT_MAX)
+		size = INT_MAX;
+	sock = sockfd_lookup_light(fd, &err, &fput_needed);
+	if (!sock)
+		goto out;
+
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+	msg.msg_iovlen = 1;
+	msg.msg_iov = &iov;
+	iov.iov_len = size;
+	iov.iov_base = ubuf;
+	/* Save some cycles and don't copy the address if not needed */
+	msg.msg_name = addr ? (struct sockaddr *)&address : NULL;
+	/* We assume all kernel code knows the size of sockaddr_storage */
+	msg.msg_namelen = 0;
+	if (sock->file->f_flags & O_NONBLOCK)
+		flags |= MSG_DONTWAIT;
+	err = sock_recvmsg(sock, &msg, size, flags);
+
+	if (err >= 0 && addr != NULL) {
+		err2 = move_addr_to_user(&address,
+					 msg.msg_namelen, addr, addr_len);
+		if (err2 < 0)
+			err = err2;
+	}
+
+	fput_light(sock->file, fput_needed);
+out:
+	return err;
+}
+
+5. sendto
+================================================================================
+SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
+		unsigned int, flags, struct sockaddr __user *, addr,
+		int, addr_len)
+{
+	struct socket *sock;
+	struct sockaddr_storage address;
+	int err;
+	struct msghdr msg;
+	struct iovec iov;
+	int fput_needed;
+
+	if (len > INT_MAX)
+		len = INT_MAX;
+	sock = sockfd_lookup_light(fd, &err, &fput_needed);
+	if (!sock)
+		goto out;
+
+	iov.iov_base = buff;
+	iov.iov_len = len;
+	msg.msg_name = NULL;
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+	msg.msg_namelen = 0;
+	if (addr) {
+		err = move_addr_to_kernel(addr, addr_len, &address);
+		if (err < 0)
+			goto out_put;
+		msg.msg_name = (struct sockaddr *)&address;
+		msg.msg_namelen = addr_len;
+	}
+	if (sock->file->f_flags & O_NONBLOCK)
+		flags |= MSG_DONTWAIT;
+	msg.msg_flags = flags;
+	err = sock_sendmsg(sock, &msg, len);
+
+out_put:
+	fput_light(sock->file, fput_needed);
+out:
+	return err;
+}

@@ -1,0 +1,215 @@
+1. cfq_init()
+===============================================================================
+static int __init cfq_init(void)
+{
+	int ret;
+
+	/*
+	 * could be 0 on HZ < 1000 setups
+	 */
+	if (!cfq_slice_async)
+		cfq_slice_async = 1;
+	if (!cfq_slice_idle)
+		cfq_slice_idle = 1;
+
+#ifdef CONFIG_CFQ_GROUP_IOSCHED
+	if (!cfq_group_idle)
+		cfq_group_idle = 1;
+
+	ret = blkcg_policy_register(&blkcg_policy_cfq);
+	if (ret)
+		return ret;
+#else
+	cfq_group_idle = 0;
+#endif
+
+	ret = -ENOMEM;
+	cfq_pool = KMEM_CACHE(cfq_queue, 0);
+	if (!cfq_pool)
+		goto err_pol_unreg;
+
+	ret = elv_register(&iosched_cfq);
+	if (ret)
+		goto err_free_pool;
+
+	return 0;
+
+err_free_pool:
+	kmem_cache_destroy(cfq_pool);
+err_pol_unreg:
+#ifdef CONFIG_CFQ_GROUP_IOSCHED
+	blkcg_policy_unregister(&blkcg_policy_cfq);
+#endif
+	return ret;
+}
+
+1.1 elv_register()
+===============================================================================
+int elv_register(struct elevator_type *e)
+{
+	char *def = "";
+
+	/* create icq_cache if requested */
+	if (e->icq_size) {
+		if (WARN_ON(e->icq_size < sizeof(struct io_cq)) ||
+		    WARN_ON(e->icq_align < __alignof__(struct io_cq)))
+			return -EINVAL;
+
+		snprintf(e->icq_cache_name, sizeof(e->icq_cache_name),
+			 "%s_io_cq", e->elevator_name);
+		e->icq_cache = kmem_cache_create(e->icq_cache_name, e->icq_size,
+						 e->icq_align, 0, NULL);
+		if (!e->icq_cache)
+			return -ENOMEM;
+	}
+
+	/* register, don't allow duplicate names */
+	spin_lock(&elv_list_lock);
+	if (elevator_find(e->elevator_name)) {
+		spin_unlock(&elv_list_lock);
+		if (e->icq_cache)
+			kmem_cache_destroy(e->icq_cache);
+		return -EBUSY;
+	}
+	list_add_tail(&e->list, &elv_list);
+	spin_unlock(&elv_list_lock);
+
+	/* print pretty message */
+	if (!strcmp(e->elevator_name, chosen_elevator) ||
+			(!*chosen_elevator &&
+			 !strcmp(e->elevator_name, CONFIG_DEFAULT_IOSCHED)))
+				def = " (default)";
+
+	printk(KERN_INFO "io scheduler %s registered%s\n", e->elevator_name,
+								def);
+	return 0;
+}
+
+2. cfq_init_queue(), called by elevator_init()
+===============================================================================
+static int cfq_init_queue(struct request_queue *q, struct elevator_type *e)
+{
+	struct cfq_data *cfqd;
+	struct blkcg_gq *blkg __maybe_unused;
+	int i, ret;
+	struct elevator_queue *eq;
+
+	eq = elevator_alloc(q, e);
+	if (!eq)
+		return -ENOMEM;
+
+	cfqd = kzalloc_node(sizeof(*cfqd), GFP_KERNEL, q->node);
+	if (!cfqd) {
+		kobject_put(&eq->kobj);
+		return -ENOMEM;
+	}
+	eq->elevator_data = cfqd;
+
+	cfqd->queue = q;
+	spin_lock_irq(q->queue_lock);
+	q->elevator = eq;
+	spin_unlock_irq(q->queue_lock);
+
+	/* Init root service tree */
+	cfqd->grp_service_tree = CFQ_RB_ROOT;
+
+	/* Init root group and prefer root group over other groups by default */
+#ifdef CONFIG_CFQ_GROUP_IOSCHED
+	ret = blkcg_activate_policy(q, &blkcg_policy_cfq);
+	if (ret)
+		goto out_free;
+
+	cfqd->root_group = blkg_to_cfqg(q->root_blkg);
+#else
+	ret = -ENOMEM;
+	cfqd->root_group = kzalloc_node(sizeof(*cfqd->root_group),
+					GFP_KERNEL, cfqd->queue->node);
+	if (!cfqd->root_group)
+		goto out_free;
+
+	cfq_init_cfqg_base(cfqd->root_group);
+#endif
+	cfqd->root_group->weight = 2 * CFQ_WEIGHT_DEFAULT;
+	cfqd->root_group->leaf_weight = 2 * CFQ_WEIGHT_DEFAULT;
+
+	/*
+	 * Not strictly needed (since RB_ROOT just clears the node and we
+	 * zeroed cfqd on alloc), but better be safe in case someone decides
+	 * to add magic to the rb code
+	 */
+	for (i = 0; i < CFQ_PRIO_LISTS; i++)
+		cfqd->prio_trees[i] = RB_ROOT;
+
+	/*
+	 * Our fallback cfqq if cfq_find_alloc_queue() runs into OOM issues.
+	 * Grab a permanent reference to it, so that the normal code flow
+	 * will not attempt to free it.  oom_cfqq is linked to root_group
+	 * but shouldn't hold a reference as it'll never be unlinked.  Lose
+	 * the reference from linking right away.
+	 */
+	cfq_init_cfqq(cfqd, &cfqd->oom_cfqq, 1, 0);
+	cfqd->oom_cfqq.ref++;
+
+	spin_lock_irq(q->queue_lock);
+	cfq_link_cfqq_cfqg(&cfqd->oom_cfqq, cfqd->root_group);
+	cfqg_put(cfqd->root_group);
+	spin_unlock_irq(q->queue_lock);
+
+	init_timer(&cfqd->idle_slice_timer);
+	cfqd->idle_slice_timer.function = cfq_idle_slice_timer;
+	cfqd->idle_slice_timer.data = (unsigned long) cfqd;
+
+	INIT_WORK(&cfqd->unplug_work, cfq_kick_queue);
+
+	cfqd->cfq_quantum = cfq_quantum;
+	cfqd->cfq_fifo_expire[0] = cfq_fifo_expire[0];
+	cfqd->cfq_fifo_expire[1] = cfq_fifo_expire[1];
+	cfqd->cfq_back_max = cfq_back_max;
+	cfqd->cfq_back_penalty = cfq_back_penalty;
+	cfqd->cfq_slice[0] = cfq_slice_async;
+	cfqd->cfq_slice[1] = cfq_slice_sync;
+	cfqd->cfq_target_latency = cfq_target_latency;
+	cfqd->cfq_slice_async_rq = cfq_slice_async_rq;
+	cfqd->cfq_slice_idle = cfq_slice_idle;
+	cfqd->cfq_group_idle = cfq_group_idle;
+	cfqd->cfq_latency = 1;
+	cfqd->hw_tag = -1;
+	/*
+	 * we optimistically start assuming sync ops weren't delayed in last
+	 * second, in order to have larger depth for async operations.
+	 */
+	cfqd->last_delayed_sync = jiffies - HZ;
+	return 0;
+
+out_free:
+	kfree(cfqd);
+	kobject_put(&eq->kobj);
+	return ret;
+}
+
+0. data structure
+================================================================================
+0.1 elevator_queue
+================================================================================
+
+
+                  <------------------------------------------------------------------------+
+   request_queue                                                                           |
+  +-------------+                                                                          |
+  |elevator     |---+                                                                      |
+  |             |   |                                                                      |
+  +-------------+   |                                                                      |
+                    |  elevator_queue                     cfq_data                         |
+                    |  +---------------------------+      +----------------------------+   |
+                    +->|type                       |      |queue                       | --+
+                       |  (struct elevator_type*)  |      |   (struct request_queue*)  |
+                       +---------------------------+      +----------------------------+
+                       |elevator_data              | ---> |                            |
+                       |  (void *)                 |      |                            |
+                       +---------------------------+      +----------------------------+
+                       |                           |      |                            |
+                       |                           |      |                            |
+                       +---------------------------+      +----------------------------+
+                       |hash                       |      |                            |
+                       |                           |      |                            |
+                       +---------------------------+      +----------------------------+

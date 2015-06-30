@@ -1,0 +1,127 @@
+1. device_pm_init(), called in device_initialize()
+================================================================================
+static inline void device_pm_init(struct device *dev)
+{
+	device_pm_init_common(dev);
+	device_pm_sleep_init(dev);
+	pm_runtime_init(dev);
+}
+
+1.1 device_pm_init_common()
+================================================================================
+static inline void device_pm_init_common(struct device *dev)
+{
+	if (!dev->power.early_init) {
+		spin_lock_init(&dev->power.lock);
+		dev->power.qos = NULL;
+		dev->power.early_init = true;
+	}
+}
+
+1.2 device_pm_sleep_init()
+================================================================================
+void device_pm_sleep_init(struct device *dev)
+{
+	dev->power.is_prepared = false;
+	dev->power.is_suspended = false;
+	dev->power.is_noirq_suspended = false;
+	dev->power.is_late_suspended = false;
+	init_completion(&dev->power.completion);
+	complete_all(&dev->power.completion);
+	dev->power.wakeup = NULL;
+	INIT_LIST_HEAD(&dev->power.entry);
+}
+
+1.3 pm_runtime_init()
+================================================================================
+; one runtime work:  pm_runtime_work
+; one timer:         pm_suspend_timer_fn
+; one wait queue:
+
+void pm_runtime_init(struct device *dev)
+{
+	dev->power.runtime_status = RPM_SUSPENDED;
+	dev->power.idle_notification = false;
+
+	dev->power.disable_depth = 1;
+	atomic_set(&dev->power.usage_count, 0);
+
+	dev->power.runtime_error = 0;
+
+	atomic_set(&dev->power.child_count, 0);
+	pm_suspend_ignore_children(dev, false);
+	dev->power.runtime_auto = true;
+
+	dev->power.request_pending = false;
+	dev->power.request = RPM_REQ_NONE;
+	dev->power.deferred_resume = false;
+	dev->power.accounting_timestamp = jiffies;
+	INIT_WORK(&dev->power.work, pm_runtime_work);
+
+	dev->power.timer_expires = 0;
+	setup_timer(&dev->power.suspend_timer, pm_suspend_timer_fn,
+			(unsigned long)dev);
+
+	init_waitqueue_head(&dev->power.wait_queue);
+}
+
+1.3.1 pm_runtime_work()
+================================================================================
+static void pm_runtime_work(struct work_struct *work)
+{
+	struct device *dev = container_of(work, struct device, power.work);
+	enum rpm_request req;
+
+	spin_lock_irq(&dev->power.lock);
+
+	if (!dev->power.request_pending)
+		goto out;
+
+	req = dev->power.request;
+	dev->power.request = RPM_REQ_NONE;
+	dev->power.request_pending = false;
+
+	switch (req) {
+	case RPM_REQ_NONE:
+		break;
+	case RPM_REQ_IDLE:
+		rpm_idle(dev, RPM_NOWAIT);
+		break;
+	case RPM_REQ_SUSPEND:
+		rpm_suspend(dev, RPM_NOWAIT);
+		break;
+	case RPM_REQ_AUTOSUSPEND:
+		rpm_suspend(dev, RPM_NOWAIT | RPM_AUTO);
+		break;
+	case RPM_REQ_RESUME:
+		rpm_resume(dev, RPM_NOWAIT);
+		break;
+	}
+
+ out:
+	spin_unlock_irq(&dev->power.lock);
+}
+
+1.3.2 pm_suspend_timer_fn()
+================================================================================
+static void pm_suspend_timer_fn(unsigned long data)
+{
+	struct device *dev = (struct device *)data;
+	unsigned long flags;
+	unsigned long expires;
+
+	spin_lock_irqsave(&dev->power.lock, flags);
+
+	expires = dev->power.timer_expires;
+	/* If 'expire' is after 'jiffies' we've been called too early. */
+	if (expires > 0 && !time_after(expires, jiffies)) {
+		dev->power.timer_expires = 0;
+		rpm_suspend(dev, dev->power.timer_autosuspends ?
+		    (RPM_ASYNC | RPM_AUTO) : RPM_ASYNC);
+	}
+
+	spin_unlock_irqrestore(&dev->power.lock, flags);
+}
+
+1.3.3 ()
+================================================================================

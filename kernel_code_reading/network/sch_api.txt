@@ -1,0 +1,133 @@
+1. pktsched_init()
+================================================================================
+static int __init pktsched_init(void)
+{
+	int err;
+
+	err = register_pernet_subsys(&psched_net_ops);
+	if (err) {
+		pr_err("pktsched_init: "
+		       "cannot initialize per netns operations\n");
+		return err;
+	}
+
+	register_qdisc(&pfifo_fast_ops);
+	register_qdisc(&pfifo_qdisc_ops);
+	register_qdisc(&bfifo_qdisc_ops);
+	register_qdisc(&pfifo_head_drop_qdisc_ops);
+	register_qdisc(&mq_qdisc_ops);
+
+	rtnl_register(PF_UNSPEC, RTM_NEWQDISC, tc_modify_qdisc, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_DELQDISC, tc_get_qdisc, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_GETQDISC, tc_get_qdisc, tc_dump_qdisc, NULL);
+	rtnl_register(PF_UNSPEC, RTM_NEWTCLASS, tc_ctl_tclass, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_DELTCLASS, tc_ctl_tclass, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_GETTCLASS, tc_ctl_tclass, tc_dump_tclass, NULL);
+
+	return 0;
+}
+
+1.1 psched_net_ops{}
+================================================================================
+static struct pernet_operations psched_net_ops = {
+	.init = psched_net_init,
+	.exit = psched_net_exit,
+};
+
+1.1.1 psched_net_init(), /proc/self/net/psched
+================================================================================
+static const struct file_operations psched_fops = {
+	.owner = THIS_MODULE,
+	.open = psched_open,
+	.read  = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int __net_init psched_net_init(struct net *net)
+{
+	struct proc_dir_entry *e;
+
+	e = proc_create("psched", 0, net->proc_net, &psched_fops);
+	if (e == NULL)
+		return -ENOMEM;
+
+	return 0;
+}
+
+1.1.1.1 psched_open()
+================================================================================
+static int psched_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, psched_show, NULL);
+}
+
+static int psched_show(struct seq_file *seq, void *v)
+{
+	struct timespec ts;
+
+	hrtimer_get_res(CLOCK_MONOTONIC, &ts);
+	seq_printf(seq, "%08x %08x %08x %08x\n",
+		   (u32)NSEC_PER_USEC, (u32)PSCHED_TICKS2NS(1),
+		   1000000,
+		   (u32)NSEC_PER_SEC/(u32)ktime_to_ns(timespec_to_ktime(ts)));
+
+	return 0;
+}
+
+1.2 register_qdisc(), register Qdisc_ops in qdisc_base
+================================================================================
+int register_qdisc(struct Qdisc_ops *qops)
+{
+	struct Qdisc_ops *q, **qp;
+	int rc = -EEXIST;
+
+	write_lock(&qdisc_mod_lock);
+	for (qp = &qdisc_base; (q = *qp) != NULL; qp = &q->next)
+		if (!strcmp(qops->id, q->id))
+			goto out;
+
+	if (qops->enqueue == NULL)
+		qops->enqueue = noop_qdisc_ops.enqueue;
+	if (qops->peek == NULL) {
+		if (qops->dequeue == NULL)
+			qops->peek = noop_qdisc_ops.peek;
+		else
+			goto out_einval;
+	}
+	if (qops->dequeue == NULL)
+		qops->dequeue = noop_qdisc_ops.dequeue;
+
+	if (qops->cl_ops) {
+		const struct Qdisc_class_ops *cops = qops->cl_ops;
+
+		if (!(cops->get && cops->put && cops->walk && cops->leaf))
+			goto out_einval;
+
+		if (cops->tcf_chain && !(cops->bind_tcf && cops->unbind_tcf))
+			goto out_einval;
+	}
+
+	qops->next = NULL;
+	*qp = qops;
+	rc = 0;
+out:
+	write_unlock(&qdisc_mod_lock);
+	return rc;
+
+out_einval:
+	rc = -EINVAL;
+	goto out;
+}
+
+1.3 rtnl_register(), register rtnetlink message type
+================================================================================
+void rtnl_register(int protocol, int msgtype,
+		   rtnl_doit_func doit, rtnl_dumpit_func dumpit,
+		   rtnl_calcit_func calcit)
+{
+	if (__rtnl_register(protocol, msgtype, doit, dumpit, calcit) < 0)
+		panic("Unable to register rtnetlink message handler, "
+		      "protocol = %d, message type = %d\n",
+		      protocol, msgtype);
+}

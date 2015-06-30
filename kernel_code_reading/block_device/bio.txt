@@ -1,0 +1,400 @@
+1. init_bio()
+================================================================================
+static int __init init_bio(void)
+{
+	bio_slab_max = 2;
+	bio_slab_nr = 0;
+	bio_slabs = kzalloc(bio_slab_max * sizeof(struct bio_slab), GFP_KERNEL);
+	if (!bio_slabs)
+		panic("bio: can't allocate bios\n");
+
+	bio_integrity_init();
+	biovec_init_slabs();
+
+	fs_bio_set = bioset_create(BIO_POOL_SIZE, 0);
+	if (!fs_bio_set)
+		panic("bio: can't allocate bios\n");
+
+	if (bioset_integrity_create(fs_bio_set, BIO_POOL_SIZE))
+		panic("bio: can't create integrity pool\n");
+
+	return 0;
+}
+
+1.1 bio_integrity_init(), kintegrityd workqueue
+================================================================================
+; kintegrityd workqueue
+; one bio_integrity_payload kmem_cache
+;
+; the bio_integrity_verify_fn will be called to complete a READ request
+;
+
+void __init bio_integrity_init(void)
+{
+	/*
+	 * kintegrityd won't block much but may burn a lot of CPU cycles.
+	 * Make it highpri CPU intensive wq with max concurrency of 1.
+	 */
+	kintegrityd_wq = alloc_workqueue("kintegrityd", WQ_MEM_RECLAIM |
+					 WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
+	if (!kintegrityd_wq)
+		panic("Failed to create kintegrityd\n");
+
+	bip_slab = kmem_cache_create("bio_integrity_payload",
+				     sizeof(struct bio_integrity_payload) +
+				     sizeof(struct bio_vec) * BIP_INLINE_VECS,
+				     0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+}
+
+1.2 biovec_init_slabs(), slab for biovec
+================================================================================
+#define BV(x) { .nr_vecs = x, .name = "biovec-"__stringify(x) }
+static struct biovec_slab bvec_slabs[BIOVEC_NR_POOLS] __read_mostly = {
+	BV(1), BV(4), BV(16), BV(64), BV(128), BV(BIO_MAX_PAGES),
+};
+
+static void __init biovec_init_slabs(void)
+{
+	int i;
+
+	for (i = 0; i < BIOVEC_NR_POOLS; i++) {
+		int size;
+		struct biovec_slab *bvs = bvec_slabs + i;
+
+		if (bvs->nr_vecs <= BIO_INLINE_VECS) {
+			bvs->slab = NULL;
+			continue;
+		}
+
+		size = bvs->nr_vecs * sizeof(struct bio_vec);
+		bvs->slab = kmem_cache_create(bvs->name, size, 0,
+                                SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+	}
+}
+
+1.3 bioset_create(), for fs_bio_set
+================================================================================
+struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
+{
+	return __bioset_create(pool_size, front_pad, true);
+}
+
+static struct bio_set *__bioset_create(unsigned int pool_size,
+				       unsigned int front_pad,
+				       bool create_bvec_pool)
+{
+	unsigned int back_pad = BIO_INLINE_VECS * sizeof(struct bio_vec);
+	struct bio_set *bs;
+
+	bs = kzalloc(sizeof(*bs), GFP_KERNEL);
+	if (!bs)
+		return NULL;
+
+	bs->front_pad = front_pad;
+
+	spin_lock_init(&bs->rescue_lock);
+	bio_list_init(&bs->rescue_list);
+	INIT_WORK(&bs->rescue_work, bio_alloc_rescue);
+
+	bs->bio_slab = bio_find_or_create_slab(front_pad + back_pad);
+	if (!bs->bio_slab) {
+		kfree(bs);
+		return NULL;
+	}
+
+	bs->bio_pool = mempool_create_slab_pool(pool_size, bs->bio_slab);
+	if (!bs->bio_pool)
+		goto bad;
+
+	if (create_bvec_pool) {
+		bs->bvec_pool = biovec_create_pool(pool_size);
+		if (!bs->bvec_pool)
+			goto bad;
+	}
+
+	bs->rescue_workqueue = alloc_workqueue("bioset", WQ_MEM_RECLAIM, 0);
+	if (!bs->rescue_workqueue)
+		goto bad;
+
+	return bs;
+bad:
+	bioset_free(bs);
+	return NULL;
+}
+
+1.4 bioset_integrity_create()
+================================================================================
+int bioset_integrity_create(struct bio_set *bs, int pool_size)
+{
+	if (bs->bio_integrity_pool)
+		return 0;
+
+	bs->bio_integrity_pool = mempool_create_slab_pool(pool_size, bip_slab);
+	if (!bs->bio_integrity_pool)
+		return -1;
+
+	bs->bvec_integrity_pool = biovec_create_pool(pool_size);
+	if (!bs->bvec_integrity_pool) {
+		mempool_destroy(bs->bio_integrity_pool);
+		return -1;
+	}
+
+	return 0;
+}
+
+1.4.1 biovec_create_pool()
+================================================================================
+mempool_t *biovec_create_pool(int pool_entries)
+{
+	struct biovec_slab *bp = bvec_slabs + BIOVEC_MAX_IDX;
+
+	return mempool_create_slab_pool(pool_entries, bp->slab);
+}
+
+2. bio_init()
+================================================================================
+void bio_init(struct bio *bio)
+{
+	memset(bio, 0, sizeof(*bio));
+	bio->bi_flags = 1 << BIO_UPTODATE;
+	atomic_set(&bio->bi_remaining, 1);
+	atomic_set(&bio->bi_cnt, 1);
+}
+
+3. bioset_create()
+================================================================================
+struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
+{
+	return __bioset_create(pool_size, front_pad, true);
+}
+
+3.1 __bioset_create()
+================================================================================
+static struct bio_set *__bioset_create(unsigned int pool_size,
+				       unsigned int front_pad,
+				       bool create_bvec_pool)
+{
+	unsigned int back_pad = BIO_INLINE_VECS * sizeof(struct bio_vec);
+	struct bio_set *bs;
+
+	bs = kzalloc(sizeof(*bs), GFP_KERNEL);
+	if (!bs)
+		return NULL;
+
+	bs->front_pad = front_pad;
+
+	spin_lock_init(&bs->rescue_lock);
+	bio_list_init(&bs->rescue_list);
+	INIT_WORK(&bs->rescue_work, bio_alloc_rescue);
+
+	bs->bio_slab = bio_find_or_create_slab(front_pad + back_pad);
+	if (!bs->bio_slab) {
+		kfree(bs);
+		return NULL;
+	}
+
+	bs->bio_pool = mempool_create_slab_pool(pool_size, bs->bio_slab);
+	if (!bs->bio_pool)
+		goto bad;
+
+	if (create_bvec_pool) {
+		bs->bvec_pool = biovec_create_pool(pool_size);
+		if (!bs->bvec_pool)
+			goto bad;
+	}
+
+	bs->rescue_workqueue = alloc_workqueue("bioset", WQ_MEM_RECLAIM, 0);
+	if (!bs->rescue_workqueue)
+		goto bad;
+
+	return bs;
+bad:
+	bioset_free(bs);
+	return NULL;
+}
+
+3.1.1 bio_find_or_create_slab()
+================================================================================
+static struct kmem_cache *bio_find_or_create_slab(unsigned int extra_size)
+{
+	unsigned int sz = sizeof(struct bio) + extra_size;
+	struct kmem_cache *slab = NULL;
+	struct bio_slab *bslab, *new_bio_slabs;
+	unsigned int new_bio_slab_max;
+	unsigned int i, entry = -1;
+
+	mutex_lock(&bio_slab_lock);
+
+	i = 0;
+	while (i < bio_slab_nr) {
+		bslab = &bio_slabs[i];
+
+		if (!bslab->slab && entry == -1)
+			entry = i;
+		else if (bslab->slab_size == sz) {
+			slab = bslab->slab;
+			bslab->slab_ref++;
+			break;
+		}
+		i++;
+	}
+
+	if (slab)
+		goto out_unlock;
+
+	if (bio_slab_nr == bio_slab_max && entry == -1) {
+		new_bio_slab_max = bio_slab_max << 1;
+		new_bio_slabs = krealloc(bio_slabs,
+					 new_bio_slab_max * sizeof(struct bio_slab),
+					 GFP_KERNEL);
+		if (!new_bio_slabs)
+			goto out_unlock;
+		bio_slab_max = new_bio_slab_max;
+		bio_slabs = new_bio_slabs;
+	}
+	if (entry == -1)
+		entry = bio_slab_nr++;
+
+	bslab = &bio_slabs[entry];
+
+	snprintf(bslab->name, sizeof(bslab->name), "bio-%d", entry);
+	slab = kmem_cache_create(bslab->name, sz, ARCH_KMALLOC_MINALIGN,
+				 SLAB_HWCACHE_ALIGN, NULL);
+	if (!slab)
+		goto out_unlock;
+
+	bslab->slab = slab;
+	bslab->slab_ref = 1;
+	bslab->slab_size = sz;
+out_unlock:
+	mutex_unlock(&bio_slab_lock);
+	return slab;
+}
+
+3.1.2 mempool_create_slab_pool(), request a memory pool
+================================================================================
+mempool_create_slab_pool(int min_nr, struct kmem_cache *kc)
+{
+	return mempool_create(min_nr, mempool_alloc_slab, mempool_free_slab,
+			      (void *) kc);
+}
+
+3.1.3 biovec_create_pool()
+================================================================================
+mempool_t *biovec_create_pool(int pool_entries)
+{
+	struct biovec_slab *bp = bvec_slabs + BIOVEC_MAX_IDX;
+
+	return mempool_create_slab_pool(pool_entries, bp->slab);
+}
+
+0. data structure
+================================================================================
+
+0.1 slabs for bio
+================================================================================
+
+0.1.1 bio_slabs, an array of bio_slab and this is a dynamic list
+================================================================================
+; this is a dynamic list maintained for bio_set->bio_slab use
+
+    bio_slabs[bio_slab_max]
+
+    bio_slab
+    +----------------------------+
+    |slab                        |
+    |   (struct kmem_cache*)     |
+    +----------------------------+
+    |name                        |
+    |                            |
+    +----------------------------+
+    |slab_ref                    |
+    |slab_size                   |
+    |   (unsigned int)           |
+    +----------------------------+
+
+0.1.2 bvec_slabs, an list of biovec_slab
+================================================================================
+#define BV(x) { .nr_vecs = x, .name = "biovec-"__stringify(x) }
+static struct biovec_slab bvec_slabs[BIOVEC_NR_POOLS] __read_mostly = {
+	BV(1), BV(4), BV(16), BV(64), BV(128), BV(BIO_MAX_PAGES),
+};
+
+   biovec_slab
+   +-----------------------------+
+   |name                         |
+   |   (char *)                  |
+   +-----------------------------+
+   |nr_vecs                      |
+   |   (int)                     |      
+   +-----------------------------+
+   |slab                         |    create a slab with size of 
+   |   (struct kmem_cache)       |    struct bio_vec[nr_vecs]
+   +-----------------------------+
+
+
+0.1.3 bio_set
+================================================================================
+    bio_set
+    +---------------------------+
+    |front_pad                  |
+    |   (unsigned int)          |
+    +---------------------------+
+    |bio_slab                   |   kmem_cache with specific size
+    |   (struct kmem_cache*)    |   maintained by bio_slabs array
+    +---------------------------+
+    |bio_pool                   |   a memory pool with at least pool_size elements
+    |   (mempool_t *)           |   this pool rely on bio_set->bio_slab
+    |                           |        element here is (struct bio)
+    +---------------------------+
+    |bvec_pool                  |   a memory pool with at least pool_size elements
+    |   (mempool_t *)           |   this pool rely on bvec_slabs[BIOVEC_MAX_IDX]
+    |                           |        element here is (struct bio_vec)
+    +---------------------------+
+    |rescue_list                |   a list to struct bio
+    |   (struct bio_list)       |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+
+0.2 bio
+================================================================================
+    bio
+    +---------------------------+      struct bio*
+    |bi_next                    | ---> +-----------------+
+    |   (struct bio*)           |      |                 |
+    +---------------------------+      +-----------------+
+    |bi_bdev                    |                         
+    |   (struct block_device*)  |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+    |bi_remaining               |
+    |bi_cnt                     |
+    |                           |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+    |                           |
+    |                           |
+    +---------------------------+
+
+0.3 bio_vec
+================================================================================
+    bio_vec
+    +---------------------------+
+    |bv_len                     |
+    |bv_offset                  |
+    |   (unsigned int)          |
+    +---------------------------+
+    |bv_page                    |
+    |   (struct page*)          |
+    +---------------------------+
+
+

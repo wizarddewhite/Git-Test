@@ -1,0 +1,25 @@
+1. early_ioremap_setup()
+================================================================================
+void __init early_ioremap_setup(void)
+{
+	int i;
+
+	for (i = 0; i < FIX_BTMAPS_SLOTS; i++)
+		if (WARN_ON(prev_map[i]))
+			break;
+
+	for (i = 0; i < FIX_BTMAPS_SLOTS; i++)
+		slot_virt[i] = __fix_to_virt(FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*i);
+}
+
+1.1 __fix_to_virt()
+================================================================================
+#define __fix_to_virt(x)	(FIXADDR_TOP - ((x) << PAGE_SHIFT))
+
+0. data structure
+================================================================================
+#define FIX_BTMAPS_SLOTS	8
+
+static void __iomem *prev_map[FIX_BTMAPS_SLOTS] __initdata;
+static unsigned long prev_size[FIX_BTMAPS_SLOTS] __initdata;
+static unsigned long slot_virt[FIX_BTMAPS_SLOTS] __initdata;
