@@ -1,0 +1,71 @@
+1. type_init(virtio_pci_register_types)
+================================================================================
+#define type_init(function) module_init(function, MODULE_INIT_QOM)
+
+#define module_init(function, type)                                         \
+static void __attribute__((constructor)) do_qemu_init_ ## function(void)    \
+{                                                                           \
+    register_module_init(function, type);                                   \
+}
+
+void register_module_init(void (*fn)(void), module_init_type type)
+{
+    ModuleEntry *e;
+    ModuleTypeList *l;
+
+    e = g_malloc0(sizeof(*e));
+    e->init = fn;
+    e->type = type;
+
+    l = find_type(type);
+
+    QTAILQ_INSERT_TAIL(l, e, node);
+}
+
+1.1 find_type()
+================================================================================
+static ModuleTypeList *find_type(module_init_type type)
+{
+    ModuleTypeList *l;
+
+    init_lists();
+
+    l = &init_type_list[type];
+
+    return l;
+}
+
+1.2 module_call_init(), call the init function here
+================================================================================
+void module_call_init(module_init_type type)
+{
+    ModuleTypeList *l;
+    ModuleEntry *e;
+
+    module_load(type);
+    l = find_type(type);
+
+    QTAILQ_FOREACH(e, l, node) {
+        e->init();
+    }
+}
+
+2. virtio_pci_register_types() 
+================================================================================
+static void virtio_pci_register_types(void)
+{
+    type_register_static(&virtio_rng_pci_info);
+    type_register_static(&virtio_pci_bus_info);
+    type_register_static(&virtio_pci_info);
+#ifdef CONFIG_VIRTFS
+    type_register_static(&virtio_9p_pci_info);
+#endif
+    type_register_static(&virtio_blk_pci_info);
+    type_register_static(&virtio_scsi_pci_info);
+    type_register_static(&virtio_balloon_pci_info);
+    type_register_static(&virtio_serial_pci_info);
+    type_register_static(&virtio_net_pci_info);
+#ifdef CONFIG_VHOST_SCSI
+    type_register_static(&vhost_scsi_pci_info);
+#endif
+}
