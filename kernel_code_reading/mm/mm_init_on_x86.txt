@@ -862,7 +862,10 @@ void __init native_pagetable_init(void)
 	paging_init();
 }
 
-1.2 mm_init()
+1.2 build_all_zonelists(), init node_data
+================================================================================
+
+1.3 mm_init()
 ================================================================================
 static void __init mm_init(void)
 {
@@ -879,7 +882,7 @@ static void __init mm_init(void)
 	ioremap_huge_init();
 }
 
-1.2.1 mem_init()
+1.3.1 mem_init()
 ================================================================================
 void __init mem_init(void)
 {
@@ -900,7 +903,7 @@ void __init mem_init(void)
 	mem_init_print_info(NULL);
 }
 
-1.2.1.1 free_all_bootmem(), bootmem is freed and added to free_list
+1.3.1.1 free_all_bootmem(), bootmem is freed and added "page" to free_list
 ================================================================================
 
 
