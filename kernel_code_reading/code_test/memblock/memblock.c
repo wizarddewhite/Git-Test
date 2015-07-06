@@ -122,9 +122,9 @@ repeat:
 		if (rbase > base) {
 			nr_new++;
 			if (insert) {
-				memblock_insert_region(type, i++, base,
-						       rbase - base, nid,
-						       flags);
+				rgn->base = base;
+				rgn->size += rbase - base;
+				type->total_size += rbase - base;
 			}
 		}
 		/* area below @rend is dealt with, forget about it */
