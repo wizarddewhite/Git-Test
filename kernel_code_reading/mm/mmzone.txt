@@ -2,7 +2,8 @@
 ================================================================================
 x86_init.paging.pagetable_init();
 	.pagetable_init		= native_pagetable_init,
-	#define native_pagetable_init        paging_init
+
+#define native_pagetable_init        paging_init
 
 void __init paging_init(void)
 {
@@ -289,7 +290,7 @@ void __init zone_sizes_init(void)
 	free_area_init_nodes(max_zone_pfns);
 }
 
-1.4.1 free_area_init_nodes(), init all pg_data_t and zone data
+1.4.1 free_area_init_nodes(), one thing confused me is zone across nodes?
 ================================================================================
 ; will print zone/node info
 ; Zone ranges:
@@ -562,6 +563,7 @@ out:
 
 1.4.1.3 mminit_verify_pageflags_layout(), mem debug info
 ================================================================================
+
 1.4.1.4 setup_nr_node_ids(), Figure out the number of possible node ids.
 ================================================================================
 void __init setup_nr_node_ids(void)
@@ -632,7 +634,7 @@ void __paginginit free_area_init_node(int nid, unsigned long *zones_size,
 			    zones_size, zholes_size);
 }
 
-1.4.2.1 calculate_node_totalpages(), calculate pages for node
+1.4.2.1 calculate_node_totalpages(), calculate spanned/real pages for node
 ================================================================================
 static void __meminit calculate_node_totalpages(struct pglist_data *pgdat,
 						unsigned long node_start_pfn,
@@ -661,7 +663,7 @@ static void __meminit calculate_node_totalpages(struct pglist_data *pgdat,
 							realtotalpages);
 }
 
-1.4.2.2 alloc_node_mem_map()
+1.4.2.2 alloc_node_mem_map(), allocate struct 'page' for mem
 ================================================================================
 static void __init_refok alloc_node_mem_map(struct pglist_data *pgdat)
 {
@@ -705,7 +707,7 @@ static void __init_refok alloc_node_mem_map(struct pglist_data *pgdat)
 #endif /* CONFIG_FLAT_NODE_MEM_MAP */
 }
 
-1.4.2.3 free_area_init_core() <- here
+1.4.2.3 free_area_init_core(), setup the pgdat for each node, also page
 ================================================================================
 static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 		unsigned long node_start_pfn, unsigned long node_end_pfn,
@@ -1130,28 +1132,43 @@ MAX_ZONELISTS is defined to 1 or 2.
    |reclaim_nodes                |       |                                   |    +------------------------+
    |    (nodemask_t)             |       |                                   |    |zone_idx                |
    +-----------------------------+       +-----------------------------------+    |   (int)                |
-                                         |zlcache                            |    +------------------------+
-                                         |  (struct zonelist_cache)          |
-                                         +-----------------------------------+
+   |kswapd_wait                  |       |zlcache                            |    +------------------------+
+   |    (wait_queue_head_t)      |       |  (struct zonelist_cache)          |
+   +-----------------------------+       +-----------------------------------+
+   |pfmemalloc_wait              |                                   
+   |    (wait_queue_head_t)      |
+   +-----------------------------+
+
+
+
+
+
+
                                       
-                                      
-0.2 node_states
+0.2 nodemask_t node_stats[NR_NODE_STATES]
 ================================================================================
+
 typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
-                                      
-nodemask_t node_states[NR_NODE_STATES] __read_mostly = {
-	[N_POSSIBLE] = NODE_MASK_ALL,
-	[N_ONLINE] = { { [0] = 1UL } },
-#ifndef CONFIG_NUMA
-	[N_NORMAL_MEMORY] = { { [0] = 1UL } },
+
+/*
+ * Bitmasks that are kept for all the nodes.
+ */
+enum node_states {
+	N_POSSIBLE,		/* The node could become online at some point */
+	N_ONLINE,		/* The node is online */
+	N_NORMAL_MEMORY,	/* The node has regular memory */
 #ifdef CONFIG_HIGHMEM
-	[N_HIGH_MEMORY] = { { [0] = 1UL } },
+	N_HIGH_MEMORY,		/* The node has regular or high memory */
+#else
+	N_HIGH_MEMORY = N_NORMAL_MEMORY,
 #endif
 #ifdef CONFIG_MOVABLE_NODE
-	[N_MEMORY] = { { [0] = 1UL } },
+	N_MEMORY,		/* The node has memory(regular, high, movable) */
+#else
+	N_MEMORY = N_HIGH_MEMORY,
 #endif
-	[N_CPU] = { { [0] = 1UL } },
-#endif	/* NUMA */
+	N_CPU,		/* The node has one or more cpus */
+	NR_NODE_STATES
 };
 
 0.3 zone
@@ -1191,11 +1208,6 @@ nodemask_t node_states[NR_NODE_STATES] __read_mostly = {
       +---+--------------------------+
 
 
-
-
-
-
-
 0.4 mem_section
 ================================================================================
 
@@ -1215,3 +1227,8 @@ struct mem_section mem_section[NR_SECTION_ROOTS][SECTIONS_PER_ROOT] ;
        |pad                        |
        |   (unsigned long)         |
        +---------------------------+
+
+0.5 arch_zone_lowest/highest_possible_pfn, node info included?
+================================================================================
+static unsigned long arch_zone_lowest_possible_pfn[MAX_NR_ZONES];
+static unsigned long arch_zone_highest_possible_pfn[MAX_NR_ZONES];
