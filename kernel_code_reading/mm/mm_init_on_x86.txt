@@ -862,7 +862,27 @@ void __init native_pagetable_init(void)
 	paging_init();
 }
 
-1.2 build_all_zonelists(), init node_data
+1.1.10.1 paging_init()
+================================================================================
+void __init paging_init(void)
+{
+	sparse_memory_present_with_active_regions(MAX_NUMNODES);
+	sparse_init();
+
+	/* */
+	 * clear the default setting with node 0
+	 * note: don't use nodes_clear here, that is really clearing when
+	 *	 numa support is not compiled in, and later node_set_state
+	 *	 will not set it back.
+	 */
+	node_clear_state(0, N_MEMORY);
+	if (N_MEMORY != N_NORMAL_MEMORY)
+		node_clear_state(0, N_NORMAL_MEMORY);
+
+	zone_sizes_init();
+}
+
+1.2 build_all_zonelists(), init node_data's zonelist
 ================================================================================
 
 1.3 mm_init()
