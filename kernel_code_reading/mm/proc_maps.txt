@@ -84,7 +84,7 @@ static void m_stop(struct seq_file *m, void *v)
 	}
 }
 
-1.2 show_pid_map(), 
+1.4 show_pid_map(),
 ================================================================================
 static int show_pid_map(struct seq_file *m, void *v)
 {
@@ -98,7 +98,7 @@ static int show_map(struct seq_file *m, void *v, int is_pid)
 	return 0;
 }
 
-1.2.1 show_map_vma(), 
+1.4.1 show_map_vma(),
 ================================================================================
 static void
 show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
