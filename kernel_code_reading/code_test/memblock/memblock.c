@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <math.h>
+#include <string.h>
 #include "memblock.h"
 
 /* adjust *@size so that (@base + *@size) doesn't overflow, return new size */
