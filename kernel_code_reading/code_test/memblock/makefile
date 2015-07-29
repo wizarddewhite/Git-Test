@@ -1,21 +1,23 @@
 SOURCES := $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
+OBJS := $(subst .c,.o,$(SOURCES))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
 CFLAGS = -g -I../
+LD_FLAGS = -lm
 
-#$(warning $(MAKECMDGOALS) $(PROGRAM))
+#$(warning $(OBJS))
 
 .PHONY: all clean cscope
 all: main
 
-main: main.o memblock.o
-	gcc $(CFLAGS) -lm -o main main.o memblock.o
+main: $(OBJS)
+	gcc $(CFLAGS) $(LD_FLAGS) -o main $(OBJS)
 
 %: %.o
 	gcc $(CFLAGS) $<  -o $@ 
 
 %.o : %.c
-	gcc $(CFLAGS) -lm -c $< -o $@
+	gcc $(CFLAGS) -c $< -o $@
 
 ifneq "$(MAKECMDGOALS)" "clean"
         include $(DEPENDENCY)
