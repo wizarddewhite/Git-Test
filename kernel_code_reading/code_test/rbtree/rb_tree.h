@@ -30,6 +30,7 @@
 #define	RB_BLACK	1
 
 #define rb_parent(r)   ((struct rb_node *)((r)->__rb_parent_color & ~3))
+#define RB_ROOT	(struct rb_root) { NULL, }
 #define	rb_entry(ptr, type, member) container_of(ptr, type, member)
 
 #define __rb_color(pc)     ((pc) & 1)

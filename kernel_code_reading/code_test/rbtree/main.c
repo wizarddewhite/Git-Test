@@ -31,10 +31,11 @@ struct dummy_struct {
 };
 
 #define rb_to_dummy(X) rb_entry((X), struct dummy_struct, rb)
+#define NODES       10
 
 static struct rb_root tree_root;
 
-struct dummy_struct tree_nodes[50];
+struct dummy_struct tree_nodes[NODES];
 
 void dump_rb_tree(struct rb_node *node, int level, enum child_dir state)
 {
@@ -87,15 +88,26 @@ static int insert_dummy_to_tree(struct dummy_struct *node)
 	return 0;
 }
 
-int main()
+static void init(void)
+{
+	int i;
+	tree_root = RB_ROOT;
+	for(i = 0; i < NODES; i++) {
+		tree_nodes[i].idx = i;
+		tree_nodes[i].rb.rb_right = NULL;
+		tree_nodes[i].rb.rb_left = NULL;
+		tree_nodes[i].rb.__rb_parent_color = 0;
+	}
+}
+
+void insert_test()
 {
 	int i;
 	struct rb_node *iter;
 	struct dummy_struct *node;
-
+	init();
 	/* init the tree nodes */
-	for(i = 0; i < 20; i++) {
-		tree_nodes[i].idx = i;
+	for(i = 0; i < NODES; i++) {
 		insert_dummy_to_tree(&tree_nodes[i]);
 	}
 
@@ -107,5 +119,11 @@ int main()
 		printf("%d \n", node->idx);
 		iter = rb_next(iter);
 	}
+}
+
+int main()
+{
+	insert_test();
+
 	return 0;
 }
