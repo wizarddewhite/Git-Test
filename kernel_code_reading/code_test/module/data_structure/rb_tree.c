@@ -24,9 +24,11 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 
-static struct rb_root tree_root;
+#define NODES       10
 
-struct dummy_struct tree_nodes[50];
+static struct rb_root tree_root = RB_ROOT;
+
+struct dummy_struct tree_nodes[NODES];
 
 void dump_rb_tree(struct rb_node *node, int level, enum child_dir state)
 {
@@ -79,6 +81,18 @@ static int insert_dummy_to_tree(struct dummy_struct *node)
 	return 0;
 }
 
+static void init(void)
+{
+	int i;
+	tree_root = RB_ROOT;
+	for(i = 0; i < NODES; i++) {
+		tree_nodes[i].idx = i;
+		tree_nodes[i].rb.rb_right = NULL;
+		tree_nodes[i].rb.rb_left = NULL;
+		tree_nodes[i].rb.__rb_parent_color = 0;
+	}
+}
+
 static int rb_tree_init(void)
 {
 	int i;
@@ -88,10 +102,10 @@ static int rb_tree_init(void)
 	printk(KERN_ALERT "Hello, world \n");
 
 	/* init the tree nodes */
-	for(i = 0; i < 40; i++) {
-		tree_nodes[i].idx = i;
+	init();
+
+	for(i = 0; i < NODES; i++)
 		insert_dummy_to_tree(&tree_nodes[i]);
-	}
 
 	dump_rb_tree(tree_root.rb_node, 0, root_node);
 
