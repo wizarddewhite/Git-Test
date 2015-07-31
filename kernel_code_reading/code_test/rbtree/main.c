@@ -31,7 +31,7 @@ struct dummy_struct {
 };
 
 #define rb_to_dummy(X) rb_entry((X), struct dummy_struct, rb)
-#define NODES       10
+#define NODES       7
 
 static struct rb_root tree_root;
 
@@ -121,9 +121,32 @@ void insert_test()
 	}
 }
 
+void case2_verify()
+{
+	int i;
+	struct rb_node *iter;
+	struct dummy_struct *node;
+	init();
+	/* init the tree nodes */
+	insert_dummy_to_tree(&tree_nodes[5]);
+	insert_dummy_to_tree(&tree_nodes[6]);
+	insert_dummy_to_tree(&tree_nodes[2]);
+	rb_set_parent_color(&tree_nodes[6].rb, &tree_nodes[5].rb, RB_BLACK);
+	insert_dummy_to_tree(&tree_nodes[4]);
+
+	dump_rb_tree(tree_root.rb_node, 0, root_node);
+
+	iter = rb_first(&tree_root);
+	while (iter) {
+		node = rb_to_dummy(iter);
+		printf("%d \n", node->idx);
+		iter = rb_next(iter);
+	}
+}
+
 int main()
 {
-	insert_test();
+	case2_verify();
 
 	return 0;
 }
