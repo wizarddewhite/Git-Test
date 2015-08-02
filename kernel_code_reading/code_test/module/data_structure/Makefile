@@ -2,7 +2,7 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
     obj-m += idr_index.o ida_idr_test.o
-    obj-m += rb_tree.o radix_tree.o
+    obj-m += rb_tree.o radix_tree.o rbtree_augmented.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else

@@ -30,7 +30,7 @@ enum child_dir {
 struct dummy_struct {
 	int idx;
 	struct rb_node rb;
-	u32 augmented;
+	u32 subtree_nodes;
 };
 
 #define rb_to_dummy(X) rb_entry((X), struct dummy_struct, rb)
