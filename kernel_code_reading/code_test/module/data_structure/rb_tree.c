@@ -81,6 +81,12 @@ static int insert_dummy_to_tree(struct dummy_struct *node)
 	return 0;
 }
 
+static int erase_dummy(struct dummy_struct *node)
+{
+	rb_erase(&node->rb, &tree_root);
+	return 0;
+}
+
 static void init(void)
 {
 	int i;
@@ -112,9 +118,14 @@ static int rb_tree_init(void)
 	iter = rb_first(&tree_root);
 	while (iter) {
 		node = rb_to_dummy(iter);
-		printk(KERN_ERR "%d \n", node->idx);
+		//printk(KERN_ERR "%d \n", node->idx);
 		iter = rb_next(iter);
 	}
+
+        printk(KERN_ALERT "Erase some nodes\n");
+	for(i = 0; i < (NODES / 2); i++)
+		erase_dummy(&tree_nodes[i]);
+	dump_rb_tree(tree_root.rb_node, 0, root_node);
 
 	return 0;
 }
