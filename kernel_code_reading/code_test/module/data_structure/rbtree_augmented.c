@@ -101,6 +101,12 @@ static int insert_augmented_to_tree(struct dummy_struct *node)
 	return 0;
 }
 
+static int erase_augmented_to_tree(struct dummy_struct *node)
+{
+	rb_erase_augmented(&node->rb, &tree_root, &augment_callbacks);
+	return 0;
+}
+
 static void init(void)
 {
 	int i;
@@ -128,6 +134,10 @@ static int rb_tree_init(void)
 
 	dump_rbtree_augmented(tree_root.rb_node, 0, root_node);
 
+	printk(KERN_ALERT "Erase some nodes \n");
+	for(i = 0; i < (2); i++)
+		erase_augmented_to_tree(&tree_nodes[i]);
+	dump_rbtree_augmented(tree_root.rb_node, 0, root_node);
 	return 0;
 }
 static void rb_tree_exit(void)
