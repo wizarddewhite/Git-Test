@@ -144,9 +144,30 @@ void case2_verify()
 	}
 }
 
+void erase_test()
+{
+	int i;
+	struct rb_node *iter;
+	struct dummy_struct *node;
+	init();
+	/* init the tree nodes */
+	for(i = 0; i < NODES; i++) {
+		insert_dummy_to_tree(&tree_nodes[i]);
+	}
+
+	dump_rb_tree(tree_root.rb_node, 0, root_node);
+
+	printf("Erase element %d\n", NODES / 2);
+	rb_erase(&tree_nodes[NODES / 2].rb, &tree_root);
+	dump_rb_tree(tree_root.rb_node, 0, root_node);
+	printf("Erase element %d\n", (NODES / 2) + 2);
+	rb_erase(&tree_nodes[(NODES / 2) + 2].rb, &tree_root);
+	dump_rb_tree(tree_root.rb_node, 0, root_node);
+}
+
 int main()
 {
-	case2_verify();
+	erase_test();
 
 	return 0;
 }
