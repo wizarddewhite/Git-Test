@@ -48,7 +48,6 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 	struct rb_node *child = node->rb_right;
 	struct rb_node *tmp = node->rb_left;
 	struct rb_node *parent, *rebalance;
-	unsigned long pc;
 
 	if (!tmp) {
 		/*
@@ -58,21 +57,27 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 		 * and node must be black due to 4). We adjust colors locally
 		 * so as to bypass __rb_erase_color() later on.
 		 */
-		pc = node->__rb_parent_color;
-		parent = __rb_parent(pc);
+		parent = rb_parent(node);
 		__rb_change_child(node, child, parent, root);
 		if (child) {
-			child->__rb_parent_color = pc;
+			rb_set_parent_color(child, parent, rb_color(node));
 			rebalance = NULL;
 		} else
-			rebalance = __rb_is_black(pc) ? parent : NULL;
+			rebalance = rb_is_black(node) ? parent : NULL;
 		tmp = parent;
 	} else if (!child) {
 		/* Still case 1, but this time the child is node->rb_left */
-		tmp->__rb_parent_color = pc = node->__rb_parent_color;
-		parent = __rb_parent(pc);
+		parent = rb_parent(node);
 		__rb_change_child(node, tmp, parent, root);
-		rebalance = NULL;
+		/*
+		 * if (!tmp) {
+		 */
+			rb_set_parent_color(tmp, parent, rb_color(node));
+			rebalance = NULL;
+		/*
+		 * } else
+		 * 	rebalance = rb_is_black(node) ? parent : NULL;
+		 */
 		tmp = parent;
 	} else {
 		struct rb_node *successor = child, *child2;
@@ -113,7 +118,9 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 				tmp = tmp->rb_left;
 			} while (tmp);
 			child2 = successor->rb_right;
+			/* remove successor */
 			parent->rb_left = child2;
+			/* then replace it with node */
 			successor->rb_right = child;
 			rb_set_parent(child, successor);
 
@@ -125,11 +132,10 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 		successor->rb_left = tmp;
 		rb_set_parent(tmp, successor);
 
-		pc = node->__rb_parent_color;
-		tmp = __rb_parent(pc);
+		tmp = rb_parent(node);
 		__rb_change_child(node, successor, tmp, root);
+		rb_set_parent_color(successor, tmp, rb_color(node));
 
-		successor->__rb_parent_color = pc;
 		if (child2) {
 			rb_set_parent_color(child2, parent, RB_BLACK);
 			rebalance = NULL;
