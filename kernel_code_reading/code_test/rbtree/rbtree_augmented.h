@@ -134,13 +134,14 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 
 		tmp = rb_parent(node);
 		__rb_change_child(node, successor, tmp, root);
-		rb_set_parent_color(successor, tmp, rb_color(node));
 
 		if (child2) {
+			rb_set_parent_color(successor, tmp, rb_color(node));
 			rb_set_parent_color(child2, parent, RB_BLACK);
 			rebalance = NULL;
 		} else {
 			unsigned long pc2 = successor->__rb_parent_color;
+			rb_set_parent_color(successor, tmp, rb_color(node));
 			rebalance = __rb_is_black(pc2) ? parent : NULL;
 		}
 		tmp = successor;
