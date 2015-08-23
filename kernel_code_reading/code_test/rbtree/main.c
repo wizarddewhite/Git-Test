@@ -31,7 +31,7 @@ struct dummy_struct {
 };
 
 #define rb_to_dummy(X) rb_entry((X), struct dummy_struct, rb)
-#define NODES       7
+#define NODES       20
 
 static struct rb_root tree_root;
 
@@ -52,13 +52,13 @@ void dump_rb_tree(struct rb_node *node, int level, enum child_dir state)
 		strcat(prefix, "   ");
 
 	if (state == left_child)
-		printf("   %s| \n", prefix);
+		printf("   %s|\n", prefix);
 	this = rb_to_dummy(node);
 	printf("%02d %s -%02d(%c)\n",
 			level, prefix, this->idx,
 			rb_is_red(node)?'r':'b');
 	if (state == right_child)
-		printf("   %s| \n", prefix);
+		printf("   %s|\n", prefix);
 
 	dump_rb_tree(node->rb_left, level+1, left_child);
 }
@@ -157,11 +157,12 @@ void erase_test()
 
 	dump_rb_tree(tree_root.rb_node, 0, root_node);
 
-	printf("Erase element %d\n", NODES / 2);
-	rb_erase(&tree_nodes[NODES / 2].rb, &tree_root);
+	printf("Erase element %d\n", 19);
+	rb_erase(&tree_nodes[19].rb, &tree_root);
 	dump_rb_tree(tree_root.rb_node, 0, root_node);
-	printf("Erase element %d\n", (NODES / 2) + 2);
-	rb_erase(&tree_nodes[(NODES / 2) + 2].rb, &tree_root);
+
+	printf("Erase element %d\n", 11);
+	rb_erase(&tree_nodes[11].rb, &tree_root);
 	dump_rb_tree(tree_root.rb_node, 0, root_node);
 }
 
