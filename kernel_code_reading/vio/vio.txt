@@ -1,0 +1,292 @@
+1. vio_bus_init(), create vio bus /sys/bus/vio and vio root dev /sys/devices/vio
+================================================================================
+#define postcore_initcall(fn)		__define_initcall(fn, 2)
+postcore_initcall(vio_bus_init);
+
+struct bus_type vio_bus_type = {
+	.name = "vio",
+	.dev_attrs = vio_dev_attrs,
+	.uevent = vio_hotplug,
+	.match = vio_bus_match,
+	.probe = vio_bus_probe,
+	.remove = vio_bus_remove,
+};
+
+static int __init vio_bus_init(void)
+{
+	int err;
+
+	if (firmware_has_feature(FW_FEATURE_CMO))
+		vio_cmo_sysfs_init();
+
+	err = bus_register(&vio_bus_type);
+	if (err) {
+		printk(KERN_ERR "failed to register VIO bus\n");
+		return err;
+	}
+
+	/*
+	 * The fake parent of all vio devices, just to give us
+	 * a nice directory
+	 */
+	err = device_register(&vio_bus_device.dev);
+	if (err) {
+		printk(KERN_WARNING "%s: device_register returned %i\n",
+				__func__, err);
+		return err;
+	}
+
+	if (firmware_has_feature(FW_FEATURE_CMO))
+		vio_cmo_bus_init();
+
+	return 0;
+}
+
+1.1 vio_bus_match()
+================================================================================
+static int vio_bus_match(struct device *dev, struct device_driver *drv)
+{
+	const struct vio_dev *vio_dev = to_vio_dev(dev);
+	struct vio_driver *vio_drv = to_vio_driver(drv);
+	const struct vio_device_id *ids = vio_drv->id_table;
+
+	return (ids != NULL) && (vio_match_device(ids, vio_dev) != NULL);
+}
+
+1.1.1 vio_match_device(), vio_dev.type match ids.type
+================================================================================
+static const struct vio_device_id *vio_match_device(
+		const struct vio_device_id *ids, const struct vio_dev *dev)
+{
+	while (ids->type[0] != '\0') {
+		if ((strncmp(dev->type, ids->type, strlen(ids->type)) == 0) &&
+		    of_device_is_compatible(dev->dev.of_node,
+					 ids->compat))
+			return ids;
+		ids++;
+	}
+	return NULL;
+}
+
+1.2 vio_bus_probe(), call vio_driver.probe
+================================================================================
+static int vio_bus_probe(struct device *dev)
+{
+	struct vio_dev *viodev = to_vio_dev(dev);
+	struct vio_driver *viodrv = to_vio_driver(dev->driver);
+	const struct vio_device_id *id;
+	int error = -ENODEV;
+
+	if (!viodrv->probe)
+		return error;
+
+	id = vio_match_device(viodrv->id_table, viodev);
+	if (id) {
+		memset(&viodev->cmo, 0, sizeof(viodev->cmo));
+		if (firmware_has_feature(FW_FEATURE_CMO)) {
+			error = vio_cmo_bus_probe(viodev);
+			if (error)
+				return error;
+		}
+		error = viodrv->probe(viodev, id);
+		if (error && firmware_has_feature(FW_FEATURE_CMO))
+			vio_cmo_bus_remove(viodev);
+	}
+
+	return error;
+}
+
+2. vio_device_init()
+================================================================================
+#define device_initcall(fn)		__define_initcall(fn, 6)
+device_initcall(vio_device_init);
+
+static int __init vio_device_init(void)
+{
+	vio_bus_scan_register_devices("vdevice");
+	vio_bus_scan_register_devices("ibm,platform-facilities");
+
+	return 0;
+}
+
+2.1 vio_bus_scan_register_devices(), scan virtual device's device node
+================================================================================
+static void vio_bus_scan_register_devices(char *root_name)
+{
+	struct device_node *node_root, *node_child;
+
+	if (!root_name)
+		return;
+
+	node_root = of_find_node_by_name(NULL, root_name);
+	if (node_root) {
+
+		/*
+		 * Create struct vio_devices for each virtual device in
+		 * the device tree. Drivers will associate with them later.
+		 */
+		node_child = of_get_next_child(node_root, NULL);
+		while (node_child) {
+			vio_register_device_node(node_child);
+			node_child = of_get_next_child(node_root, node_child);
+		}
+		of_node_put(node_root);
+	}
+}
+
+2.1.1 vio_register_device_node(), register a new vio device
+================================================================================
+struct vio_dev *vio_register_device_node(struct device_node *of_node)
+{
+	struct vio_dev *viodev;
+	struct device_node *parent_node;
+	const __be32 *prop;
+	enum vio_dev_family family;
+	const char *of_node_name = of_node->name ? of_node->name : "<unknown>";
+
+	/*
+	 * Determine if this node is a under the /vdevice node or under the
+	 * /ibm,platform-facilities node.  This decides the device's family.
+	 */
+	parent_node = of_get_parent(of_node);
+	if (parent_node) {
+		if (!strcmp(parent_node->full_name, "/ibm,platform-facilities"))
+			family = PFO;
+		else if (!strcmp(parent_node->full_name, "/vdevice"))
+			family = VDEVICE;
+		else {
+			pr_warn("%s: parent(%s) of %s not recognized.\n",
+					__func__,
+					parent_node->full_name,
+					of_node_name);
+			of_node_put(parent_node);
+			return NULL;
+		}
+		of_node_put(parent_node);
+	} else {
+		pr_warn("%s: could not determine the parent of node %s.\n",
+				__func__, of_node_name);
+		return NULL;
+	}
+
+	if (family == PFO) {
+		if (of_get_property(of_node, "interrupt-controller", NULL)) {
+			pr_debug("%s: Skipping the interrupt controller %s.\n",
+					__func__, of_node_name);
+			return NULL;
+		}
+	}
+
+	/* allocate a vio_dev for this node */
+	viodev = kzalloc(sizeof(struct vio_dev), GFP_KERNEL);
+	if (viodev == NULL) {
+		pr_warn("%s: allocation failure for VIO device.\n", __func__);
+		return NULL;
+	}
+
+	/* we need the 'device_type' property, in order to match with drivers */
+	viodev->family = family;
+	if (viodev->family == VDEVICE) {
+		unsigned int unit_address;
+
+		if (of_node->type != NULL)
+			viodev->type = of_node->type;
+		else {
+			pr_warn("%s: node %s is missing the 'device_type' "
+					"property.\n", __func__, of_node_name);
+			goto out;
+		}
+
+		prop = of_get_property(of_node, "reg", NULL);
+		if (prop == NULL) {
+			pr_warn("%s: node %s missing 'reg'\n",
+					__func__, of_node_name);
+			goto out;
+		}
+		unit_address = of_read_number(prop, 1);
+		dev_set_name(&viodev->dev, "%x", unit_address);
+		viodev->irq = irq_of_parse_and_map(of_node, 0);
+		viodev->unit_address = unit_address;
+	} else {
+		/* PFO devices need their resource_id for submitting COP_OPs
+		 * This is an optional field for devices, but is required when
+		 * performing synchronous ops */
+		prop = of_get_property(of_node, "ibm,resource-id", NULL);
+		if (prop != NULL)
+			viodev->resource_id = of_read_number(prop, 1);
+
+		dev_set_name(&viodev->dev, "%s", of_node_name);
+		viodev->type = of_node_name;
+		viodev->irq = 0;
+	}
+
+	viodev->name = of_node->name;
+	viodev->dev.of_node = of_node_get(of_node);
+
+	set_dev_node(&viodev->dev, of_node_to_nid(of_node));
+
+	/* init generic 'struct device' fields: */
+	viodev->dev.parent = &vio_bus_device.dev;
+	viodev->dev.bus = &vio_bus_type;
+	viodev->dev.release = vio_dev_release;
+
+	if (of_get_property(viodev->dev.of_node, "ibm,my-dma-window", NULL)) {
+		if (firmware_has_feature(FW_FEATURE_CMO))
+			vio_cmo_set_dma_ops(viodev);
+		else
+			set_dma_ops(&viodev->dev, &dma_iommu_ops);
+
+		set_iommu_table_base(&viodev->dev,
+				     vio_build_iommu_table(viodev));
+
+		/* needed to ensure proper operation of coherent allocations
+		 * later, in case driver doesn't set it explicitly */
+		viodev->dev.coherent_dma_mask = DMA_BIT_MASK(64);
+		viodev->dev.dma_mask = &viodev->dev.coherent_dma_mask;
+	}
+
+	/* register with generic device framework */
+	if (device_register(&viodev->dev)) {
+		printk(KERN_ERR "%s: failed to register device %s\n",
+				__func__, dev_name(&viodev->dev));
+		put_device(&viodev->dev);
+		return NULL;
+	}
+
+	return viodev;
+
+out:	/* Use this exit point for any return prior to device_register */
+	kfree(viodev);
+
+	return NULL;
+}
+
+2.1.1.1 device_register()
+================================================================================
+
+0. data structure
+================================================================================
+
+0.1 vio_dev 
+================================================================================
+
+    vio_dev
+    +-------------------------+
+    |family                   |  VDEVICE/PFO
+    |    (enum vio_dev_family)|
+    +-------------------------+
+    |name                     |
+    |type                     |
+    |    (char *name)         |
+    +-------------------------+
+    |dev                      |
+    |    (struct device)      |
+    |    +--------------------+
+    |    |parent              | vio_bus_device.dev
+    |    |bus                 | vio_bus_type
+    |    |release             | vio_dev_release
+    |    |                    |
+    +----+--------------------+
+    |                         |
+    |                         |
+    +-------------------------+

@@ -1,0 +1,128 @@
+1. ibmveth_module_init()
+================================================================================
+static struct vio_driver ibmveth_driver = {
+	.id_table	= ibmveth_device_table,
+	.probe		= ibmveth_probe,
+	.remove		= ibmveth_remove,
+	.get_desired_dma = ibmveth_get_desired_dma,
+	.name		= ibmveth_driver_name,
+	.pm		= &ibmveth_pm_ops,
+};
+
+static int __init ibmveth_module_init(void)
+{
+	printk(KERN_DEBUG "%s: %s %s\n", ibmveth_driver_name,
+	       ibmveth_driver_string, ibmveth_driver_version);
+
+	return vio_register_driver(&ibmveth_driver);
+}
+
+2. ibmveth_probe()
+================================================================================
+static int ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
+{
+	int rc, i, mac_len;
+	struct net_device *netdev;
+	struct ibmveth_adapter *adapter;
+	unsigned char *mac_addr_p;
+	unsigned int *mcastFilterSize_p;
+
+	dev_dbg(&dev->dev, "entering ibmveth_probe for UA 0x%x\n",
+		dev->unit_address);
+
+	mac_addr_p = (unsigned char *)vio_get_attribute(dev, VETH_MAC_ADDR,
+							&mac_len);
+	if (!mac_addr_p) {
+		dev_err(&dev->dev, "Can't find VETH_MAC_ADDR attribute\n");
+		return -EINVAL;
+	}
+	/* Workaround for old/broken pHyp */
+	if (mac_len == 8)
+		mac_addr_p += 2;
+	else if (mac_len != 6) {
+		dev_err(&dev->dev, "VETH_MAC_ADDR attribute wrong len %d\n",
+			mac_len);
+		return -EINVAL;
+	}
+
+	mcastFilterSize_p = (unsigned int *)vio_get_attribute(dev,
+						VETH_MCAST_FILTER_SIZE, NULL);
+	if (!mcastFilterSize_p) {
+		dev_err(&dev->dev, "Can't find VETH_MCAST_FILTER_SIZE "
+			"attribute\n");
+		return -EINVAL;
+	}
+
+	netdev = alloc_etherdev(sizeof(struct ibmveth_adapter));
+
+	if (!netdev)
+		return -ENOMEM;
+
+	adapter = netdev_priv(netdev);
+	dev_set_drvdata(&dev->dev, netdev);
+
+	adapter->vdev = dev;
+	adapter->netdev = netdev;
+	adapter->mcastFilterSize = *mcastFilterSize_p;
+	adapter->pool_config = 0;
+
+	netif_napi_add(netdev, &adapter->napi, ibmveth_poll, 16);
+
+	netdev->irq = dev->irq;
+	netdev->netdev_ops = &ibmveth_netdev_ops;
+	netdev->ethtool_ops = &netdev_ethtool_ops;
+	SET_NETDEV_DEV(netdev, &dev->dev);
+	netdev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM |
+		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+	netdev->features |= netdev->hw_features;
+
+	/* TSO is disabled by default */
+	netdev->hw_features |= NETIF_F_TSO;
+
+	memcpy(netdev->dev_addr, mac_addr_p, ETH_ALEN);
+
+	if (firmware_has_feature(FW_FEATURE_CMO))
+		memcpy(pool_count, pool_count_cmo, sizeof(pool_count));
+
+	for (i = 0; i < IBMVETH_NUM_BUFF_POOLS; i++) {
+		struct kobject *kobj = &adapter->rx_buff_pool[i].kobj;
+		int error;
+
+		ibmveth_init_buffer_pool(&adapter->rx_buff_pool[i], i,
+					 pool_count[i], pool_size[i],
+					 pool_active[i]);
+		error = kobject_init_and_add(kobj, &ktype_veth_pool,
+					     &dev->dev.kobj, "pool%d", i);
+		if (!error)
+			kobject_uevent(kobj, KOBJ_ADD);
+	}
+
+	netdev_dbg(netdev, "adapter @ 0x%p\n", adapter);
+
+	adapter->buffer_list_dma = DMA_ERROR_CODE;
+	adapter->filter_list_dma = DMA_ERROR_CODE;
+	adapter->rx_queue.queue_dma = DMA_ERROR_CODE;
+
+	netdev_dbg(netdev, "registering netdev...\n");
+
+	ibmveth_set_features(netdev, netdev->features);
+
+	rc = register_netdev(netdev);
+
+	if (rc) {
+		netdev_dbg(netdev, "failed to register netdev rc=%d\n", rc);
+		free_netdev(netdev);
+		return rc;
+	}
+
+	netdev_dbg(netdev, "registered\n");
+
+	return 0;
+}
+
+2.1 vio_get_attribute(), retrieve property from of_node
+================================================================================
+const void *vio_get_attribute(struct vio_dev *vdev, char *which, int *length)
+{
+	return of_get_property(vdev->dev.of_node, which, length);
+}
