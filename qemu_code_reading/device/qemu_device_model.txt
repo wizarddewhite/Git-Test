@@ -1,6 +1,6 @@
 
 1. DEVICE CLASS
-===============================================================
+================================================================================
 #define OBJECT_CLASS(class) \
     ((ObjectClass *)(class))
 #define OBJECT_CLASS_CHECK(class, obj, name) \
@@ -38,12 +38,16 @@ static TypeInfo device_type_info = {
 
 
 So this is a class hirerach
-
+       +------------------+
+       |     TypeImpl     |
+       |                  |
+       +------------------+
+                 |
+                 |
+                 v
        +------------------+          +----------------------+
        |                  |          |                      |
        |   ObjectClass    | <--------|    Object            |
-       |    |-> Type      |          |                      |
-       |                  |          |                      |
        |                  |          |                      |
        +------------------+          +---------+------------+
                  |                             |
@@ -75,8 +79,46 @@ So this is a class hirerach
                                      |                      |
                                      +----------------------+
 
+For Class, type_initialize() is used to do initialization.
+
+type_initialize(TypeImpl *ti)
+	type_initialize(ti->parent)
+	ti->class_init()
+
+For Object, object_init_with_type() is used to do initialization.
+
+object_init_with_type(Object *obj, TypeImpl *ti)
+	object_init_with_type(obj, ti->parent)
+	ti->instance_init(obj)
+
 2. traverse the qdev tree? 
 ===============================================================
 if (qemu_opts_foreach(qemu_find_opts("device"), device_help_func, NULL, 0) != 0)
 device_help_func
+
+3. Device Bus
+================================================================================
+
+                    +------------------+
+                    |   ObjectClass    |
+                    |                  |
+                    +------------------+
+                        /           \
+                      /                 \
+		    /                      \
+                 v                             v
+       +------------------+          +---------+------------+
+       |                  |          |                      |
+       |   DeviceClass    |          |   BusClass           |
+       |                  |          |                      |
+       +---------+--------+          +---------+------------+
+                 |                             |
+                 |                             |
+                 |                             |
+                 v                             v
+       +---------+--------+          +---------+------------+
+       |                  |          |                      |
+       |   PCIDeviceClass |          |   PCIBusClass        |
+       |                  |          |                      |
+       +------------------+          +---------+------------+
 
