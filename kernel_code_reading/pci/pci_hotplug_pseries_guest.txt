@@ -387,11 +387,11 @@ rpaphp_slot_head (arch dependent)
                                           |ops                         | = rpaphp_hotplug_slot_ops
                                           |   (struct hotplug_slot_ops)|
                                           +----------------------------+
-                                          |info                        | = rpaphp_release_slot
-                                          |  (struct hotplug_slot_info)|
-                                          +----------------------------+
                                           |release                     | = rpaphp_release_slot
                                           |void(*)(struct hotplug_slot)|
+                                          +----------------------------+
+                                          |info                        | 
+                                          |  (struct hotplug_slot_info)|
                                           +----------------------------+
                                           |pci_slot                    |
                                           |  (struct pci_slot*)        |
