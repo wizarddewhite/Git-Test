@@ -1,5 +1,4 @@
-
-1. DEVICE CLASS
+1. DEVICE <--> CLASS
 ================================================================================
 #define OBJECT_CLASS(class) \
     ((ObjectClass *)(class))
@@ -91,12 +90,7 @@ object_init_with_type(Object *obj, TypeImpl *ti)
 	object_init_with_type(obj, ti->parent)
 	ti->instance_init(obj)
 
-2. traverse the qdev tree? 
-===============================================================
-if (qemu_opts_foreach(qemu_find_opts("device"), device_help_func, NULL, 0) != 0)
-device_help_func
-
-3. Device Bus
+2. Device <--> Bus
 ================================================================================
 
                     +------------------+
@@ -121,4 +115,33 @@ device_help_func
        |   PCIDeviceClass |          |   PCIBusClass        |
        |                  |          |                      |
        +------------------+          +---------+------------+
+
+3. TypeImpl <--  TypeInfo 
+================================================================================
+TypeImpl *type_register(const TypeInfo *info)
+
+        type_table(GHashTable)  ; this is a hash table with name as the key
+       +-----------------------+
+       |                       |
+       +-----------------------+
+                |
+                v
+       +------------------+                   +--------------------+
+       |TypeImpl*         | <--- type_new()   | TypeInfo           |
+       +------------------+                   +--------------------+
+                |
+                v
+       +------------------+                   +--------------------+
+       |TypeImpl*         | <--- type_new()   | TypeInfo           |
+       +------------------+                   +--------------------+
+
+
+4. TypeImpl <--  TypeInfo 
+================================================================================
+
+
+3. traverse the qdev tree? 
+================================================================================
+if (qemu_opts_foreach(qemu_find_opts("device"), device_help_func, NULL, 0) != 0)
+device_help_func
 
