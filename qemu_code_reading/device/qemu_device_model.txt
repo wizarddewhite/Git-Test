@@ -47,7 +47,7 @@ So this is a class hirerach
        +------------------+          +----------------------+
        |                  |          |                      |
        |   ObjectClass    | <--------|    Object            |
-       |                  |          |                      |
+       |     class_init   |          |                      |
        +------------------+          +---------+------------+
                  |                             |
                  |                             |
@@ -57,7 +57,7 @@ So this is a class hirerach
        +------------------+          +---------+------------+
        |                  |          |                      |
        |   DeviceClass    |  - - -   |   DeviceState        |
-       |                  |          |                      |
+       |     class_init   |          |      instance_init   |
        +---------+--------+          +---------+------------+
                  |                             |
                  |                             |
@@ -66,7 +66,7 @@ So this is a class hirerach
        +---------+--------+          +---------+------------+
        |                  |          |                      |
        |   PCIDeviceClass |  - - -   |   PCIDevice          |
-       |                  |          |                      |
+       |     class_init   |          |      instance_init   |
        +------------------+          +---------+------------+
                                                |
                                                |
@@ -75,7 +75,7 @@ So this is a class hirerach
                                      +----------------------+
                                      |                      |
                                      |   OHCIPCIState       |
-                                     |                      |
+                                     |      instance_init   |
                                      +----------------------+
 
 For Class, type_initialize() is used to do initialization.
@@ -84,11 +84,17 @@ type_initialize(TypeImpl *ti)
 	type_initialize(ti->parent)
 	ti->class_init()
 
-For Object, object_init_with_type() is used to do initialization.
+For Object, there are two stage initialization:
+a. object_init_with_type() is used for first stage
+b. device_set_realized() is used for second stage
 
 object_init_with_type(Object *obj, TypeImpl *ti)
 	object_init_with_type(obj, ti->parent)
 	ti->instance_init(obj)
+
+device_set_realized(Object *obj, bool value, Error **err)
+	DeviceClass *dc = DEVICE_GET_CLASS(dev)
+	dc->realize()
 
 2. Device <--> Bus
 ================================================================================
