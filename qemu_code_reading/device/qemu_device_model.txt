@@ -44,39 +44,40 @@ So this is a class hirerach
                  |
                  |
                  v
-       +------------------+          +----------------------+
-       |                  |          |                      |
-       |   ObjectClass    | <--------|    Object            |
-       |     class_init   |          |                      |
-       +------------------+          +---------+------------+
-                 |                             |
-                 |                             |
-                 |                             |
-                 |                             |
-                 v                             v
-       +------------------+          +---------+------------+
-       |                  |          |                      |
-       |   DeviceClass    |  - - -   |   DeviceState        |
-       |     class_init   |          |      instance_init   |
-       +---------+--------+          +---------+------------+
-                 |                             |
-                 |                             |
-                 |                             |
-                 v                             v
-       +---------+--------+          +---------+------------+
-       |                  |          |                      |
-       |   PCIDeviceClass |  - - -   |   PCIDevice          |
-       |     class_init   |          |      instance_init   |
-       +------------------+          +---------+------------+
-                                               |
-                                               |
-                                               |
-                                               v
-                                     +----------------------+
-                                     |                      |
-                                     |   OHCIPCIState       |
-                                     |      instance_init   |
-                                     +----------------------+
+       +------------------+                           +----------------------+
+       |                  |                           |                      |
+       |   ObjectClass    | <-------------------------|    Object            |
+       |     class_init   |                           |                      |
+       +------------------+                           +---------+------------+
+                 |                                              |
+                 |                                              |
+                 |                                              |
+                 |                                              |
+                 v                                              v
+       +------------------+                           +---------+------------+
+       |                  |                           |                      |
+       |   DeviceClass    |  ----------------------   |   DeviceState        |
+       |     class_init   |                           |      instance_init   |
+       |     realize      |  device_realize(default)  |                      |
+       +---------+--------+  could be overwrite by    +---------+------------+
+                 |           child class, pci_qdev_realize      |
+                 |                                              |
+                 |                                              |
+                 v                                              v
+       +---------+--------+                           +---------+------------+
+       |                  |                           |                      |
+       |   PCIDeviceClass |  ----------------------   |   PCIDevice          |
+       |     class_init   |                           |      instance_init   |
+       +------------------+                           +---------+------------+
+                                                                |
+                                                                |
+                                                                |
+                                                                v
+                                                      +----------------------+
+                                                      |                      |
+                                                      |   OHCIPCIState       |
+                                                      |      instance_init   |
+                                                      +----------------------+
 
 For Class, type_initialize() is used to do initialization.
 
