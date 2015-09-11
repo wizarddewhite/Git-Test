@@ -1,2 +1,253 @@
-1. Qemu Memory
-===============================================================
+1. memory_region_info
+================================================================================
+static const TypeInfo memory_region_info = {
+    .parent             = TYPE_OBJECT,
+    .name               = TYPE_MEMORY_REGION,
+    .instance_size      = sizeof(MemoryRegion),
+    .instance_init      = memory_region_initfn,
+    .instance_finalize  = memory_region_finalize,
+};
+
+1.1 memory_region_initfn, add property
+================================================================================
+static void memory_region_initfn(Object *obj)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+    ObjectProperty *op;
+
+    mr->ops = &unassigned_mem_ops;
+    mr->ram_addr = RAM_ADDR_INVALID;
+    mr->enabled = true;
+    mr->romd_mode = true;
+    mr->global_locking = true;
+    mr->destructor = memory_region_destructor_none;
+    QTAILQ_INIT(&mr->subregions);
+    QTAILQ_INIT(&mr->coalesced);
+
+    op = object_property_add(OBJECT(mr), "container",
+                             "link<" TYPE_MEMORY_REGION ">",
+                             memory_region_get_container,
+                             NULL, /* memory_region_set_container */
+                             NULL, NULL, &error_abort);
+    op->resolve = memory_region_resolve_container;
+
+    object_property_add(OBJECT(mr), "addr", "uint64",
+                        memory_region_get_addr,
+                        NULL, /* memory_region_set_addr */
+                        NULL, NULL, &error_abort);
+    object_property_add(OBJECT(mr), "priority", "uint32",
+                        memory_region_get_priority,
+                        NULL, /* memory_region_set_priority */
+                        NULL, NULL, &error_abort);
+    object_property_add_bool(OBJECT(mr), "may-overlap",
+                             memory_region_get_may_overlap,
+                             NULL, /* memory_region_set_may_overlap */
+                             &error_abort);
+    object_property_add(OBJECT(mr), "size", "uint64",
+                        memory_region_get_size,
+                        NULL, /* memory_region_set_size, */
+                        NULL, NULL, &error_abort);
+}
+
+0. data structure
+================================================================================
+
+0.1 TYPE_MEMORY_REGION
+================================================================================
+       +------------------+
+       |     TypeImpl     |
+       |                  |
+       |  +---------------+
+       |  |               |
+       |  |ObjectClass    |
+       |  |  class_init   |
+       +--+---------------+
+                 |         
+                 |         
+                 v                           struct MemoryRegion
+       +---------------------+               +------------------------+
+       |                     |               |ops                     |
+       |TYPE_MEMORY_REGION   |-------------->|  (MemoryRegionOps *)   |
+       |     class_init      |               +------------------------+
+       | memory_region_initfn|               |iommu_ops               |
+       +---------+-----------+               |  (MemoryRegionIOMMUOps)|
+                 |                           +------------------------+
+                                             |                        |
+                                             |                        |
+                                             +------------------------+
+
+0.1.1 MemoryRegion
+================================================================================
+
+          struct MemoryRegion
+          +------------------------+
+          |ops                     |
+          |  (MemoryRegionOps *)   |
+          +------------------------+
+          |iommu_ops               |
+          |  (MemoryRegionIOMMUOps)|
+          +------------------------+
+          |size                    |
+          |  (Int128)              |
+          +------------------------+
+          |addr                    |
+          |  (hwaddr)              |
+          +------------------------+
+          |ioeventfds              |
+          |(MemoryRegionIoeventfd*)|
+          +------------------------+
+
+
+0.2 address_space
+================================================================================
+
+    address_space(global)
+    +-------------------------------+
+    |tqh_last                       |
+    |tqh_first                      |
+    +-+-----------------------------+
+      |        
+      |   address_space_memory             address_space_io
+      |   (AddressSpace)                   (AddressSpace)
+      |   +------------------------+       +------------------------+
+      +-->|address_spaces_link     | ----->|address_spaces_link     |
+          |                        |       |                        |
+          +------------------------+       +------------------------+
+
+0.2.1 AddressSpace                                                                      
+================================================================================        
+                                                                                        
+    AddressSpace               
+    +-------------------------+
+    |name                     |
+    |   (char *)              |          FlatView (An array of FlatRange)
+    +-------------------------+          +----------------------+
+    |current_map              | -------->|nr                    |
+    |   (FlatView *)          |          |nr_allocated          |
+    +-------------------------+          |   (unsigned)         |         FlatRange             FlatRange
+    |                         |          +----------------------+         
+    |                         |          |ranges                | ------> +---------------------+---------------------+
+    |                         |          |   (FlatRange *)      |         |offset_in_region     |offset_in_region     |
+    |                         |          +----------------------+         |                     |                     |
+    |                         |                                           +---------------------+---------------------+
+    |                         |                                           |addr(AddrRange)      |addr(AddrRange)      |
+    |                         |                                           |    +----------------|    +----------------+
+    |                         |                                           |    |start (Int128)  |    |start (Int128)  |
+    |                         |                                           |    |size  (Int128)  |    |size  (Int128)  |
+    |                         |                                           +----+----------------+----+----------------+
+    |                         |                                           |mr                   |mr                   |
+    |                         |                                           | (MemoryRegion *)    | (MemoryRegion *)    |
+    |                         |                                           +---------------------+---------------------+
+    |                         |
+    |                         |
+    |                         |
+    |                         |          MemoryRegion(system_memory/system_io)
+    +-------------------------+          +----------------------+
+    |root                     |          |                      |
+    |   (MemoryRegion *)      | -------->|                      |
+    +-------------------------+          +----------------------+
+    |                         |
+    |                         |
+    +-------------------------+
+    |ioeventfd_nb             |
+    |   (int)                 |          MemoryRegionIoeventfd[]
+    |ioeventfds               |          +-------------------------+
+    |(MemoryRegionIoeventfd *)| -------->|addr(AddrRange)          |
+    +-------------------------+          |   +---------------------+
+    |                         |          |   | start (Int128)      |
+    |                         |          |   | size  (Int128)      |
+    |                         |          +---+---------------------+
+    |                         |          |match_data (bool)        |
+    |                         |          |data (uint64_t)          |
+    |                         |          +-------------------------+
+    |                         |          |e (EventNotifier *)      |
+    |                         |          |   +---------------------+
+    |                         |          |   |  rfd   (int)        |
+    |                         |          |   |  wfd   (int)        |
+    |                         |          +---+---------------------+
+    |                         |
+    |                         |
+    +-------------------------+
+    |dispatch_listener        |
+    |   (MemoryListener)      |
+    +-------------------------+
+    |dispatch                 |                                           
+    |next_dispatch            |                                           
+    | (AddressSpaceDispatch *)|                                           
+    |           |             |                                           
+    +-------------------------+                                           
+                |          ^                                              
+                v          |
+    AddressSpaceDispatch   |
+    +-------------------------+
+    |as                  --+  |
+    |   (AddressSpace *)      |
+    +-------------------------+
+    |map(PhysPageMap)         |         MemoryRegionSection[]
+    |   +---------------------+         +---------------------------+---------------------------+
+    |   |sections             |-------->|mr                         |mr                         |
+    |   |(MemoryRegionSection)|         |   (MemoryRegion *)        |   (MemoryRegion *)        |
+    |   +---------------------+         +---------------------------+---------------------------+
+    |   |sections_nb          |         |address_space              |address_space              |
+    |   |sections_nb_alloc    |         |   (AddressSpace *)        |   (AddressSpace *)        |
+    |   |   (unsigned)        |         +---------------------------+---------------------------+
+    |   +---------------------+         |size (Int128)              |size (Int128)              |
+    |   |                     |         +---------------------------+---------------------------+
+    |   |                     |         |offset_within_region       |offset_within_region       |
+    |   |                     |         |offset_within_address_space|offset_within_address_space|
+    |   |                     |         |   (hwaddr)                |   (hwaddr)                |
+    |   |                     |         +---------------------------+---------------------------+
+    |   |                     |
+    |   |                     |         PhysPageEntry[P_L2_SIZE]
+    |   +---------------------+         +-------------------------+
+    |   |nodes                | ------->|u32 skip:6               |
+    |   |  (Node *)           |         |u32 ptr:26               |
+    |   +---------------------+         +-------------------------+
+    |   |nodes_nb             |
+    |   |nodes_nb_alloc       |
+    |   |  (unsigned)         |
+    +---+---------------------+
+    |phys_map(PhysPageEntry)  |
+    |   +---------------------+
+    |   |u32 skip:6           |
+    |   |u32 ptr:26           |
+    +---+---------------------+
+
+
+
+
+
+
+0.3 memory_listeners
+================================================================================
+
+    memory_listeners(global)
+    +-------------------------------+
+    |tqh_last                       |
+    |tqh_first                      |
+    +-+-----------------------------+
+      |        
+      |   (MemoryListener)                 (MemoryListener)
+      |   +------------------------+       +------------------------+
+      +-->|link                    | ----->|link                    |
+          |                        |       |                        |
+          +------------------------+       +------------------------+
+
+0.3.1 MemoryListener
+================================================================================
+
+
+     MemoryListerner
+     +---------------------------+
+     |begin                      |
+     |commit                     |
+     +---------------------------+
+     |region_add                 |
+     |region_del                 |
+     +---------------------------+
+     |eventfd_add                |
+     |eventfd_del                |             AddressSpace
+     +---------------------------+             +--------------------+
+     |address_space_filter       | ----------> |                    |
+     |    (AddressSpace *)       |             |                    |
+     +---------------------------+             +--------------------+
