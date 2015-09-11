@@ -51,7 +51,7 @@ QemuOptsList qemu_device_opts = {
     },
 };
 
-2. Register the options
+2. Register the options, mostly called in main()
 ===============================================================
 
 2.1 qemu_add_opts(), register the opt list to vm_config_groups
@@ -121,3 +121,26 @@ static const QEMUOption *lookup_opt(int argc, char **argv,
 ===============================================================
 such as QEMU_OPTION_net, QEMU_OPTION_kernel
 
+0. data structure
+===============================================================
+
+0.1 vm configure groups
+===============================================================
+This array includes driver/device/net options
+
+
+static QemuOptsList *vm_config_groups[48];
+    +------------------------+
+    |name                    |
+    |implied_opt_name        |
+    |   (char *)             |
+    +------------------------+
+    |head                    |
+    | QTAILQ_HEAD(, QemuOpts)|
+    +------------------------+
+    |desc[]                  |
+    |   (QemuOptDesc)        |
+    +------------------------+
+    |                        |
+    |                        |
+    +------------------------+
