@@ -1,45 +1,32 @@
 PATH=/usr/bin:/usr/local/bin
-MAILDIR=/home/richard/Mail
+MAILDIR=$HOME/Mail
 DEFAULT=$HOME/Mail/inbox
 LOGFILE=/dev/null
 SHELL=/bin/bash
 
 #put mail for me to me
 :0:
-* ^(From|Cc|To).*weiyang
+* ^(From|Cc|To).*weiyang.kernel
 weiyang
-
-# powerkvm
-:0:
-* ^(From|Cc|To).*PowerKVM
-PowerKVM
-
-#kvm-cstl
-:0:
-* ^(From|Cc|To).*kvm-cstl
-kvm-cstl
-
 
 # linuxppc
 :0:
 * ^(From|Cc|To).*linuxppc-dev
 linuxppc-dev
 
-# ltc-china
-:0:
-* ^(From|Cc|To).*ltc-china
-ltc-china
-
 # kvm
 :0:
 * ^(From|Cc|To).*kvm
 kvm
 
-#ltc-interlock
 :0:
-* ^(From|Cc|To).*ltc-interlock
-ltc-interlock
+* ^(From|Cc|To).*linux-mm
+linux-mm
 
 :0:
-* ^(From|Cc|To).*autotest
-autotest
+* ^(From|Cc|To).*linux-pci
+linux-pci
+
+:0:
+* ^(From|Cc|To).*qemu-devel
+qemu-devel

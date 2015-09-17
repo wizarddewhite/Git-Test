@@ -45,13 +45,13 @@ set edit_headers=yes
 #leave number of lines to show mail list in pager mode
 set pager_index_lines=8
 #set signature
-set signature='echo "Richard Yang\nHelp you, Help me"|'
+set signature='echo "Wei Yang\nHelp you, Help me"|'
 
 # the mail list you subscribed, press 'L' to reply to list
 #subscribe shlug@googlegroups.com
 
-my_hdr From: Richard Yang<weiyang@linux.vnet.ibm.com>
-my_hdr Reply-To: Richard Yang<weiyang@linux.vnet.ibm.com>
+my_hdr From: Wei Yang<weiyang.kernel@gmail.com>
+my_hdr Reply-To: Wei Yang<weiyang.kernel@gmail.com>
 
 macro index G "!fetchmail -av"
 macro pager G "!fetchmail -av"
