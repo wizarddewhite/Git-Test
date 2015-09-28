@@ -860,7 +860,7 @@ int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops)
                           |           |                                 | |                                  /
                           |           |                                 | |                                 v
                           |           |                                 | | struct iommu_group; /sys/kernel/iommu_group/XXX
-                          |           |                                 | +--+-----------------------------+
+                          |           |                                 | +->+-----------------------------+
                           |           |                                 |    |devices                      | devices in this group
                           |           +---------------------------------+    |(list of struct iommu_device)|
                           |           |containter                       |    +-----------------------------+ 
