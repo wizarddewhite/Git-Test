@@ -313,3 +313,76 @@ int iommu_tce_clear_param_check(struct iommu_table *tbl,
 
 	return 0;
 }
+
+0. data structure
+================================================================================
+
+   struct vfio(this is a global variable); /dev/vfio/vfio 
+   +-----------------------------+    list of struct vfio_iommu_driver(registered by vfio_register_iommu_driver)
+   |iommu_drivers_list        ---|--> vfio_iommu_type1 --> iommu-vfio-powerpc
+   |                             |
+   +-----------------------------+    
+   |group_idr(struct idr)        |    struct vfio_group; /dev/vfio/XXX, XXX equals to iommu_group id
+   |group_list                ---|--> +---------------------------------+
+   | (list of struct vfio_group) |    |dev(struct device*)              | <-----------------------------------+
+   |                             |    |minor(int)                       |                                     |
+   |                             |    |                                 |                                     |
+   |                             |    |kref(struct kref)                |                                     |
+   +-----------------------------+    +---------------------------------+                                     |
+   |relsease_q                   |    |                                 |   struct vfio_device                |
+   |                             |    +---------------------------------+   one fd with vfio_device_ops       |
+   |                             |    |device_list                   ---|-->+-----------------------------+   |
+   |                             |    | (list of struct vfio_device)    |   |group                     ---|---+
+   +-----------------------------+    +---------------------------------+   | (struct vfio_group*)        |
+	                              |                                 |   +-----------------------------+
+	                              |                                 |   |ops                          | ---> vfio_pci_ops
+	                              |                                 |   |  (struct vfio_device_ops*)  |
+	                              |                                 |   +-----------------------------+
+                                      |                                 |   |dev                          | point to the real device
+                                      |                                 |   | (struct device*)            | like pdev->dev
+                                      |                                 |   +-----------------------------+  -----+
+                          +---------> |                                 |   |                             |       |        struct device
+                          |           |                                 |   |                             |       +------->+---------------+
+                          |           |                                 |   +-----------------------------+                |iommu_group    |
+                          |           +---------------------------------+                                                / |               |
+                          |           |iommu_group(struct iommu_group*) |                                               /  |               |
+                          |           |                              ---|-+                                    +-------+   +---------------+
+                          |           +---------------------------------+ |                                   /
+                          |           |                                 | |                                  /
+                          |           |                                 | |                                 v
+                          |           |                                 | | struct iommu_group; /sys/kernel/iommu_group/XXX
+                          |           |                                 | +->+-----------------------------+
+                          |           |                                 |    |devices                      | devices in this group
+                          |           +---------------------------------+    |(list of struct iommu_device)|
+                          |           |containter                       |    +-----------------------------+ 
+                          |     +-----|   (struct vfio_container*)      |    |id(int)                      | id equals to XXX
+                          |     |     +---------------------------------+    |                             |
+                          |     |                                            |                             |
+                          |     |                                            +-----------------------------+
+    struct vfio_container |     |
+                          |     v
+    +---------------------|-------+       
+    |group_list           |       |
+    | (list of struct vfio_group) |
+    +-----------------------------+    point to the iommu_driver
+    |iommu_driver                 | -> vfio_iommu_spapr_tce
+    |  (struct vfio_iommu_driver*)|
+    +-----------------------------+
+    |iommu_data                   | -> struct tce_container
+    |  (void *)                   |    +----------------------------------+
+    +-----------------------------+    |tables[]                          |
+                                       |     (struct iommu_tbl*)          |
+                                       +----------------------------------+
+                                       |enabled                           |
+                                       |v2                                |
+                                       |     (bool)                       |
+                                       +----------------------------------+
+                                       |group_list                        |
+                                       |(list of struct tce_iommu_group)  |
+                                       |     +----------------------------+
+                                       |     |grp (struct iommu_group*)   |
+                                       +-----+----------------------------+
+
+
+					Figure.0 tce vfio
+

@@ -552,6 +552,109 @@ static long pnv_pci_ioda2_setup_default_config(struct pnv_ioda_pe *pe)
 
 3.2.1 pnv_pci_ioda2_create_table()
 ================================================================================
+static long pnv_pci_ioda2_create_table(struct iommu_table_group *table_group,
+		int num, __u32 page_shift, __u64 window_size, __u32 levels,
+		struct iommu_table **ptbl)
+{
+	struct pnv_ioda_pe *pe = container_of(table_group, struct pnv_ioda_pe,
+			table_group);
+	int nid = pe->phb->hose->node;
+	__u64 bus_offset = num ? pe->tce_bypass_base : table_group->tce32_start;
+	long ret;
+	struct iommu_table *tbl;
+
+	tbl = pnv_pci_table_alloc(nid);
+	if (!tbl)
+		return -ENOMEM;
+
+	ret = pnv_pci_ioda2_table_alloc_pages(nid,
+			bus_offset, page_shift, window_size,
+			levels, tbl);
+	if (ret) {
+		iommu_free_table(tbl, "pnv");
+		return ret;
+	}
+
+	tbl->it_ops = &pnv_ioda2_iommu_ops;
+	if (pe->phb->ioda.tce_inval_reg)
+		tbl->it_type |= (TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE);
+
+	*ptbl = tbl;
+
+	return 0;
+}
+
+
+3.2.1.1 pnv_pci_table_alloc()
+================================================================================
+struct iommu_table *pnv_pci_table_alloc(int nid)
+{
+	struct iommu_table *tbl;
+
+	tbl = kzalloc_node(sizeof(struct iommu_table), GFP_KERNEL, nid);
+	INIT_LIST_HEAD_RCU(&tbl->it_group_list);
+
+	return tbl;
+}
+
+3.2.1.2 pnv_pci_ioda2_table_alloc_pages()
+================================================================================
+static long pnv_pci_ioda2_table_alloc_pages(int nid, __u64 bus_offset,
+		__u32 page_shift, __u64 window_size, __u32 levels,
+		struct iommu_table *tbl)
+{
+	void *addr;
+	unsigned long offset = 0, level_shift, total_allocated = 0;
+	const unsigned window_shift = ilog2(window_size);
+	unsigned entries_shift = window_shift - page_shift;
+	unsigned table_shift = max_t(unsigned, entries_shift + 3, PAGE_SHIFT);
+	const unsigned long tce_table_size = 1UL << table_shift;
+
+	if (!levels || (levels > POWERNV_IOMMU_MAX_LEVELS))
+		return -EINVAL;
+
+	if ((window_size > memory_hotplug_max()) || !is_power_of_2(window_size))
+		return -EINVAL;
+
+	/* Adjust direct table size from window_size and levels */
+	entries_shift = (entries_shift + levels - 1) / levels;
+	level_shift = entries_shift + 3;
+	level_shift = max_t(unsigned, level_shift, PAGE_SHIFT);
+
+	/* Allocate TCE table */
+	addr = pnv_pci_ioda2_table_do_alloc_pages(nid, level_shift,
+			levels, tce_table_size, &offset, &total_allocated);
+
+	/* addr==NULL means that the first level allocation failed */
+	if (!addr)
+		return -ENOMEM;
+
+	/*
+	 * First level was allocated but some lower level failed as
+	 * we did not allocate as much as we wanted,
+	 * release partially allocated table.
+	 */
+	if (offset < tce_table_size) {
+		pnv_pci_ioda2_table_do_free_pages(addr,
+				1ULL << (level_shift - 3), levels - 1);
+		return -ENOMEM;
+	}
+
+	/* Setup linux iommu table */
+	pnv_pci_setup_iommu_table(tbl, addr, tce_table_size, bus_offset,
+			page_shift);
+	tbl->it_level_size = 1ULL << (level_shift - 3);
+	tbl->it_indirect_levels = levels - 1;
+	tbl->it_allocated_size = total_allocated;
+
+	pr_devel("Created TCE table: ws=%08llx ts=%lx @%08llx\n",
+			window_size, tce_table_size, bus_offset);
+
+	return 0;
+}
+
+3.2.2 iommu_init_table()
+================================================================================
 struct iommu_table *iommu_init_table(struct iommu_table *tbl, int nid)
 {
 	unsigned long sz;
@@ -613,78 +716,7 @@ struct iommu_table *iommu_init_table(struct iommu_table *tbl, int nid)
 	return tbl;
 }
 
-3.2.1.1 pnv_pci_table_alloc()
-================================================================================
-struct iommu_table *pnv_pci_table_alloc(int nid)
-{
-	struct iommu_table *tbl;
-
-	tbl = kzalloc_node(sizeof(struct iommu_table), GFP_KERNEL, nid);
-	INIT_LIST_HEAD_RCU(&tbl->it_group_list);
-
-	return tbl;
-}
-
-3.2.1.2 pnv_pci_table_alloc()
-================================================================================
-static long pnv_pci_ioda2_table_alloc_pages(int nid, __u64 bus_offset,
-		__u32 page_shift, __u64 window_size, __u32 levels,
-		struct iommu_table *tbl)
-{
-	void *addr;
-	unsigned long offset = 0, level_shift, total_allocated = 0;
-	const unsigned window_shift = ilog2(window_size);
-	unsigned entries_shift = window_shift - page_shift;
-	unsigned table_shift = max_t(unsigned, entries_shift + 3, PAGE_SHIFT);
-	const unsigned long tce_table_size = 1UL << table_shift;
-
-	if (!levels || (levels > POWERNV_IOMMU_MAX_LEVELS))
-		return -EINVAL;
-
-	if ((window_size > memory_hotplug_max()) || !is_power_of_2(window_size))
-		return -EINVAL;
-
-	/* Adjust direct table size from window_size and levels */
-	entries_shift = (entries_shift + levels - 1) / levels;
-	level_shift = entries_shift + 3;
-	level_shift = max_t(unsigned, level_shift, PAGE_SHIFT);
-
-	/* Allocate TCE table */
-	addr = pnv_pci_ioda2_table_do_alloc_pages(nid, level_shift,
-			levels, tce_table_size, &offset, &total_allocated);
-
-	/* addr==NULL means that the first level allocation failed */
-	if (!addr)
-		return -ENOMEM;
-
-	/*
-	 * First level was allocated but some lower level failed as
-	 * we did not allocate as much as we wanted,
-	 * release partially allocated table.
-	 */
-	if (offset < tce_table_size) {
-		pnv_pci_ioda2_table_do_free_pages(addr,
-				1ULL << (level_shift - 3), levels - 1);
-		return -ENOMEM;
-	}
-
-	/* Setup linux iommu table */
-	pnv_pci_setup_iommu_table(tbl, addr, tce_table_size, bus_offset,
-			page_shift);
-	tbl->it_level_size = 1ULL << (level_shift - 3);
-	tbl->it_indirect_levels = levels - 1;
-	tbl->it_allocated_size = total_allocated;
-
-	pr_devel("Created TCE table: ws=%08llx ts=%lx @%08llx\n",
-			window_size, tce_table_size, bus_offset);
-
-	return 0;
-}
-
-3.2.2 iommu_init_table()
-================================================================================
-
-3.2.3 pnv_pci_ioda2_set_window()
+3.2.3 pnv_pci_ioda2_set_window(), set TVE in TVT
 ================================================================================
 static long pnv_pci_ioda2_set_window(struct iommu_table_group *table_group,
 		int num, struct iommu_table *tbl)
@@ -824,43 +856,8 @@ static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
 
 
 
-0.3 iommu_table
-================================================================================
-    iommu_table
-    +------------------------------+
-    |it_busno                      |
-    |   (unsigned long)            |
-    +------------------------------+
-    |it_offset                     |   offset between pci address / cpu address ?
-    |   (unsigned long)            |
-    +------------------------------+                                                TCE Table
-    |it_base                       |   tce table address -------------------------->+--------------------------------+
-    |it_size                       |   tce talbe size, how many pages               |                                |
-    |it_page_shift                 |   page size                                    +--------------------------------+
-    |   (unsigned long)            |                                                |                                |
-    +------------------------------+                                                +--------------------------------+
-    |it_map                        |                                                |                                |
-    |   (unsigned long*)           |                                                +--------------------------------+
-    +------------------------------+                                                |                                |
-    |pools                         |                                                +--------------------------------+
-    |   (struct iommu_pool)        |                                                |                                |
-    +------------------------------+                                                +--------------------------------+
-    |large_pool                    |
-    |   (struct iommu_pool)        |
-    +------------------------------+
-    |it_ops                        |
-    |   (struct iommu_table_ops *) |
-    +------------------------------+
 
-
-
-
-
-
-
-
-
-0.4 iommu_table_group (ioda2)
+0.3 iommu_table_group (ioda2)
 ================================================================================
                                      
  struct iommu_group *                
@@ -914,3 +911,47 @@ static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
             |    |it_ops                     |  =  pnv_ioda2_iommu_ops
             |    | (struct iommu_table_ops *)|
             +----+---------------------------+
+
+
+0.4 iommu_table
+================================================================================
+
+    iommu_table
+    +------------------------------+
+    |it_busno                      |
+    |   (unsigned long)            |
+    +------------------------------+
+    |it_offset                     |   offset between pci address / cpu address
+    |   (unsigned long)            |
+    +------------------------------+                                                TCE Table
+    |it_base                       |   tce table address -------------------------->+--------------------------------+
+    |                              |                                                |                                |
+    |it_indirect_levels            |                                                +--------------------------------+
+    |    it_size                   |   tce talbe size, how many entries(pages)      |                                |
+    |    it_level_size             |                                                +--------------------------------+
+    |                              |                                                |                                |
+    |                              |                                                +--------------------------------+
+    |it_page_shift                 |   page size used in dma space                  |                                |
+    |   (unsigned long)            |                                                +--------------------------------+
+    +------------------------------+                                                |                                |
+    |it_map                        |   a bitmap to dma space                        +--------------------------------+
+    |   (unsigned long*)           |
+    +------------------------------+
+    |it_ops                        |  =  pnv_ioda2_iommu_ops
+    |   (struct iommu_table_ops *) |
+    +------------------------------+
+    |nr_pools                      |  =  4 or 1
+    |   (unsigned long)            |
+    |poolsize                      |  =  page number of each pool
+    |   (unsigned long)            |
+    |pools[IOMMU_NR_POOLS]         |
+    |   (struct iommu_pool)        |
+    |   +--------------------------+
+    |   |start                     |
+    |   |end                       |  =  end is overlapped with next->start
+    |   |hint                      |
+    +---+--------------------------+
+    |large_pool                    |
+    |   (struct iommu_pool)        |
+    +------------------------------+
+
