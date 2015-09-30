@@ -95,8 +95,8 @@ static inline int slab_order(int size, int min_objects,
 		return get_order(size * MAX_OBJS_PER_PAGE) - 1;
 
 	printf("\t -- min_order:%d, obj_sized order:%d\n",
-		min_order, get_order(min_objects * size));
-	for (order = max(min_order, get_order(min_objects * size));
+		min_order, get_order(min_objects * size + reserved));
+	for (order = max(min_order, get_order(min_objects * size + reserved));
 			order <= max_order; order++) {
 
 		unsigned long slab_size = PAGE_SIZE << order;
