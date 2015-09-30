@@ -24,9 +24,6 @@
 #define MAX_ORDER 11
 #define MAX_OBJS_PER_PAGE	32767 /* since page.objects is u15 */
 
-#define  PAGE_SHIFT 12
-#define  PAGE_SIZE (1 << PAGE_SHIFT)
-
 int get_order(unsigned long size)
 {
 	int order;
@@ -97,18 +94,24 @@ static inline int slab_order(int size, int min_objects,
 	if (order_objects(min_order, size, reserved) > MAX_OBJS_PER_PAGE)
 		return get_order(size * MAX_OBJS_PER_PAGE) - 1;
 
-	for (order = max(min_order,
-				fls(min_objects * size - 1) - PAGE_SHIFT);
+	printf("\t -- min_order:%d, obj_sized order:%d\n",
+		min_order, get_order(min_objects * size));
+	for (order = max(min_order, get_order(min_objects * size));
 			order <= max_order; order++) {
 
 		unsigned long slab_size = PAGE_SIZE << order;
 
-		if (slab_size < min_objects * size + reserved)
+		printf("\t   order:%d ", order);
+
+		if (slab_size < min_objects * size + reserved) {
+			printf(", slab_size(0x%lx) < min_objects * size + reserved(0x%x)\n",
+					slab_size,  min_objects * size + reserved);
 			continue;
+		}
 
 		rem = (slab_size - reserved) % size;
 
-		printf("\t   order:%d, modulo:%d\n", order, rem);
+		printf(", waste:%d(%f)\n", rem, (double)rem/slab_size);
 		if (rem <= slab_size / fract_leftover)
 			break;
 
@@ -136,16 +139,16 @@ int calculate_order(int size, int reserved)
 	if (!min_objects)
 		min_objects = 4 * (fls(nr_cpu_ids) + 1);
 	max_objects = order_objects(slub_max_order, size, reserved);
-	printf(" --- min_objects %d, max_objects %d\n\n",
-		     min_objects, max_objects);
+	printf(" --- min_objects %d, max_objects %d, slub_max_order %d\n",
+		     min_objects, max_objects, slub_max_order);
 
 	min_objects = min(min_objects, max_objects);
-
+	printf("     smaller one is %d\n\n", min_objects);
 
 	while (min_objects > 1) {
 		fraction = 16;
 		while (fraction >= 4) {
-			printf(" --- Try with %d min_objects 1/%d waste ---\n",
+			printf("    --- Try with %d min_objects 1/%d waste ---\n",
 				min_objects, fraction);
 
 			order = slab_order(size, min_objects,
@@ -157,6 +160,7 @@ int calculate_order(int size, int reserved)
 		min_objects--;
 	}
 
+	printf("    --- Try with min_objects(1) max_order(%d) and tolerant total waste ---\n", slub_max_order);
 	/*
 	 * We were unable to place multiple objects in a slab. Now
 	 * lets see if we can place a single object there.
@@ -165,6 +169,7 @@ int calculate_order(int size, int reserved)
 	if (order <= slub_max_order)
 		return order;
 
+	printf("    --- Try with min_objects(1) max_order(%d) and tolerant total waste ---\n", MAX_ORDER);
 	/*
 	 * Doh this slab cannot be placed using slub_max_order.
 	 */

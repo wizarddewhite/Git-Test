@@ -19,12 +19,73 @@
 #include <string.h>
 #include "slub.h"
 
-int main()
+/* size is much smaller than slub_max_order and it is a fraction */
+void calculate_order_test1()
 {
 	int order;
+	int size = 512;
 
-	order = calculate_order(512, 0);
-	printf("# Order of %d byte is %d\n", 512, order);
+	/* no meta data */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 0);
+	order = calculate_order(size, 0);
+	printf("# Order is %d \n\n\n", order);
 
+	/* small meta data */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 10);
+	order = calculate_order(size, 10);
+	printf("# Order is %d \n\n\n", order);
+
+	/* meta data is half of size */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 256);
+	order = calculate_order(size, 256);
+	printf("# Order is %d \n\n\n", order);
+
+	/* meta data equals to size */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, size);
+	order = calculate_order(size, size);
+	printf("# Order is %d \n\n\n", order);
+}
+
+/* size equals to slub_max_order */
+void calculate_order_test2()
+{
+	int order;
+	int size = PAGE_SIZE << 3;
+
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 10);
+	order = calculate_order(size, 10);
+	printf("# Order is %d \n\n\n", order);
+}
+
+/* size is much smaller than slub_max_order, but it is a not fraction */
+void calculate_order_test3()
+{
+	int order;
+	int size = 371;
+
+	/* no meta data */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 0);
+	order = calculate_order(size, 0);
+	printf("# Order is %d \n\n\n", order);
+
+	/* small meta data */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 10);
+	order = calculate_order(size, 10);
+	printf("# Order is %d \n\n\n", order);
+
+	/* meta data is half of size */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, 256);
+	order = calculate_order(size, 256);
+	printf("# Order is %d \n\n\n", order);
+
+	/* meta data equals to size */
+	printf("# Calculate Order of 0x%x byte with 0x%x meta\n", size, size);
+	order = calculate_order(size, size);
+	printf("# Order is %d \n\n\n", order);
+}
+
+int main()
+{
+	calculate_order_test3();
 	return 0;
 }
