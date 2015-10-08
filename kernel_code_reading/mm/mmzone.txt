@@ -1179,6 +1179,7 @@ enum node_states {
       |   (unsigned long)            |
       +------------------------------+
       |present_pages                 |
+      |managed_pages                 |
       |   (unsigned long)            |
       +------------------------------+
       |percpu_drift_mark             |
@@ -1195,14 +1196,14 @@ enum node_states {
       +------------------------------+
       |inactive_ratio                |
       |   (unsigned int)             |
-      +------------------------------+
-      |free_area[MAX_ORDER]          |
+      +------------------------------+      The buddy system
+      |free_area[MAX_ORDER]  0...11  |
       |   (struct free_area)         |      page
       |   +--------------------------+      +-----------+
       |   |free_list[MIGRATE_TYPES]  |----->|lru        |
       |   |(struct list_head)        |      |           |
       |   +--------------------------+      +-----------+
-      |   |nr_free                   |
+      |   |nr_free                   |  number of available pages in this area
       |   |(unsigned long)           |
       |   |                          |
       +---+--------------------------+

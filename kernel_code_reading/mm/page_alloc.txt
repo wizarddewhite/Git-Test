@@ -444,6 +444,21 @@ struct zoneref *next_zones_zonelist(struct zoneref *z,
 
 2.6.2 buffered_rmqueue()
 ================================================================================
+
+2.6.3 prep_new_page()
+================================================================================
+
+2.7 memalloc_noio_flags()
+================================================================================
+
+2.8 __alloc_pages_slowpath()
+================================================================================
+
+2.9 kmemcheck_pagealloc_alloc()
+================================================================================
+
+3. buffered_rmqueue()
+================================================================================
 static inline
 struct page *buffered_rmqueue(struct zone *preferred_zone,
 			struct zone *zone, unsigned int order,
@@ -515,7 +530,7 @@ failed:
 	return NULL;
 }
 
-2.6.2.1 __rmqueue()
+3.1 __rmqueue()
 ================================================================================
 static struct page *__rmqueue(struct zone *zone, unsigned int order,
 						int migratetype)
@@ -547,7 +562,76 @@ retry_reserve:
 	return page;
 }
 
-2.6.2.2 __mod_zone_freepage_state()
+3.1.1 __rmqueue_smallest()
+================================================================================
+static inline
+struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
+						int migratetype)
+{
+	unsigned int current_order;
+	struct free_area *area;
+	struct page *page;
+
+	/* Find a page of the appropriate size in the preferred list */
+	for (current_order = order; current_order < MAX_ORDER; ++current_order) {
+		area = &(zone->free_area[current_order]);
+		if (list_empty(&area->free_list[migratetype]))
+			continue;
+
+		page = list_entry(area->free_list[migratetype].next,
+							struct page, lru);
+		list_del(&page->lru);
+		rmv_page_order(page);
+		area->nr_free--;
+		expand(zone, page, order, current_order, area, migratetype);
+		set_freepage_migratetype(page, migratetype);
+		return page;
+	}
+
+	return NULL;
+}
+
+3.1.1.1 rmv_page_order(), clear page order information
+================================================================================
+static inline void rmv_page_order(struct page *page)
+{
+	__ClearPageBuddy(page);
+	set_page_private(page, 0);
+}
+
+3.1.1.2 expand(), add back extended pages to lower buddy
+================================================================================
+static inline void expand(struct zone *zone, struct page *page,
+	int low, int high, struct free_area *area,
+	int migratetype)
+{
+	unsigned long size = 1 << high;
+
+	while (high > low) {
+		area--;
+		high--;
+		size >>= 1;
+		VM_BUG_ON_PAGE(bad_range(zone, &page[size]), &page[size]);
+
+		if (IS_ENABLED(CONFIG_DEBUG_PAGEALLOC) &&
+			debug_guardpage_enabled() &&
+			high < debug_guardpage_minorder()) {
+			/*
+			 * Mark as guard pages (or page), that will allow to
+			 * merge back to allocator when buddy will be freed.
+			 * Corresponding page table entries will not be touched,
+			 * pages will stay not present in virtual address space
+			 */
+			set_page_guard(zone, &page[size], high, migratetype);
+			continue;
+		}
+		list_add(&page[size].lru, &area->free_list[migratetype]);
+		area->nr_free++;
+		set_page_order(&page[size], high);
+	}
+}
+
+3.2 __mod_zone_freepage_state()
 ================================================================================
 static inline void __mod_zone_freepage_state(struct zone *zone, int nr_pages,
 					     int migratetype)
@@ -557,13 +641,13 @@ static inline void __mod_zone_freepage_state(struct zone *zone, int nr_pages,
 		__mod_zone_page_state(zone, NR_FREE_CMA_PAGES, nr_pages);
 }
 
-2.6.2.3 __mod_zone_page_state()
+3.3 __mod_zone_page_state()
 ================================================================================
 
-2.6.2.4 __count_zone_vm_events()
+3.4 __count_zone_vm_events()
 ================================================================================
 
-2.6.2.5 zone_statistics()
+3.5 zone_statistics()
 ================================================================================
 void zone_statistics(struct zone *preferred_zone, struct zone *z, gfp_t flags)
 {
@@ -580,21 +664,10 @@ void zone_statistics(struct zone *preferred_zone, struct zone *z, gfp_t flags)
 		__inc_zone_state(z, NUMA_OTHER);
 }
 
-2.6.3 prep_new_page()
+4. free_all_bootmem(), release free pages to the buddy allocator for 1st time
 ================================================================================
+; called by start_kernel->mm_init->mem_init
 
-2.7 memalloc_noio_flags()
-================================================================================
-
-2.8 __alloc_pages_slowpath()
-================================================================================
-
-2.9 kmemcheck_pagealloc_alloc()
-================================================================================
-
-3. free_all_bootmem(), release free pages to the buddy allocator
-================================================================================
-called by start_kernel->mm_init->mem_init
 unsigned long __init free_all_bootmem(void)
 {
 	unsigned long pages;
@@ -612,7 +685,7 @@ unsigned long __init free_all_bootmem(void)
 	return pages;
 }
 
-3.1 reset_all_zones_managed_pages() 
+4.1 reset_all_zones_managed_pages() 
 ================================================================================
 void __init reset_all_zones_managed_pages(void)
 {
@@ -627,7 +700,7 @@ void __init reset_all_zones_managed_pages(void)
 	reset_managed_pages_done = 1;
 }
 
-3.1.1 reset_node_managed_pages() 
+4.1.1 reset_node_managed_pages() 
 ================================================================================
 void reset_node_managed_pages(pg_data_t *pgdat)
 {
@@ -637,7 +710,7 @@ void reset_node_managed_pages(pg_data_t *pgdat)
 		z->managed_pages = 0;
 }
 
-3.2 free_low_memory_core_early()
+4.2 free_low_memory_core_early()
 ================================================================================
 static unsigned long __init free_low_memory_core_early(void)
 {
@@ -669,7 +742,7 @@ static unsigned long __init free_low_memory_core_early(void)
 	return count;
 }
 
-3.2.1 for_each_free_mem_range()
+4.2.1 for_each_free_mem_range()
 ================================================================================
 #define for_each_free_mem_range(i, nid, p_start, p_end, p_nid)		\
 	for_each_mem_range(i, &memblock.memory, &memblock.reserved,	\
@@ -684,7 +757,7 @@ static unsigned long __init free_low_memory_core_early(void)
 	     __next_mem_range(&i, nid, type_a, type_b,			\
 			      p_start, p_end, p_nid))
 
-3.2.1.1 __next_mem_range()
+4.2.1.1 __next_mem_range()
 ================================================================================
 void __init_memblock __next_mem_range(u64 *idx, int nid,
 				      struct memblock_type *type_a,
@@ -770,7 +843,7 @@ void __init_memblock __next_mem_range(u64 *idx, int nid,
 	*idx = ULLONG_MAX;
 }
 
-3.2.2 __free_memory_core()
+4.2.2 __free_memory_core(), free page with max order
 ================================================================================
 static unsigned long __init __free_memory_core(phys_addr_t start,
 				 phys_addr_t end)
@@ -803,13 +876,13 @@ static void __init __free_pages_memory(unsigned long start, unsigned long end)
 	}
 }
 
-3.2.2.1 pfn_to_page(), the flat version
+4.2.2.1 pfn_to_page(), the flat version
 ================================================================================
 /* memmap is virtually contiguous.  */
 #define __pfn_to_page(pfn)	(vmemmap + (pfn))
 #define __page_to_pfn(page)	(unsigned long)((page) - vmemmap)
 
-3.2.2.2 __free_pages_bootmem()
+4.2.2.2 __free_pages_bootmem()
 ================================================================================
 void __init __free_pages_bootmem(struct page *page, unsigned int order)
 {
@@ -831,5 +904,229 @@ void __init __free_pages_bootmem(struct page *page, unsigned int order)
 	__free_pages(page, order);
 }
 
-3.3 totalram_pages += pages
+4.3 totalram_pages += pages
+================================================================================
+
+5 __free_pages()
+================================================================================
+void __free_pages(struct page *page, unsigned int order)
+{
+	if (put_page_testzero(page)) {
+		if (order == 0)
+			free_hot_cold_page(page, false);
+		else
+			__free_pages_ok(page, order);
+	}
+}
+
+5.1 __free_pages_ok()
+================================================================================
+static void __free_pages_ok(struct page *page, unsigned int order)
+{
+	unsigned long flags;
+	int migratetype;
+	unsigned long pfn = page_to_pfn(page);
+
+	if (!free_pages_prepare(page, order))
+		return;
+
+	migratetype = get_pfnblock_migratetype(page, pfn);
+	local_irq_save(flags);
+	__count_vm_events(PGFREE, 1 << order);
+	set_freepage_migratetype(page, migratetype);
+	free_one_page(page_zone(page), page, pfn, order, migratetype);
+	local_irq_restore(flags);
+}
+
+5.1.1 free_pages_prepare()
+================================================================================
+static bool free_pages_prepare(struct page *page, unsigned int order)
+{
+	bool compound = PageCompound(page);
+	int i, bad = 0;
+
+	VM_BUG_ON_PAGE(PageTail(page), page);
+	VM_BUG_ON_PAGE(compound && compound_order(page) != order, page);
+
+	trace_mm_page_free(page, order);
+	kmemcheck_free_shadow(page, order);
+	kasan_free_pages(page, order);
+
+	if (PageAnon(page))
+		page->mapping = NULL;
+	bad += free_pages_check(page);
+	for (i = 1; i < (1 << order); i++) {
+		if (compound)
+			bad += free_tail_pages_check(page, page + i);
+		bad += free_pages_check(page + i);
+	}
+	if (bad)
+		return false;
+
+	reset_page_owner(page, order);
+
+	if (!PageHighMem(page)) {
+		debug_check_no_locks_freed(page_address(page),
+					   PAGE_SIZE << order);
+		debug_check_no_obj_freed(page_address(page),
+					   PAGE_SIZE << order);
+	}
+	arch_free_page(page, order);
+	kernel_map_pages(page, 1 << order, 0);
+
+	return true;
+}
+
+5.1.2 free_one_page()
+================================================================================
+static void free_one_page(struct zone *zone,
+				struct page *page, unsigned long pfn,
+				unsigned int order,
+				int migratetype)
+{
+	unsigned long nr_scanned;
+	spin_lock(&zone->lock);
+	nr_scanned = zone_page_state(zone, NR_PAGES_SCANNED);
+	if (nr_scanned)
+		__mod_zone_page_state(zone, NR_PAGES_SCANNED, -nr_scanned);
+
+	if (unlikely(has_isolate_pageblock(zone) ||
+		is_migrate_isolate(migratetype))) {
+		migratetype = get_pfnblock_migratetype(page, pfn);
+	}
+	__free_one_page(page, pfn, zone, order, migratetype);
+	spin_unlock(&zone->lock);
+}
+
+5.1.2.1 __free_one_page(), freeing function for a buddy system allocator
+================================================================================
+
+6 __free_one_page(), freeing function for a buddy system allocator
+================================================================================
+static inline void __free_one_page(struct page *page,
+		unsigned long pfn,
+		struct zone *zone, unsigned int order,
+		int migratetype)
+{
+	unsigned long page_idx;
+	unsigned long combined_idx;
+	unsigned long uninitialized_var(buddy_idx);
+	struct page *buddy;
+	int max_order = MAX_ORDER;
+
+	VM_BUG_ON(!zone_is_initialized(zone));
+	VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
+
+	VM_BUG_ON(migratetype == -1);
+	if (is_migrate_isolate(migratetype)) {
+		/*
+		 * We restrict max order of merging to prevent merge
+		 * between freepages on isolate pageblock and normal
+		 * pageblock. Without this, pageblock isolation
+		 * could cause incorrect freepage accounting.
+		 */
+		max_order = min(MAX_ORDER, pageblock_order + 1);
+	} else {
+		__mod_zone_freepage_state(zone, 1 << order, migratetype);
+	}
+
+	page_idx = pfn & ((1 << max_order) - 1);
+
+	VM_BUG_ON_PAGE(page_idx & ((1 << order) - 1), page);
+	VM_BUG_ON_PAGE(bad_range(zone, page), page);
+
+	while (order < max_order - 1) {
+		buddy_idx = __find_buddy_index(page_idx, order);
+		buddy = page + (buddy_idx - page_idx);
+		if (!page_is_buddy(page, buddy, order))
+			break;
+		/*
+		 * Our buddy is free or it is CONFIG_DEBUG_PAGEALLOC guard page,
+		 * merge with it and move up one order.
+		 */
+		if (page_is_guard(buddy)) {
+			clear_page_guard(zone, buddy, order, migratetype);
+		} else {
+			list_del(&buddy->lru);
+			zone->free_area[order].nr_free--;
+			rmv_page_order(buddy);
+		}
+		combined_idx = buddy_idx & page_idx;
+		page = page + (combined_idx - page_idx);
+		page_idx = combined_idx;
+		order++;
+	}
+	set_page_order(page, order);
+
+	/*
+	 * If this is not the largest possible page, check if the buddy
+	 * of the next-highest order is free. If it is, it's possible
+	 * that pages are being freed that will coalesce soon. In case,
+	 * that is happening, add the free page to the tail of the list
+	 * so it's less likely to be used soon and more likely to be merged
+	 * as a higher order page
+	 */
+	if ((order < MAX_ORDER-2) && pfn_valid_within(page_to_pfn(buddy))) {
+		struct page *higher_page, *higher_buddy;
+		combined_idx = buddy_idx & page_idx;
+		higher_page = page + (combined_idx - page_idx);
+		buddy_idx = __find_buddy_index(combined_idx, order + 1);
+		higher_buddy = higher_page + (buddy_idx - combined_idx);
+		if (page_is_buddy(higher_page, higher_buddy, order + 1)) {
+			list_add_tail(&page->lru,
+				&zone->free_area[order].free_list[migratetype]);
+			goto out;
+		}
+	}
+
+	list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
+out:
+	zone->free_area[order].nr_free++;
+}
+
+6.1 __find_buddy_index()
+================================================================================
+static inline unsigned long
+__find_buddy_index(unsigned long page_idx, unsigned int order)
+{
+	return page_idx ^ (1 << order);
+}
+
+6.2 page_is_buddy()
+================================================================================
+static inline int page_is_buddy(struct page *page, struct page *buddy,
+							unsigned int order)
+{
+	if (!pfn_valid_within(page_to_pfn(buddy)))
+		return 0;
+
+	if (page_is_guard(buddy) && page_order(buddy) == order) {
+		if (page_zone_id(page) != page_zone_id(buddy))
+			return 0;
+
+		VM_BUG_ON_PAGE(page_count(buddy) != 0, buddy);
+
+		return 1;
+	}
+
+	if (PageBuddy(buddy) && page_order(buddy) == order) {
+		/*
+		 * zone check is done late to avoid uselessly
+		 * calculating zone/node ids for pages that could
+		 * never merge.
+		 */
+		if (page_zone_id(page) != page_zone_id(buddy))
+			return 0;
+
+		VM_BUG_ON_PAGE(page_count(buddy) != 0, buddy);
+
+		return 1;
+	}
+	return 0;
+}
+
+6.3 clear_page_guard()
+================================================================================
+
+6.4 pfn_valid_within()
 ================================================================================
