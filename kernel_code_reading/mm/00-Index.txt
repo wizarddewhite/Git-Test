@@ -27,6 +27,14 @@ In this file, it focus on the page_alloc and page_free.
 
 1.5 mmzone.txt
 
+1.6 fork.txt vma.txt
+
+Each process has its own address space view, which is described by struct
+mm_struct, especially with the field struct vm_area_struct.
+
+fork.txt includes some functions on mm_struct init.
+vma.txt focus on helper functions on vm_area_struct.
+
 2. procfs and sysfs
 
 2.1 meminfo.txt

@@ -1,0 +1,339 @@
+1. mm_alloc(), allocate mm_struct and initialize it
+================================================================================
+struct mm_struct *mm_alloc(void)
+{
+	struct mm_struct *mm;
+
+	mm = allocate_mm();
+	if (!mm)
+		return NULL;
+
+	memset(mm, 0, sizeof(*mm));
+	return mm_init(mm, current);
+}
+
+1.1 allocate_mm(), allocate from slab
+================================================================================
+#define allocate_mm()	(kmem_cache_alloc(mm_cachep, GFP_KERNEL))
+
+1.2 mm_init()
+================================================================================
+static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
+{
+	mm->mmap = NULL;
+	mm->mm_rb = RB_ROOT;
+	mm->vmacache_seqnum = 0;
+	atomic_set(&mm->mm_users, 1);
+	atomic_set(&mm->mm_count, 1);
+	init_rwsem(&mm->mmap_sem);
+	INIT_LIST_HEAD(&mm->mmlist);
+	mm->core_state = NULL;
+	atomic_long_set(&mm->nr_ptes, 0);
+	mm_nr_pmds_init(mm);
+	mm->map_count = 0;
+	mm->locked_vm = 0;
+	mm->pinned_vm = 0;
+	memset(&mm->rss_stat, 0, sizeof(mm->rss_stat));
+	spin_lock_init(&mm->page_table_lock);
+	mm_init_cpumask(mm);
+	mm_init_aio(mm);
+	mm_init_owner(mm, p);
+	mmu_notifier_mm_init(mm);
+	clear_tlb_flush_pending(mm);
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE) && !USE_SPLIT_PMD_PTLOCKS
+	mm->pmd_huge_pte = NULL;
+#endif
+
+	if (current->mm) {
+		mm->flags = current->mm->flags & MMF_INIT_MASK;
+		mm->def_flags = current->mm->def_flags & VM_INIT_DEF_MASK;
+	} else {
+		mm->flags = default_dump_filter;
+		mm->def_flags = 0;
+	}
+
+	if (mm_alloc_pgd(mm))
+		goto fail_nopgd;
+
+	if (init_new_context(p, mm))
+		goto fail_nocontext;
+
+	return mm;
+
+fail_nocontext:
+	mm_free_pgd(mm);
+fail_nopgd:
+	free_mm(mm);
+	return NULL;
+}
+
+1.2.1 mm_init_cpumask()
+================================================================================
+static inline void mm_init_cpumask(struct mm_struct *mm)
+{
+#ifdef CONFIG_CPUMASK_OFFSTACK
+	mm->cpu_vm_mask_var = &mm->cpumask_allocation;
+#endif
+	cpumask_clear(mm->cpu_vm_mask_var);
+}
+
+1.2.2 mm_init_aio()
+================================================================================
+static void mm_init_aio(struct mm_struct *mm)
+{
+#ifdef CONFIG_AIO
+	spin_lock_init(&mm->ioctx_lock);
+	mm->ioctx_table = NULL;
+#endif
+}
+
+1.2.3 mm_init_owner()
+================================================================================
+static void mm_init_owner(struct mm_struct *mm, struct task_struct *p)
+{
+#ifdef CONFIG_MEMCG
+	mm->owner = p;
+#endif
+}
+
+1.2.4 mmu_notifier_mm_init()
+================================================================================
+static inline void mmu_notifier_mm_init(struct mm_struct *mm)
+{
+	mm->mmu_notifier_mm = NULL;
+}
+
+1.2.5 mm_alloc_pgd()
+================================================================================
+static inline int mm_alloc_pgd(struct mm_struct *mm)
+{
+	mm->pgd = pgd_alloc(mm);
+	if (unlikely(!mm->pgd))
+		return -ENOMEM;
+	return 0;
+}
+
+1.2.6 init_new_context(), arch dependent
+================================================================================
+
+2. copy_mm(), duplicate a mm_struct during fork
+================================================================================
+static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
+{
+	struct mm_struct *mm, *oldmm;
+	int retval;
+
+	tsk->min_flt = tsk->maj_flt = 0;
+	tsk->nvcsw = tsk->nivcsw = 0;
+#ifdef CONFIG_DETECT_HUNG_TASK
+	tsk->last_switch_count = tsk->nvcsw + tsk->nivcsw;
+#endif
+
+	tsk->mm = NULL;
+	tsk->active_mm = NULL;
+
+	/*
+	 * Are we cloning a kernel thread?
+	 *
+	 * We need to steal a active VM for that..
+	 */
+	oldmm = current->mm;
+	if (!oldmm)
+		return 0;
+
+	/* initialize the new vmacache entries */
+	vmacache_flush(tsk);
+
+	if (clone_flags & CLONE_VM) {
+		atomic_inc(&oldmm->mm_users);
+		mm = oldmm;
+		goto good_mm;
+	}
+
+	retval = -ENOMEM;
+	mm = dup_mm(tsk);
+	if (!mm)
+		goto fail_nomem;
+
+good_mm:
+	tsk->mm = mm;
+	tsk->active_mm = mm;
+	return 0;
+
+fail_nomem:
+	return retval;
+}
+
+2.1 dup_mm()
+================================================================================
+static struct mm_struct *dup_mm(struct task_struct *tsk)
+{
+	struct mm_struct *mm, *oldmm = current->mm;
+	int err;
+
+	mm = allocate_mm();
+	if (!mm)
+		goto fail_nomem;
+
+	memcpy(mm, oldmm, sizeof(*mm));
+
+	if (!mm_init(mm, tsk))
+		goto fail_nomem;
+
+	err = dup_mmap(mm, oldmm);
+	if (err)
+		goto free_pt;
+
+	mm->hiwater_rss = get_mm_rss(mm);
+	mm->hiwater_vm = mm->total_vm;
+
+	if (mm->binfmt && !try_module_get(mm->binfmt->module))
+		goto free_pt;
+
+	return mm;
+
+free_pt:
+	/* don't put binfmt in mmput, we haven't got module yet */
+	mm->binfmt = NULL;
+	mmput(mm);
+
+fail_nomem:
+	return NULL;
+}
+
+2.1.1 mm_init()
+================================================================================
+
+2.1.2 dup_mmap(), duplicate vm_area_struct
+================================================================================
+
+3 exit_mmap(), unmap the vm_area_struct
+================================================================================
+void exit_mmap(struct mm_struct *mm)
+{
+	struct mmu_gather tlb;
+	struct vm_area_struct *vma;
+	unsigned long nr_accounted = 0;
+
+	/* mm's last user has gone, and its about to be pulled down */
+	mmu_notifier_release(mm);
+
+	if (mm->locked_vm) {
+		vma = mm->mmap;
+		while (vma) {
+			if (vma->vm_flags & VM_LOCKED)
+				munlock_vma_pages_all(vma);
+			vma = vma->vm_next;
+		}
+	}
+
+	arch_exit_mmap(mm);
+
+	vma = mm->mmap;
+	if (!vma)	/* Can happen if dup_mmap() received an OOM */
+		return;
+
+	lru_add_drain();
+	flush_cache_mm(mm);
+	tlb_gather_mmu(&tlb, mm, 0, -1);
+	/* update_hiwater_rss(mm) here? but nobody should be looking */
+	/* Use -1 here to ensure all VMAs in the mm are unmapped */
+	unmap_vmas(&tlb, vma, 0, -1);
+
+	free_pgtables(&tlb, vma, FIRST_USER_ADDRESS, USER_PGTABLES_CEILING);
+	tlb_finish_mmu(&tlb, 0, -1);
+
+	/*
+	 * Walk the list again, actually closing and freeing it,
+	 * with preemption enabled, without holding any MM locks.
+	 */
+	while (vma) {
+		if (vma->vm_flags & VM_ACCOUNT)
+			nr_accounted += vma_pages(vma);
+		vma = remove_vma(vma);
+	}
+	vm_unacct_memory(nr_accounted);
+}
+
+3.1 mmu_notifier_release()
+================================================================================
+
+3.2 tlb_gather_mmu()
+================================================================================
+
+3.3 unmap_vmas()
+================================================================================
+
+3.4 free_pgtables()
+================================================================================
+
+3.5 tlb_finish_mmu()
+================================================================================
+
+3.6 remove_vma()
+================================================================================
+
+3.7 vm_unacct_memory()
+================================================================================
+
+0. data structure
+================================================================================
+
+0.1 mm_struct
+================================================================================
+
+ struct task_struct
+ +---------------------------+
+ |mm                         |
+ |active_mm                  |
+ |   (struct mm_struct *)    | <-----------+
+ +---------------------------+             |
+   |                                       |
+   |                                       |
+   |                                       |
+   |     struct mm_struct                  |
+   +---> +---------------------------+     |
+         |owner                      | ----+
+         |   (struct task_struct *)  |
+         +---------------------------+
+         |mmap                       |  ordered vma list
+         |   (struct vm_area_struct*)| ----->+---------------+       +---------------+
+         |                           |       |vma            | ----> |vma            | ----> 
+         |                           |       +---------------+       +---------------+
+         |                           |
+         |mm_rb                      |  vma rb-tree
+         |   (struct rb_root)        |
+         |map_count                  |
+         |   (int)                   |
+         +---------------------------+
+         |vmacache_seqnum            |
+         |   (u32)                   |
+         +---------------------------+
+         |mm_users                   |
+         |mm_count                   |
+         |   (atomic_t)              |
+         +---------------------------+
+         |mmap_sem                   |
+         |   (struct rw_semaphore)   |
+         +---------------------------+
+         |core_state                 |  coredumping support
+         |   (struct core_state *)   |
+         +---------------------------+
+         |nr_ptes                    |
+         |                           |
+         |   (atomic_long_t)         |
+         +---------------------------+
+         |total_vm	             |
+         |locked_vm                  |
+         |pinned_vm                  |
+         |shared_vm                  |
+         |exec_vm	             |
+         |stack_vm	             |
+         |   (unsigned long)         |
+         +---------------------------+
+         |                           |
+         |                           |
+         +---------------------------+
+         |pgd                        |
+         |   (pgd_t *)               |
+         +---------------------------+
