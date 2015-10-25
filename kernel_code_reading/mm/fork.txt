@@ -292,12 +292,13 @@ void exit_mmap(struct mm_struct *mm)
    |                                       |
    |                                       |
    |     struct mm_struct                  |
-   +---> +---------------------------+     |
-         |owner                      | ----+
-         |   (struct task_struct *)  |
-         +---------------------------+
-         |mmap                       |  ordered vma list
-         |   (struct vm_area_struct*)| ----->+---------------+       +---------------+
+   +---> +---------------------------+ <---|---------------------+
+         |owner                      | ----+                     |
+         |   (struct task_struct *)  |                           |
+         +---------------------------+                           |
+         |mmap                       |  ordered vma list         |
+         |   (struct vm_area_struct*)| ----->+---------------+   |   +---------------+
+         |                           |       |vm_mm          | --+   |vm_mm          |
          |                           |       |vma            | ----> |vma            | ----> 
          |                           |       +---------------+       +---------------+
          |                           |
