@@ -467,7 +467,7 @@ static void pgd_prepopulate_pmd(struct mm_struct *mm, pgd_t *pgd, pmd_t *pmds[])
          |                           |
          |   (atomic_long_t)         |
          +---------------------------+
-         |total_vm	             |
+         |total_vm	             |  total pages mapped
          |locked_vm                  |
          |pinned_vm                  |
          |shared_vm                  |
