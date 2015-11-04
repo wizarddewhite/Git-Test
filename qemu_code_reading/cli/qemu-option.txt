@@ -1,0 +1,254 @@
+1. qemu_opts_create(), create QemuOpts
+================================================================================
+QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
+                           int fail_if_exists, Error **errp)
+{
+    QemuOpts *opts = NULL;
+
+    if (id) {
+        if (!id_wellformed(id)) {
+            error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "id",
+                       "an identifier");
+#if 0 /* conversion from qerror_report() to error_set() broke this: */
+            error_printf_unless_qmp("Identifiers consist of letters, digits, '-', '.', '_', starting with a letter.\n");
+#endif
+            return NULL;
+        }
+        opts = qemu_opts_find(list, id);
+        if (opts != NULL) {
+            if (fail_if_exists && !list->merge_lists) {
+                error_setg(errp, "Duplicate ID '%s' for %s", id, list->name);
+                return NULL;
+            } else {
+                return opts;
+            }
+        }
+    } else if (list->merge_lists) {
+        opts = qemu_opts_find(list, NULL);
+        if (opts) {
+            return opts;
+        }
+    }
+    opts = g_malloc0(sizeof(*opts));
+    opts->id = g_strdup(id);
+    opts->list = list;
+    loc_save(&opts->loc);
+    QTAILQ_INIT(&opts->head);
+    QTAILQ_INSERT_TAIL(&list->head, opts, next);
+    return opts;
+}
+
+1.1 id_wellformed(), start with alpha, follow with alpha/num and -._
+================================================================================
+bool id_wellformed(const char *id)
+{
+    int i;
+
+    if (!qemu_isalpha(id[0])) {
+        return false;
+    }
+    for (i = 1; id[i]; i++) {
+        if (!qemu_isalnum(id[i]) && !strchr("-._", id[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+2. qemu_opts_del(), delete QemuOpts
+================================================================================
+void qemu_opts_del(QemuOpts *opts)
+{
+    QemuOpt *opt;
+
+    if (opts == NULL) {
+        return;
+    }
+
+    for (;;) {
+        opt = QTAILQ_FIRST(&opts->head);
+        if (opt == NULL)
+            break;
+        qemu_opt_del(opt);
+    }
+    QTAILQ_REMOVE(&opts->list->head, opts, next);
+    g_free(opts->id);
+    g_free(opts);
+}
+
+2.1 qemu_opt_del()
+================================================================================
+static void qemu_opt_del(QemuOpt *opt)
+{
+    QTAILQ_REMOVE(&opt->opts->head, opt, next);
+    g_free(opt->name);
+    g_free(opt->str);
+    g_free(opt);
+}
+
+3. qemu_opt_set(), create and set QemuOpt
+================================================================================
+void qemu_opt_set(QemuOpts *opts, const char *name, const char *value,
+                  Error **errp)
+{
+    opt_set(opts, name, value, false, errp);
+}
+
+3.1 opt_set()
+================================================================================
+static void opt_set(QemuOpts *opts, const char *name, const char *value,
+                    bool prepend, Error **errp)
+{
+    QemuOpt *opt;
+    const QemuOptDesc *desc;
+    Error *local_err = NULL;
+
+    desc = find_desc_by_name(opts->list->desc, name);
+    if (!desc && !opts_accepts_any(opts)) {
+        error_setg(errp, QERR_INVALID_PARAMETER, name);
+        return;
+    }
+
+    opt = g_malloc0(sizeof(*opt));
+    opt->name = g_strdup(name);
+    opt->opts = opts;
+    if (prepend) {
+        QTAILQ_INSERT_HEAD(&opts->head, opt, next);
+    } else {
+        QTAILQ_INSERT_TAIL(&opts->head, opt, next);
+    }
+    opt->desc = desc;
+    opt->str = g_strdup(value);
+    qemu_opt_parse(opt, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        qemu_opt_del(opt);
+    }
+}
+
+3.1.1 qemu_opt_parse()
+================================================================================
+static void qemu_opt_parse(QemuOpt *opt, Error **errp)
+{
+    if (opt->desc == NULL)
+        return;
+
+    switch (opt->desc->type) {
+    case QEMU_OPT_STRING:
+        /* nothing */
+        return;
+    case QEMU_OPT_BOOL:
+        parse_option_bool(opt->name, opt->str, &opt->value.boolean, errp);
+        break;
+    case QEMU_OPT_NUMBER:
+        parse_option_number(opt->name, opt->str, &opt->value.uint, errp);
+        break;
+    case QEMU_OPT_SIZE:
+        parse_option_size(opt->name, opt->str, &opt->value.uint, errp);
+        break;
+    default:
+        abort();
+    }
+}
+
+4. qemu_opt_get()
+================================================================================
+const char *qemu_opt_get(QemuOpts *opts, const char *name)
+{
+    QemuOpt *opt;
+
+    if (opts == NULL) {
+        return NULL;
+    }
+
+    opt = qemu_opt_find(opts, name);
+    if (!opt) {
+        const QemuOptDesc *desc = find_desc_by_name(opts->list->desc, name);
+        if (desc && desc->def_value_str) {
+            return desc->def_value_str;
+        }
+    }
+    return opt ? opt->str : NULL;
+}
+
+4.1 qemu_opt_find(), find by name
+================================================================================
+QemuOpt *qemu_opt_find(QemuOpts *opts, const char *name)
+{
+    QemuOpt *opt;
+
+    QTAILQ_FOREACH_REVERSE(opt, &opts->head, QemuOptHead, next) {
+        if (strcmp(opt->name, name) != 0)
+            continue;
+        return opt;
+    }
+    return NULL;
+}
+
+0. Data Structure
+================================================================================
+0.1. QemuOptsList
+================================================================================
+
+    QemuOptsList
+    +---------------------------------+ <------------------+
+    |name                             | "chardev"          |
+    |implied_opt_name                 |                    |
+    |   (char *)                      |                    |
+    +---------------------------------+                    |
+    |desc[]                           |                    |
+    |   (QemuOptDesc)                 |                    |
+    |   +-----------------------------+                    |
+    |   |name                         | "localaddr"        |
+    |   |help                         |                    |
+    |   |def_value_str                |                    |
+    |   |   (char *)                  |                    |
+    |   +-----------------------------+                    |
+    |   |type                         |                    |
+    |   |   (QemuOptType)             |                    |
+    +---+-----------------------------+                    |
+    |                                 |                    |
+    |                                 |                    |
+    +---------------------------------+                    |
+    |head                             |                    |
+    | QTAILQ_HEAD(, QemuOpts)         |                    |
+    +---------------------------------+                    |
+       |                                                   |
+       |      QemuOpts                                     |
+       |      +------------------------------------+ <-----|--------+
+       |      |list                                | ------+        |
+       |      |   (QemuOptsList *)                 |                |
+       |      +------------------------------------+                |
+       +----->|next                                |                |
+              | QTAILQ_ENTRY(, QemuOpts)           |                |
+              +------------------------------------+                |
+              |id                                  |                |
+              |   (char *)                         |                |
+              +------------------------------------+                |
+              |loc                                 |                |
+              |   (Location)                       |                |
+              +------------------------------------+                |
+              |head                                |                |
+              | QTAILQ_HEAD(, QemuOptHead, QemuOpt)|                |
+              +------------------------------------+                |
+                 |                                                  |
+                 |                                                  |
+                 |                                                  |
+	         |     QemuOpt                                      |
+                 |     +----------------------------------+         |
+                 |     |opts                              | --------+
+                 |     |   (QemuOpts *)                   |
+                 |     +----------------------------------+
+                 +---->|next                              |
+                       |   (QTAILQ_ENTRY(QemuOpt))        |
+                       +----------------------------------+
+                       |name                              |
+                       |str                               |
+                       |   (char *)                       |
+                       +----------------------------------+
+                       |value                             |
+                       |   (union {boolean, uint})        |
+                       +----------------------------------+
+                       |desc                              |
+                       |   (QemuOptDesc *)                |
+                       +----------------------------------+
