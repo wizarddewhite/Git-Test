@@ -1,8 +1,8 @@
 1. define the qemu options
-===============================================================
+================================================================================
 
-1.1 qemu-options.def
-===============================================================
+1.1 qemu-options.def, generated from qemu-options.hx with scripts/hxtool
+================================================================================
 DEF("kernel", HAS_ARG, QEMU_OPTION_kernel, \
 "-kernel bzImage use 'bzImage' as kernel image\n", QEMU_ARCH_ALL)
 
@@ -13,7 +13,7 @@ Look at file *qemu-options-wrapper.h*.
 * generate option
 
 1.1.1 qemu_options[], an options list generated from qemu-options.def
-===============================================================
+================================================================================
 static const QEMUOption qemu_options[] = {
     { "h", 0, QEMU_OPTION_h, QEMU_ARCH_ALL },
 #define QEMU_OPTIONS_GENERATE_OPTIONS
@@ -21,8 +21,24 @@ static const QEMUOption qemu_options[] = {
     { NULL },
 };
 
+
+    QEMUOption
+    +-----------------------------+
+    |name                         |
+    |     (char *)                |
+    +-----------------------------+
+    |flags                        |
+    |     (int)                   |
+    +-----------------------------+
+    |index                        |
+    |     (int)                   |
+    +-----------------------------+
+    |arch_mask                    |
+    |     (uint32_t)              |
+    +-----------------------------+
+
 1.2 QemuOptList
-===============================================================
+================================================================================
 Each option is defined in QemuOptList structure.
 
 struct QemuOptsList {
@@ -36,7 +52,7 @@ struct QemuOptsList {
 The field desc is used to describe the sub-command in this option.
 
 1.2.2 one example of QemuOptList
-===============================================================
+================================================================================
 QemuOptsList qemu_device_opts = {
     .name = "device",
     .implied_opt_name = "driver",
@@ -52,10 +68,10 @@ QemuOptsList qemu_device_opts = {
 };
 
 2. Register the options, mostly called in main()
-===============================================================
+================================================================================
 
 2.1 qemu_add_opts(), register the opt list to vm_config_groups
-===============================================================
+================================================================================
 void qemu_add_opts(QemuOptsList *list)
 {
     int entries, i;
@@ -73,10 +89,10 @@ void qemu_add_opts(QemuOptsList *list)
 }
 
 3. parse options
-===============================================================
+================================================================================
 
 3.1 lookup_opt(), search the qemu_options return with the same name
-===============================================================
+================================================================================
 static const QEMUOption *lookup_opt(int argc, char **argv,
                                     const char **poptarg, int *poptind)
 {
@@ -118,29 +134,47 @@ static const QEMUOption *lookup_opt(int argc, char **argv,
 }
 
 3.2 do proper action based on the option type
-===============================================================
+================================================================================
 such as QEMU_OPTION_net, QEMU_OPTION_kernel
 
 0. data structure
-===============================================================
+================================================================================
 
 0.1 vm configure groups
-===============================================================
+================================================================================
 This array includes driver/device/net options
 
-
 static QemuOptsList *vm_config_groups[48];
+    +------------------------------------+
+    |qemu_drive_opts                     |
+    |                                    |
+    +------------------------------------+
+    |qemu_drive_opts                     |
+    |                                    |
+    +------------------------------------+
+    |qemu_device_opts                    |
+    |                                    |
+    +------------------------------------+
+    |...                                 |
+    |                                    |
+    +------------------------------------+
+
+
+0.2 QemuOptsList
+================================================================================
+
+    QemuOptsList
     +------------------------+
     |name                    |
     |implied_opt_name        |
     |   (char *)             |
-    +------------------------+
-    |head                    |
-    | QTAILQ_HEAD(, QemuOpts)|
     +------------------------+
     |desc[]                  |
     |   (QemuOptDesc)        |
     +------------------------+
     |                        |
     |                        |
+    +------------------------+
+    |head                    |
+    | QTAILQ_HEAD(, QemuOpts)|
     +------------------------+
