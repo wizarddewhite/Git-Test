@@ -1,0 +1,92 @@
+1. qemu_machine_opts
+================================================================================
+static QemuOptsList qemu_machine_opts = {
+    .name = "machine",
+    .implied_opt_name = "type",
+    .merge_lists = true,
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_machine_opts.head),
+    .desc = {
+        /*
+         * no elements => accept any
+         * sanity checking will happen later
+         * when setting machine properties
+         */
+        { }
+    },
+};
+
+
+DEF("machine", HAS_ARG, QEMU_OPTION_machine, \
+    "-machine [type=]name[,prop[=value][,...]]\n"
+    "                selects emulated machine ('-machine help' for list)\n"
+    "                property accel=accel1[:accel2[:...]] selects accelerator\n"
+    "                supported accelerators are kvm, xen, tcg (default: tcg)\n"
+    "                kernel_irqchip=on|off controls accelerated irqchip support\n"
+    "                vmport=on|off|auto controls emulation of vmport (default: auto)\n"
+    "                kvm_shadow_mem=size of KVM shadow MMU\n"
+    "                dump-guest-core=on|off include guest memory in a core dump (default=on)\n"
+    "                mem-merge=on|off controls memory merge support (default: on)\n"
+    "                iommu=on|off controls emulated Intel IOMMU (VT-d) support (default=off)\n"
+    "                aes-key-wrap=on|off controls support for AES key wrapping (default=on)\n"
+    "                dea-key-wrap=on|off controls support for DEA key wrapping (default=on)\n"
+    "                suppress-vmdesc=on|off disables self-describing migration (default=off)\n",
+    QEMU_ARCH_ALL)
+
+2. machine_parse()
+================================================================================
+ static MachineClass *machine_parse(const char *name)
+{
+    MachineClass *mc = NULL;
+    GSList *el, *machines = object_class_get_list(TYPE_MACHINE, false);
+
+    if (name) {
+        mc = find_machine(name);
+    }
+    if (mc) {
+        g_slist_free(machines);
+        return mc;
+    }
+    if (name && !is_help_option(name)) {
+        error_report("Unsupported machine type");
+        error_printf("Use -machine help to list supported machines!\n");
+    } else {
+        printf("Supported machines are:\n");
+        machines = g_slist_sort(machines, machine_class_cmp);
+        for (el = machines; el; el = el->next) {
+            MachineClass *mc = el->data;
+            if (mc->alias) {
+                printf("%-20s %s (alias of %s)\n", mc->alias, mc->desc, mc->name);
+            }
+            printf("%-20s %s%s\n", mc->name, mc->desc,
+                   mc->is_default ? " (default)" : "");
+        }
+    }
+
+    g_slist_free(machines);
+    exit(!name || !is_help_option(name));
+}
+
+2.1 find_machine()
+================================================================================
+static MachineClass *find_machine(const char *name)
+{
+    GSList *el, *machines = object_class_get_list(TYPE_MACHINE, false);
+    MachineClass *mc = NULL;
+
+    for (el = machines; el; el = el->next) {
+        MachineClass *temp = el->data;
+
+        if (!strcmp(temp->name, name)) {
+            mc = temp;
+            break;
+        }
+        if (temp->alias &&
+            !strcmp(temp->alias, name)) {
+            mc = temp;
+            break;
+        }
+    }
+
+    g_slist_free(machines);
+    return mc;
+}
