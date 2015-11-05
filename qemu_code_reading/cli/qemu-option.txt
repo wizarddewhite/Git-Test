@@ -185,6 +185,175 @@ QemuOpt *qemu_opt_find(QemuOpts *opts, const char *name)
     return NULL;
 }
 
+5. opts_parse()
+================================================================================
+static QemuOpts *opts_parse(QemuOptsList *list, const char *params,
+                            bool permit_abbrev, bool defaults, Error **errp)
+{
+    const char *firstname;
+    char value[1024], *id = NULL;
+    const char *p;
+    QemuOpts *opts;
+    Error *local_err = NULL;
+
+    assert(!permit_abbrev || list->implied_opt_name);
+    firstname = permit_abbrev ? list->implied_opt_name : NULL;
+
+    if (strncmp(params, "id=", 3) == 0) {
+        get_opt_value(value, sizeof(value), params+3);
+        id = value;
+    } else if ((p = strstr(params, ",id=")) != NULL) {
+        get_opt_value(value, sizeof(value), p+4);
+        id = value;
+    }
+
+    /*
+     * This code doesn't work for defaults && !list->merge_lists: when
+     * params has no id=, and list has an element with !opts->id, it
+     * appends a new element instead of returning the existing opts.
+     * However, we got no use for this case.  Guard against possible
+     * (if unlikely) future misuse:
+     */
+    assert(!defaults || list->merge_lists);
+    opts = qemu_opts_create(list, id, !defaults, &local_err);
+    if (opts == NULL) {
+        error_propagate(errp, local_err);
+        return NULL;
+    }
+
+    opts_do_parse(opts, params, firstname, defaults, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        qemu_opts_del(opts);
+        return NULL;
+    }
+
+    return opts;
+}
+
+5.1 qemu_opts_create(), create an QemuOpts and link to QemuOptsList or find one with matched "id"
+================================================================================
+QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
+                           int fail_if_exists, Error **errp)
+{
+    QemuOpts *opts = NULL;
+
+    if (id) {
+        if (!id_wellformed(id)) {
+            error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "id",
+                       "an identifier");
+#if 0 /* conversion from qerror_report() to error_set() broke this: */
+            error_printf_unless_qmp("Identifiers consist of letters, digits, '-', '.', '_', starting with a letter.\n");
+#endif
+            return NULL;
+        }
+        opts = qemu_opts_find(list, id);
+        if (opts != NULL) {
+            if (fail_if_exists && !list->merge_lists) {
+                error_setg(errp, "Duplicate ID '%s' for %s", id, list->name);
+                return NULL;
+            } else {
+                return opts;
+            }
+        }
+    } else if (list->merge_lists) {
+        opts = qemu_opts_find(list, NULL);
+        if (opts) {
+            return opts;
+        }
+    }
+    opts = g_malloc0(sizeof(*opts));
+    opts->id = g_strdup(id);
+    opts->list = list;
+    loc_save(&opts->loc);
+    QTAILQ_INIT(&opts->head);
+    QTAILQ_INSERT_TAIL(&list->head, opts, next);
+    return opts;
+}
+
+5.2 opts_do_parse()
+================================================================================
+static void opts_do_parse(QemuOpts *opts, const char *params,
+                          const char *firstname, bool prepend, Error **errp)
+{
+    char option[128], value[1024];
+    const char *p,*pe,*pc;
+    Error *local_err = NULL;
+
+    for (p = params; *p != '\0'; p++) {
+        pe = strchr(p, '=');
+        pc = strchr(p, ',');
+        if (!pe || (pc && pc < pe)) {
+            /* found "foo,more" */
+            if (p == params && firstname) {
+                /* implicitly named first option */
+                pstrcpy(option, sizeof(option), firstname);
+                p = get_opt_value(value, sizeof(value), p);
+            } else {
+                /* option without value, probably a flag */
+                p = get_opt_name(option, sizeof(option), p, ',');
+                if (strncmp(option, "no", 2) == 0) {
+                    memmove(option, option+2, strlen(option+2)+1);
+                    pstrcpy(value, sizeof(value), "off");
+                } else {
+                    pstrcpy(value, sizeof(value), "on");
+                }
+            }
+        } else {
+            /* found "foo=bar,more" */
+            p = get_opt_name(option, sizeof(option), p, '=');
+            if (*p != '=') {
+                break;
+            }
+            p++;
+            p = get_opt_value(value, sizeof(value), p);
+        }
+        if (strcmp(option, "id") != 0) {
+            /* store and parse */
+            opt_set(opts, option, value, prepend, &local_err);
+            if (local_err) {
+                error_propagate(errp, local_err);
+                return;
+            }
+        }
+        if (*p != ',') {
+            break;
+        }
+    }
+}
+
+5.2.1 opt_set(), create an QemuOpt and link to QemuOpts
+================================================================================
+static void opt_set(QemuOpts *opts, const char *name, const char *value,
+                    bool prepend, Error **errp)
+{
+    QemuOpt *opt;
+    const QemuOptDesc *desc;
+    Error *local_err = NULL;
+
+    desc = find_desc_by_name(opts->list->desc, name);
+    if (!desc && !opts_accepts_any(opts)) {
+        error_setg(errp, QERR_INVALID_PARAMETER, name);
+        return;
+    }
+
+    opt = g_malloc0(sizeof(*opt));
+    opt->name = g_strdup(name);
+    opt->opts = opts;
+    if (prepend) {
+        QTAILQ_INSERT_HEAD(&opts->head, opt, next);
+    } else {
+        QTAILQ_INSERT_TAIL(&opts->head, opt, next);
+    }
+    opt->desc = desc;
+    opt->str = g_strdup(value);
+    qemu_opt_parse(opt, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        qemu_opt_del(opt);
+    }
+}
+
 0. Data Structure
 ================================================================================
 0.1. QemuOptsList
@@ -192,14 +361,14 @@ QemuOpt *qemu_opt_find(QemuOpts *opts, const char *name)
 
     QemuOptsList
     +---------------------------------+ <------------------+
-    |name                             | "chardev"          |
+    |name                             | "smp-opts"         |
     |implied_opt_name                 |                    |
     |   (char *)                      |                    |
     +---------------------------------+                    |
     |desc[]                           |                    |
     |   (QemuOptDesc)                 |                    |
     |   +-----------------------------+                    |
-    |   |name                         | "localaddr"        |
+    |   |name                         | "cpus", "cores"    |
     |   |help                         |                    |
     |   |def_value_str                |                    |
     |   |   (char *)                  |                    |
@@ -242,7 +411,7 @@ QemuOpt *qemu_opt_find(QemuOpts *opts, const char *name)
                  +---->|next                              |
                        |   (QTAILQ_ENTRY(QemuOpt))        |
                        +----------------------------------+
-                       |name                              |
+                       |name                              | "cpus", "cores"
                        |str                               |
                        |   (char *)                       |
                        +----------------------------------+
