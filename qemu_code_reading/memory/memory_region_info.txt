@@ -49,6 +49,409 @@ static void memory_region_initfn(Object *obj)
                         NULL, NULL, &error_abort);
 }
 
+2. memory_region_init_io/ram/alias(), create a MemoryRegion with different type
+================================================================================
+void memory_region_init_io(MemoryRegion *mr,
+                           Object *owner,
+                           const MemoryRegionOps *ops,
+                           void *opaque,
+                           const char *name,
+                           uint64_t size)
+{
+    memory_region_init(mr, owner, name, size);
+    mr->ops = ops ? ops : &unassigned_mem_ops;
+    mr->opaque = opaque;
+    mr->terminates = true;
+}
+
+void memory_region_init_ram(MemoryRegion *mr,
+                            Object *owner,
+                            const char *name,
+                            uint64_t size,
+                            Error **errp)
+{
+    memory_region_init(mr, owner, name, size);
+    mr->ram = true;
+    mr->terminates = true;
+    mr->destructor = memory_region_destructor_ram;
+    mr->ram_addr = qemu_ram_alloc(size, mr, errp);
+    mr->dirty_log_mask = tcg_enabled() ? (1 << DIRTY_MEMORY_CODE) : 0;
+}
+
+2.1 memory_region_init()
+================================================================================
+void memory_region_init(MemoryRegion *mr,
+                        Object *owner,
+                        const char *name,
+                        uint64_t size)
+{
+    if (!owner) {
+        owner = container_get(qdev_get_machine(), "/unattached");
+    }
+
+    object_initialize(mr, sizeof(*mr), TYPE_MEMORY_REGION);
+    mr->size = int128_make64(size);
+    if (size == UINT64_MAX) {
+        mr->size = int128_2_64();
+    }
+    mr->name = g_strdup(name);
+
+    if (name) {
+        char *escaped_name = memory_region_escape_name(name);
+        char *name_array = g_strdup_printf("%s[*]", escaped_name);
+        object_property_add_child(owner, name_array, OBJECT(mr), &error_abort);
+        object_unref(OBJECT(mr));
+        g_free(name_array);
+        g_free(escaped_name);
+    }
+}
+
+2.1.1 memory_region_initfn, add property
+================================================================================
+
+2.2 qemu_ram_alloc(), mmap between guest and host
+================================================================================
+ram_addr_t qemu_ram_alloc(ram_addr_t size, MemoryRegion *mr, Error **errp)
+{
+    return qemu_ram_alloc_internal(size, size, NULL, NULL, false, mr, errp);
+}
+
+static
+ram_addr_t qemu_ram_alloc_internal(ram_addr_t size, ram_addr_t max_size,
+                                   void (*resized)(const char*,
+                                                   uint64_t length,
+                                                   void *host),
+                                   void *host, bool resizeable,
+                                   MemoryRegion *mr, Error **errp)
+{
+    RAMBlock *new_block;
+    ram_addr_t addr;
+    Error *local_err = NULL;
+
+    size = TARGET_PAGE_ALIGN(size);
+    max_size = TARGET_PAGE_ALIGN(max_size);
+    new_block = g_malloc0(sizeof(*new_block));
+    new_block->mr = mr;
+    new_block->resized = resized;
+    new_block->used_length = size;
+    new_block->max_length = max_size;
+    assert(max_size >= size);
+    new_block->fd = -1;
+    new_block->host = host;
+    if (host) {
+        new_block->flags |= RAM_PREALLOC;
+    }
+    if (resizeable) {
+        new_block->flags |= RAM_RESIZEABLE;
+    }
+    addr = ram_block_add(new_block, &local_err);
+    if (local_err) {
+        g_free(new_block);
+        error_propagate(errp, local_err);
+        return -1;
+    }
+    return addr;
+}
+
+2.2.1 ram_block_add()
+================================================================================
+static ram_addr_t ram_block_add(RAMBlock *new_block, Error **errp)
+{
+    RAMBlock *block;
+    RAMBlock *last_block = NULL;
+    ram_addr_t old_ram_size, new_ram_size;
+
+    old_ram_size = last_ram_offset() >> TARGET_PAGE_BITS;
+
+    qemu_mutex_lock_ramlist();
+    new_block->offset = find_ram_offset(new_block->max_length);
+
+    if (!new_block->host) {
+        if (xen_enabled()) {
+            xen_ram_alloc(new_block->offset, new_block->max_length,
+                          new_block->mr);
+        } else {
+            new_block->host = phys_mem_alloc(new_block->max_length,
+                                             &new_block->mr->align);
+            if (!new_block->host) {
+                error_setg_errno(errp, errno,
+                                 "cannot set up guest memory '%s'",
+                                 memory_region_name(new_block->mr));
+                qemu_mutex_unlock_ramlist();
+                return -1;
+            }
+            memory_try_enable_merging(new_block->host, new_block->max_length);
+        }
+    }
+
+    new_ram_size = MAX(old_ram_size,
+              (new_block->offset + new_block->max_length) >> TARGET_PAGE_BITS);
+    if (new_ram_size > old_ram_size) {
+        migration_bitmap_extend(old_ram_size, new_ram_size);
+    }
+    /* Keep the list sorted from biggest to smallest block.  Unlike QTAILQ,
+     * QLIST (which has an RCU-friendly variant) does not have insertion at
+     * tail, so save the last element in last_block.
+     */
+    QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
+        last_block = block;
+        if (block->max_length < new_block->max_length) {
+            break;
+        }
+    }
+    if (block) {
+        QLIST_INSERT_BEFORE_RCU(block, new_block, next);
+    } else if (last_block) {
+        QLIST_INSERT_AFTER_RCU(last_block, new_block, next);
+    } else { /* list is empty */
+        QLIST_INSERT_HEAD_RCU(&ram_list.blocks, new_block, next);
+    }
+    ram_list.mru_block = NULL;
+
+    /* Write list before version */
+    smp_wmb();
+    ram_list.version++;
+    qemu_mutex_unlock_ramlist();
+
+    new_ram_size = last_ram_offset() >> TARGET_PAGE_BITS;
+
+    if (new_ram_size > old_ram_size) {
+        int i;
+
+        /* ram_list.dirty_memory[] is protected by the iothread lock.  */
+        for (i = 0; i < DIRTY_MEMORY_NUM; i++) {
+            ram_list.dirty_memory[i] =
+                bitmap_zero_extend(ram_list.dirty_memory[i],
+                                   old_ram_size, new_ram_size);
+       }
+    }
+    cpu_physical_memory_set_dirty_range(new_block->offset,
+                                        new_block->used_length,
+                                        DIRTY_CLIENTS_ALL);
+
+    if (new_block->host) {
+        qemu_ram_setup_dump(new_block->host, new_block->max_length);
+        qemu_madvise(new_block->host, new_block->max_length, QEMU_MADV_HUGEPAGE);
+        qemu_madvise(new_block->host, new_block->max_length, QEMU_MADV_DONTFORK);
+        if (kvm_enabled()) {
+            kvm_setup_guest_memory(new_block->host, new_block->max_length);
+        }
+    }
+
+    return new_block->offset;
+}
+
+2.2.1.0 last_ram_offset()
+================================================================================
+ram_addr_t last_ram_offset(void)
+{
+    RAMBlock *block;
+    ram_addr_t last = 0;
+
+    rcu_read_lock();
+    QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
+        last = MAX(last, block->offset + block->max_length);
+    }
+    rcu_read_unlock();
+    return last;
+}
+
+2.2.1.1 find_ram_offset(), find the mingap to fit
+================================================================================
+static ram_addr_t find_ram_offset(ram_addr_t size)
+{
+    RAMBlock *block, *next_block;
+    ram_addr_t offset = RAM_ADDR_MAX, mingap = RAM_ADDR_MAX;
+
+    assert(size != 0); /* it would hand out same offset multiple times */
+
+    if (QLIST_EMPTY_RCU(&ram_list.blocks)) {
+        return 0;
+    }
+
+    QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
+        ram_addr_t end, next = RAM_ADDR_MAX;
+
+        end = block->offset + block->max_length;
+
+        QLIST_FOREACH_RCU(next_block, &ram_list.blocks, next) {
+            if (next_block->offset >= end) {
+                next = MIN(next, next_block->offset);
+            }
+        }
+        if (next - end >= size && next - end < mingap) {
+            offset = end;
+            mingap = next - end;
+        }
+    }
+
+    if (offset == RAM_ADDR_MAX) {
+        fprintf(stderr, "Failed to find gap of requested size: %" PRIu64 "\n",
+                (uint64_t)size);
+        abort();
+    }
+
+    return offset;
+}
+
+2.2.1.2 phys_mem_alloc(), alloc shared memory pages, mmap ANONYMOUS page
+================================================================================
+void *qemu_anon_ram_alloc(size_t size, uint64_t *alignment)
+{
+    size_t align = QEMU_VMALLOC_ALIGN;
+    size_t total = size + align - getpagesize();
+    void *ptr = mmap(0, total, PROT_READ | PROT_WRITE,
+                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    size_t offset = QEMU_ALIGN_UP((uintptr_t)ptr, align) - (uintptr_t)ptr;
+
+    if (ptr == MAP_FAILED) {
+        return NULL;
+    }
+
+    if (alignment) {
+        *alignment = align;
+    }
+    ptr += offset;
+    total -= offset;
+
+    if (offset > 0) {
+        munmap(ptr - offset, offset);
+    }
+    if (total > size) {
+        munmap(ptr + size, total - size);
+    }
+
+    trace_qemu_anon_ram_alloc(size, ptr);
+    return ptr;
+}
+
+2.2.1.3 memory_try_enable_merging()
+================================================================================
+static int memory_try_enable_merging(void *addr, size_t len)
+{
+    if (!machine_mem_merge(current_machine)) {
+        /* disabled by the user */
+        return 0;
+    }
+
+    return qemu_madvise(addr, len, QEMU_MADV_MERGEABLE);
+}
+
+2.2.1.4 migration_bitmap_extend(), migration related
+================================================================================
+void migration_bitmap_extend(ram_addr_t old, ram_addr_t new)
+{
+    /* called in qemu main thread, so there is
+     * no writing race against this migration_bitmap
+     */
+    if (migration_bitmap) {
+        unsigned long *old_bitmap = migration_bitmap, *bitmap;
+        bitmap = bitmap_new(new);
+
+        /* prevent migration_bitmap content from being set bit
+         * by migration_bitmap_sync_range() at the same time.
+         * it is safe to migration if migration_bitmap is cleared bit
+         * at the same time.
+         */
+        qemu_mutex_lock(&migration_bitmap_mutex);
+        bitmap_copy(bitmap, old_bitmap, old);
+        bitmap_set(bitmap, old, new - old);
+        atomic_rcu_set(&migration_bitmap, bitmap);
+        qemu_mutex_unlock(&migration_bitmap_mutex);
+        migration_dirty_pages += new - old;
+        synchronize_rcu();
+        g_free(old_bitmap);
+    }
+}
+
+2.2.1.5 bitmap_zero_extend(), extend dirty memory bitmap
+================================================================================
+static inline unsigned long *bitmap_zero_extend(unsigned long *old,
+                                                long old_nbits, long new_nbits)
+{
+    long new_len = BITS_TO_LONGS(new_nbits) * sizeof(unsigned long);
+    unsigned long *new = g_realloc(old, new_len);
+    bitmap_clear(new, old_nbits, new_nbits - old_nbits);
+    return new;
+}
+
+2.2.1.6 cpu_physical_memory_set_dirty_range()
+================================================================================
+static inline void cpu_physical_memory_set_dirty_range(ram_addr_t start,
+                                                       ram_addr_t length,
+                                                       uint8_t mask)
+{
+    unsigned long end, page;
+    unsigned long **d = ram_list.dirty_memory;
+
+    end = TARGET_PAGE_ALIGN(start + length) >> TARGET_PAGE_BITS;
+    page = start >> TARGET_PAGE_BITS;
+    if (likely(mask & (1 << DIRTY_MEMORY_MIGRATION))) {
+        bitmap_set_atomic(d[DIRTY_MEMORY_MIGRATION], page, end - page);
+    }
+    if (unlikely(mask & (1 << DIRTY_MEMORY_VGA))) {
+        bitmap_set_atomic(d[DIRTY_MEMORY_VGA], page, end - page);
+    }
+    if (unlikely(mask & (1 << DIRTY_MEMORY_CODE))) {
+        bitmap_set_atomic(d[DIRTY_MEMORY_CODE], page, end - page);
+    }
+    xen_modified_memory(start, length);
+}
+
+2.2.1.7 qemu_ram_setup_dump()
+================================================================================
+static void qemu_ram_setup_dump(void *addr, ram_addr_t size)
+{
+    int ret;
+
+    /* Use MADV_DONTDUMP, if user doesn't want the guest memory in the core */
+    if (!machine_dump_guest_core(current_machine)) {
+        ret = qemu_madvise(addr, size, QEMU_MADV_DONTDUMP);
+        if (ret) {
+            perror("qemu_madvise");
+            fprintf(stderr, "madvise doesn't support MADV_DONTDUMP, "
+                            "but dump_guest_core=off specified\n");
+        }
+    }
+}
+
+2.2.1.8 qemu_madvise()
+================================================================================
+int qemu_madvise(void *addr, size_t len, int advice)
+{
+    if (advice == QEMU_MADV_INVALID) {
+        errno = EINVAL;
+        return -1;
+    }
+#if defined(CONFIG_MADVISE)
+    return madvise(addr, len, advice);
+#elif defined(CONFIG_POSIX_MADVISE)
+    return posix_madvise(addr, len, advice);
+#else
+    errno = EINVAL;
+    return -1;
+#endif
+}
+
+2.2.1.9 kvm_setup_guest_memory()
+================================================================================
+void kvm_setup_guest_memory(void *start, size_t size)
+{
+    if (!kvm_has_sync_mmu()) {
+        int ret = qemu_madvise(start, size, QEMU_MADV_DONTFORK);
+
+        if (ret) {
+            perror("qemu_madvise");
+            fprintf(stderr,
+                    "Need MADV_DONTFORK in absence of synchronous KVM MMU\n");
+            exit(1);
+        }
+    }
+}
+
+2.3 memory_region_destructor_ram()
+================================================================================
+
 0. data structure
 ================================================================================
 
@@ -81,6 +484,9 @@ static void memory_region_initfn(Object *obj)
 
           struct MemoryRegion
           +------------------------+
+          |name                    |
+          |  (const char *)        |
+          +------------------------+
           |ops                     |
           |  (MemoryRegionOps *)   |
           +------------------------+
@@ -93,10 +499,76 @@ static void memory_region_initfn(Object *obj)
           |addr                    |
           |  (hwaddr)              |
           +------------------------+
+          |ram_addr                |
+          |  (ram_addr_t)          |
+          +------------------------+
           |ioeventfds              |
           |(MemoryRegionIoeventfd*)|
           +------------------------+
 
+0.1.2 MemoryRegion(RAM), ram_list
+================================================================================
+
+  ram_list (RAMList)
+  +------------------------------+
+  |dirty_memory[]                |
+  |    (unsigned long *)         |
+  +------------------------------+
+  |                              |
+  |                              |
+  +------------------------------+
+  |                              |
+  |                              |
+  +------------------------------+
+  |blocks                        |
+  |    QLIST_HEAD                |
+  +------------------------------+
+   |
+   |     RAMBlock                                                     RAMBlock
+   |     +---------------------------+                                +---------------------------+
+   +---> |next                       | -----------------------------> |next                       |
+         |    QLIST_ENTRY(RAMBlock)  |                                |    QLIST_ENTRY(RAMBlock)  |
+         +---------------------------+                                +---------------------------+
+         |offset                     |                                |offset                     |
+         |used_length                |                                |used_length                |
+         |max_length                 |                                |max_length                 |
+         |    (ram_addr_t)           |                                |    (ram_addr_t)           |
+         +---------------------------+                                +---------------------------+
+         |fd                         |                                |fd                         |
+         |    (int)                  |                                |    (int)                  |
+         +---------------------------+                                +---------------------------+
+         |host                       |  virtual address in host       |host                       |  
+         |    (uint8_t *)            |                                |    (uint8_t *)            |
+         +---------------------------+                                +---------------------------+
+         |mr                         |                                |mr                         |
+         |    (struct MemoryRegion *)|                                |    (struct MemoryRegion *)|
+         +---------------------------+                                +---------------------------+
+          |                                                            |
+          |                                                            |
+          |                                                            |
+          |   struct MemoryRegion                                      |   struct MemoryRegion
+          +-->+------------------------+                               +-->+------------------------+
+              |name                    |                                   |name                    |
+              |  (const char *)        |                                   |  (const char *)        |
+              +------------------------+                                   +------------------------+
+              |ops                     |                                   |ops                     |
+              |  (MemoryRegionOps *)   |                                   |  (MemoryRegionOps *)   |
+              +------------------------+                                   +------------------------+
+              |iommu_ops               |                                   |iommu_ops               |
+              |  (MemoryRegionIOMMUOps)|                                   |  (MemoryRegionIOMMUOps)|
+              +------------------------+                                   +------------------------+
+              |size                    |                                   |size                    |
+              |  (Int128)              |                                   |  (Int128)              |
+              +------------------------+                                   +------------------------+
+              |addr                    |  virtual address in guest         |addr                    |
+              |  (hwaddr)              |  (offset in RAMBlock)             |  (hwaddr)              |
+              +------------------------+                                   +------------------------+
+              |ram_addr                |                                   |ram_addr                |
+              |  (ram_addr_t)          |                                   |  (ram_addr_t)          |
+              +------------------------+                                   +------------------------+
+              |ioeventfds              |                                   |ioeventfds              |
+              |(MemoryRegionIoeventfd*)|                                   |(MemoryRegionIoeventfd*)|
+              +------------------------+                                   +------------------------+
 
 0.2 address_space
 ================================================================================
