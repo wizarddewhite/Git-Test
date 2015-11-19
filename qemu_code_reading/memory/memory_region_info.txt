@@ -452,6 +452,371 @@ void kvm_setup_guest_memory(void *start, size_t size)
 2.3 memory_region_destructor_ram()
 ================================================================================
 
+3. memory_region_add_subregion/overlap(offset)
+================================================================================
+; offset is the address in guest
+
+void memory_region_add_subregion(MemoryRegion *mr,
+                                 hwaddr offset,
+                                 MemoryRegion *subregion)
+{
+    subregion->may_overlap = false;
+    subregion->priority = 0;
+    memory_region_add_subregion_common(mr, offset, subregion);
+}
+
+void memory_region_add_subregion_overlap(MemoryRegion *mr,
+                                         hwaddr offset,
+                                         MemoryRegion *subregion,
+                                         int priority)
+{
+    subregion->may_overlap = true;
+    subregion->priority = priority;
+    memory_region_add_subregion_common(mr, offset, subregion);
+}
+
+3.1 memory_region_add_subregion_common()
+================================================================================
+static void memory_region_add_subregion_common(MemoryRegion *mr,
+                                               hwaddr offset,
+                                               MemoryRegion *subregion)
+{
+    assert(!subregion->container);
+    subregion->container = mr;
+    subregion->addr = offset;
+    memory_region_update_container_subregions(subregion);
+}
+
+3.1.1 memory_region_update_container_subregions()
+================================================================================
+static void memory_region_update_container_subregions(MemoryRegion *subregion)
+{
+    hwaddr offset = subregion->addr;
+    MemoryRegion *mr = subregion->container;
+    MemoryRegion *other;
+
+    memory_region_transaction_begin();
+
+    memory_region_ref(subregion);
+    QTAILQ_FOREACH(other, &mr->subregions, subregions_link) {
+        if (subregion->may_overlap || other->may_overlap) {
+            continue;
+        }
+        if (int128_ge(int128_make64(offset),
+                      int128_add(int128_make64(other->addr), other->size))
+            || int128_le(int128_add(int128_make64(offset), subregion->size),
+                         int128_make64(other->addr))) {
+            continue;
+        }
+#if 0
+        printf("warning: subregion collision %llx/%llx (%s) "
+               "vs %llx/%llx (%s)\n",
+               (unsigned long long)offset,
+               (unsigned long long)int128_get64(subregion->size),
+               subregion->name,
+               (unsigned long long)other->addr,
+               (unsigned long long)int128_get64(other->size),
+               other->name);
+#endif
+    }
+    QTAILQ_FOREACH(other, &mr->subregions, subregions_link) {
+        if (subregion->priority >= other->priority) {
+            QTAILQ_INSERT_BEFORE(other, subregion, subregions_link);
+            goto done;
+        }
+    }
+    QTAILQ_INSERT_TAIL(&mr->subregions, subregion, subregions_link);
+done:
+    memory_region_update_pending |= mr->enabled && subregion->enabled;
+    memory_region_transaction_commit();
+}
+
+3.1.1.1 memory_region_transaction_begin()
+================================================================================
+void memory_region_transaction_begin(void)
+{
+    qemu_flush_coalesced_mmio_buffer();
+    ++memory_region_transaction_depth;
+}
+
+3.1.1.2 memory_region_ref()
+================================================================================
+void memory_region_ref(MemoryRegion *mr)
+{
+    /* MMIO callbacks most likely will access data that belongs
+     * to the owner, hence the need to ref/unref the owner whenever
+     * the memory region is in use.
+     *
+     * The memory region is a child of its owner.  As long as the
+     * owner doesn't call unparent itself on the memory region,
+     * ref-ing the owner will also keep the memory region alive.
+     * Memory regions without an owner are supposed to never go away,
+     * but we still ref/unref them for debugging purposes.
+     */
+    Object *obj = OBJECT(mr);
+    if (obj && obj->parent) {
+        object_ref(obj->parent);
+    } else {
+        object_ref(obj);
+    }
+}
+
+3.1.1.3 memory_region_transaction_commit()
+================================================================================
+void memory_region_transaction_commit(void)
+{
+    AddressSpace *as;
+
+    assert(memory_region_transaction_depth);
+    --memory_region_transaction_depth;
+    if (!memory_region_transaction_depth) {
+        if (memory_region_update_pending) {
+            MEMORY_LISTENER_CALL_GLOBAL(begin, Forward);
+
+            QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+                address_space_update_topology(as);
+            }
+
+            MEMORY_LISTENER_CALL_GLOBAL(commit, Forward);
+        } else if (ioeventfd_update_pending) {
+            QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+                address_space_update_ioeventfds(as);
+            }
+        }
+        memory_region_clear_pending();
+   }
+}
+
+4. address_space_init()
+================================================================================
+void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)
+{
+    memory_region_ref(root);
+    memory_region_transaction_begin();
+    as->root = root;
+    as->current_map = g_new(FlatView, 1);
+    flatview_init(as->current_map);
+    as->ioeventfd_nb = 0;
+    as->ioeventfds = NULL;
+    QTAILQ_INSERT_TAIL(&address_spaces, as, address_spaces_link);
+    as->name = g_strdup(name ? name : "anonymous");
+    address_space_init_dispatch(as);
+    memory_region_update_pending |= root->enabled;
+    memory_region_transaction_commit();
+}
+
+4.1 memory_region_transaction_begin()
+================================================================================
+void memory_region_transaction_begin(void)
+{
+    qemu_flush_coalesced_mmio_buffer();
+    ++memory_region_transaction_depth;
+}
+
+4.2 flatview_init()
+================================================================================
+static void flatview_init(FlatView *view)
+{
+    view->ref = 1;
+    view->ranges = NULL;
+    view->nr = 0;
+    view->nr_allocated = 0;
+}
+
+4.3 add to address_spaces link
+================================================================================
+QTAILQ_INSERT_TAIL(&address_spaces, as, address_spaces_link);
+
+4.4 address_space_init_dispatch()
+================================================================================
+void address_space_init_dispatch(AddressSpace *as)
+{
+    as->dispatch = NULL;
+    as->dispatch_listener = (MemoryListener) {
+        .begin = mem_begin,
+        .commit = mem_commit,
+        .region_add = mem_add,
+        .region_nop = mem_add,
+        .priority = 0,
+    };
+    memory_listener_register(&as->dispatch_listener, as);
+}
+
+4.4.1 memory_listener_register
+================================================================================
+; add to memory_listeners and sorted with priority
+
+void memory_listener_register(MemoryListener *listener, AddressSpace *filter)
+{
+    MemoryListener *other = NULL;
+    AddressSpace *as;
+
+    listener->address_space_filter = filter;
+    if (QTAILQ_EMPTY(&memory_listeners)
+        || listener->priority >= QTAILQ_LAST(&memory_listeners,
+                                             memory_listeners)->priority) {
+        QTAILQ_INSERT_TAIL(&memory_listeners, listener, link);
+    } else {
+        QTAILQ_FOREACH(other, &memory_listeners, link) {
+            if (listener->priority < other->priority) {
+                break;
+            }
+        }
+        QTAILQ_INSERT_BEFORE(other, listener, link);
+    }
+
+    QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+        listener_add_address_space(listener, as);
+    }
+}
+
+4.4.1.1 listener_add_address_space(), iterated on every address_space
+================================================================================
+; iterate on every address_space on address_spaces_link
+; if the address_space is the same as listener->address_space_filter, do
+; MemoryListener->region_add on each FlatView's FlatRange
+
+static void listener_add_address_space(MemoryListener *listener,
+                                       AddressSpace *as)
+{
+    FlatView *view;
+    FlatRange *fr;
+
+    if (listener->address_space_filter
+        && listener->address_space_filter != as) {
+        return;
+    }
+
+    if (global_dirty_log) {
+        if (listener->log_global_start) {
+            listener->log_global_start(listener);
+        }
+    }
+
+    view = address_space_get_flatview(as);
+    FOR_EACH_FLAT_RANGE(fr, view) {
+        MemoryRegionSection section = {
+            .mr = fr->mr,
+            .address_space = as,
+            .offset_within_region = fr->offset_in_region,
+            .size = fr->addr.size,
+            .offset_within_address_space = int128_get64(fr->addr.start),
+            .readonly = fr->readonly,
+        };
+        if (listener->region_add) {
+            listener->region_add(listener, &section);
+        }
+    }
+    flatview_unref(view);
+}
+
+4.4.1 mem_add()/MemoryListener->region_add, called in listener_add_address_space
+================================================================================
+static void mem_add(MemoryListener *listener, MemoryRegionSection *section)
+{
+    AddressSpace *as = container_of(listener, AddressSpace, dispatch_listener);
+    AddressSpaceDispatch *d = as->next_dispatch;
+    MemoryRegionSection now = *section, remain = *section;
+    Int128 page_size = int128_make64(TARGET_PAGE_SIZE);
+
+    if (now.offset_within_address_space & ~TARGET_PAGE_MASK) {
+        uint64_t left = TARGET_PAGE_ALIGN(now.offset_within_address_space)
+                       - now.offset_within_address_space;
+
+        now.size = int128_min(int128_make64(left), now.size);
+        register_subpage(d, &now);
+    } else {
+        now.size = int128_zero();
+    }
+    while (int128_ne(remain.size, now.size)) {
+        remain.size = int128_sub(remain.size, now.size);
+        remain.offset_within_address_space += int128_get64(now.size);
+        remain.offset_within_region += int128_get64(now.size);
+        now = remain;
+        if (int128_lt(remain.size, page_size)) {
+            register_subpage(d, &now);
+        } else if (remain.offset_within_address_space & ~TARGET_PAGE_MASK) {
+            now.size = page_size;
+            register_subpage(d, &now);
+        } else {
+            now.size = int128_and(now.size, int128_neg(page_size));
+            register_multipage(d, &now);
+        }
+    }
+}
+
+4.4.1.1 register_subpage()
+================================================================================
+static void register_subpage(AddressSpaceDispatch *d, MemoryRegionSection *section)
+{
+    subpage_t *subpage;
+    hwaddr base = section->offset_within_address_space
+        & TARGET_PAGE_MASK;
+    MemoryRegionSection *existing = phys_page_find(d->phys_map, base,
+                                                   d->map.nodes, d->map.sections);
+    MemoryRegionSection subsection = {
+        .offset_within_address_space = base,
+        .size = int128_make64(TARGET_PAGE_SIZE),
+    };
+    hwaddr start, end;
+
+    assert(existing->mr->subpage || existing->mr == &io_mem_unassigned);
+
+    if (!(existing->mr->subpage)) {
+        subpage = subpage_init(d->as, base);
+        subsection.address_space = d->as;
+        subsection.mr = &subpage->iomem;
+        phys_page_set(d, base >> TARGET_PAGE_BITS, 1,
+                      phys_section_add(&d->map, &subsection));
+    } else {
+        subpage = container_of(existing->mr, subpage_t, iomem);
+    }
+    start = section->offset_within_address_space & ~TARGET_PAGE_MASK;
+    end = start + int128_get64(section->size) - 1;
+    subpage_register(subpage, start, end,
+                     phys_section_add(&d->map, section));
+}
+
+4.4.1.2 register_multipage()
+===============================================================================
+static void register_multipage(AddressSpaceDispatch *d,
+                               MemoryRegionSection *section)
+{
+    hwaddr start_addr = section->offset_within_address_space;
+    uint16_t section_index = phys_section_add(&d->map, section);
+    uint64_t num_pages = int128_get64(int128_rshift(section->size,
+                                                    TARGET_PAGE_BITS));
+
+    assert(num_pages);
+    phys_page_set(d, start_addr >> TARGET_PAGE_BITS, num_pages, section_index);
+}
+
+4.5 memory_region_transaction_commit()
+================================================================================
+void memory_region_transaction_commit(void)
+{
+    AddressSpace *as;
+
+    assert(memory_region_transaction_depth);
+    --memory_region_transaction_depth;
+    if (!memory_region_transaction_depth) {
+        if (memory_region_update_pending) {
+            MEMORY_LISTENER_CALL_GLOBAL(begin, Forward);
+
+            QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+                address_space_update_topology(as);
+            }
+
+            MEMORY_LISTENER_CALL_GLOBAL(commit, Forward);
+        } else if (ioeventfd_update_pending) {
+            QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+                address_space_update_ioeventfds(as);
+            }
+        }
+        memory_region_clear_pending();
+   }
+}
+
 0. data structure
 ================================================================================
 
@@ -479,34 +844,80 @@ void kvm_setup_guest_memory(void *start, size_t size)
                                              |                        |
                                              +------------------------+
 
-0.1.1 MemoryRegion
+0.1.1 MemoryRegion <-> MemoryRegion
 ================================================================================
+; B and C is subregion of A
 
-          struct MemoryRegion
+          struct MemoryRegion(A)
           +------------------------+
-          |name                    |
-          |  (const char *)        |
-          +------------------------+
-          |ops                     |
-          |  (MemoryRegionOps *)   |
-          +------------------------+
-          |iommu_ops               |
-          |  (MemoryRegionIOMMUOps)|
-          +------------------------+
-          |size                    |
-          |  (Int128)              |
-          +------------------------+
-          |addr                    |
-          |  (hwaddr)              |
-          +------------------------+
-          |ram_addr                |
-          |  (ram_addr_t)          |
-          +------------------------+
-          |ioeventfds              |
-          |(MemoryRegionIoeventfd*)|
-          +------------------------+
+          |name                    |<------+---------------------------------+
+          |  (const char *)        |       |                                 |
+          +------------------------+       |                                 |
+          |ops                     |       |                                 |
+          |  (MemoryRegionOps *)   |       |                                 |
+          +------------------------+       |                                 |
+          |iommu_ops               |       |                                 |
+          |  (MemoryRegionIOMMUOps)|       |                                 |
+          +------------------------+       |                                 |
+          |addr                    |       |                                 |
+          |  (hwaddr)              |       |                                 |
+          |size                    |       |                                 |
+          |  (Int128)              |       |                                 |
+          +------------------------+       |                                 |
+          |ram_addr                |       |                                 |
+          |  (ram_addr_t)          |       |                                 |
+          +------------------------+       |                                 |
+          |ioeventfds              |       |                                 |
+          |(MemoryRegionIoeventfd*)|       |                                 |
+          +------------------------+       |                                 |
+          |may_overlap             |       |                                 |
+          |  (bool)                |       |                                 |
+          |priority                |       |                                 |
+          |  (int)                 |       |                                 |
+          +------------------------+       |                                 |
+          |subregions              |       |                                 |
+          |QTAILQ_HEAD()           |       |                                 |
+          +------------------------+       |                                 |
+           |                               |                                 |
+           |                               |                                 |
+           |                               |                                 |
+           |  struct MemoryRegion(B)       |    struct memoryregion(C)       |      struct MemoryRegion(B)            
+           |  +------------------------+   |    +------------------------+   |      +------------------------+
+           |  |container               |---+    |container               |---+      |container               |
+           |  | (struct MemoryRegion *)|        | (struct MemoryRegion *)|          | (struct MemoryRegion *)|
+           |  +------------------------+        +------------------------+          +------------------------+
+           +->|subregions_link         |------->|subregions_link         |--------->|subregions_link         |
+              |  QTAILQ_ENTRY          |        |  QTAILQ_ENTRY          |          |  QTAILQ_ENTRY          |
+              +------------------------+        +------------------------+          +------------------------+
+                                                |name                    |
+                                                |  (const char *)        |
+                                                +------------------------+
+                                                |ops                     |
+                                                |  (MemoryRegionOps *)   |
+                                                +------------------------+
+                                                |iommu_ops               |
+                                                |  (MemoryRegionIOMMUOps)|
+                                                +------------------------+
+                                                |addr                    |
+                                                |  (hwaddr)              |
+                                                |size                    |
+                                                |  (Int128)              |
+                                                +------------------------+
+                                                |ram_addr                |
+                                                |  (ram_addr_t)          |
+                                                +------------------------+
+                                                |ioeventfds              |
+                                                |(MemoryRegionIoeventfd*)|
+                                                +------------------------+
+                                                |may_overlap             |
+                                                |  (bool)                |
+                                                |priority                |
+                                                |  (int)                 |
+                                                +------------------------+
 
-0.1.2 MemoryRegion(RAM), ram_list
+
+
+0.1.2 MemoryRegion(RAM) <-> RAMBlock/ram_list
 ================================================================================
 
   ram_list (RAMList)
@@ -557,11 +968,10 @@ void kvm_setup_guest_memory(void *start, size_t size)
               |iommu_ops               |                                   |iommu_ops               |
               |  (MemoryRegionIOMMUOps)|                                   |  (MemoryRegionIOMMUOps)|
               +------------------------+                                   +------------------------+
-              |size                    |                                   |size                    |
-              |  (Int128)              |                                   |  (Int128)              |
-              +------------------------+                                   +------------------------+
               |addr                    |  virtual address in guest         |addr                    |
               |  (hwaddr)              |  (offset in RAMBlock)             |  (hwaddr)              |
+              |size                    |                                   |size                    |
+              |  (Int128)              |                                   |  (Int128)              |
               +------------------------+                                   +------------------------+
               |ram_addr                |                                   |ram_addr                |
               |  (ram_addr_t)          |                                   |  (ram_addr_t)          |
@@ -615,8 +1025,8 @@ void kvm_setup_guest_memory(void *start, size_t size)
     |                         |
     |                         |          MemoryRegion(system_memory/system_io)
     +-------------------------+          +----------------------+
-    |root                     |          |                      |
-    |   (MemoryRegion *)      | -------->|                      |
+    |root                     |          |                      | root of a MemoryRegion
+    |   (MemoryRegion *)      | -------->|                      | tree
     +-------------------------+          +----------------------+
     |                         |
     |                         |
@@ -684,10 +1094,6 @@ void kvm_setup_guest_memory(void *start, size_t size)
     |   |u32 skip:6           |
     |   |u32 ptr:26           |
     +---+---------------------+
-
-
-
-
 
 
 0.3 memory_listeners

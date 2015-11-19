@@ -54,6 +54,47 @@ void memory_region_init(MemoryRegion *mr,
     }
 }
 
+1.1.1.1.1 memory_region_initfn()
+================================================================================
+static void memory_region_initfn(Object *obj)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+    ObjectProperty *op;
+
+    mr->ops = &unassigned_mem_ops;
+    mr->ram_addr = RAM_ADDR_INVALID;
+    mr->enabled = true;
+    mr->romd_mode = true;
+    mr->global_locking = true;
+    mr->destructor = memory_region_destructor_none;
+    QTAILQ_INIT(&mr->subregions);
+    QTAILQ_INIT(&mr->coalesced);
+
+    op = object_property_add(OBJECT(mr), "container",
+                             "link<" TYPE_MEMORY_REGION ">",
+                             memory_region_get_container,
+                             NULL, /* memory_region_set_container */
+                             NULL, NULL, &error_abort);
+    op->resolve = memory_region_resolve_container;
+
+    object_property_add(OBJECT(mr), "addr", "uint64",
+                        memory_region_get_addr,
+                        NULL, /* memory_region_set_addr */
+                        NULL, NULL, &error_abort);
+    object_property_add(OBJECT(mr), "priority", "uint32",
+                        memory_region_get_priority,
+                        NULL, /* memory_region_set_priority */
+                        NULL, NULL, &error_abort);
+    object_property_add_bool(OBJECT(mr), "may-overlap",
+                             memory_region_get_may_overlap,
+                             NULL, /* memory_region_set_may_overlap */
+                             &error_abort);
+    object_property_add(OBJECT(mr), "size", "uint64",
+                        memory_region_get_size,
+                        NULL, /* memory_region_set_size, */
+                        NULL, NULL, &error_abort);
+}
+
 1.1.1.2 memory_region_init_io()
 ================================================================================
 void memory_region_init_io(MemoryRegion *mr,
@@ -67,6 +108,47 @@ void memory_region_init_io(MemoryRegion *mr,
     mr->ops = ops ? ops : &unassigned_mem_ops;
     mr->opaque = opaque;
     mr->terminates = true;
+}
+
+1.1.1.2.1 memory_region_initfn()
+================================================================================
+static void memory_region_initfn(Object *obj)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+    ObjectProperty *op;
+
+    mr->ops = &unassigned_mem_ops;
+    mr->ram_addr = RAM_ADDR_INVALID;
+    mr->enabled = true;
+    mr->romd_mode = true;
+    mr->global_locking = true;
+    mr->destructor = memory_region_destructor_none;
+    QTAILQ_INIT(&mr->subregions);
+    QTAILQ_INIT(&mr->coalesced);
+
+    op = object_property_add(OBJECT(mr), "container",
+                             "link<" TYPE_MEMORY_REGION ">",
+                             memory_region_get_container,
+                             NULL, /* memory_region_set_container */
+                             NULL, NULL, &error_abort);
+    op->resolve = memory_region_resolve_container;
+
+    object_property_add(OBJECT(mr), "addr", "uint64",
+                        memory_region_get_addr,
+                        NULL, /* memory_region_set_addr */
+                        NULL, NULL, &error_abort);
+    object_property_add(OBJECT(mr), "priority", "uint32",
+                        memory_region_get_priority,
+                        NULL, /* memory_region_set_priority */
+                        NULL, NULL, &error_abort);
+    object_property_add_bool(OBJECT(mr), "may-overlap",
+                             memory_region_get_may_overlap,
+                             NULL, /* memory_region_set_may_overlap */
+                             &error_abort);
+    object_property_add(OBJECT(mr), "size", "uint64",
+                        memory_region_get_size,
+                        NULL, /* memory_region_set_size, */
+                        NULL, NULL, &error_abort);
 }
 
 1.1.1.3 address_space_init()
@@ -99,4 +181,30 @@ static void io_mem_init(void)
     memory_region_init_io(&io_mem_watch, NULL, &watch_mem_ops, NULL,
                           NULL, UINT64_MAX);
 }
+
+0. data structure
+================================================================================
+
+address_space
+ |
+ |
+ |   +-----------------------+       +-----------------------------+
+ +-->|address_space_memory   |------>|address_space_io             |
+     |(AddressSpace)         |       |(AddressSpace)               |
+     +-----------------------+       +-----------------------------+
+     |name                   |       |name                         |
+     |"memory"               |       |"io"                         |
+     +-----------------------+       +-----------------------------+
+     |root                   |       |root                         |
+     |(struct MemoryRegion *)|       |(struct MemoryRegion *)      |
+     +-----------------------+       +-----------------------------+
+
+
+
+
+      system_memory                   system_io              
+      (struct MemoryRegion*)          (struct MemoryRegion*) 
+
+
+
 
