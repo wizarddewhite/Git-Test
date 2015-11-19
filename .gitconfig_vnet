@@ -5,6 +5,7 @@
 	ui = true
 [sendemail]
 	smtpserver = /usr/bin/msmtp
+	confirm = always
 [diff]
 	tool = gvimdiff
 [difftool]
