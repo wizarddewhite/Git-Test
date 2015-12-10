@@ -1,0 +1,1118 @@
+1. kvm_init()
+================================================================================
+int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
+		  struct module *module)
+{
+	int r;
+	int cpu;
+
+	r = kvm_arch_init(opaque);
+	if (r)
+		goto out_fail;
+
+	/*
+	 * kvm_arch_init makes sure there's at most one caller
+	 * for architectures that support multiple implementations,
+	 * like intel and amd on x86.
+	 * kvm_arch_init must be called before kvm_irqfd_init to avoid creating
+	 * conflicts in case kvm is already setup for another implementation.
+	 */
+	r = kvm_irqfd_init();
+	if (r)
+		goto out_irqfd;
+
+	if (!zalloc_cpumask_var(&cpus_hardware_enabled, GFP_KERNEL)) {
+		r = -ENOMEM;
+		goto out_free_0;
+	}
+
+	r = kvm_arch_hardware_setup();
+	if (r < 0)
+		goto out_free_0a;
+
+	for_each_online_cpu(cpu) {
+		smp_call_function_single(cpu,
+				kvm_arch_check_processor_compat,
+				&r, 1);
+		if (r < 0)
+			goto out_free_1;
+	}
+
+	r = register_cpu_notifier(&kvm_cpu_notifier);
+	if (r)
+		goto out_free_2;
+	register_reboot_notifier(&kvm_reboot_notifier);
+
+	/* A kmem cache lets us meet the alignment requirements of fx_save. */
+	if (!vcpu_align)
+		vcpu_align = __alignof__(struct kvm_vcpu);
+	kvm_vcpu_cache = kmem_cache_create("kvm_vcpu", vcpu_size, vcpu_align,
+					   0, NULL);
+	if (!kvm_vcpu_cache) {
+		r = -ENOMEM;
+		goto out_free_3;
+	}
+
+	r = kvm_async_pf_init();
+	if (r)
+		goto out_free;
+
+	kvm_chardev_ops.owner = module;
+	kvm_vm_fops.owner = module;
+	kvm_vcpu_fops.owner = module;
+
+	r = misc_register(&kvm_dev);
+	if (r) {
+		pr_err("kvm: misc device register failed\n");
+		goto out_unreg;
+	}
+
+	register_syscore_ops(&kvm_syscore_ops);
+
+	kvm_preempt_ops.sched_in = kvm_sched_in;
+	kvm_preempt_ops.sched_out = kvm_sched_out;
+
+	r = kvm_init_debug();
+	if (r) {
+		pr_err("kvm: create debugfs files failed\n");
+		goto out_undebugfs;
+	}
+
+	r = kvm_vfio_ops_init();
+	WARN_ON(r);
+
+	return 0;
+
+out_undebugfs:
+	unregister_syscore_ops(&kvm_syscore_ops);
+	misc_deregister(&kvm_dev);
+out_unreg:
+	kvm_async_pf_deinit();
+out_free:
+	kmem_cache_destroy(kvm_vcpu_cache);
+out_free_3:
+	unregister_reboot_notifier(&kvm_reboot_notifier);
+	unregister_cpu_notifier(&kvm_cpu_notifier);
+out_free_2:
+out_free_1:
+	kvm_arch_hardware_unsetup();
+out_free_0a:
+	free_cpumask_var(cpus_hardware_enabled);
+out_free_0:
+	kvm_irqfd_exit();
+out_irqfd:
+	kvm_arch_exit();
+out_fail:
+	return r;
+}
+
+1.1 kvm_arch_init()
+================================================================================
+
+1.2 kvm_irqfd_init()
+================================================================================
+int kvm_irqfd_init(void)
+{
+	irqfd_cleanup_wq = create_singlethread_workqueue("kvm-irqfd-cleanup");
+	if (!irqfd_cleanup_wq)
+		return -ENOMEM;
+
+	return 0;
+}
+
+1.3 kvm_arch_hardware_setup()
+================================================================================
+
+1.4 kvm_arch_check_processor_compat()
+================================================================================
+
+1.5 register_cpu_notifier(&kvm_cpu_notifier)
+================================================================================
+
+1.6 register_reboot_notifier(&kvm_reboot_notifier)
+================================================================================
+
+1.7 misc_register(&kvm_dev), /dev/kvm 10 232
+================================================================================
+static struct file_operations kvm_chardev_ops = {
+	.unlocked_ioctl = kvm_dev_ioctl,
+	.compat_ioctl   = kvm_dev_ioctl,
+	.llseek		= noop_llseek,
+};
+
+1.7.1 kvm_dev_ioctl
+================================================================================
+static long kvm_dev_ioctl(struct file *filp,
+			  unsigned int ioctl, unsigned long arg)
+{
+	long r = -EINVAL;
+
+	switch (ioctl) {
+	case KVM_GET_API_VERSION:
+		if (arg)
+			goto out;
+		r = KVM_API_VERSION;
+		break;
+	case KVM_CREATE_VM:
+		r = kvm_dev_ioctl_create_vm(arg);
+		break;
+	case KVM_CHECK_EXTENSION:
+		r = kvm_vm_ioctl_check_extension_generic(NULL, arg);
+		break;
+	case KVM_GET_VCPU_MMAP_SIZE:
+		if (arg)
+			goto out;
+		r = PAGE_SIZE;     /* struct kvm_run */
+#ifdef CONFIG_X86
+		r += PAGE_SIZE;    /* pio data page */
+#endif
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+		r += PAGE_SIZE;    /* coalesced mmio ring page */
+#endif
+		break;
+	case KVM_TRACE_ENABLE:
+	case KVM_TRACE_PAUSE:
+	case KVM_TRACE_DISABLE:
+		r = -EOPNOTSUPP;
+		break;
+	default:
+		return kvm_arch_dev_ioctl(filp, ioctl, arg);
+	}
+out:
+	return r;
+}
+
+1.7.1.1 kvm_dev_ioctl_create_vm(), kvm_vm_fops
+================================================================================
+static int kvm_dev_ioctl_create_vm(unsigned long type)
+{
+	int r;
+	struct kvm *kvm;
+
+	kvm = kvm_create_vm(type);
+	if (IS_ERR(kvm))
+		return PTR_ERR(kvm);
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+	r = kvm_coalesced_mmio_init(kvm);
+	if (r < 0) {
+		kvm_put_kvm(kvm);
+		return r;
+	}
+#endif
+	r = anon_inode_getfd("kvm-vm", &kvm_vm_fops, kvm, O_RDWR | O_CLOEXEC);
+	if (r < 0)
+		kvm_put_kvm(kvm);
+
+	return r;
+}
+
+1.8 kvm_init_debug(), create debugfs for kvm
+================================================================================
+static int kvm_init_debug(void)
+{
+	int r = -EEXIST;
+	struct kvm_stats_debugfs_item *p;
+
+	kvm_debugfs_dir = debugfs_create_dir("kvm", NULL);
+	if (kvm_debugfs_dir == NULL)
+		goto out;
+
+	for (p = debugfs_entries; p->name; ++p) {
+		p->dentry = debugfs_create_file(p->name, 0444, kvm_debugfs_dir,
+						(void *)(long)p->offset,
+						stat_fops[p->kind]);
+		if (p->dentry == NULL)
+			goto out_dir;
+	}
+
+	return 0;
+
+out_dir:
+	debugfs_remove_recursive(kvm_debugfs_dir);
+out:
+	return r;
+}
+
+1.9 kvm_vfio_ops_init(), set kvm_device_ops_table
+================================================================================
+int kvm_vfio_ops_init(void)
+{
+	return kvm_register_device_ops(&kvm_vfio_ops, KVM_DEV_TYPE_VFIO);
+}
+
+2. kvm_chardev_ops(), /dev/kvm
+================================================================================
+static struct file_operations kvm_chardev_ops = {
+	.unlocked_ioctl = kvm_dev_ioctl,
+	.compat_ioctl   = kvm_dev_ioctl,
+	.llseek		= noop_llseek,
+};
+
+2.1 kvm_dev_ioctl()
+================================================================================
+static long kvm_dev_ioctl(struct file *filp,
+			  unsigned int ioctl, unsigned long arg)
+{
+	long r = -EINVAL;
+
+	switch (ioctl) {
+	case KVM_GET_API_VERSION:
+		if (arg)
+			goto out;
+		r = KVM_API_VERSION;
+		break;
+	case KVM_CREATE_VM:
+		r = kvm_dev_ioctl_create_vm(arg);
+		break;
+	case KVM_CHECK_EXTENSION:
+		r = kvm_vm_ioctl_check_extension_generic(NULL, arg);
+		break;
+	case KVM_GET_VCPU_MMAP_SIZE:
+		if (arg)
+			goto out;
+		r = PAGE_SIZE;     /* struct kvm_run */
+#ifdef CONFIG_X86
+		r += PAGE_SIZE;    /* pio data page */
+#endif
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+		r += PAGE_SIZE;    /* coalesced mmio ring page */
+#endif
+		break;
+	case KVM_TRACE_ENABLE:
+	case KVM_TRACE_PAUSE:
+	case KVM_TRACE_DISABLE:
+		r = -EOPNOTSUPP;
+		break;
+	default:
+		return kvm_arch_dev_ioctl(filp, ioctl, arg);
+	}
+out:
+	return r;
+}
+
+2.1.1 kvm_dev_ioctl_create_vm()
+================================================================================
+static int kvm_dev_ioctl_create_vm(unsigned long type)
+{
+	int r;
+	struct kvm *kvm;
+
+	kvm = kvm_create_vm(type);
+	if (IS_ERR(kvm))
+		return PTR_ERR(kvm);
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+	r = kvm_coalesced_mmio_init(kvm);
+	if (r < 0) {
+		kvm_put_kvm(kvm);
+		return r;
+	}
+#endif
+	r = anon_inode_getfd("kvm-vm", &kvm_vm_fops, kvm, O_RDWR | O_CLOEXEC);
+	if (r < 0)
+		kvm_put_kvm(kvm);
+
+	return r;
+}
+
+2.1.1.1 kvm_create_vm()
+================================================================================
+static struct kvm *kvm_create_vm(unsigned long type)
+{
+	int r, i;
+	struct kvm *kvm = kvm_arch_alloc_vm();
+
+	if (!kvm)
+		return ERR_PTR(-ENOMEM);
+
+	r = kvm_arch_init_vm(kvm, type);
+	if (r)
+		goto out_err_no_disable;
+
+	r = hardware_enable_all();
+	if (r)
+		goto out_err_no_disable;
+
+#ifdef CONFIG_HAVE_KVM_IRQFD
+	INIT_HLIST_HEAD(&kvm->irq_ack_notifier_list);
+#endif
+
+	BUILD_BUG_ON(KVM_MEM_SLOTS_NUM > SHRT_MAX);
+
+	r = -ENOMEM;
+	for (i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
+		kvm->memslots[i] = kvm_alloc_memslots();
+		if (!kvm->memslots[i])
+			goto out_err_no_srcu;
+	}
+
+	if (init_srcu_struct(&kvm->srcu))
+		goto out_err_no_srcu;
+	if (init_srcu_struct(&kvm->irq_srcu))
+		goto out_err_no_irq_srcu;
+	for (i = 0; i < KVM_NR_BUSES; i++) {
+		kvm->buses[i] = kzalloc(sizeof(struct kvm_io_bus),
+					GFP_KERNEL);
+		if (!kvm->buses[i])
+			goto out_err;
+	}
+
+	spin_lock_init(&kvm->mmu_lock);
+	kvm->mm = current->mm;
+	atomic_inc(&kvm->mm->mm_count);
+	kvm_eventfd_init(kvm);
+	mutex_init(&kvm->lock);
+	mutex_init(&kvm->irq_lock);
+	mutex_init(&kvm->slots_lock);
+	atomic_set(&kvm->users_count, 1);
+	INIT_LIST_HEAD(&kvm->devices);
+
+	r = kvm_init_mmu_notifier(kvm);
+	if (r)
+		goto out_err;
+
+	spin_lock(&kvm_lock);
+	list_add(&kvm->vm_list, &vm_list);
+	spin_unlock(&kvm_lock);
+
+	preempt_notifier_inc();
+
+	return kvm;
+
+out_err:
+	cleanup_srcu_struct(&kvm->irq_srcu);
+out_err_no_irq_srcu:
+	cleanup_srcu_struct(&kvm->srcu);
+out_err_no_srcu:
+	hardware_disable_all();
+out_err_no_disable:
+	for (i = 0; i < KVM_NR_BUSES; i++)
+		kfree(kvm->buses[i]);
+	for (i = 0; i < KVM_ADDRESS_SPACE_NUM; i++)
+		kvm_free_memslots(kvm, kvm->memslots[i]);
+	kvm_arch_free_vm(kvm);
+	return ERR_PTR(r);
+}
+
+3. kvm_vm_fops()
+================================================================================
+static struct file_operations kvm_vm_fops = {
+	.release        = kvm_vm_release,
+	.unlocked_ioctl = kvm_vm_ioctl,
+#ifdef CONFIG_KVM_COMPAT
+	.compat_ioctl   = kvm_vm_compat_ioctl,
+#endif
+	.llseek		= noop_llseek,
+};
+
+3.1 kvm_vm_ioctl()
+================================================================================
+static long kvm_vm_ioctl(struct file *filp,
+			   unsigned int ioctl, unsigned long arg)
+{
+	struct kvm *kvm = filp->private_data;
+	void __user *argp = (void __user *)arg;
+	int r;
+
+	if (kvm->mm != current->mm)
+		return -EIO;
+	switch (ioctl) {
+	case KVM_CREATE_VCPU:
+		r = kvm_vm_ioctl_create_vcpu(kvm, arg);
+		break;
+	case KVM_SET_USER_MEMORY_REGION: {
+		struct kvm_userspace_memory_region kvm_userspace_mem;
+
+		r = -EFAULT;
+		if (copy_from_user(&kvm_userspace_mem, argp,
+						sizeof(kvm_userspace_mem)))
+			goto out;
+
+		r = kvm_vm_ioctl_set_memory_region(kvm, &kvm_userspace_mem);
+		break;
+	}
+	case KVM_GET_DIRTY_LOG: {
+		struct kvm_dirty_log log;
+
+		r = -EFAULT;
+		if (copy_from_user(&log, argp, sizeof(log)))
+			goto out;
+		r = kvm_vm_ioctl_get_dirty_log(kvm, &log);
+		break;
+	}
+#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+	case KVM_REGISTER_COALESCED_MMIO: {
+		struct kvm_coalesced_mmio_zone zone;
+
+		r = -EFAULT;
+		if (copy_from_user(&zone, argp, sizeof(zone)))
+			goto out;
+		r = kvm_vm_ioctl_register_coalesced_mmio(kvm, &zone);
+		break;
+	}
+	case KVM_UNREGISTER_COALESCED_MMIO: {
+		struct kvm_coalesced_mmio_zone zone;
+
+		r = -EFAULT;
+		if (copy_from_user(&zone, argp, sizeof(zone)))
+			goto out;
+		r = kvm_vm_ioctl_unregister_coalesced_mmio(kvm, &zone);
+		break;
+	}
+#endif
+	case KVM_IRQFD: {
+		struct kvm_irqfd data;
+
+		r = -EFAULT;
+		if (copy_from_user(&data, argp, sizeof(data)))
+			goto out;
+		r = kvm_irqfd(kvm, &data);
+		break;
+	}
+	case KVM_IOEVENTFD: {
+		struct kvm_ioeventfd data;
+
+		r = -EFAULT;
+		if (copy_from_user(&data, argp, sizeof(data)))
+			goto out;
+		r = kvm_ioeventfd(kvm, &data);
+		break;
+	}
+#ifdef CONFIG_HAVE_KVM_MSI
+	case KVM_SIGNAL_MSI: {
+		struct kvm_msi msi;
+
+		r = -EFAULT;
+		if (copy_from_user(&msi, argp, sizeof(msi)))
+			goto out;
+		r = kvm_send_userspace_msi(kvm, &msi);
+		break;
+	}
+#endif
+#ifdef __KVM_HAVE_IRQ_LINE
+	case KVM_IRQ_LINE_STATUS:
+	case KVM_IRQ_LINE: {
+		struct kvm_irq_level irq_event;
+
+		r = -EFAULT;
+		if (copy_from_user(&irq_event, argp, sizeof(irq_event)))
+			goto out;
+
+		r = kvm_vm_ioctl_irq_line(kvm, &irq_event,
+					ioctl == KVM_IRQ_LINE_STATUS);
+		if (r)
+			goto out;
+
+		r = -EFAULT;
+		if (ioctl == KVM_IRQ_LINE_STATUS) {
+			if (copy_to_user(argp, &irq_event, sizeof(irq_event)))
+				goto out;
+		}
+
+		r = 0;
+		break;
+	}
+#endif
+#ifdef CONFIG_HAVE_KVM_IRQ_ROUTING
+	case KVM_SET_GSI_ROUTING: {
+		struct kvm_irq_routing routing;
+		struct kvm_irq_routing __user *urouting;
+		struct kvm_irq_routing_entry *entries;
+
+		r = -EFAULT;
+		if (copy_from_user(&routing, argp, sizeof(routing)))
+			goto out;
+		r = -EINVAL;
+		if (routing.nr >= KVM_MAX_IRQ_ROUTES)
+			goto out;
+		if (routing.flags)
+			goto out;
+		r = -ENOMEM;
+		entries = vmalloc(routing.nr * sizeof(*entries));
+		if (!entries)
+			goto out;
+		r = -EFAULT;
+		urouting = argp;
+		if (copy_from_user(entries, urouting->entries,
+				   routing.nr * sizeof(*entries)))
+			goto out_free_irq_routing;
+		r = kvm_set_irq_routing(kvm, entries, routing.nr,
+					routing.flags);
+out_free_irq_routing:
+		vfree(entries);
+		break;
+	}
+#endif /* CONFIG_HAVE_KVM_IRQ_ROUTING */
+	case KVM_CREATE_DEVICE: {
+		struct kvm_create_device cd;
+
+		r = -EFAULT;
+		if (copy_from_user(&cd, argp, sizeof(cd)))
+			goto out;
+
+		r = kvm_ioctl_create_device(kvm, &cd);
+		if (r)
+			goto out;
+
+		r = -EFAULT;
+		if (copy_to_user(argp, &cd, sizeof(cd)))
+			goto out;
+
+		r = 0;
+		break;
+	}
+	case KVM_CHECK_EXTENSION:
+		r = kvm_vm_ioctl_check_extension_generic(kvm, arg);
+		break;
+	default:
+		r = kvm_arch_vm_ioctl(filp, ioctl, arg);
+	}
+out:
+	return r;
+}
+
+3.1.1 kvm_vm_ioctl_create_vcpu()
+================================================================================
+static int kvm_vm_ioctl_create_vcpu(struct kvm *kvm, u32 id)
+{
+	int r;
+	struct kvm_vcpu *vcpu, *v;
+
+	if (id >= KVM_MAX_VCPUS)
+		return -EINVAL;
+
+	vcpu = kvm_arch_vcpu_create(kvm, id);
+	if (IS_ERR(vcpu))
+		return PTR_ERR(vcpu);
+
+	preempt_notifier_init(&vcpu->preempt_notifier, &kvm_preempt_ops);
+
+	r = kvm_arch_vcpu_setup(vcpu);
+	if (r)
+		goto vcpu_destroy;
+
+	mutex_lock(&kvm->lock);
+	if (!kvm_vcpu_compatible(vcpu)) {
+		r = -EINVAL;
+		goto unlock_vcpu_destroy;
+	}
+	if (atomic_read(&kvm->online_vcpus) == KVM_MAX_VCPUS) {
+		r = -EINVAL;
+		goto unlock_vcpu_destroy;
+	}
+
+	kvm_for_each_vcpu(r, v, kvm)
+		if (v->vcpu_id == id) {
+			r = -EEXIST;
+			goto unlock_vcpu_destroy;
+		}
+
+	BUG_ON(kvm->vcpus[atomic_read(&kvm->online_vcpus)]);
+
+	/* Now it's all set up, let userspace reach it */
+	kvm_get_kvm(kvm);
+	r = create_vcpu_fd(vcpu);
+	if (r < 0) {
+		kvm_put_kvm(kvm);
+		goto unlock_vcpu_destroy;
+	}
+
+	kvm->vcpus[atomic_read(&kvm->online_vcpus)] = vcpu;
+
+	/*
+	 * Pairs with smp_rmb() in kvm_get_vcpu.  Write kvm->vcpus
+	 * before kvm->online_vcpu's incremented value.
+	 */
+	smp_wmb();
+	atomic_inc(&kvm->online_vcpus);
+
+	mutex_unlock(&kvm->lock);
+	kvm_arch_vcpu_postcreate(vcpu);
+	return r;
+
+unlock_vcpu_destroy:
+	mutex_unlock(&kvm->lock);
+vcpu_destroy:
+	kvm_arch_vcpu_destroy(vcpu);
+	return r;
+}
+
+3.1.1.1 create_vcpu_fd(), kvm_vcpu_fops
+================================================================================
+static int create_vcpu_fd(struct kvm_vcpu *vcpu)
+{
+	return anon_inode_getfd("kvm-vcpu", &kvm_vcpu_fops, vcpu, O_RDWR | O_CLOEXEC);
+}
+
+4. kvm_vcpu_fops()
+================================================================================
+static struct file_operations kvm_vcpu_fops = {
+	.release        = kvm_vcpu_release,
+	.unlocked_ioctl = kvm_vcpu_ioctl,
+#ifdef CONFIG_KVM_COMPAT
+	.compat_ioctl   = kvm_vcpu_compat_ioctl,
+#endif
+	.mmap           = kvm_vcpu_mmap,
+	.llseek		= noop_llseek,
+};
+
+4.1 kvm_vcpu_ioctl()
+================================================================================
+static long kvm_vcpu_ioctl(struct file *filp,
+			   unsigned int ioctl, unsigned long arg)
+{
+	struct kvm_vcpu *vcpu = filp->private_data;
+	void __user *argp = (void __user *)arg;
+	int r;
+	struct kvm_fpu *fpu = NULL;
+	struct kvm_sregs *kvm_sregs = NULL;
+
+	if (vcpu->kvm->mm != current->mm)
+		return -EIO;
+
+	if (unlikely(_IOC_TYPE(ioctl) != KVMIO))
+		return -EINVAL;
+
+#if defined(CONFIG_S390) || defined(CONFIG_PPC) || defined(CONFIG_MIPS)
+	/*
+	 * Special cases: vcpu ioctls that are asynchronous to vcpu execution,
+	 * so vcpu_load() would break it.
+	 */
+	if (ioctl == KVM_S390_INTERRUPT || ioctl == KVM_S390_IRQ || ioctl == KVM_INTERRUPT)
+		return kvm_arch_vcpu_ioctl(filp, ioctl, arg);
+#endif
+
+
+	r = vcpu_load(vcpu);
+	if (r)
+		return r;
+	switch (ioctl) {
+	case KVM_RUN:
+		r = -EINVAL;
+		if (arg)
+			goto out;
+		if (unlikely(vcpu->pid != current->pids[PIDTYPE_PID].pid)) {
+			/* The thread running this VCPU changed. */
+			struct pid *oldpid = vcpu->pid;
+			struct pid *newpid = get_task_pid(current, PIDTYPE_PID);
+
+			rcu_assign_pointer(vcpu->pid, newpid);
+			if (oldpid)
+				synchronize_rcu();
+			put_pid(oldpid);
+		}
+		r = kvm_arch_vcpu_ioctl_run(vcpu, vcpu->run);
+		trace_kvm_userspace_exit(vcpu->run->exit_reason, r);
+		break;
+	case KVM_GET_REGS: {
+		struct kvm_regs *kvm_regs;
+
+		r = -ENOMEM;
+		kvm_regs = kzalloc(sizeof(struct kvm_regs), GFP_KERNEL);
+		if (!kvm_regs)
+			goto out;
+		r = kvm_arch_vcpu_ioctl_get_regs(vcpu, kvm_regs);
+		if (r)
+			goto out_free1;
+		r = -EFAULT;
+		if (copy_to_user(argp, kvm_regs, sizeof(struct kvm_regs)))
+			goto out_free1;
+		r = 0;
+out_free1:
+		kfree(kvm_regs);
+		break;
+	}
+	case KVM_SET_REGS: {
+		struct kvm_regs *kvm_regs;
+
+		r = -ENOMEM;
+		kvm_regs = memdup_user(argp, sizeof(*kvm_regs));
+		if (IS_ERR(kvm_regs)) {
+			r = PTR_ERR(kvm_regs);
+			goto out;
+		}
+		r = kvm_arch_vcpu_ioctl_set_regs(vcpu, kvm_regs);
+		kfree(kvm_regs);
+		break;
+	}
+	case KVM_GET_SREGS: {
+		kvm_sregs = kzalloc(sizeof(struct kvm_sregs), GFP_KERNEL);
+		r = -ENOMEM;
+		if (!kvm_sregs)
+			goto out;
+		r = kvm_arch_vcpu_ioctl_get_sregs(vcpu, kvm_sregs);
+		if (r)
+			goto out;
+		r = -EFAULT;
+		if (copy_to_user(argp, kvm_sregs, sizeof(struct kvm_sregs)))
+			goto out;
+		r = 0;
+		break;
+	}
+	case KVM_SET_SREGS: {
+		kvm_sregs = memdup_user(argp, sizeof(*kvm_sregs));
+		if (IS_ERR(kvm_sregs)) {
+			r = PTR_ERR(kvm_sregs);
+			kvm_sregs = NULL;
+			goto out;
+		}
+		r = kvm_arch_vcpu_ioctl_set_sregs(vcpu, kvm_sregs);
+		break;
+	}
+	case KVM_GET_MP_STATE: {
+		struct kvm_mp_state mp_state;
+
+		r = kvm_arch_vcpu_ioctl_get_mpstate(vcpu, &mp_state);
+		if (r)
+			goto out;
+		r = -EFAULT;
+		if (copy_to_user(argp, &mp_state, sizeof(mp_state)))
+			goto out;
+		r = 0;
+		break;
+	}
+	case KVM_SET_MP_STATE: {
+		struct kvm_mp_state mp_state;
+
+		r = -EFAULT;
+		if (copy_from_user(&mp_state, argp, sizeof(mp_state)))
+			goto out;
+		r = kvm_arch_vcpu_ioctl_set_mpstate(vcpu, &mp_state);
+		break;
+	}
+	case KVM_TRANSLATE: {
+		struct kvm_translation tr;
+
+		r = -EFAULT;
+		if (copy_from_user(&tr, argp, sizeof(tr)))
+			goto out;
+		r = kvm_arch_vcpu_ioctl_translate(vcpu, &tr);
+		if (r)
+			goto out;
+		r = -EFAULT;
+		if (copy_to_user(argp, &tr, sizeof(tr)))
+			goto out;
+		r = 0;
+		break;
+	}
+	case KVM_SET_GUEST_DEBUG: {
+		struct kvm_guest_debug dbg;
+
+		r = -EFAULT;
+		if (copy_from_user(&dbg, argp, sizeof(dbg)))
+			goto out;
+		r = kvm_arch_vcpu_ioctl_set_guest_debug(vcpu, &dbg);
+		break;
+	}
+	case KVM_SET_SIGNAL_MASK: {
+		struct kvm_signal_mask __user *sigmask_arg = argp;
+		struct kvm_signal_mask kvm_sigmask;
+		sigset_t sigset, *p;
+
+		p = NULL;
+		if (argp) {
+			r = -EFAULT;
+			if (copy_from_user(&kvm_sigmask, argp,
+					   sizeof(kvm_sigmask)))
+				goto out;
+			r = -EINVAL;
+			if (kvm_sigmask.len != sizeof(sigset))
+				goto out;
+			r = -EFAULT;
+			if (copy_from_user(&sigset, sigmask_arg->sigset,
+					   sizeof(sigset)))
+				goto out;
+			p = &sigset;
+		}
+		r = kvm_vcpu_ioctl_set_sigmask(vcpu, p);
+		break;
+	}
+	case KVM_GET_FPU: {
+		fpu = kzalloc(sizeof(struct kvm_fpu), GFP_KERNEL);
+		r = -ENOMEM;
+		if (!fpu)
+			goto out;
+		r = kvm_arch_vcpu_ioctl_get_fpu(vcpu, fpu);
+		if (r)
+			goto out;
+		r = -EFAULT;
+		if (copy_to_user(argp, fpu, sizeof(struct kvm_fpu)))
+			goto out;
+		r = 0;
+		break;
+	}
+	case KVM_SET_FPU: {
+		fpu = memdup_user(argp, sizeof(*fpu));
+		if (IS_ERR(fpu)) {
+			r = PTR_ERR(fpu);
+			fpu = NULL;
+			goto out;
+		}
+		r = kvm_arch_vcpu_ioctl_set_fpu(vcpu, fpu);
+		break;
+	}
+	default:
+		r = kvm_arch_vcpu_ioctl(filp, ioctl, arg);
+	}
+out:
+	vcpu_put(vcpu);
+	kfree(fpu);
+	kfree(kvm_sregs);
+	return r;
+}
+
+4.1.1 vcpu_load()
+================================================================================
+int vcpu_load(struct kvm_vcpu *vcpu)
+{
+	int cpu;
+
+	if (mutex_lock_killable(&vcpu->mutex))
+		return -EINTR;
+	cpu = get_cpu();
+	preempt_notifier_register(&vcpu->preempt_notifier);
+	kvm_arch_vcpu_load(vcpu, cpu);
+	put_cpu();
+	return 0;
+}
+
+4.1.2 kvm_arch_vcpu_ioctl_run()
+================================================================================
+int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
+{
+	struct fpu *fpu = &current->thread.fpu;
+	int r;
+	sigset_t sigsaved;
+
+	fpu__activate_curr(fpu);
+
+	if (vcpu->sigset_active)
+		sigprocmask(SIG_SETMASK, &vcpu->sigset, &sigsaved);
+
+	if (unlikely(vcpu->arch.mp_state == KVM_MP_STATE_UNINITIALIZED)) {
+		kvm_vcpu_block(vcpu);
+		kvm_apic_accept_events(vcpu);
+		clear_bit(KVM_REQ_UNHALT, &vcpu->requests);
+		r = -EAGAIN;
+		goto out;
+	}
+
+	/* re-sync apic's tpr */
+	if (!lapic_in_kernel(vcpu)) {
+		if (kvm_set_cr8(vcpu, kvm_run->cr8) != 0) {
+			r = -EINVAL;
+			goto out;
+		}
+	}
+
+	if (unlikely(vcpu->arch.complete_userspace_io)) {
+		int (*cui)(struct kvm_vcpu *) = vcpu->arch.complete_userspace_io;
+		vcpu->arch.complete_userspace_io = NULL;
+		r = cui(vcpu);
+		if (r <= 0)
+			goto out;
+	} else
+		WARN_ON(vcpu->arch.pio.count || vcpu->mmio_needed);
+
+	r = vcpu_run(vcpu);
+
+out:
+	post_kvm_run_save(vcpu);
+	if (vcpu->sigset_active)
+		sigprocmask(SIG_SETMASK, &sigsaved, NULL);
+
+	return r;
+}
+
+4.1.2.1 vcpu_run()
+================================================================================
+static int vcpu_run(struct kvm_vcpu *vcpu)
+{
+	int r;
+	struct kvm *kvm = vcpu->kvm;
+
+	vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
+
+	for (;;) {
+		if (kvm_vcpu_running(vcpu)) {
+			r = vcpu_enter_guest(vcpu);
+		} else {
+			r = vcpu_block(kvm, vcpu);
+		}
+
+		if (r <= 0)
+			break;
+
+		clear_bit(KVM_REQ_PENDING_TIMER, &vcpu->requests);
+		if (kvm_cpu_has_pending_timer(vcpu))
+			kvm_inject_pending_timer_irqs(vcpu);
+
+		if (dm_request_for_irq_injection(vcpu)) {
+			r = 0;
+			vcpu->run->exit_reason = KVM_EXIT_IRQ_WINDOW_OPEN;
+			++vcpu->stat.request_irq_exits;
+			break;
+		}
+
+		kvm_check_async_pf_completion(vcpu);
+
+		if (signal_pending(current)) {
+			r = -EINTR;
+			vcpu->run->exit_reason = KVM_EXIT_INTR;
+			++vcpu->stat.signal_exits;
+			break;
+		}
+		if (need_resched()) {
+			srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
+			cond_resched();
+			vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
+		}
+	}
+
+	srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
+
+	return r;
+}
+
+0. Data Structure
+================================================================================
+
+0.1 kvm_vcpu
+================================================================================
+
+
+         struct kvm_vcpu
+         +--------------------------------+
+         |kvm                             |
+         |   (struct kvm*)                |
+         +--------------------------------+
+         |cpu                             |
+         |vcpu_id                         |
+         |srcu_idx                        |
+         |   (int)                        |
+         |                                |
+         |                                |
+         +--------------------------------+
+         |arch                            |
+         | (struct kvm_vcpu_arch)         |
+         |                                |
+         +--------------------------------+
+         |run                             |
+         | (struct kvm_run *)             |
+         |   +----------------------------+
+         |   |exit_reason                 |
+         |   |   (__u32)                  |
+         |   +----------------------------+
+         |   |                            |
+         |   |                            |
+         +---+----------------------------+
+
+0.2 kvm_memslots
+================================================================================
+
+     kvm_memslots
+     +-------------------------------+
+     |id_to_index[KVM_MEM_SLOTS_NUM] |
+     |   (short)                     |
+     +-------------------------------+
+     |used_slots                     |
+     |   (int)                       |
+     +-------------------------------+
+     |memslots[KVM_MEM_SLOTS_NUM]    |
+     |(struct kvm_memory_slot)       |
+     |   +---------------------------+
+     |   |id                         |
+     |   |   (short)                 |
+     |   |                           |
+     |   |base_gfn                   |
+     |   |   (gfn_t)                 |
+     |   |npages                     |
+     |   |   (unsigned long)         |
+     |   |dirty_bitmap               |
+     |   |   (unsigned long*)        |
+     |   |userspace_addr             |
+     |   |   (unsigned long)         |
+     |   |flags                      |
+     |   |   (u32)                   |
+     |   |arch                       |
+     |   |                           |
+     |   |                           |
+     +---+---------------------------+
+
+0.3 kvm_io_bus
+================================================================================
+
+     kvm_io_bus
+     +-------------------------------+
+     |dev_count                      |
+     |ioeventfd_count                |
+     |   (int)                       |
+     +-------------------------------+
+     |range[]                        |
+     |   (struct kvm_io_range)       |
+     |   +---------------------------+
+     |   | addr                      |
+     |   |    (gpa_t)                |
+     |   | len                       |
+     |   |    (int)                  |
+     |   | dev                       |
+     |   |    (struct kvm_io_device*)|
+     |   |   +-----------------------+
+     |   |   |ops                    |
+     |   |   |(kvm_io_device_ops*)   |
+     +---+---+-----------------------+
+
+
+0.2 kvm
+================================================================================
+
+   vm_list
+    |
+    |    struct kvm
+    |    +-----------------------------+
+    +--> |vm_list                      |    
+         |   (struct list_head)        |    
+         +-----------------------------+    
+         |mm                           |
+         |  (struct mm_struct*)        |
+         +-----------------------------+    
+         |memslots[]                   |    
+         |  (struct kvm_memslots*)     |    
+         +-----------------------------+    
+         |vcpus[KVM_MAX_VCPUS]         |
+         |   (struct kvm_vcpu*)        |
+         |online_vcpus                 |    
+         |   (atomic_t)                |    
+         +-----------------------------+    
+         |buses[KVM_NR_BUSES]          |    
+         |   (struct kvm_io_bus*)      |    
+         +-----------------------------+    
+         |                             |    
+         |                             |    
+         +-----------------------------+    
+         |ioeventfds                   |    
+         |   (struct list_head)        |    
+         +-----------------------------+    
+         |devices                      |    
+         |   (struct list_head)        |    
+         +-----------------------------+    
+         |                             |    
+         |                             |    
+         +-----------------------------+    
+         |                             |    
+         |                             |    
+         +-----------------------------+    
+         |                             |    
+         |                             |    
+         +-----------------------------+    
+         |                             |    
+         |                             |    
+         +-----------------------------+    
+         |                             |
+         |                             |
+         +-----------------------------+
+         |                             |
+         |                             |
+         +-----------------------------+
+
+
+
