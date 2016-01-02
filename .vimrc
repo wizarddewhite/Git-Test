@@ -59,8 +59,12 @@ endif
 
 "set font
 if has("gui_running")
-	set guifont=Monospace\ 12
-endif
+	set guifont=DejaVu\ Sans\ Mono\ 14
+elseif has("gui_macvim")
+	set guifont=DejaVu_Sans_Mono:h14
+elseif has("gui_win32")
+	set guifont=DejaVu_Sans_Mono:h14
+end
 
 "代码折叠
 "set fdm=indent or "set fdm=syntax
