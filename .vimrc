@@ -108,7 +108,6 @@ nmap <C-\>c :cs find c <C-R>=expand("<cword>")<CR><CR>
 if filereadable("cscope.out")
    execute "cs add cscope.out"
 endif
-set cscopequickfix=s-,c-,d-,i-,t-,e-,g-
 
 
 """""""""""a.vim Option"""""""""""""""
