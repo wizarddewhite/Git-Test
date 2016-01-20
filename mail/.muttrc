@@ -1,3 +1,4 @@
+set editor="vim "
 set sendmail = "/usr/bin/msmtp -v -X ~/Mail/msmtp.log"
 #set the display index format
 set index_format="%4C %Z %{%b %d} %-15.15L (%4l) %s"
@@ -46,12 +47,14 @@ set edit_headers=yes
 set pager_index_lines=8
 #set signature
 set signature='echo "Wei Yang\nHelp you, Help me"|'
+#set mail display format
+set folder-hook . "ignore *; unignore from to subject"
 
 # the mail list you subscribed, press 'L' to reply to list
 #subscribe shlug@googlegroups.com
 
-my_hdr From: Wei Yang<weiyang.kernel@gmail.com>
-my_hdr Reply-To: Wei Yang<weiyang.kernel@gmail.com>
+my_hdr From: Wei Yang<richard.weiyang@gmail.com>
+my_hdr Reply-To: Wei Yang<richard.weiyang@gmail.com>
 
 macro index G "!fetchmail -av"
 macro pager G "!fetchmail -av"

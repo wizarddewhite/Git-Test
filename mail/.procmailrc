@@ -6,7 +6,7 @@ SHELL=/bin/bash
 
 #put mail for me to me
 :0:
-* ^(From|Cc|To).*weiyang.kernel
+* ^(From|Cc|To).*richard.weiyang
 weiyang
 
 # linuxppc
