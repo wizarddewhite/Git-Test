@@ -1,17 +1,11 @@
 [user]
-	name = Wizard 
-	email = wizarddewhite@gmail.com
+	name = Wei Yang 
+	email = richard.weiyang@gmail.com
 [color]
 	ui = true
-[github]
-	user = wizarddewhite
-	token = d8cf9dd2474cd64711e8bd43050d44bf
-[sendmail]
-	smtpencryption = tls
-	smtppass       = 123
-	smtpserver     = smtp.gmail.com
-	smtpuser       = wizarddewhite@gmail.com
-	smtpserverport = 143
+[sendemail]
+	smtpserver = /usr/bin/msmtp
+	confirm = always
 [diff]
 	tool = gvimdiff
 [difftool]
@@ -23,6 +17,6 @@
 [alias]
 	logview = log --graph --decorate --all
 	last = log -1
-	oneline = log --pretty=oneline
+	oneline = log --oneline
 	co = checkout
 	commit = commit -s
