@@ -47,8 +47,8 @@ set edit_headers=yes
 set pager_index_lines=8
 #set signature
 set signature='echo "Wei Yang\nHelp you, Help me"|'
-#set mail display format
-set folder-hook . "ignore *; unignore from to subject"
+#set mail display format in pager
+folder-hook . "ignore *; unignore from to subject date X-mailer"
 
 # the mail list you subscribed, press 'L' to reply to list
 #subscribe shlug@googlegroups.com
