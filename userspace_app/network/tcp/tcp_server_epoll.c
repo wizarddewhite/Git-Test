@@ -84,26 +84,12 @@ static int make_socket_non_blocking(int sfd)
 void accept_and_add_new()
 {
 	struct epoll_event event;
+	struct sockaddr in_addr;
+	socklen_t in_len = sizeof(in_addr);
+	int infd;
+	char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 
-	while (1) {
-		struct sockaddr in_addr;
-		socklen_t in_len;
-		int infd;
-		char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-
-		in_len = sizeof(in_addr);
-		infd = accept(socket_fd, &in_addr, &in_len);
-		if (infd == -1) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				/* We hae processed
-				 * all incomming
-				 * connectioins */
-				break;
-			} else {
-				perror("accept");
-				break;
-			}
-		}
+	while ((infd = accept(socket_fd, &in_addr, &in_len)) != -1) {
 
 		if (getnameinfo(&in_addr, in_len,
 				hbuf, sizeof(hbuf),
@@ -125,7 +111,16 @@ void accept_and_add_new()
 			perror("epoll_ctl");
 			abort();
 		}
+		in_len = sizeof(in_addr);
 	}
+
+	if (errno != EAGAIN && errno != EWOULDBLOCK)
+		perror("accept");
+	/* else
+	 *
+	 * We hae processed all incomming connectioins
+	 *
+	 */
 }
 
 void process_new_data(int fd)
