@@ -130,22 +130,16 @@ void accept_and_add_new()
 
 void process_new_data(int fd)
 {
-	int done = 0;
-	while (1) {
-		ssize_t count;
-		char buf[512];
+	ssize_t count;
+	char buf[512];
 
-		count = read(fd, buf, sizeof(buf) - 1);
+	while ((count = read(fd, buf, sizeof(buf) - 1))) {
 		if (count == -1) {
 			/* EAGAIN, read all data */
-			if (errno != EAGAIN) {
-				perror("read");
-				done = 1;
-			}
-			break;
-		} else if (count == 0) {
-			/* End of file */
-			done = 1;
+			if (errno == EAGAIN)
+				return;
+
+			perror("read");
 			break;
 		}
 
@@ -154,10 +148,8 @@ void process_new_data(int fd)
 		printf("%s \n", buf);
 	}
 	
-	if (done) {
-		printf("Close connection on descriptor: %d\n", fd);
-		close(fd);
-	}
+	printf("Close connection on descriptor: %d\n", fd);
+	close(fd);
 }
 
 int main()
