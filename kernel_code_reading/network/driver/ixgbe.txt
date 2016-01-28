@@ -1,0 +1,502 @@
+1. ixgbe_probe() 
+================================================================================
+static int ixgbe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+{
+	struct net_device *netdev;
+	struct ixgbe_adapter *adapter = NULL;
+	struct ixgbe_hw *hw;
+	const struct ixgbe_info *ii = ixgbe_info_tbl[ent->driver_data];
+	int i, err, pci_using_dac, expected_gts;
+	unsigned int indices = MAX_TX_QUEUES;
+	u8 part_str[IXGBE_PBANUM_LENGTH];
+	bool disable_dev = false;
+#ifdef IXGBE_FCOE
+	u16 device_caps;
+#endif
+	u32 eec;
+
+	/* Catch broken hardware that put the wrong VF device ID in
+	 * the PCIe SR-IOV capability.
+	 */
+	if (pdev->is_virtfn) {
+		WARN(1, KERN_ERR "%s (%hx:%hx) should not be a VF!\n",
+		     pci_name(pdev), pdev->vendor, pdev->device);
+		return -EINVAL;
+	}
+
+	err = pci_enable_device_mem(pdev);
+	if (err)
+		return err;
+
+	if (!dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64))) {
+		pci_using_dac = 1;
+	} else {
+		err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+		if (err) {
+			dev_err(&pdev->dev,
+				"No usable DMA configuration, aborting\n");
+			goto err_dma;
+		}
+		pci_using_dac = 0;
+	}
+
+	err = pci_request_selected_regions(pdev, pci_select_bars(pdev,
+					   IORESOURCE_MEM), ixgbe_driver_name);
+	if (err) {
+		dev_err(&pdev->dev,
+			"pci_request_selected_regions failed 0x%x\n", err);
+		goto err_pci_reg;
+	}
+
+	pci_enable_pcie_error_reporting(pdev);
+
+	pci_set_master(pdev);
+	pci_save_state(pdev);
+
+	if (ii->mac == ixgbe_mac_82598EB) {
+#ifdef CONFIG_IXGBE_DCB
+		/* 8 TC w/ 4 queues per TC */
+		indices = 4 * MAX_TRAFFIC_CLASS;
+#else
+		indices = IXGBE_MAX_RSS_INDICES;
+#endif
+	}
+
+	netdev = alloc_etherdev_mq(sizeof(struct ixgbe_adapter), indices);
+	if (!netdev) {
+		err = -ENOMEM;
+		goto err_alloc_etherdev;
+	}
+
+	SET_NETDEV_DEV(netdev, &pdev->dev);
+
+	adapter = netdev_priv(netdev);
+
+	adapter->netdev = netdev;
+	adapter->pdev = pdev;
+	hw = &adapter->hw;
+	hw->back = adapter;
+	adapter->msg_enable = netif_msg_init(debug, DEFAULT_MSG_ENABLE);
+
+	hw->hw_addr = ioremap(pci_resource_start(pdev, 0),
+			      pci_resource_len(pdev, 0));
+	adapter->io_addr = hw->hw_addr;
+	if (!hw->hw_addr) {
+		err = -EIO;
+		goto err_ioremap;
+	}
+
+	netdev->netdev_ops = &ixgbe_netdev_ops;
+	ixgbe_set_ethtool_ops(netdev);
+	netdev->watchdog_timeo = 5 * HZ;
+	strlcpy(netdev->name, pci_name(pdev), sizeof(netdev->name));
+
+	/* Setup hw api */
+	memcpy(&hw->mac.ops, ii->mac_ops, sizeof(hw->mac.ops));
+	hw->mac.type  = ii->mac;
+	hw->mvals     = ii->mvals;
+
+	/* EEPROM */
+	memcpy(&hw->eeprom.ops, ii->eeprom_ops, sizeof(hw->eeprom.ops));
+	eec = IXGBE_READ_REG(hw, IXGBE_EEC(hw));
+	if (ixgbe_removed(hw->hw_addr)) {
+		err = -EIO;
+		goto err_ioremap;
+	}
+	/* If EEPROM is valid (bit 8 = 1), use default otherwise use bit bang */
+	if (!(eec & (1 << 8)))
+		hw->eeprom.ops.read = &ixgbe_read_eeprom_bit_bang_generic;
+
+	/* PHY */
+	memcpy(&hw->phy.ops, ii->phy_ops, sizeof(hw->phy.ops));
+	hw->phy.sfp_type = ixgbe_sfp_type_unknown;
+	/* ixgbe_identify_phy_generic will set prtad and mmds properly */
+	hw->phy.mdio.prtad = MDIO_PRTAD_NONE;
+	hw->phy.mdio.mmds = 0;
+	hw->phy.mdio.mode_support = MDIO_SUPPORTS_C45 | MDIO_EMULATE_C22;
+	hw->phy.mdio.dev = netdev;
+	hw->phy.mdio.mdio_read = ixgbe_mdio_read;
+	hw->phy.mdio.mdio_write = ixgbe_mdio_write;
+
+	ii->get_invariants(hw);
+
+	/* setup the private structure */
+	err = ixgbe_sw_init(adapter);
+	if (err)
+		goto err_sw_init;
+
+	/* Make it possible the adapter to be woken up via WOL */
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_WUS, ~0);
+		break;
+	default:
+		break;
+	}
+
+	/*
+	 * If there is a fan on this device and it has failed log the
+	 * failure.
+	 */
+	if (adapter->flags & IXGBE_FLAG_FAN_FAIL_CAPABLE) {
+		u32 esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
+		if (esdp & IXGBE_ESDP_SDP1)
+			e_crit(probe, "Fan has stopped, replace the adapter\n");
+	}
+
+	if (allow_unsupported_sfp)
+		hw->allow_unsupported_sfp = allow_unsupported_sfp;
+
+	/* reset_hw fills in the perm_addr as well */
+	hw->phy.reset_if_overtemp = true;
+	err = hw->mac.ops.reset_hw(hw);
+	hw->phy.reset_if_overtemp = false;
+	if (err == IXGBE_ERR_SFP_NOT_PRESENT) {
+		err = 0;
+	} else if (err == IXGBE_ERR_SFP_NOT_SUPPORTED) {
+		e_dev_err("failed to load because an unsupported SFP+ or QSFP module type was detected.\n");
+		e_dev_err("Reload the driver after installing a supported module.\n");
+		goto err_sw_init;
+	} else if (err) {
+		e_dev_err("HW Init failed: %d\n", err);
+		goto err_sw_init;
+	}
+
+#ifdef CONFIG_PCI_IOV
+	/* SR-IOV not supported on the 82598 */
+	if (adapter->hw.mac.type == ixgbe_mac_82598EB)
+		goto skip_sriov;
+	/* Mailbox */
+	ixgbe_init_mbx_params_pf(hw);
+	memcpy(&hw->mbx.ops, ii->mbx_ops, sizeof(hw->mbx.ops));
+	pci_sriov_set_totalvfs(pdev, IXGBE_MAX_VFS_DRV_LIMIT);
+	ixgbe_enable_sriov(adapter);
+skip_sriov:
+
+#endif
+	netdev->features = NETIF_F_SG |
+			   NETIF_F_IP_CSUM |
+			   NETIF_F_IPV6_CSUM |
+			   NETIF_F_HW_VLAN_CTAG_TX |
+			   NETIF_F_HW_VLAN_CTAG_RX |
+			   NETIF_F_TSO |
+			   NETIF_F_TSO6 |
+			   NETIF_F_RXHASH |
+			   NETIF_F_RXCSUM;
+
+	netdev->hw_features = netdev->features | NETIF_F_HW_L2FW_DOFFLOAD;
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+		netdev->features |= NETIF_F_SCTP_CSUM;
+		netdev->hw_features |= NETIF_F_SCTP_CSUM |
+				       NETIF_F_NTUPLE;
+		break;
+	default:
+		break;
+	}
+
+	netdev->hw_features |= NETIF_F_RXALL;
+	netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+
+	netdev->vlan_features |= NETIF_F_TSO;
+	netdev->vlan_features |= NETIF_F_TSO6;
+	netdev->vlan_features |= NETIF_F_IP_CSUM;
+	netdev->vlan_features |= NETIF_F_IPV6_CSUM;
+	netdev->vlan_features |= NETIF_F_SG;
+
+	netdev->hw_enc_features |= NETIF_F_SG | NETIF_F_IP_CSUM |
+				   NETIF_F_IPV6_CSUM;
+
+	netdev->priv_flags |= IFF_UNICAST_FLT;
+	netdev->priv_flags |= IFF_SUPP_NOFCS;
+
+#ifdef CONFIG_IXGBE_VXLAN
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+		netdev->hw_enc_features |= NETIF_F_RXCSUM |
+					   NETIF_F_IP_CSUM |
+					   NETIF_F_IPV6_CSUM;
+		break;
+	default:
+		break;
+	}
+#endif /* CONFIG_IXGBE_VXLAN */
+
+#ifdef CONFIG_IXGBE_DCB
+	netdev->dcbnl_ops = &dcbnl_ops;
+#endif
+
+#ifdef IXGBE_FCOE
+	if (adapter->flags & IXGBE_FLAG_FCOE_CAPABLE) {
+		unsigned int fcoe_l;
+
+		if (hw->mac.ops.get_device_caps) {
+			hw->mac.ops.get_device_caps(hw, &device_caps);
+			if (device_caps & IXGBE_DEVICE_CAPS_FCOE_OFFLOADS)
+				adapter->flags &= ~IXGBE_FLAG_FCOE_CAPABLE;
+		}
+
+
+		fcoe_l = min_t(int, IXGBE_FCRETA_SIZE, num_online_cpus());
+		adapter->ring_feature[RING_F_FCOE].limit = fcoe_l;
+
+		netdev->features |= NETIF_F_FSO |
+				    NETIF_F_FCOE_CRC;
+
+		netdev->vlan_features |= NETIF_F_FSO |
+					 NETIF_F_FCOE_CRC |
+					 NETIF_F_FCOE_MTU;
+	}
+#endif /* IXGBE_FCOE */
+	if (pci_using_dac) {
+		netdev->features |= NETIF_F_HIGHDMA;
+		netdev->vlan_features |= NETIF_F_HIGHDMA;
+	}
+
+	if (adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE)
+		netdev->hw_features |= NETIF_F_LRO;
+	if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)
+		netdev->features |= NETIF_F_LRO;
+
+	/* make sure the EEPROM is good */
+	if (hw->eeprom.ops.validate_checksum(hw, NULL) < 0) {
+		e_dev_err("The EEPROM Checksum Is Not Valid\n");
+		err = -EIO;
+		goto err_sw_init;
+	}
+
+	ixgbe_get_platform_mac_addr(adapter);
+
+	memcpy(netdev->dev_addr, hw->mac.perm_addr, netdev->addr_len);
+
+	if (!is_valid_ether_addr(netdev->dev_addr)) {
+		e_dev_err("invalid MAC address\n");
+		err = -EIO;
+		goto err_sw_init;
+	}
+
+	ixgbe_mac_set_default_filter(adapter, hw->mac.perm_addr);
+
+	setup_timer(&adapter->service_timer, &ixgbe_service_timer,
+		    (unsigned long) adapter);
+
+	if (ixgbe_removed(hw->hw_addr)) {
+		err = -EIO;
+		goto err_sw_init;
+	}
+	INIT_WORK(&adapter->service_task, ixgbe_service_task);
+	set_bit(__IXGBE_SERVICE_INITED, &adapter->state);
+	clear_bit(__IXGBE_SERVICE_SCHED, &adapter->state);
+
+	err = ixgbe_init_interrupt_scheme(adapter);
+	if (err)
+		goto err_sw_init;
+
+	/* WOL not supported for all devices */
+	adapter->wol = 0;
+	hw->eeprom.ops.read(hw, 0x2c, &adapter->eeprom_cap);
+	hw->wol_enabled = ixgbe_wol_supported(adapter, pdev->device,
+						pdev->subsystem_device);
+	if (hw->wol_enabled)
+		adapter->wol = IXGBE_WUFC_MAG;
+
+	device_set_wakeup_enable(&adapter->pdev->dev, adapter->wol);
+
+	/* save off EEPROM version number */
+	hw->eeprom.ops.read(hw, 0x2e, &adapter->eeprom_verh);
+	hw->eeprom.ops.read(hw, 0x2d, &adapter->eeprom_verl);
+
+	/* pick up the PCI bus settings for reporting later */
+	if (ixgbe_pcie_from_parent(hw))
+		ixgbe_get_parent_bus_info(adapter);
+	else
+		 hw->mac.ops.get_bus_info(hw);
+
+	/* calculate the expected PCIe bandwidth required for optimal
+	 * performance. Note that some older parts will never have enough
+	 * bandwidth due to being older generation PCIe parts. We clamp these
+	 * parts to ensure no warning is displayed if it can't be fixed.
+	 */
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
+		expected_gts = min(ixgbe_enumerate_functions(adapter) * 10, 16);
+		break;
+	default:
+		expected_gts = ixgbe_enumerate_functions(adapter) * 10;
+		break;
+	}
+
+	/* don't check link if we failed to enumerate functions */
+	if (expected_gts > 0)
+		ixgbe_check_minimum_link(adapter, expected_gts);
+
+	err = ixgbe_read_pba_string_generic(hw, part_str, sizeof(part_str));
+	if (err)
+		strlcpy(part_str, "Unknown", sizeof(part_str));
+	if (ixgbe_is_sfp(hw) && hw->phy.sfp_type != ixgbe_sfp_type_not_present)
+		e_dev_info("MAC: %d, PHY: %d, SFP+: %d, PBA No: %s\n",
+			   hw->mac.type, hw->phy.type, hw->phy.sfp_type,
+			   part_str);
+	else
+		e_dev_info("MAC: %d, PHY: %d, PBA No: %s\n",
+			   hw->mac.type, hw->phy.type, part_str);
+
+	e_dev_info("%pM\n", netdev->dev_addr);
+
+	/* reset the hardware with the new settings */
+	err = hw->mac.ops.start_hw(hw);
+	if (err == IXGBE_ERR_EEPROM_VERSION) {
+		/* We are running on a pre-production device, log a warning */
+		e_dev_warn("This device is a pre-production adapter/LOM. "
+			   "Please be aware there may be issues associated "
+			   "with your hardware.  If you are experiencing "
+			   "problems please contact your Intel or hardware "
+			   "representative who provided you with this "
+			   "hardware.\n");
+	}
+	strcpy(netdev->name, "eth%d");
+	err = register_netdev(netdev);
+	if (err)
+		goto err_register;
+
+	pci_set_drvdata(pdev, adapter);
+
+	/* power down the optics for 82599 SFP+ fiber */
+	if (hw->mac.ops.disable_tx_laser)
+		hw->mac.ops.disable_tx_laser(hw);
+
+	/* carrier off reporting is important to ethtool even BEFORE open */
+	netif_carrier_off(netdev);
+
+#ifdef CONFIG_IXGBE_DCA
+	if (dca_add_requester(&pdev->dev) == 0) {
+		adapter->flags |= IXGBE_FLAG_DCA_ENABLED;
+		ixgbe_setup_dca(adapter);
+	}
+#endif
+	if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
+		e_info(probe, "IOV is enabled with %d VFs\n", adapter->num_vfs);
+		for (i = 0; i < adapter->num_vfs; i++)
+			ixgbe_vf_configuration(pdev, (i | 0x10000000));
+	}
+
+	/* firmware requires driver version to be 0xFFFFFFFF
+	 * since os does not support feature
+	 */
+	if (hw->mac.ops.set_fw_drv_ver)
+		hw->mac.ops.set_fw_drv_ver(hw, 0xFF, 0xFF, 0xFF,
+					   0xFF);
+
+	/* add san mac addr to netdev */
+	ixgbe_add_sanmac_netdev(netdev);
+
+	e_dev_info("%s\n", ixgbe_default_device_descr);
+
+#ifdef CONFIG_IXGBE_HWMON
+	if (ixgbe_sysfs_init(adapter))
+		e_err(probe, "failed to allocate sysfs resources\n");
+#endif /* CONFIG_IXGBE_HWMON */
+
+	ixgbe_dbg_adapter_init(adapter);
+
+	/* setup link for SFP devices with MNG FW, else wait for IXGBE_UP */
+	if (ixgbe_mng_enabled(hw) && ixgbe_is_sfp(hw) && hw->mac.ops.setup_link)
+		hw->mac.ops.setup_link(hw,
+			IXGBE_LINK_SPEED_10GB_FULL | IXGBE_LINK_SPEED_1GB_FULL,
+			true);
+
+	return 0;
+
+err_register:
+	ixgbe_release_hw_control(adapter);
+	ixgbe_clear_interrupt_scheme(adapter);
+err_sw_init:
+	ixgbe_disable_sriov(adapter);
+	adapter->flags2 &= ~IXGBE_FLAG2_SEARCH_FOR_SFP;
+	iounmap(adapter->io_addr);
+	kfree(adapter->mac_table);
+err_ioremap:
+	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
+	free_netdev(netdev);
+err_alloc_etherdev:
+	pci_release_selected_regions(pdev,
+				     pci_select_bars(pdev, IORESOURCE_MEM));
+err_pci_reg:
+err_dma:
+	if (!adapter || disable_dev)
+		pci_disable_device(pdev);
+	return err;
+}
+
+1.1 alloc_etherdev_mq()
+================================================================================
+
+1.2 SET_NETDEV_DEV(netdev, &pdev->dev);
+================================================================================
+
+0. data structure 
+================================================================================
+
+0.1 net_device/ixgbe_adapter
+================================================================================
+            struct net_device
+            +----------------------------------------+ <----+
+            |dev                                     |      |
+            |    (struct device)                     |      |
+            |    +-----------------------------------+      |
+            |    |parent                             |      |
+            |    |                                   |      |
+            +----+-----------------------------------+      |
+            |netdev_ops                              |      | ixgbe_netdev_ops
+            |    (struct net_device_ops *)           |      |
+            +----------------------------------------+      |
+            |ethtool_ops                             |      | ixgbe_ethtool_ops
+            |    (struct ethtool_ops *)              |      |
+            +----------------------------------------+      |
+            |                                        |      |
+            |                                        |      |
+            +----------------------------------------+      |
+            |                                        |      |
+            |                                        |      |
+            +----------------------------------------+      |
+ netdev_priv|                                        |      |
+            |adapter(struct ixgbe_adapter)           |      |
+            |     +----------------------------------+ <----|----+
+            |     |netdev                         ---|------+    |
+            |     |     (struct net_device *)        |           |
+            |     +----------------------------------+           |
+            |     |pdev                              |           |
+            |     |     (struct pci_dev *)           |           |
+            |     +----------------------------------+           |
+            |     |                                  |           |
+            |     |                                  |           |
+            |     +----------------------------------+           |
+            |     |                                  |           |
+            |     |                                  |           |
+            |     +----------------------------------+           |
+            |     |                                  |           |
+            |     |                                  |           |
+            |     +----------------------------------+           |
+            |     |                                  |           |
+            |     |                                  |           |
+            |     +----------------------------------+           |
+            |     |hw                                |           |
+            |     |     (struct ixgbe_hw)            |           |
+            |     |   +------------------------------+           |
+            |     |   |back                       ---|-----------+
+            |     |   |                              |
+            |     |   +------------------------------+
+            |     |   |                              |
+            |     |   |                              |
+            |     |   |                              |
+            +-----+---+------------------------------+
+
+     
