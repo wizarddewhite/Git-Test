@@ -989,11 +989,168 @@ void qemu_bh_schedule(QEMUBH *bh)
     }
 }
 
+1.1.4 tcp_start_outgoing_migration()
+================================================================================
+
+1. vmstate_save()
+================================================================================
+static void vmstate_save(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
+{
+    trace_vmstate_save(se->idstr, se->vmsd ? se->vmsd->name : "(old)");
+    if (!se->vmsd) {
+        vmstate_save_old_style(f, se, vmdesc);
+        return;
+    }
+    vmstate_save_state(f, se->vmsd, se->opaque, vmdesc);
+}
+
+1.1 vmstate_save_old_style(), when se->vmsd is NULL
+===============================================================================
+static void vmstate_save_old_style(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
+{
+    int64_t old_offset, size;
+
+    old_offset = qemu_ftell_fast(f);
+    se->ops->save_state(f, se->opaque);
+    size = qemu_ftell_fast(f) - old_offset;
+
+    if (vmdesc) {
+        json_prop_int(vmdesc, "size", size);
+        json_start_array(vmdesc, "fields");
+        json_start_object(vmdesc, NULL);
+        json_prop_str(vmdesc, "name", "data");
+        json_prop_int(vmdesc, "size", size);
+        json_prop_str(vmdesc, "type", "buffer");
+        json_end_object(vmdesc);
+        json_end_array(vmdesc);
+    }
+}
+
+1.1.1 se->ops->save_state()
+===============================================================================
+
+1.2 vmstate_save_state(), new style
+===============================================================================
+void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+                        void *opaque, QJSON *vmdesc)
+{
+    VMStateField *field = vmsd->fields;
+
+    if (vmsd->pre_save) {
+        vmsd->pre_save(opaque);
+    }
+
+    if (vmdesc) {
+        json_prop_str(vmdesc, "vmsd_name", vmsd->name);
+        json_prop_int(vmdesc, "version", vmsd->version_id);
+        json_start_array(vmdesc, "fields");
+    }
+
+    while (field->name) {
+        if (!field->field_exists ||
+            field->field_exists(opaque, vmsd->version_id)) {
+            void *base_addr = vmstate_base_addr(opaque, field, false);
+            int i, n_elems = vmstate_n_elems(opaque, field);
+            int size = vmstate_size(opaque, field);
+            int64_t old_offset, written_bytes;
+            QJSON *vmdesc_loop = vmdesc;
+
+            for (i = 0; i < n_elems; i++) {
+                void *addr = base_addr + size * i;
+
+                vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems);
+                old_offset = qemu_ftell_fast(f);
+
+                if (field->flags & VMS_ARRAY_OF_POINTER) {
+                    addr = *(void **)addr;
+                }
+                if (field->flags & VMS_STRUCT) {
+                    vmstate_save_state(f, field->vmsd, addr, vmdesc_loop);
+                } else {
+                    field->info->put(f, addr, size);
+                }
+
+                written_bytes = qemu_ftell_fast(f) - old_offset;
+                vmsd_desc_field_end(vmsd, vmdesc_loop, field, written_bytes, i);
+
+                /* Compressed arrays only care about the first element */
+                if (vmdesc_loop && vmsd_can_compress(field)) {
+                    vmdesc_loop = NULL;
+                }
+            }
+        } else {
+            if (field->flags & VMS_MUST_EXIST) {
+                error_report("Output state validation failed: %s/%s",
+                        vmsd->name, field->name);
+                assert(!(field->flags & VMS_MUST_EXIST));
+            }
+        }
+        field++;
+    }
+
+    if (vmdesc) {
+        json_end_array(vmdesc);
+    }
+
+    vmstate_subsection_save(f, vmsd, opaque, vmdesc);
+}
+
+1.2.1 vmsd->pre_save()
+===============================================================================
+1.2.2 vmsd_desc_field_start()
+===============================================================================
+1.2.3 field->info->put()()
+===============================================================================
+1.2.4 vmsd_desc_field_end()
+===============================================================================
+1.2.5 vmstate_subsection_save()
+===============================================================================
+static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
+                                    void *opaque, QJSON *vmdesc)
+{
+    const VMStateDescription **sub = vmsd->subsections;
+    bool subsection_found = false;
+
+    while (sub && *sub && (*sub)->needed) {
+        if ((*sub)->needed(opaque)) {
+            const VMStateDescription *vmsd = *sub;
+            uint8_t len;
+
+            if (vmdesc) {
+                /* Only create subsection array when we have any */
+                if (!subsection_found) {
+                    json_start_array(vmdesc, "subsections");
+                    subsection_found = true;
+                }
+
+                json_start_object(vmdesc, NULL);
+            }
+
+            qemu_put_byte(f, QEMU_VM_SUBSECTION);
+            len = strlen(vmsd->name);
+            qemu_put_byte(f, len);
+            qemu_put_buffer(f, (uint8_t *)vmsd->name, len);
+            qemu_put_be32(f, vmsd->version_id);
+            vmstate_save_state(f, vmsd, opaque, vmdesc);
+
+            if (vmdesc) {
+                json_end_object(vmdesc);
+            }
+        }
+        sub++;
+    }
+
+    if (vmdesc && subsection_found) {
+        json_end_array(vmdesc);
+    }
+}
+
 0. data structure
 ================================================================================
 
 0.1 MigrationState(current_migration)
 ================================================================================
+
 
     current_migration(MigrationState)
     +---------------------------------+
@@ -1046,40 +1203,67 @@ void qemu_bh_schedule(QEMUBH *bh)
     |                                 |
     +---------------------------------+
 
-0.2 VMStateDescription(vmstate_configuration)
+0.2 SaveStateEntry
 ================================================================================
 
-    VMStateDescription
+    SaveStateEntry
     +--------------------------------------+
-    |name                                  |  "configuration"
-    |    (char *)                          |
-    +--------------------------------------+
+    |idstr                                 |
+    |    (char [256])                      |
+    |instance_id                           |
+    |alias_id                              |
     |version_id                            |
-    |minimum_version_id                    |
-    |minimum_version_id_old                |
+    |section_id                            |
     |    (int)                             |
     +--------------------------------------+
-    |pre_load                              |
-    |post_load                             |  configuration_post_load
-    |    int (*) ()                        |
-    |pre_save                              |  configuration_pre_save
-    |    void (*)()                        |
-    |needed                                |
-    |    bool (*)()                        |
-    +--------------------------------------+
-    |fields                                |
-    |    (VMStateField *)                  |
+    |ops                                   |
+    |    (struct SaveVMHandlers *)         |
     |    +---------------------------------+
-    |    |name                             |
-    |    |offset                           |
-    |    |size                             |
-    |    |start                            |
-    |    |                                 |
+    |    |set_params                       |
+    |    |is_active                        |
+    |    |save_live_iterate                |
     |    |                                 |
     +----+---------------------------------+
-    |                                      |
-    |                                      |
+    |opaque                                |
+    |    (void x)                          |
     +--------------------------------------+
-    |subsections                           |
-    |    (VMStateDescription **)           |
-    +--------------------------------------+
+    |vmsd                                  | -------> VMStateDescription
+    |    (VMStateDescription *)            |          +--------------------------------------+
+    +--------------------------------------+          |name                                  |  "configuration"
+    |                                      |          |    (char *)                          |
+    |                                      |          +--------------------------------------+
+    +--------------------------------------+          |version_id                            |
+                                                      |minimum_version_id                    |
+                                                      |minimum_version_id_old                |
+                                                      |    (int)                             |
+                                                      +--------------------------------------+
+                                                      |pre_load                              |
+                                                      |post_load                             |  configuration_post_load
+                                                      |    int (*) ()                        |
+                                                      |pre_save                              |  configuration_pre_save
+                                                      |    void (*)()                        |
+                                                      |needed                                |
+                                                      |    bool (*)()                        |
+                                                      +--------------------------------------+
+                                                      |fields                                |
+                                                      |    (VMStateField *)                  |
+                                                      |    +---------------------------------+
+                                                      |    |name                             |
+                                                      |    |offset                           |
+                                                      |    |size                             |
+                                                      |    |start                            |
+                                                      |    |                                 |
+                                                      |    |info                             |
+                                                      |    |    (VMStateInfo *)              |
+                                                      |    |    +----------------------------+
+                                                      |    |    |name                        |
+                                                      |    |    |get                         |
+                                                      |    |    |put                         |
+                                                      |    |    |                            |
+                                                      +----+----+----------------------------+
+                                                      |                                      |
+                                                      |                                      |
+                                                      +--------------------------------------+
+                                                      |subsections                           |
+                                                      |    (VMStateDescription **)           |
+                                                      +--------------------------------------+
