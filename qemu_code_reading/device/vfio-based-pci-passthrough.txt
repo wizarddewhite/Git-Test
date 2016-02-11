@@ -1415,8 +1415,13 @@ int msix_init(struct PCIDevice *dev, unsigned short nentries,
     return 0;
 }
 
-5.6 pci_device_set_intx_routing_notifier()
+5.6 pci_device_set_intx_routing_notifier(&vdev->pdev, vfio_intx_update);
 ================================================================================
+void pci_device_set_intx_routing_notifier(PCIDevice *dev,
+                                          PCIINTxRoutingNotifier notifier)
+{
+    dev->intx_routing_notifier = notifier;
+}
 
 5.7 vfio_register_err_notifier()
 ================================================================================
@@ -1462,7 +1467,107 @@ static void vfio_register_err_notifier(VFIODevice *vdev)
     g_free(irq_set);
 }
 
-4. vfio_listener_region_add()
+6. PCI config read/write
+================================================================================
+
+6.1 vfio_pci_read_config(), emulated bit | physical bit
+================================================================================
+uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
+{
+    VFIOPCIDevice *vdev = DO_UPCAST(VFIOPCIDevice, pdev, pdev);
+    uint32_t emu_bits = 0, emu_val = 0, phys_val = 0, val;
+
+    memcpy(&emu_bits, vdev->emulated_config_bits + addr, len);
+    emu_bits = le32_to_cpu(emu_bits);
+
+    if (emu_bits) {
+        emu_val = pci_default_read_config(pdev, addr, len);
+    }
+
+    if (~emu_bits & (0xffffffffU >> (32 - len * 8))) {
+        ssize_t ret;
+
+        ret = pread(vdev->vbasedev.fd, &phys_val, len,
+                    vdev->config_offset + addr);
+        if (ret != len) {
+            error_report("%s(%04x:%02x:%02x.%x, 0x%x, 0x%x) failed: %m",
+                         __func__, vdev->host.domain, vdev->host.bus,
+                         vdev->host.slot, vdev->host.function, addr, len);
+            return -errno;
+        }
+        phys_val = le32_to_cpu(phys_val);
+    }
+
+    val = (emu_val & emu_bits) | (phys_val & ~emu_bits);
+
+    trace_vfio_pci_read_config(vdev->vbasedev.name, addr, len, val);
+
+    return val;
+}
+
+6.2 vfio_pci_write_config(), write everything to hw, handle msix
+================================================================================
+void vfio_pci_write_config(PCIDevice *pdev,
+                           uint32_t addr, uint32_t val, int len)
+{
+    VFIOPCIDevice *vdev = DO_UPCAST(VFIOPCIDevice, pdev, pdev);
+    uint32_t val_le = cpu_to_le32(val);
+
+    trace_vfio_pci_write_config(vdev->vbasedev.name, addr, val, len);
+
+    /* Write everything to VFIO, let it filter out what we can't write */
+    if (pwrite(vdev->vbasedev.fd, &val_le, len, vdev->config_offset + addr)
+                != len) {
+        error_report("%s(%04x:%02x:%02x.%x, 0x%x, 0x%x, 0x%x) failed: %m",
+                     __func__, vdev->host.domain, vdev->host.bus,
+                     vdev->host.slot, vdev->host.function, addr, val, len);
+    }
+
+    /* MSI/MSI-X Enabling/Disabling */
+    if (pdev->cap_present & QEMU_PCI_CAP_MSI &&
+        ranges_overlap(addr, len, pdev->msi_cap, vdev->msi_cap_size)) {
+        int is_enabled, was_enabled = msi_enabled(pdev);
+
+        pci_default_write_config(pdev, addr, val, len);
+
+        is_enabled = msi_enabled(pdev);
+
+        if (!was_enabled) {
+            if (is_enabled) {
+                vfio_msi_enable(vdev);
+            }
+        } else {
+            if (!is_enabled) {
+                vfio_msi_disable(vdev);
+            } else {
+                vfio_update_msi(vdev);
+            }
+        }
+    } else if (pdev->cap_present & QEMU_PCI_CAP_MSIX &&
+        ranges_overlap(addr, len, pdev->msix_cap, MSIX_CAP_LENGTH)) {
+        int is_enabled, was_enabled = msix_enabled(pdev);
+
+        pci_default_write_config(pdev, addr, val, len);
+
+        is_enabled = msix_enabled(pdev);
+
+        if (!was_enabled && is_enabled) {
+            vfio_msix_enable(vdev);
+        } else if (was_enabled && !is_enabled) {
+            vfio_msix_disable(vdev);
+        }
+    } else {
+        /* Write everything to QEMU to keep emulated bits correct */
+        pci_default_write_config(pdev, addr, val, len);
+    }
+}
+
+7. MMIO read/write
+================================================================================
+
+8. DMA access
+================================================================================
+8. vfio_listener_region_add()
 ================================================================================
 static void vfio_listener_region_add(MemoryListener *listener,
                                      MemoryRegionSection *section)
@@ -1541,7 +1646,7 @@ static void vfio_listener_region_add(MemoryListener *listener,
     }
 }
 
-4.1 vfio_iommu_map_notify(), iommu notification 
+8.1 vfio_iommu_map_notify(), iommu notification 
 ================================================================================
 ; is notified in memory_region_notify_iommu()
 static void vfio_iommu_map_notify(Notifier *n, void *data)
@@ -1597,7 +1702,7 @@ static void vfio_iommu_map_notify(Notifier *n, void *data)
     }
 }
 
-4.1.1 address_space_translate()
+8.1.1 address_space_translate()
 ================================================================================
 MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
                                       hwaddr *xlat, hwaddr *plen,
@@ -1633,7 +1738,7 @@ MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
     return mr;
 }
 
-4.1.1.1 address_space_translate_internal()
+8.1.1.1 address_space_translate_internal()
 ================================================================================
 static MemoryRegionSection *
 address_space_translate_internal(AddressSpaceDispatch *d, hwaddr addr, hwaddr *xlat,
@@ -1654,7 +1759,7 @@ address_space_translate_internal(AddressSpaceDispatch *d, hwaddr addr, hwaddr *x
     return section;
 }
 
-4.1.1.2 spapr_tce_translate_iommu()
+8.1.1.2 spapr_tce_translate_iommu()
 ================================================================================
 static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr)
 {
@@ -1700,7 +1805,7 @@ static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr)
     };
 }
 
-4.1.2 vfio_dma_map()
+8.1.2 vfio_dma_map()
 ================================================================================
 static int vfio_dma_map(VFIOContainer *container, hwaddr iova,
                         ram_addr_t size, void *vaddr, bool readonly)
@@ -1732,7 +1837,7 @@ static int vfio_dma_map(VFIOContainer *container, hwaddr iova,
     return -errno;
 }
 
-4.1.3 vfio_dma_unmap()
+8.1.3 vfio_dma_unmap()
 ================================================================================
 static int vfio_dma_unmap(VFIOContainer *container,
                           hwaddr iova, ram_addr_t size)
@@ -1751,6 +1856,12 @@ static int vfio_dma_unmap(VFIOContainer *container,
 
     return 0;
 }
+
+9. MSIX
+================================================================================
+
+10. INTx
+================================================================================
 
 0. data structure
 ================================================================================
@@ -1908,7 +2019,9 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |msix_vector_release_notifier     |   vfio_msix_vector_release
    |msix_vector_poll_notifier        |
    |                                 |
-   |                                 |
+   +---------------------------------+
+   |intx_routing_notifier            |   vfio_intx_update
+   |    (PCIINTxRoutingNotifier)     |
    +---------------------------------+
    |io_regions[PCI_NUM_REGIONS]      |
    |    (PCIIORegion)                |
