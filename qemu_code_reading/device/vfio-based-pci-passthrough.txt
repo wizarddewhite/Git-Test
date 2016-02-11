@@ -1036,28 +1036,30 @@ error:
 
 5.3 vfio_early_setup_msix(), setup msix from config space
 ================================================================================
-static int vfio_early_setup_msix(VFIODevice *vdev)
+static int vfio_msix_early_setup(VFIOPCIDevice *vdev)
 {
     uint8_t pos;
     uint16_t ctrl;
     uint32_t table, pba;
+    int fd = vdev->vbasedev.fd;
+    VFIOMSIXInfo *msix;
 
     pos = pci_find_capability(&vdev->pdev, PCI_CAP_ID_MSIX);
     if (!pos) {
         return 0;
     }
 
-    if (pread(vdev->fd, &ctrl, sizeof(ctrl),
+    if (pread(fd, &ctrl, sizeof(ctrl),
               vdev->config_offset + pos + PCI_CAP_FLAGS) != sizeof(ctrl)) {
         return -errno;
     }
 
-    if (pread(vdev->fd, &table, sizeof(table),
+    if (pread(fd, &table, sizeof(table),
               vdev->config_offset + pos + PCI_MSIX_TABLE) != sizeof(table)) {
         return -errno;
     }
 
-    if (pread(vdev->fd, &pba, sizeof(pba),
+    if (pread(fd, &pba, sizeof(pba),
               vdev->config_offset + pos + PCI_MSIX_PBA) != sizeof(pba)) {
         return -errno;
     }
@@ -1066,18 +1068,39 @@ static int vfio_early_setup_msix(VFIODevice *vdev)
     table = le32_to_cpu(table);
     pba = le32_to_cpu(pba);
 
-    vdev->msix = g_malloc0(sizeof(*(vdev->msix)));
-    vdev->msix->table_bar = table & PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->table_offset = table & ~PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->pba_bar = pba & PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->pba_offset = pba & ~PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->entries = (ctrl & PCI_MSIX_FLAGS_QSIZE) + 1;
+    msix = g_malloc0(sizeof(*msix));
+    msix->table_bar = table & PCI_MSIX_FLAGS_BIRMASK;
+    msix->table_offset = table & ~PCI_MSIX_FLAGS_BIRMASK;
+    msix->pba_bar = pba & PCI_MSIX_FLAGS_BIRMASK;
+    msix->pba_offset = pba & ~PCI_MSIX_FLAGS_BIRMASK;
+    msix->entries = (ctrl & PCI_MSIX_FLAGS_QSIZE) + 1;
 
-    DPRINTF("%04x:%02x:%02x.%x "
-            "PCI MSI-X CAP @0x%x, BAR %d, offset 0x%x, entries %d\n",
-            vdev->host.domain, vdev->host.bus, vdev->host.slot,
-            vdev->host.function, pos, vdev->msix->table_bar,
-            vdev->msix->table_offset, vdev->msix->entries);
+    /*
+     * Test the size of the pba_offset variable and catch if it extends outside
+     * of the specified BAR. If it is the case, we need to apply a hardware
+     * specific quirk if the device is known or we have a broken configuration.
+     */
+    if (msix->pba_offset >= vdev->bars[msix->pba_bar].region.size) {
+        /*
+         * Chelsio T5 Virtual Function devices are encoded as 0x58xx for T5
+         * adapters. The T5 hardware returns an incorrect value of 0x8000 for
+         * the VF PBA offset while the BAR itself is only 8k. The correct value
+         * is 0x1000, so we hard code that here.
+         */
+        if (vdev->vendor_id == PCI_VENDOR_ID_CHELSIO &&
+            (vdev->device_id & 0xff00) == 0x5800) {
+            msix->pba_offset = 0x1000;
+        } else {
+            error_report("vfio: Hardware reports invalid configuration, "
+                         "MSIX PBA outside of specified BAR");
+            g_free(msix);
+            return -EINVAL;
+        }
+    }
+
+    trace_vfio_msix_early_setup(vdev->vbasedev.name, pos, msix->table_bar,
+                                msix->table_offset, msix->entries);
+    vdev->msix = msix;
 
     return 0;
 }
@@ -1118,10 +1141,10 @@ static void vfio_map_bars(VFIODevice *vdev)
 
 5.4.1 vfio_map_bar(), vfio_bar_ops
 ================================================================================
-static void vfio_map_bar(VFIODevice *vdev, int nr)
+static void vfio_map_bar(VFIOPCIDevice *vdev, int nr)
 {
     VFIOBAR *bar = &vdev->bars[nr];
-    unsigned size = bar->size;
+    uint64_t size = bar->region.size;
     char name[64];
     uint32_t pci_bar;
     uint8_t type;
@@ -1137,7 +1160,7 @@ static void vfio_map_bar(VFIODevice *vdev, int nr)
              vdev->host.function, nr);
 
     /* Determine what type of BAR this is for registration */
-    ret = pread(vdev->fd, &pci_bar, sizeof(pci_bar),
+    ret = pread(vdev->vbasedev.fd, &pci_bar, sizeof(pci_bar),
                 vdev->config_offset + PCI_BASE_ADDRESS_0 + (4 * nr));
     if (ret != sizeof(pci_bar)) {
         error_report("vfio: Failed to read BAR %d (%m)", nr);
@@ -1151,34 +1174,37 @@ static void vfio_map_bar(VFIODevice *vdev, int nr)
                                     ~PCI_BASE_ADDRESS_MEM_MASK);
 
     /* A "slow" read/write mapping underlies all BARs */
-    memory_region_init_io(&bar->mem, OBJECT(vdev), &vfio_bar_ops,
+    memory_region_init_io(&bar->region.mem, OBJECT(vdev), &vfio_region_ops,
                           bar, name, size);
-    pci_register_bar(&vdev->pdev, nr, type, &bar->mem);
+    pci_register_bar(&vdev->pdev, nr, type, &bar->region.mem);
 
     /*
      * We can't mmap areas overlapping the MSIX vector table, so we
      * potentially insert a direct-mapped subregion before and after it.
      */
     if (vdev->msix && vdev->msix->table_bar == nr) {
-        size = vdev->msix->table_offset & TARGET_PAGE_MASK;
+        size = vdev->msix->table_offset & qemu_real_host_page_mask;
     }
 
     strncat(name, " mmap", sizeof(name) - strlen(name) - 1);
-    if (vfio_mmap_bar(vdev, bar, &bar->mem,
-                      &bar->mmap_mem, &bar->mmap, size, 0, name)) {
+    if (vfio_mmap_region(OBJECT(vdev), &bar->region, &bar->region.mem,
+                      &bar->region.mmap_mem, &bar->region.mmap,
+                      size, 0, name)) {
         error_report("%s unsupported. Performance may be slow", name);
     }
 
     if (vdev->msix && vdev->msix->table_bar == nr) {
-        unsigned start;
+        uint64_t start;
 
-        start = TARGET_PAGE_ALIGN(vdev->msix->table_offset +
-                                  (vdev->msix->entries * PCI_MSIX_ENTRY_SIZE));
+        start = REAL_HOST_PAGE_ALIGN((uint64_t)vdev->msix->table_offset +
+                                     (vdev->msix->entries *
+                                      PCI_MSIX_ENTRY_SIZE));
 
-        size = start < bar->size ? bar->size - start : 0;
+        size = start < bar->region.size ? bar->region.size - start : 0;
         strncat(name, " msix-hi", sizeof(name) - strlen(name) - 1);
         /* VFIOMSIXInfo contains another MemoryRegion for this mapping */
-        if (vfio_mmap_bar(vdev, bar, &bar->mem, &vdev->msix->mmap_mem,
+        if (vfio_mmap_region(OBJECT(vdev), &bar->region, &bar->region.mem,
+                          &vdev->msix->mmap_mem,
                           &vdev->msix->mmap, size, start, name)) {
             error_report("%s unsupported. Performance may be slow", name);
         }
@@ -1186,6 +1212,12 @@ static void vfio_map_bar(VFIODevice *vdev, int nr)
 
     vfio_bar_quirk_setup(vdev, nr);
 }
+
+5.4.1.1 pci_register_bar()
+================================================================================
+
+5.4.1.2 vfio_mmap_region()
+================================================================================
 
 5.4.1.1 vfio_bar_quirk_setup()
 ================================================================================
@@ -1214,7 +1246,7 @@ static int vfio_add_capabilities(VFIODevice *vdev)
 
 5.5.1 vfio_add_std_cap()
 ================================================================================
-static int vfio_add_std_cap(VFIODevice *vdev, uint8_t pos)
+static int vfio_add_std_cap(VFIOPCIDevice *vdev, uint8_t pos)
 {
     PCIDevice *pdev = &vdev->pdev;
     uint8_t cap_id, next, size;
@@ -1255,16 +1287,24 @@ static int vfio_add_std_cap(VFIODevice *vdev, uint8_t pos)
 
     switch (cap_id) {
     case PCI_CAP_ID_MSI:
-        ret = vfio_setup_msi(vdev, pos);
+        ret = vfio_msi_setup(vdev, pos);
         break;
     case PCI_CAP_ID_EXP:
+        vfio_check_pcie_flr(vdev, pos);
         ret = vfio_setup_pcie_cap(vdev, pos, size);
         break;
     case PCI_CAP_ID_MSIX:
-        ret = vfio_setup_msix(vdev, pos);
+        ret = vfio_msix_setup(vdev, pos);
         break;
     case PCI_CAP_ID_PM:
+        vfio_check_pm_reset(vdev, pos);
         vdev->pm_cap = pos;
+        ret = pci_add_capability(pdev, cap_id, pos, size);
+        break;
+    case PCI_CAP_ID_AF:
+        vfio_check_af_flr(vdev, pos);
+        ret = pci_add_capability(pdev, cap_id, pos, size);
+        break;
     default:
         ret = pci_add_capability(pdev, cap_id, pos, size);
         break;
@@ -1277,6 +1317,100 @@ static int vfio_add_std_cap(VFIODevice *vdev, uint8_t pos)
                      cap_id, size, pos, ret);
         return ret;
     }
+
+    return 0;
+}
+
+5.5.1.1 vfio_setup_pcie_cap()
+================================================================================
+
+5.5.1.2 pci_add_capability()
+================================================================================
+
+5.5.1.3 vfio_msix_setup()
+================================================================================
+static int vfio_msix_setup(VFIOPCIDevice *vdev, int pos)
+{
+    int ret;
+
+    ret = msix_init(&vdev->pdev, vdev->msix->entries,
+                    &vdev->bars[vdev->msix->table_bar].region.mem,
+                    vdev->msix->table_bar, vdev->msix->table_offset,
+                    &vdev->bars[vdev->msix->pba_bar].region.mem,
+                    vdev->msix->pba_bar, vdev->msix->pba_offset, pos);
+    if (ret < 0) {
+        if (ret == -ENOTSUP) {
+            return 0;
+        }
+        error_report("vfio: msix_init failed");
+        return ret;
+    }
+
+    return 0;
+}
+
+int msix_init(struct PCIDevice *dev, unsigned short nentries,
+              MemoryRegion *table_bar, uint8_t table_bar_nr,
+              unsigned table_offset, MemoryRegion *pba_bar,
+              uint8_t pba_bar_nr, unsigned pba_offset, uint8_t cap_pos)
+{
+    int cap;
+    unsigned table_size, pba_size;
+    uint8_t *config;
+
+    /* Nothing to do if MSI is not supported by interrupt controller */
+    if (!msi_supported) {
+        return -ENOTSUP;
+    }
+
+    if (nentries < 1 || nentries > PCI_MSIX_FLAGS_QSIZE + 1) {
+        return -EINVAL;
+    }
+
+    table_size = nentries * PCI_MSIX_ENTRY_SIZE;
+    pba_size = QEMU_ALIGN_UP(nentries, 64) / 8;
+
+    /* Sanity test: table & pba don't overlap, fit within BARs, min aligned */
+    if ((table_bar_nr == pba_bar_nr &&
+         ranges_overlap(table_offset, table_size, pba_offset, pba_size)) ||
+        table_offset + table_size > memory_region_size(table_bar) ||
+        pba_offset + pba_size > memory_region_size(pba_bar) ||
+        (table_offset | pba_offset) & PCI_MSIX_FLAGS_BIRMASK) {
+        return -EINVAL;
+    }
+
+    cap = pci_add_capability(dev, PCI_CAP_ID_MSIX, cap_pos, MSIX_CAP_LENGTH);
+    if (cap < 0) {
+        return cap;
+    }
+
+    dev->msix_cap = cap;
+    dev->cap_present |= QEMU_PCI_CAP_MSIX;
+    config = dev->config + cap;
+
+    pci_set_word(config + PCI_MSIX_FLAGS, nentries - 1);
+    dev->msix_entries_nr = nentries;
+    dev->msix_function_masked = true;
+
+    pci_set_long(config + PCI_MSIX_TABLE, table_offset | table_bar_nr);
+    pci_set_long(config + PCI_MSIX_PBA, pba_offset | pba_bar_nr);
+
+    /* Make flags bit writable. */
+    dev->wmask[cap + MSIX_CONTROL_OFFSET] |= MSIX_ENABLE_MASK |
+                                             MSIX_MASKALL_MASK;
+
+    dev->msix_table = g_malloc0(table_size);
+    dev->msix_pba = g_malloc0(pba_size);
+    dev->msix_entry_used = g_malloc0(nentries * sizeof *dev->msix_entry_used);
+
+    msix_mask_all(dev, nentries);
+
+    memory_region_init_io(&dev->msix_table_mmio, OBJECT(dev), &msix_table_mmio_ops, dev,
+                          "msix-table", table_size);
+    memory_region_add_subregion(table_bar, table_offset, &dev->msix_table_mmio);
+    memory_region_init_io(&dev->msix_pba_mmio, OBJECT(dev), &msix_pba_mmio_ops, dev,
+                          "msix-pba", pba_size);
+    memory_region_add_subregion(pba_bar, pba_offset, &dev->msix_pba_mmio);
 
     return 0;
 }
@@ -1734,7 +1868,6 @@ static int vfio_dma_unmap(VFIOContainer *container,
    PCIDevice
    +---------------------------------+
    |devfn                            |   bdf in guest
-   |                                 |
    |bus                              |
    |    (PCIBus *)                   |
    +---------------------------------+
@@ -1742,11 +1875,9 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |    (PCIConfigReadFunc *)        |
    |config_write                     |   vfio_pci_write_config
    |    (PCIConfigWriteFunc *)       |
-   |                                 |
    +---------------------------------+
    |cap_present                      |   capabilities bits
    |    (uint32_t)                   |
-   |                                 |
    |config                           |
    |cmask                            |
    |wmask                            |
@@ -1763,18 +1894,18 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |    (bool)                       |
    |msix_table                       |
    |msix_pba                         |
-   |    (uint8_t)                    |
+   |    (uint8_t x                   |
    |                                 |
    |msix_entry_used                  |
    |    (unsigned *)                 |
    |                                 |
    |msix_exclusive_bar               |
-   |msix_table_mmio                  |
-   |msix_pba_mmio                    |
+   |msix_table_mmio                  |   msix_table_mmio_ops
+   |msix_pba_mmio                    |   msix_pba_mmio_ops
    |    (MemoryRegion)               |
    |                                 |
-   |msix_vector_use_notifier         |
-   |msix_vector_release_notifier     |
+   |msix_vector_use_notifier         |   vfio_msix_vector_use
+   |msix_vector_release_notifier     |   vfio_msix_vector_release
    |msix_vector_poll_notifier        |
    |                                 |
    |                                 |
@@ -1845,10 +1976,10 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |       |size, flags              |
    |       |nr                       |
    |       |fd_offset                |
-   |       |mem                      |
+   |       |mem                      |   vfio_region_ops
    |       |mem_map                  |
    |       |   (MemoryRegion)        |
-   |       |mmap                     |
+   |       |mmap                     |   mmap MMIO space
    |       |   (void *)              |
    |       |                         |
    +-------+-------------------------+
@@ -1858,7 +1989,21 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |    (void *)                     |
    |                                 |
    |                                 |
-   |                                 |
+   +---------------------------------+
+   |msix                             |
+   |    (VFIOMSIXInfo *)             |
+   |    +----------------------------+
+   |    |table_bar                   |
+   |    |table_offset                |
+   |    |pba_bar                     |
+   |    |pba_offset                  |
+   |    |entries                     |
+   |    |                            |
+   |    |mmap_mem                    |
+   |    |   (MemoryRegion)           |
+   |    |mmap                        |
+   |    |   (void *)                 |
+   |    +----------------------------+
    |                                 |
    |                                 |
    +---------------------------------+
