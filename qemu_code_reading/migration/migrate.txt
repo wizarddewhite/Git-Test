@@ -821,6 +821,30 @@ fail:
 
 1.9.1 global_state_store()
 ================================================================================
+int global_state_store(void)
+{
+    if (!runstate_store((char *)global_state.runstate,
+                        sizeof(global_state.runstate))) {
+        error_report("runstate name too big: %s", global_state.runstate);
+        trace_migrate_state_too_big();
+        return -EINVAL;
+    }
+    return 0;
+}
+
+1.9.1.1 runstate_store()
+================================================================================
+bool runstate_store(char *str, size_t size)
+{
+    const char *state = RunState_lookup[current_run_state];
+    size_t len = strlen(state) + 1;
+
+    if (len > size) {
+        return false;
+    }
+    memcpy(str, state, len);
+    return true;
+}
 
 1.9.2 vm_stop_force_state()
 ================================================================================
@@ -916,7 +940,7 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
     qemu_fflush(f);
 }
 
-1.9.3.1 save_section_header()
+1.9.3.1 save_section_header(SECTION_END)
 ================================================================================
 
 1.9.3.2 se->ops->save_live_complete_precopy()
@@ -925,7 +949,14 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
 1.9.3.3 save_section_footer()
 ================================================================================
 
-1.9.3.4 save_section_header()
+1.9.3.4 qjson_new()
+================================================================================
+
+1.9.3.4 json_start_array()
+================================================================================
+1.9.3.4 json_start_object()
+================================================================================
+1.9.3.4 save_section_header(SECTION_FULL)
 ================================================================================
 
 1.9.3.5 vmstate_save()
@@ -940,7 +971,11 @@ static void vmstate_save(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
     vmstate_save_state(f, se->vmsd, se->opaque, vmdesc);
 }
 
+1.9.3.6 json_end_object()
+================================================================================
 1.9.3.6 save_section_footer()
+================================================================================
+1.9.3.6 json_end_array()
 ================================================================================
 
 1.10 qemu_file_reset_rate_limit()
@@ -1157,7 +1192,7 @@ static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
     |state                            |
     |    (int)                        |
     +---------------------------------+
-    |file                             |
+    |file                             | tcp socket fd
     |    (QEMUFile *)                 |
     +---------------------------------+
     |thread                           | migration_thread
