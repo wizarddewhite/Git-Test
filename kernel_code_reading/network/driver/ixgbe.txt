@@ -1294,6 +1294,98 @@ int register_netdev(struct net_device *dev)
 1.16 ixgbe_vf_configuration()
 ================================================================================
 
+2. ixgbe_open()
+================================================================================
+static int ixgbe_open(struct net_device *netdev)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	int err, queues;
+
+	/* disallow open during test */
+	if (test_bit(__IXGBE_TESTING, &adapter->state))
+		return -EBUSY;
+
+	netif_carrier_off(netdev);
+
+	/* allocate transmit descriptors */
+	err = ixgbe_setup_all_tx_resources(adapter);
+	if (err)
+		goto err_setup_tx;
+
+	/* allocate receive descriptors */
+	err = ixgbe_setup_all_rx_resources(adapter);
+	if (err)
+		goto err_setup_rx;
+
+	ixgbe_configure(adapter);
+
+	err = ixgbe_request_irq(adapter);
+	if (err)
+		goto err_req_irq;
+
+	/* Notify the stack of the actual queue counts. */
+	if (adapter->num_rx_pools > 1)
+		queues = adapter->num_rx_queues_per_pool;
+	else
+		queues = adapter->num_tx_queues;
+
+	err = netif_set_real_num_tx_queues(netdev, queues);
+	if (err)
+		goto err_set_queues;
+
+	if (adapter->num_rx_pools > 1 &&
+	    adapter->num_rx_queues > IXGBE_MAX_L2A_QUEUES)
+		queues = IXGBE_MAX_L2A_QUEUES;
+	else
+		queues = adapter->num_rx_queues;
+	err = netif_set_real_num_rx_queues(netdev, queues);
+	if (err)
+		goto err_set_queues;
+
+	ixgbe_ptp_init(adapter);
+
+	ixgbe_up_complete(adapter);
+
+	ixgbe_clear_vxlan_port(adapter);
+#ifdef CONFIG_IXGBE_VXLAN
+	vxlan_get_rx_port(netdev);
+#endif
+
+	return 0;
+
+err_set_queues:
+	ixgbe_free_irq(adapter);
+err_req_irq:
+	ixgbe_free_all_rx_resources(adapter);
+	if (hw->phy.ops.set_phy_power && !adapter->wol)
+		hw->phy.ops.set_phy_power(&adapter->hw, false);
+err_setup_rx:
+	ixgbe_free_all_tx_resources(adapter);
+err_setup_tx:
+	ixgbe_reset(adapter);
+
+	return err;
+}
+
+2.1 ixgbe_setup_all_tx_resources()
+================================================================================
+
+2.2 ixgbe_setup_all_rx_resources()
+================================================================================
+
+2.3 ixgbe_configure()
+================================================================================
+
+2.3.1 ixgbe_configure_tx(), write to hw
+================================================================================
+
+2.3.2 ixgbe_configure_rx()
+================================================================================
+
+2.4 ixgbe_request_irq()
+================================================================================
+
 0. data structure 
 ================================================================================
 
@@ -1350,39 +1442,6 @@ int register_netdev(struct net_device *dev)
             |     |                                  |           |
             |     |                                  |           |
             |     +----------------------------------+           |
-    +-------|---  |tx_ring[MAX_TX_QUEUES]            |           |
-    |       |     |   (struct ixgbe_ring *)          |           |
-    |       |     |                                  |           |
-    |       |     |tx_ring_count                     |           |
-    |       |     |rx_ring_count                     |           |
-    |       |     |                                  |           |
-    |       |     |num_rx_queues                     |           |
-    |       |     |num_tx_queues                     |           |
-    |       |     |                                  |           |
-    |       |     |num_rx_pools                      |           |
-    |       |     |num_rx_queues_per_pool            |           |
-    |       |     |                                  |           |
-    |       |     |num_q_vectors                     |           |
-    |       |     |q_vector[]                        |           |
-    |       |     |    (struct ixgbe_q_vector *)     |           |
-    |       |     |                                  |           |
-    |       |     |     name                         |           |
-    |       |     |     napi                         |           |  ixgbe_poll
-    |       |     |                                  |           |
-    |       |     |     rx                           |           |
-    |       |     |     tx                           |           |
-    |       |     |        (ixgbe_ring_container)    |           |
-    +-------|-----|---> ring[0]                      |           |
-            |     |        (ixgbe_ring)              |           |
-            |     |                                  |           |
-            |     |         netdev                   |           |
-            |     |         dev                      |           |
-            |     |                                  |           |
-            |     |                                  |           |
-            |     |                                  |           |
-            |     |                                  |           |
-            |     |                                  |           |
-            |     +----------------------------------+           |
             |     |hw                                |           |
             |     |     (struct ixgbe_hw)            |           |
             |     |   +------------------------------+           |
@@ -1418,6 +1477,74 @@ int register_netdev(struct net_device *dev)
             |     |   |     ops                      |  phy_ops_82599
             |     |   |                              |
             |     |   |                              |
-            +-----+---+------------------------------+
-
-     
+            |     +---+------------------------------+            
+            |     |tx_ring_count                     |            
+            |     |rx_ring_count                     |            
+            |     |                                  |            
+            |     |num_rx_queues                     |            
+            |     |num_tx_queues                     |            
+            |     |                                  |            
+            |     |num_rx_pools                      |            
+            |     |num_rx_queues_per_pool            |            
+            |     |                                  |            
+            |     |num_q_vectors                     |            
+            |     |q_vector[]                        |            
+            |     |    (struct ixgbe_q_vector *)     |            
+            |     |    +-----------------------------+            
+            |     |    |v_idx                        |            
+            |     |    |name                         |            
+            |     |    |napi                         |              ixgbe_poll
+            |     |    |                             |            
+            |     |    |rx                           |            
+            |     |    |tx                           |            
+            |     |    |   (ixgbe_ring_container)    |            
+            |     |    |   +-------------------------+            
+            |     |    |   |total_bytes              |            
+            |     |    |   |total_packets            |            
+            |     |    |   |count                    |            
+            |     |    |   |ring                     |            
+            |     |    |   |    (ixgbe_ring *)       |            
+            |     |    |   +-------------------------+       ixgbe_ring     
+            |     |    |ring[0]                      |       +----------------+      +----------------+      +----------------+            
+            |     |    |                             |   --->|                |  --->|                |  --->|                |            
+            |     |    |                             |       +----------------+      +----------------+      +----------------+            
+            |     |    +-----------------------------+               ^                        ^                       ^
+            |     |                                  |               |                        |                       |
+            |     |tx_ring[MAX_TX_QUEUES]            |   ------------+------------------------------------------------+
+            |     |                                  |                                        |
+            |     |rx_ring[MAX_TX_QUEUES]            |   -------------------------------------+
+            |     |   (struct ixgbe_ring *)          |
+            |     |                                  |            
+            |     |    netdev                        |            
+            |     |    dev                           |            
+            |     |    q_vector                      |            
+            |     |                                  |            
+            |     |    count                         |            
+            |     |    next_to_use                   |            
+            |     |    next_to_clean                 |            
+            |     |                                  |            
+            |     |    tx_buffer_info                |            
+            |     |       (ixgbe_tx_buffer *)        |            
+            |     |    rx_buffer_info                |            
+            |     |       (ixgbe_rx_buffer *)        |            
+            |     |       +--------------------------+            
+            |     |       |skb                       |            
+            |     |       |dma                       |            
+            |     |       |page                      |            
+            |     |       |page_offset               |            
+            |     |       +--------------------------+            
+            |     |    desc                          |            
+            |     |       ixgbe_adv_tx_desc          |            
+            |     |                                  |            
+            |     |                                  |            
+            |     |       ixgbe_adv_rx_desc          |            
+            |     |                                  |            
+            |     |                                  |            
+            |     |                                  |            
+            |     |                                  |            
+            |     |                                  |            
+            |     |                                  |            
+            |     |                                  |            
+            |     +----------------------------------+            
+            |                                        |            
+            +----------------------------------------+            
