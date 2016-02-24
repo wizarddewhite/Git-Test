@@ -1562,7 +1562,7 @@ void vfio_pci_write_config(PCIDevice *pdev,
     }
 }
 
-6.2.1 vfio_msix_enable(), set msix notifier
+6.2.1 vfio_msix_enable(), handle MSIx cap and set msix notifier
 ================================================================================
 static void vfio_msix_enable(VFIOPCIDevice *vdev)
 {
@@ -2005,8 +2005,173 @@ static int vfio_dma_unmap(VFIOContainer *container,
 9. MSIX
 ================================================================================
 
-9.1 msix_table_mmio_write()
+9.1 msix_table_mmio_write(), handle MSIX table address and data
 ================================================================================
+static void msix_table_mmio_write(void *opaque, hwaddr addr,
+                                  uint64_t val, unsigned size)
+{
+    PCIDevice *dev = opaque;
+    int vector = addr / PCI_MSIX_ENTRY_SIZE;
+    bool was_masked;
+
+    was_masked = msix_is_masked(dev, vector);
+    pci_set_long(dev->msix_table + addr, val);
+    msix_handle_mask_update(dev, vector, was_masked);
+}
+
+9.1.1 msix_handle_mask_update()
+================================================================================
+static void msix_handle_mask_update(PCIDevice *dev, int vector, bool was_masked)
+{
+    bool is_masked = msix_is_masked(dev, vector);
+
+    if (is_masked == was_masked) {
+        return;
+    }
+
+    msix_fire_vector_notifier(dev, vector, is_masked);
+
+    if (!is_masked && msix_is_pending(dev, vector)) {
+        msix_clr_pending(dev, vector);
+        msix_notify(dev, vector);
+    }
+}
+
+9.1.1.1 msix_fire_vector_notifier(), register irq fd handler vfio_msi_interrupt
+================================================================================
+static void msix_fire_vector_notifier(PCIDevice *dev,
+                                      unsigned int vector, bool is_masked)
+{
+    MSIMessage msg;
+    int ret;
+
+    if (!dev->msix_vector_use_notifier) {
+        return;
+    }
+    if (is_masked) {
+        dev->msix_vector_release_notifier(dev, vector);
+    } else {
+        msg = msix_get_message(dev, vector);
+        ret = dev->msix_vector_use_notifier(dev, vector, msg);
+        assert(ret >= 0);
+    }
+}
+
+9.1.1.1.1 vfio_msix_vector_use()
+================================================================================
+static int vfio_msix_vector_use(PCIDevice *pdev,
+                                unsigned int nr, MSIMessage msg)
+{
+    return vfio_msix_vector_do_use(pdev, nr, &msg, vfio_msi_interrupt);
+}
+
+static int vfio_msix_vector_do_use(PCIDevice *pdev, unsigned int nr,
+                                   MSIMessage *msg, IOHandler *handler)
+{
+    VFIOPCIDevice *vdev = DO_UPCAST(VFIOPCIDevice, pdev, pdev);
+    VFIOMSIVector *vector;
+    int ret;
+
+    trace_vfio_msix_vector_do_use(vdev->vbasedev.name, nr);
+
+    vector = &vdev->msi_vectors[nr];
+
+    if (!vector->use) {
+        vector->vdev = vdev;
+        vector->virq = -1;
+        if (event_notifier_init(&vector->interrupt, 0)) {
+            error_report("vfio: Error: event_notifier_init failed");
+        }
+        vector->use = true;
+        msix_vector_use(pdev, nr);
+    }
+
+    qemu_set_fd_handler(event_notifier_get_fd(&vector->interrupt),
+                        handler, NULL, vector);
+
+    /*
+     * Attempt to enable route through KVM irqchip,
+     * default to userspace handling if unavailable.
+     */
+    if (vector->virq >= 0) {
+        if (!msg) {
+            vfio_remove_kvm_msi_virq(vector);
+        } else {
+            vfio_update_kvm_msi_virq(vector, *msg, pdev);
+        }
+    } else {
+        vfio_add_kvm_msi_virq(vdev, vector, msg, true);
+    }
+
+    /*
+     * We don't want to have the host allocate all possible MSI vectors
+     * for a device if they're not in use, so we shutdown and incrementally
+     * increase them as needed.
+     */
+    if (vdev->nr_vectors < nr + 1) {
+        vfio_disable_irqindex(&vdev->vbasedev, VFIO_PCI_MSIX_IRQ_INDEX);
+        vdev->nr_vectors = nr + 1;
+        ret = vfio_enable_vectors(vdev, true);
+        if (ret) {
+            error_report("vfio: failed to enable vectors, %d", ret);
+        }
+    } else {
+        int argsz;
+        struct vfio_irq_set *irq_set;
+        int32_t *pfd;
+
+        argsz = sizeof(*irq_set) + sizeof(*pfd);
+
+        irq_set = g_malloc0(argsz);
+        irq_set->argsz = argsz;
+        irq_set->flags = VFIO_IRQ_SET_DATA_EVENTFD |
+                         VFIO_IRQ_SET_ACTION_TRIGGER;
+        irq_set->index = VFIO_PCI_MSIX_IRQ_INDEX;
+        irq_set->start = nr;
+        irq_set->count = 1;
+        pfd = (int32_t *)&irq_set->data;
+
+        if (vector->virq >= 0) {
+            *pfd = event_notifier_get_fd(&vector->kvm_interrupt);
+        } else {
+            *pfd = event_notifier_get_fd(&vector->interrupt);
+        }
+
+        ret = ioctl(vdev->vbasedev.fd, VFIO_DEVICE_SET_IRQS, irq_set);
+        g_free(irq_set);
+        if (ret) {
+            error_report("vfio: failed to modify vector, %d", ret);
+        }
+    }
+
+    /* Disable PBA emulation when nothing more is pending. */
+    clear_bit(nr, vdev->msix->pending);
+    if (find_first_bit(vdev->msix->pending,
+                       vdev->nr_vectors) == vdev->nr_vectors) {
+        memory_region_set_enabled(&vdev->pdev.msix_pba_mmio, false);
+        trace_vfio_msix_pba_disable(vdev->vbasedev.name);
+    }
+
+    return 0;
+}
+
+9.1.1.2 msix_notify(), send a msix message
+================================================================================
+void msix_notify(PCIDevice *dev, unsigned vector)
+{
+    MSIMessage msg;
+
+    if (vector >= dev->msix_entries_nr || !dev->msix_entry_used[vector])
+        return;
+    if (msix_is_masked(dev, vector)) {
+        msix_set_pending(dev, vector);
+        return;
+    }
+
+    msg = msix_get_message(dev, vector);
+
+    msi_send_message(dev, msg);
+}
 
 9.2 msix_table_mmio_read()
 ================================================================================
@@ -2261,6 +2426,7 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |    |table_offset                |
    |    |pba_bar                     |
    |    |pba_offset                  |
+   |    |                            |
    |    |entries                     |
    |    |                            |
    |    |mmap_mem                    |
@@ -2272,13 +2438,13 @@ static int vfio_dma_unmap(VFIOContainer *container,
    |msi_vectors                      |
    |    (VFIOMSIVector *)            |
    |    +----------------------------+
-   |    |interrupt                   |
+   |    |interrupt                   |   vfio_msi_interrupt
    |    |kvm_interrupt               |
    |    |    (EventNotifier)         |
-   |    |virq                        |
-   |    |use                         |
-   |    |                            |
-   |    +----------------------------+
+   |    |virq                        |       
+   |    |use                         |      +--------------+      +--------------+      +--------------+
+   |    |                            | ---> |              | ---> |              | ---> |              |
+   |    +----------------------------+      +--------------+      +--------------+      +--------------+
    |                                 |
    |                                 |
    |                                 |
