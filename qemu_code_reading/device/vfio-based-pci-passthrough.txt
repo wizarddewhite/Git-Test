@@ -2396,22 +2396,22 @@ void msix_notify(PCIDevice *dev, unsigned vector)
    +----+----------------------------+
    |bars[]                           |
    |   (VFIOBAR)                     |
-   |                                 |
-   |    ioport                       |
-   |    mem64                        |
-   |    region                       |
-   |       (VFIORegion)              |
-   |       +-------------------------+
-   |       |size, flags              |
-   |       |nr                       |
-   |       |fd_offset                |
-   |       |mem                      |   vfio_region_ops
-   |       |mem_map                  |
-   |       |   (MemoryRegion)        |
-   |       |mmap                     |   mmap MMIO space
-   |       |   (void *)              |
-   |       |                         |
-   +-------+-------------------------+
+   |   +-----------------------------+
+   |   |ioport                       |
+   |   |mem64                        |
+   |   |region                       |
+   |   |   (VFIORegion)              |
+   |   |   +-------------------------+
+   |   |   |size, flags              |
+   |   |   |nr                       |
+   |   |   |fd_offset                |
+   |   |   |mem                      |   vfio_region_ops
+   |   |   |mem_map                  |
+   |   |   |   (MemoryRegion)        |
+   |   |   |mmap                     |   mmap MMIO space
+   |   |   |   (void *)              |
+   |   |   |                         |
+   +---+---+-------------------------+
    |config_size                      |
    |    (unsigned int)               |
    |emulated_config_bits             |
@@ -2453,3 +2453,39 @@ void msix_notify(PCIDevice *dev, unsigned vector)
    |                                 |
    |                                 |
    +---------------------------------+
+
+0.4 MemoryRegion
+================================================================================
+
+0.4.1 MMIO
+================================================================================
+; linked by calling pci_register_bar()
+
+    PCIDevice                            
+    +--------------------------------+            VFIOPCIDevice
+    |io_regions[PCI_NUM_REGIONS]     |            +--------------------------------+
+    |     (PCIIORegion)              |            |bars[PCI_NUM_REGIONS - 1]       |
+    |     +--------------------------+            |    (VFIOBAR)                   |
+    |     |memory            --------|-----+      |    +---------------------------+
+    |     |   (MemoryRegion *)       |     |      |    |region                     |
+    |     |address_space             |     |      |    |  (VFIORegion)             |
+    |     |   (MemoryRegion *)       |     |      |    |  +------------------------+
+    +-----+--------------------------+     +------|----|->|mem                     |   vfio_region_ops
+                                                  |    |  |                        |
+                                                  |    |  |mmap_mem                |
+                                                  |    |  |  (MemoryRegion)        |
+                                                  |    |  |                        |
+                                                  +----+--+------------------------+
+                                       
+                                       
+                                       
+
+0.4.2 Config Space
+================================================================================
+
+0.4.3 MSIX Table in BAR
+================================================================================
+
+0.4.4 DMA
+================================================================================
+
