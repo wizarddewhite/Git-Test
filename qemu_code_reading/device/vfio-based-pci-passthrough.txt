@@ -452,7 +452,7 @@ static void pci_default_realize(PCIDevice *dev, Error **errp)
 4.2 vmstate_register_with_alias_id(), register a SaveStateEntry
 ================================================================================
 
-4.3 object_property_set_boot(realized), realize each child dev 
+4.3 object_property_set_boot(realized), realize each child dev
 ================================================================================
 
 4.4 device_reset()
@@ -1791,7 +1791,7 @@ static void vfio_listener_region_add(MemoryListener *listener,
     }
 }
 
-8.1 vfio_iommu_map_notify(), iommu notification 
+8.1 vfio_iommu_map_notify(), iommu notification
 ================================================================================
 ; is notified in memory_region_notify_iommu()
 static void vfio_iommu_map_notify(Notifier *n, void *data)
@@ -2182,14 +2182,14 @@ void msix_notify(PCIDevice *dev, unsigned vector)
 0. data structure
 ================================================================================
 
-0.1 
+0.1
 ================================================================================
     VFIOGroup
     +------------------------+
     |fd                      | -> /dev/vfio/#Group
     |groupid                 | -> #Group
     +------------------------+
-    |container               |                 
+    |container               |
     |  (VFIOContainer*)      | ---------------->VFIOContainer
     +------------------------+                  +-----------------------+
     |                        |                  |fd                     | -> /dev/vfio/vfio
@@ -2200,7 +2200,7 @@ void msix_notify(PCIDevice *dev, unsigned vector)
     +------------------------+                  +-----------------------+
     |device_list             |                  |listerner              |
     |                        |                  |   (MemoryListerner)   |
-    +------------------------+                  +-----------------------+       
+    +------------------------+                  +-----------------------+
         |            ^                          |guest_iommus           | ----->+--------------------------+
         |            |                          |   (VFIOGuestIOMMU)    |       |                          |
         |            +----------------------+   +-----------------------+       |                          |
@@ -2210,7 +2210,7 @@ void msix_notify(PCIDevice *dev, unsigned vector)
                 |group                   |--+                                   +--------------------------+
                 |                        |
                 +------------------------+
-                |fd                      | -> 
+                |fd                      | ->
                 |                        |
                 +------------------------+
                 |bars[8]                 |
@@ -2441,7 +2441,7 @@ void msix_notify(PCIDevice *dev, unsigned vector)
    |    |interrupt                   |   vfio_msi_interrupt
    |    |kvm_interrupt               |
    |    |    (EventNotifier)         |
-   |    |virq                        |       
+   |    |virq                        |
    |    |use                         |      +--------------+      +--------------+      +--------------+
    |    |                            | ---> |              | ---> |              | ---> |              |
    |    +----------------------------+      +--------------+      +--------------+      +--------------+
@@ -2461,7 +2461,7 @@ void msix_notify(PCIDevice *dev, unsigned vector)
 ================================================================================
 ; linked by calling pci_register_bar()
 
-    PCIDevice                            
+    PCIDevice
     +--------------------------------+            VFIOPCIDevice
     |io_regions[PCI_NUM_REGIONS]     |            +--------------------------------+
     |     (PCIIORegion)              |            |bars[PCI_NUM_REGIONS - 1]       |
@@ -2472,13 +2472,27 @@ void msix_notify(PCIDevice *dev, unsigned vector)
     |     |   (MemoryRegion *)       |     |      |    |  +------------------------+
     +-----+--------------------------+     +------|----|->|mem                     |   vfio_region_ops
                                                   |    |  |                        |
-                                                  |    |  |mmap_mem                |
+                                                  |    |  |mmap_mem                |   a mmapped sub-region of mem
                                                   |    |  |  (MemoryRegion)        |
                                                   |    |  |                        |
                                                   +----+--+------------------------+
-                                       
-                                       
-                                       
+
+
+0.4.1.1 MMIO layout when it contains MSIX table
+================================================================================
+
+     VFIOPCIDevice.region.mem
+     +-------------------------------------------------------------------------+
+     |                           | MSIX Table     |                            |
+     +-------------------------------------------------------------------------+
+     ^                           ^                ^                            ^
+     |                           |                |                            |
+     |                           |                |                            |
+
+     VFIOPCIDevice.region.mmap_mem                VFIOPCIDevice.msix.mmap_mem
+     +---------------------------+                +----------------------------+
+     |                           |                |                            |
+     +---------------------------+                +----------------------------+
 
 0.4.2 Config Space
 ================================================================================
