@@ -2402,7 +2402,6 @@ void msix_notify(PCIDevice *dev, unsigned vector)
    |   |region                       |
    |   |   (VFIORegion)              |
    |   |   +-------------------------+
-   |   |   |size, flags              |
    |   |   |nr                       |
    |   |   |fd_offset                |
    |   |   |mem                      |   vfio_region_ops
@@ -2499,6 +2498,14 @@ void msix_notify(PCIDevice *dev, unsigned vector)
                                  +----------------+
                                  |                |
                                  +----------------+
+
+0.4.1.2 how MSIX is injected in guest
+================================================================================
+
+ Host                          Qemu                  Guest
+ +----------------+  eventfd   +-----------+         +-----------+
+ |vfio_msihandler |  ------>   |msi_notify | ------> |           |
+ +----------------+            +-----------+         +-----------+
 
 0.4.2 Config Space
 ================================================================================
