@@ -2076,7 +2076,7 @@ static int vfio_dma_unmap(VFIOContainer *container,
     return 0;
 }
 
-9. MSIX
+9. MSIX table access in BAR
 ================================================================================
 
 9.1 msix_table_mmio_write(), handle MSIX table address and data
@@ -2249,6 +2249,14 @@ void msix_notify(PCIDevice *dev, unsigned vector)
 
 9.2 msix_table_mmio_read()
 ================================================================================
+
+9.3 how MSIX interrupt is injected in guest
+================================================================================
+
+ Host                          Qemu                  Guest
+ +----------------+  eventfd   +-----------+         +-----------+
+ |vfio_msihandler |  ------>   |msi_notify | ------> |           |
+ +----------------+            +-----------+         +-----------+
 
 10. INTx
 ================================================================================
@@ -2572,14 +2580,6 @@ void msix_notify(PCIDevice *dev, unsigned vector)
                                  +----------------+
                                  |                |
                                  +----------------+
-
-0.4.1.2 how MSIX is injected in guest
-================================================================================
-
- Host                          Qemu                  Guest
- +----------------+  eventfd   +-----------+         +-----------+
- |vfio_msihandler |  ------>   |msi_notify | ------> |           |
- +----------------+            +-----------+         +-----------+
 
 0.4.2 Config Space
 ================================================================================
