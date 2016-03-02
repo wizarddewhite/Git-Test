@@ -1707,6 +1707,80 @@ void msix_vector_unuse(PCIDevice *dev, unsigned vector)
 6.2.2.5 vfio_msi_disable_common()
 ================================================================================
 
+6.2.3 pci_default_write_config()
+================================================================================
+void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int l)
+{
+    int i, was_irq_disabled = pci_irq_disabled(d);
+    uint32_t val = val_in;
+
+    for (i = 0; i < l; val >>= 8, ++i) {
+        uint8_t wmask = d->wmask[addr + i];
+        uint8_t w1cmask = d->w1cmask[addr + i];
+        assert(!(wmask & w1cmask));
+        d->config[addr + i] = (d->config[addr + i] & ~wmask) | (val & wmask);
+        d->config[addr + i] &= ~(val & w1cmask); /* W1C: Write 1 to Clear */
+    }
+    if (ranges_overlap(addr, l, PCI_BASE_ADDRESS_0, 24) ||
+        ranges_overlap(addr, l, PCI_ROM_ADDRESS, 4) ||
+        ranges_overlap(addr, l, PCI_ROM_ADDRESS1, 4) ||
+        range_covers_byte(addr, l, PCI_COMMAND))
+        pci_update_mappings(d);
+
+    if (range_covers_byte(addr, l, PCI_COMMAND)) {
+        pci_update_irq_disabled(d, was_irq_disabled);
+        memory_region_set_enabled(&d->bus_master_enable_region,
+                                  pci_get_word(d->config + PCI_COMMAND)
+                                    & PCI_COMMAND_MASTER);
+    }
+
+    msi_write_config(d, addr, val_in, l);
+    msix_write_config(d, addr, val_in, l);
+}
+
+6.2.3.1 pci_update_mappings(), map the MMIO address assigned in Guest
+================================================================================
+static void pci_update_mappings(PCIDevice *d)
+{
+    PCIIORegion *r;
+    int i;
+    pcibus_t new_addr;
+
+    for(i = 0; i < PCI_NUM_REGIONS; i++) {
+        r = &d->io_regions[i];
+
+        /* this region isn't registered */
+        if (!r->size)
+            continue;
+
+        new_addr = pci_bar_address(d, i, r->type, r->size);
+
+        /* This bar isn't changed */
+        if (new_addr == r->addr)
+            continue;
+
+        /* now do the real mapping */
+        if (r->addr != PCI_BAR_UNMAPPED) {
+            trace_pci_update_mappings_del(d, pci_bus_num(d->bus),
+                                          PCI_SLOT(d->devfn),
+                                          PCI_FUNC(d->devfn),
+                                          i, r->addr, r->size);
+            memory_region_del_subregion(r->address_space, r->memory);
+        }
+        r->addr = new_addr;
+        if (r->addr != PCI_BAR_UNMAPPED) {
+            trace_pci_update_mappings_add(d, pci_bus_num(d->bus),
+                                          PCI_SLOT(d->devfn),
+                                          PCI_FUNC(d->devfn),
+                                          i, r->addr, r->size);
+            memory_region_add_subregion_overlap(r->address_space,
+                                                r->addr, r->memory, 1);
+        }
+    }
+
+    pci_update_vga(d);
+}
+
 7. MMIO read/write
 ================================================================================
 
@@ -2342,7 +2416,7 @@ void msix_notify(PCIDevice *dev, unsigned vector)
    |io_regions[PCI_NUM_REGIONS]      |
    |    (PCIIORegion)                |
    |    +----------------------------+
-   |    |addr                        |
+   |    |addr                        |   the assigned MMIO address in guest
    |    |size                        |
    |    |   (pcibus_t)               |
    |    |type                        |
