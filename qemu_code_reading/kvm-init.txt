@@ -1,17 +1,39 @@
-1. kvm_init()
+1. main()
 ================================================================================
-int kvm_init(void)
+
+1.1 configure_accelerator()
+================================================================================
+
+1.1.1 accel_init_machine()
+================================================================================
+
+1.1.1.1 acc->init_machine(), kvm_init()
+================================================================================
+
+2. kvm_init()
+================================================================================
+static int kvm_init(MachineState *ms)
 {
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
     static const char upgrade_note[] =
         "Please upgrade to at least kernel 2.6.29 or recent kvm-kmod\n"
         "(see http://sourceforge.net/projects/kvm).\n";
+    struct {
+        const char *name;
+        int num;
+    } num_cpus[] = {
+        { "SMP",          smp_cpus },
+        { "hotpluggable", max_cpus },
+        { NULL, }
+    }, *nc = num_cpus;
+    int soft_vcpus_limit, hard_vcpus_limit;
     KVMState *s;
     const KVMCapabilityInfo *missing_cap;
     int ret;
-    int i;
-    int max_vcpus;
+    int type = 0;
+    const char *kvm_type;
 
-    s = g_malloc0(sizeof(KVMState));
+    s = KVM_STATE(ms->accelerator);
 
     /*
      * On systems where the kernel can support different base page
@@ -21,12 +43,11 @@ int kvm_init(void)
      */
     assert(TARGET_PAGE_SIZE <= getpagesize());
 
+    s->sigmask_len = 8;
+
 #ifdef KVM_CAP_SET_GUEST_DEBUG
     QTAILQ_INIT(&s->kvm_sw_breakpoints);
 #endif
-    for (i = 0; i < ARRAY_SIZE(s->slots); i++) {
-        s->slots[i].slot = i;
-    }
     s->vmfd = -1;
     s->fd = qemu_open("/dev/kvm", O_RDWR);
     if (s->fd == -1) {
@@ -37,7 +58,7 @@ int kvm_init(void)
 
     ret = kvm_ioctl(s, KVM_GET_API_VERSION, 0);
     if (ret < KVM_API_VERSION) {
-        if (ret > 0) {
+        if (ret >= 0) {
             ret = -EINVAL;
         }
         fprintf(stderr, "kvm version too old\n");
@@ -50,24 +71,68 @@ int kvm_init(void)
         goto err;
     }
 
-    max_vcpus = kvm_max_vcpus(s);
-    if (smp_cpus > max_vcpus) {
+    s->nr_slots = kvm_check_extension(s, KVM_CAP_NR_MEMSLOTS);
+
+    /* If unspecified, use the default value */
+    if (!s->nr_slots) {
+        s->nr_slots = 32;
+    }
+
+    /* check the vcpu limits */
+    soft_vcpus_limit = kvm_recommended_vcpus(s);
+    hard_vcpus_limit = kvm_max_vcpus(s);
+
+    while (nc->name) {
+        if (nc->num > soft_vcpus_limit) {
+            fprintf(stderr,
+                    "Warning: Number of %s cpus requested (%d) exceeds "
+                    "the recommended cpus supported by KVM (%d)\n",
+                    nc->name, nc->num, soft_vcpus_limit);
+
+            if (nc->num > hard_vcpus_limit) {
+                fprintf(stderr, "Number of %s cpus requested (%d) exceeds "
+                        "the maximum cpus supported by KVM (%d)\n",
+                        nc->name, nc->num, hard_vcpus_limit);
+                exit(1);
+            }
+        }
+        nc++;
+    }
+
+    kvm_type = qemu_opt_get(qemu_get_machine_opts(), "kvm-type");
+    if (mc->kvm_type) {
+        type = mc->kvm_type(kvm_type);
+    } else if (kvm_type) {
         ret = -EINVAL;
-        fprintf(stderr, "Number of SMP cpus requested (%d) exceeds max cpus "
-                "supported by KVM (%d)\n", smp_cpus, max_vcpus);
+        fprintf(stderr, "Invalid argument kvm-type=%s\n", kvm_type);
         goto err;
     }
 
-    s->vmfd = kvm_ioctl(s, KVM_CREATE_VM, 0);
-    if (s->vmfd < 0) {
+    do {
+        ret = kvm_ioctl(s, KVM_CREATE_VM, type);
+    } while (ret == -EINTR);
+
+    if (ret < 0) {
+        fprintf(stderr, "ioctl(KVM_CREATE_VM) failed: %d %s\n", -ret,
+                strerror(-ret));
+
 #ifdef TARGET_S390X
-        fprintf(stderr, "Please add the 'switch_amode' kernel parameter to "
-                        "your host kernel command line\n");
+        if (ret == -EINVAL) {
+            fprintf(stderr,
+                    "Host kernel setup problem detected. Please verify:\n");
+            fprintf(stderr, "- for kernels supporting the switch_amode or"
+                    " user_mode parameters, whether\n");
+            fprintf(stderr,
+                    "  user space is running in primary address space\n");
+            fprintf(stderr,
+                    "- for kernels supporting the vm.allocate_pgste sysctl, "
+                    "whether it is enabled\n");
+        }
 #endif
-        ret = s->vmfd;
         goto err;
     }
 
+    s->vmfd = ret;
     missing_cap = kvm_check_extension_list(s, kvm_required_capabilites);
     if (!missing_cap) {
         missing_cap =
@@ -99,20 +164,8 @@ int kvm_init(void)
     s->debugregs = kvm_check_extension(s, KVM_CAP_DEBUGREGS);
 #endif
 
-#ifdef KVM_CAP_XSAVE
-    s->xsave = kvm_check_extension(s, KVM_CAP_XSAVE);
-#endif
-
-#ifdef KVM_CAP_XCRS
-    s->xcrs = kvm_check_extension(s, KVM_CAP_XCRS);
-#endif
-
-#ifdef KVM_CAP_PIT_STATE2
-    s->pit_state2 = kvm_check_extension(s, KVM_CAP_PIT_STATE2);
-#endif
-
 #ifdef KVM_CAP_IRQ_ROUTING
-    s->direct_msi = (kvm_check_extension(s, KVM_CAP_SIGNAL_MSI) > 0);
+    kvm_direct_msi_allowed = (kvm_check_extension(s, KVM_CAP_SIGNAL_MSI) > 0);
 #endif
 
     s->intx_set_mask = kvm_check_extension(s, KVM_CAP_PCI_2_3);
@@ -122,19 +175,48 @@ int kvm_init(void)
         s->irq_set_ioctl = KVM_IRQ_LINE_STATUS;
     }
 
-    ret = kvm_arch_init(s);
+#ifdef KVM_CAP_READONLY_MEM
+    kvm_readonly_mem_allowed =
+        (kvm_check_extension(s, KVM_CAP_READONLY_MEM) > 0);
+#endif
+
+    kvm_eventfds_allowed =
+        (kvm_check_extension(s, KVM_CAP_IOEVENTFD) > 0);
+
+    kvm_irqfds_allowed =
+        (kvm_check_extension(s, KVM_CAP_IRQFD) > 0);
+
+    kvm_resamplefds_allowed =
+        (kvm_check_extension(s, KVM_CAP_IRQFD_RESAMPLE) > 0);
+
+    kvm_vm_attributes_allowed =
+        (kvm_check_extension(s, KVM_CAP_VM_ATTRIBUTES) > 0);
+
+    kvm_ioeventfd_any_length_allowed =
+        (kvm_check_extension(s, KVM_CAP_IOEVENTFD_ANY_LENGTH) > 0);
+
+    ret = kvm_arch_init(ms, s);
     if (ret < 0) {
         goto err;
     }
 
-    ret = kvm_irqchip_create(s);
-    if (ret < 0) {
-        goto err;
+    if (machine_kernel_irqchip_allowed(ms)) {
+        kvm_irqchip_create(ms, s);
     }
 
     kvm_state = s;
-    memory_listener_register(&kvm_memory_listener, &address_space_memory);
-    memory_listener_register(&kvm_io_listener, &address_space_io);
+
+    if (kvm_eventfds_allowed) {
+        s->memory_listener.listener.eventfd_add = kvm_mem_ioeventfd_add;
+        s->memory_listener.listener.eventfd_del = kvm_mem_ioeventfd_del;
+    }
+    s->memory_listener.listener.coalesced_mmio_add = kvm_coalesce_mmio_region;
+    s->memory_listener.listener.coalesced_mmio_del = kvm_uncoalesce_mmio_region;
+
+    kvm_memory_listener_register(s, &s->memory_listener,
+                                 &address_space_memory, 0);
+    memory_listener_register(&kvm_io_listener,
+                             &address_space_io);
 
     s->many_ioeventfds = kvm_check_many_ioeventfds();
 
@@ -143,204 +225,64 @@ int kvm_init(void)
     return 0;
 
 err:
+    assert(ret < 0);
     if (s->vmfd >= 0) {
         close(s->vmfd);
     }
     if (s->fd != -1) {
         close(s->fd);
     }
-    g_free(s);
+    g_free(s->memory_listener.slots);
 
     return ret;
 }
 
-1.1 kvm_max_vcpus(), retrieve max vcpu number
-================================================================================
-static int kvm_max_vcpus(KVMState *s)
-{
-    int ret;
-
-    /* Find number of supported CPUs using the recommended
-     * procedure from the kernel API documentation to cope with
-     * older kernels that may be missing capabilities.
-     */
-    ret = kvm_check_extension(s, KVM_CAP_MAX_VCPUS);
-    if (ret) {
-        return ret;
-    }
-    ret = kvm_check_extension(s, KVM_CAP_NR_VCPUS);
-    if (ret) {
-        return ret;
-    }
-
-    return 4;
-}
-
-1.2 KVM_CREATE_VM, return fd with kvm_vm_fops
+2.1 qemu_open("/dev/kvm")
 ================================================================================
 
-1.3 kvm_check_extension_list(kvm_required_capabilites)
-================================================================================
-static const KVMCapabilityInfo *
-kvm_check_extension_list(KVMState *s, const KVMCapabilityInfo *list)
-{
-    while (list->name) {
-        if (!kvm_check_extension(s, list->value)) {
-            return list;
-        }
-        list++;
-    }
-    return NULL;
-}
-
-1.3.1 kvm_check_extension()
-================================================================================
-int kvm_check_extension(KVMState *s, unsigned int extension)
-{
-    int ret;
-
-    ret = kvm_ioctl(s, KVM_CHECK_EXTENSION, extension);
-    if (ret < 0) {
-        ret = 0;
-    }
-
-    return ret;
-}
-
-1.4 kvm_check_extension_list(kvm_arch_required_capabilites)
+2.2 kvm_ioctl(KVM_GET_API_VERSION)
 ================================================================================
 
-1.5 kvm_check_extension_list(KVM_CAP_COALESCED_MMIO)
-================================================================================
-; return a KVM_COALESCED_MMIO_PAGE_OFFSET from kernel
-
-1.6 kvm_arch_init()
-================================================================================
-int kvm_arch_init(KVMState *s)
-{
-    cap_interrupt_unset = kvm_check_extension(s, KVM_CAP_PPC_UNSET_IRQ);
-    cap_interrupt_level = kvm_check_extension(s, KVM_CAP_PPC_IRQ_LEVEL);
-    cap_segstate = kvm_check_extension(s, KVM_CAP_PPC_SEGSTATE);
-    cap_booke_sregs = kvm_check_extension(s, KVM_CAP_PPC_BOOKE_SREGS);
-    cap_ppc_smt = kvm_check_extension(s, KVM_CAP_PPC_SMT);
-    cap_ppc_rma = kvm_check_extension(s, KVM_CAP_PPC_RMA);
-    cap_spapr_tce = kvm_check_extension(s, KVM_CAP_SPAPR_TCE);
-    cap_spapr_multitce = kvm_check_extension(s, KVM_CAP_SPAPR_MULTITCE);
-    cap_spapr_tce_iommu = kvm_check_extension(s, KVM_CAP_SPAPR_TCE_IOMMU);
-    cap_one_reg = kvm_check_extension(s, KVM_CAP_ONE_REG);
-    cap_hior = kvm_check_extension(s, KVM_CAP_PPC_HIOR);
-    cap_epr = kvm_check_extension(s, KVM_CAP_PPC_EPR);
-    cap_ppc_watchdog = kvm_check_extension(s, KVM_CAP_PPC_BOOKE_WATCHDOG);
-    /* Note: we don't set cap_papr here, because this capability is
-     * only activated after this by kvmppc_set_papr() */
-    cap_htab_fd = kvm_check_extension(s, KVM_CAP_PPC_HTAB_FD);
-
-    if (!cap_interrupt_level) {
-        fprintf(stderr, "KVM: Couldn't find level irq capability. Expect the "
-                        "VM to stall at times!\n");
-    }
-
-    kvm_ppc_register_host_cpu_type();
-
-    return 0;
-}
-
-1.7 kvm_irqchip_create()
-================================================================================
-static int kvm_irqchip_create(KVMState *s)
-{
-    QemuOptsList *list = qemu_find_opts("machine");
-    int ret;
-
-    if (QTAILQ_EMPTY(&list->head) ||
-        !qemu_opt_get_bool(QTAILQ_FIRST(&list->head),
-                           "kernel_irqchip", true) ||
-        !kvm_check_extension(s, KVM_CAP_IRQCHIP)) {
-        return 0;
-    }
-
-    ret = kvm_vm_ioctl(s, KVM_CREATE_IRQCHIP);
-    if (ret < 0) {
-        fprintf(stderr, "Create kernel irqchip failed\n");
-        return ret;
-    }
-
-    kvm_kernel_irqchip = true;
-    /* If we have an in-kernel IRQ chip then we must have asynchronous
-     * interrupt delivery (though the reverse is not necessarily true)
-     */
-    kvm_async_interrupts_allowed = true;
-
-    kvm_init_irq_routing(s);
-
-    return 0;
-}
-
-1.7.1 kvm_vm_ioctl(s, KVM_CREATE_IRQCHIP)
+2.3 kvm_check_extension(KVM_CAP_NR_MEMSLOTS)
 ================================================================================
 
-1.7.2 kvm_init_irq_routing()
+2.4 kvm_recommended_vcpus()
 ================================================================================
-; retrieve the number of irqs supported
-; create a bitmap to trace this
-static void kvm_init_irq_routing(KVMState *s)
-{
-    int gsi_count, i;
 
-    gsi_count = kvm_check_extension(s, KVM_CAP_IRQ_ROUTING);
-    if (gsi_count > 0) {
-        unsigned int gsi_bits, i;
-
-        /* Round up so we can search ints using ffs */
-        gsi_bits = ALIGN(gsi_count, 32);
-        s->used_gsi_bitmap = g_malloc0(gsi_bits / 8);
-        s->gsi_count = gsi_count;
-
-        /* Mark any over-allocated bits as already in use */
-        for (i = gsi_count; i < gsi_bits; i++) {
-            set_gsi(s, i);
-        }
-    }
-
-    s->irq_routes = g_malloc0(sizeof(*s->irq_routes));
-    s->nr_allocated_irq_routes = 0;
-
-    if (!s->direct_msi) {
-        for (i = 0; i < KVM_MSI_HASHTAB_SIZE; i++) {
-            QTAILQ_INIT(&s->msi_hashtab[i]);
-        }
-    }
-
-    kvm_arch_init_irq_routing(s);
-}
-
-1.7.2.1 kvm_arch_init_irq_routing()
+2.5 kvm_max_vcpus()
 ================================================================================
-void kvm_arch_init_irq_routing(KVMState *s)
-{
-    if (!kvm_check_extension(s, KVM_CAP_IRQ_ROUTING)) {
-        /* If kernel can't do irq routing, interrupt source
-         * override 0->2 cannot be set up as required by HPET.
-         * So we have to disable it.
-         */
-        no_hpet = 1;
-    }
-    /* We know at this point that we're using the in-kernel
-     * irqchip, so we can use irqfds, and on x86 we know
-     * we can use msi via irqfd and GSI routing.
-     */
-    kvm_irqfds_allowed = true;
-    kvm_msi_via_irqfd_allowed = true;
-    kvm_gsi_routing_allowed = true;
-}
 
-1.8 memory listener
+2.6 kvm_ioctl(KVM_CREATE_VM), create VM
 ================================================================================
-    memory_listener_register(&kvm_memory_listener, &address_space_memory);
-    memory_listener_register(&kvm_io_listener, &address_space_io);
 
-0.data structure
+2.7 kvm_check_extension_list(caps), check cap list
 ================================================================================
+
+2.8 kvm_check_extension(KVM_CAP_COALESCED_MMIO)
+================================================================================
+
+2.9 kvm_check_extension(KVM_CAP_SIGNAL_MSI), direct msi
+================================================================================
+
+2.10 kvm_arch_init()
+================================================================================
+
+2.11 machine_kernel_irqchip_allowed()
+================================================================================
+
+2.12 kvm_irqchip_create()
+================================================================================
+
+0. data structure
+================================================================================
+
+0.1 KVMState
+================================================================================
+   AccelState
+   +------------------------+
+   |parent_obj              |
+   |  (AccelState)          |
+   +------------------------+
    KVMState
    +------------------------+
    |fd                      | -> /dev/kvm
@@ -348,15 +290,21 @@ void kvm_arch_init_irq_routing(KVMState *s)
    |vmfd                    | -> ioctl(KVM_CREATE_VM)
    |                        |
    +------------------------+
+   |nr_slots                | -> KVM_CAP_NR_MEMSLOTS
    |slots                   |
    |                        |
    +------------------------+
-   |coalesced_mmio          |
-   |  (int)                 |
+   |soft_vcpus_limit        |
+   |hard_vcpus_limit        |
+   |                        |
    +------------------------+
-   |vcpu_events             | extension support status
+   |coalesced_mmio          | -> KVM_CAP_COALESCED_MMIO
+   |  (int)                 |
+   |vcpu_events             | -> KVM_CAP_VCPU_EVENTS
    |robust_singlestep       |
    |debugregs               |
+   |kvm_direct_msi_allowed  | -> KVM_CAP_SIGNAL_MSI
+   +------------------------+
    |xsave                   |
    |xcrs                    |
    |pit_state2              |
@@ -368,3 +316,4 @@ void kvm_arch_init_irq_routing(KVMState *s)
    |direct_msi              |
    |  (bool)                |
    +------------------------+
+
