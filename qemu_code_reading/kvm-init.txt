@@ -266,11 +266,183 @@ err:
 
 2.10 kvm_arch_init()
 ================================================================================
+int kvm_arch_init(MachineState *ms, KVMState *s)
+{
+    uint64_t identity_base = 0xfffbc000;
+    uint64_t shadow_mem;
+    int ret;
+    struct utsname utsname;
+
+#ifdef KVM_CAP_XSAVE
+    has_xsave = kvm_check_extension(s, KVM_CAP_XSAVE);
+#endif
+
+#ifdef KVM_CAP_XCRS
+    has_xcrs = kvm_check_extension(s, KVM_CAP_XCRS);
+#endif
+
+#ifdef KVM_CAP_PIT_STATE2
+    has_pit_state2 = kvm_check_extension(s, KVM_CAP_PIT_STATE2);
+#endif
+
+    ret = kvm_get_supported_msrs(s);
+    if (ret < 0) {
+        return ret;
+    }
+
+    uname(&utsname);
+    lm_capable_kernel = strcmp(utsname.machine, "x86_64") == 0;
+
+    /*
+     * On older Intel CPUs, KVM uses vm86 mode to emulate 16-bit code directly.
+     * In order to use vm86 mode, an EPT identity map and a TSS  are needed.
+     * Since these must be part of guest physical memory, we need to allocate
+     * them, both by setting their start addresses in the kernel and by
+     * creating a corresponding e820 entry. We need 4 pages before the BIOS.
+     *
+     * Older KVM versions may not support setting the identity map base. In
+     * that case we need to stick with the default, i.e. a 256K maximum BIOS
+     * size.
+     */
+    if (kvm_check_extension(s, KVM_CAP_SET_IDENTITY_MAP_ADDR)) {
+        /* Allows up to 16M BIOSes. */
+        identity_base = 0xfeffc000;
+
+        ret = kvm_vm_ioctl(s, KVM_SET_IDENTITY_MAP_ADDR, &identity_base);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    /* Set TSS base one page after EPT identity map. */
+    ret = kvm_vm_ioctl(s, KVM_SET_TSS_ADDR, identity_base + 0x1000);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* Tell fw_cfg to notify the BIOS to reserve the range. */
+    ret = e820_add_entry(identity_base, 0x4000, E820_RESERVED);
+    if (ret < 0) {
+        fprintf(stderr, "e820_add_entry() table is full\n");
+        return ret;
+    }
+    qemu_register_reset(kvm_unpoison_all, NULL);
+
+    shadow_mem = machine_kvm_shadow_mem(ms);
+    if (shadow_mem != -1) {
+        shadow_mem /= 4096;
+        ret = kvm_vm_ioctl(s, KVM_SET_NR_MMU_PAGES, shadow_mem);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    if (kvm_check_extension(s, KVM_CAP_X86_SMM)) {
+        smram_machine_done.notify = register_smram_listener;
+        qemu_add_machine_init_done_notifier(&smram_machine_done);
+    }
+    return 0;
+}
+
+2.10.1 kvm_get_supported_msrs()
+================================================================================
+
+2.10.2 kvm_vm_ioctl(KVM_SET_TSS_ADDR)
+================================================================================
+
+2.10.3 e820_add_entry()
+================================================================================
+int e820_add_entry(uint64_t address, uint64_t length, uint32_t type)
+{
+    int index = le32_to_cpu(e820_reserve.count);
+    struct e820_entry *entry;
+
+    if (type != E820_RAM) {
+        /* old FW_CFG_E820_TABLE entry -- reservations only */
+        if (index >= E820_NR_ENTRIES) {
+            return -EBUSY;
+        }
+        entry = &e820_reserve.entry[index++];
+
+        entry->address = cpu_to_le64(address);
+        entry->length = cpu_to_le64(length);
+        entry->type = cpu_to_le32(type);
+
+        e820_reserve.count = cpu_to_le32(index);
+    }
+
+    /* new "etc/e820" file -- include ram too */
+    e820_table = g_renew(struct e820_entry, e820_table, e820_entries + 1);
+    e820_table[e820_entries].address = cpu_to_le64(address);
+    e820_table[e820_entries].length = cpu_to_le64(length);
+    e820_table[e820_entries].type = cpu_to_le32(type);
+    e820_entries++;
+
+    return e820_entries;
+}
+
+2.10.4 qemu_register_reset(kvm_unpoison_all)
+================================================================================
+
+2.10.5 machine_kvm_shadow_mem()
+================================================================================
 
 2.11 machine_kernel_irqchip_allowed()
 ================================================================================
 
 2.12 kvm_irqchip_create()
+================================================================================
+static void kvm_irqchip_create(MachineState *machine, KVMState *s)
+{
+    int ret;
+
+    if (kvm_check_extension(s, KVM_CAP_IRQCHIP)) {
+        ;
+    } else if (kvm_check_extension(s, KVM_CAP_S390_IRQCHIP)) {
+        ret = kvm_vm_enable_cap(s, KVM_CAP_S390_IRQCHIP, 0);
+        if (ret < 0) {
+            fprintf(stderr, "Enable kernel irqchip failed: %s\n", strerror(-ret));
+            exit(1);
+        }
+    } else {
+        return;
+    }
+
+    /* First probe and see if there's a arch-specific hook to create the
+     * in-kernel irqchip for us */
+    ret = kvm_arch_irqchip_create(machine, s);
+    if (ret == 0) {
+        if (machine_kernel_irqchip_split(machine)) {
+            perror("Split IRQ chip mode not supported.");
+            exit(1);
+        } else {
+            ret = kvm_vm_ioctl(s, KVM_CREATE_IRQCHIP);
+        }
+    }
+    if (ret < 0) {
+        fprintf(stderr, "Create kernel irqchip failed: %s\n", strerror(-ret));
+        exit(1);
+    }
+
+    kvm_kernel_irqchip = true;
+    /* If we have an in-kernel IRQ chip then we must have asynchronous
+     * interrupt delivery (though the reverse is not necessarily true)
+     */
+    kvm_async_interrupts_allowed = true;
+    kvm_halt_in_kernel_allowed = true;
+
+    kvm_init_irq_routing(s);
+
+    s->gsimap = g_hash_table_new(g_direct_hash, g_direct_equal);
+}
+
+2.12.1 kvm_arch_irqchip_create()
+================================================================================
+
+2.12.2 kvm_vm_ioctl(KVM_CREATE_IRQCHIP)
+================================================================================
+
+2.12.3 kvm_init_irq_routing()
 ================================================================================
 
 0. data structure
@@ -279,41 +451,62 @@ err:
 0.1 KVMState
 ================================================================================
    AccelState
-   +------------------------+
-   |parent_obj              |
-   |  (AccelState)          |
-   +------------------------+
+   +----------------------------------+
+   |parent_obj                        |
+   |  (AccelState)                    |
+   +----------------------------------+
    KVMState
-   +------------------------+
-   |fd                      | -> /dev/kvm
-   +------------------------+
-   |vmfd                    | -> ioctl(KVM_CREATE_VM)
-   |                        |
-   +------------------------+
-   |nr_slots                | -> KVM_CAP_NR_MEMSLOTS
-   |slots                   |
-   |                        |
-   +------------------------+
-   |soft_vcpus_limit        |
-   |hard_vcpus_limit        |
-   |                        |
-   +------------------------+
-   |coalesced_mmio          | -> KVM_CAP_COALESCED_MMIO
-   |  (int)                 |
-   |vcpu_events             | -> KVM_CAP_VCPU_EVENTS
-   |robust_singlestep       |
-   |debugregs               |
-   |kvm_direct_msi_allowed  | -> KVM_CAP_SIGNAL_MSI
-   +------------------------+
-   |xsave                   |
-   |xcrs                    |
-   |pit_state2              |
-   |intx_set_mask           |
-   |                        |
-   |broken_set_mem_region   |
-   |  (int)                 |
-   +------------------------+
-   |direct_msi              |
-   |  (bool)                |
-   +------------------------+
-
+   +----------------------------------+
+   |fd                                | -> /dev/kvm
+   +----------------------------------+
+   |vmfd                              | -> ioctl(KVM_CREATE_VM)
+   |                                  |
+   +----------------------------------+
+   |nr_slots                          | -> KVM_CAP_NR_MEMSLOTS
+   |slots                             |
+   |                                  |
+   +----------------------------------+
+   |soft_vcpus_limit                  |
+   |hard_vcpus_limit                  |
+   |                                  |
+   +----------------------------------+
+   |coalesced_mmio                    | -> KVM_CAP_COALESCED_MMIO
+   |  (int)                           |
+   |vcpu_events                       | -> KVM_CAP_VCPU_EVENTS
+   |robust_singlestep                 |
+   |debugregs                         |
+   |kvm_direct_msi_allowed            | -> KVM_CAP_SIGNAL_MSI
+   +----------------------------------+
+   |xsave                             |
+   |xcrs                              |
+   |pit_state2                        |
+   |intx_set_mask                     |
+   |                                  |
+   |broken_set_mem_region             |
+   |  (int)                           |
+   +----------------------------------+
+   |direct_msi                        |
+   |  (bool)                          |
+   +----------------------------------+
+   |gsi_count                         |   number of irq_routes
+   |  (unsigned int)                  |
+   |used_gsi_bitmap                   |
+   |  (uint32_t)                      |   bitmap of irq_routes
+   |irq_routes                        |
+   |   (struct kvm_irq_routing)       |
+   |  +-------------------------------+
+   |  |nr                             |
+   |  |flags                          |
+   |  |entries[0]                     |
+   |  | (struct kvm_irq_routing_entry)|
+   |  |    +--------------------------+
+   |  |    |gsi                       |
+   |  |    |type                      |
+   |  |    |flags                     |
+   |  |    |pad                       |
+   |  |    |union                     |
+   |  |    |  irqchip                 |
+   |  |    |  msi                     |
+   |  +-------------------------------+
+   |                                  |
+   +----------------------------------+
