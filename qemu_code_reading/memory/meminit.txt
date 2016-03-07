@@ -110,47 +110,6 @@ void memory_region_init_io(MemoryRegion *mr,
     mr->terminates = true;
 }
 
-1.1.1.2.1 memory_region_initfn()
-================================================================================
-static void memory_region_initfn(Object *obj)
-{
-    MemoryRegion *mr = MEMORY_REGION(obj);
-    ObjectProperty *op;
-
-    mr->ops = &unassigned_mem_ops;
-    mr->ram_addr = RAM_ADDR_INVALID;
-    mr->enabled = true;
-    mr->romd_mode = true;
-    mr->global_locking = true;
-    mr->destructor = memory_region_destructor_none;
-    QTAILQ_INIT(&mr->subregions);
-    QTAILQ_INIT(&mr->coalesced);
-
-    op = object_property_add(OBJECT(mr), "container",
-                             "link<" TYPE_MEMORY_REGION ">",
-                             memory_region_get_container,
-                             NULL, /* memory_region_set_container */
-                             NULL, NULL, &error_abort);
-    op->resolve = memory_region_resolve_container;
-
-    object_property_add(OBJECT(mr), "addr", "uint64",
-                        memory_region_get_addr,
-                        NULL, /* memory_region_set_addr */
-                        NULL, NULL, &error_abort);
-    object_property_add(OBJECT(mr), "priority", "uint32",
-                        memory_region_get_priority,
-                        NULL, /* memory_region_set_priority */
-                        NULL, NULL, &error_abort);
-    object_property_add_bool(OBJECT(mr), "may-overlap",
-                             memory_region_get_may_overlap,
-                             NULL, /* memory_region_set_may_overlap */
-                             &error_abort);
-    object_property_add(OBJECT(mr), "size", "uint64",
-                        memory_region_get_size,
-                        NULL, /* memory_region_set_size, */
-                        NULL, NULL, &error_abort);
-}
-
 1.1.1.3 address_space_init()
 ================================================================================
 void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)
@@ -208,3 +167,71 @@ address_space
 
 
 
+0.1 "Class" MemoryRegion
+================================================================================
+
+   +------------------+
+   |     TypeImpl     |
+   |                  |
+   |  +---------------+                  +------------------------+
+   |  |               |                  |     Object             |
+   |  |ObjectClass    |  <---------------|                        |
+   |  |  class_init   |                  |                        |
+   +--+---------------+                  +------------------------+
+             |         
+             |         
+             v                           
+   +---------------------+               struct MemoryRegion(A)
+   |                     |               +------------------------+
+   |TYPE_MEMORY_REGION   |<--------------|                        |
+   |     instance_init   |               | instance_init          |
+   | memory_region_initfn|               |   memory_region_initfn |
+   +---------+-----------+               +------------------------+
+
+0.2 Object MemoryRegion
+================================================================================
+
+     struct MemoryRegion(A)                                             
+     +------------------------+                                         
+     |name                    |                                         
+     |  (const char *)        |                                         
+     +------------------------+                                         
+     |ops                     |  unassigned_io_ops / unassigned_mem_ops 
+     |  (MemoryRegionOps *)   |                                         
+     +------------------------+                                         
+     |iommu_ops               |                                         
+     |  (MemoryRegionIOMMUOps)|                                         
+     |iommu_notify            |                                         
+     |  (NotifierList)        |                                         
+     +------------------------+                                         
+     |ram                     |                                         
+     |readonly                |                                         
+     |  (bool )               |                                         
+     |ram_block               |                                         
+     |  (RAMBlock *)          |                                         
+     |ram_addr                |                                         
+     |  (ram_addr_t)          |                                         
+     |dirty_log_mask          |                                         
+     |  (uint8_t)             |                                         
+     +------------------------+                                         
+     |addr                    |                                         
+     |  (hwaddr)              |                                         
+     |size                    |                                         
+     |  (Int128)              |                                         
+     +------------------------+                                         
+     |ioeventfds              |                                         
+     |(MemoryRegionIoeventfd*)|                                         
+     +------------------------+                                         
+     |may_overlap             |                                         
+     |  (bool)                |                                         
+     |priority                |                                         
+     |  (int)                 |                                         
+     +------------------------+                                         
+     |subregions              |                                         
+     |    QTAILQ_HEAD()       |                                         
+     |subregions_link         |                                         
+     |    QTAILQ_ENTRY()      |                                         
+     +------------------------+                                         
+     |coalesced               |                                         
+     |    QTAILQ_HEAD()       |                                         
+     +------------------------+                                         
