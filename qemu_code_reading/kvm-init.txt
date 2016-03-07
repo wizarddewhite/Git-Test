@@ -566,6 +566,36 @@ void kvm_init_irq_routing(KVMState *s)
 2.12.3.1 kvm_arch_init_irq_routing()
 ================================================================================
 
+2.13 kvm_memory_listener_register()
+================================================================================
+void kvm_memory_listener_register(KVMState *s, KVMMemoryListener *kml,
+                                  AddressSpace *as, int as_id)
+{
+    int i;
+
+    kml->slots = g_malloc0(s->nr_slots * sizeof(KVMSlot));
+    kml->as_id = as_id;
+
+    for (i = 0; i < s->nr_slots; i++) {
+        kml->slots[i].slot = i;
+    }
+
+    kml->listener.region_add = kvm_region_add;
+    kml->listener.region_del = kvm_region_del;
+    kml->listener.log_start = kvm_log_start;
+    kml->listener.log_stop = kvm_log_stop;
+    kml->listener.log_sync = kvm_log_sync;
+    kml->listener.priority = 10;
+
+    memory_listener_register(&kml->listener, as);
+}
+
+2.14 memory_listener_register(kvm_io_listener)
+================================================================================
+
+2.15 cpu_interrupt_handler = kvm_handle_interrupt
+================================================================================
+
 0. data structure
 ================================================================================
 
@@ -581,10 +611,6 @@ void kvm_init_irq_routing(KVMState *s)
    |fd                                | -> /dev/kvm
    +----------------------------------+
    |vmfd                              | -> ioctl(KVM_CREATE_VM)
-   |                                  |
-   +----------------------------------+
-   |nr_slots                          | -> KVM_CAP_NR_MEMSLOTS
-   |slots                             |
    |                                  |
    +----------------------------------+
    |coalesced_mmio                    | -> KVM_CAP_COALESCED_MMIO
@@ -635,13 +661,34 @@ void kvm_init_irq_routing(KVMState *s)
    |  |listener                       |
    |  |   (MemoryListener)            |
    |  |   +---------------------------+
+   |  |   |region_add                 |   kvm_region_add
+   |  |   |region_del                 |   kvm_region_del
+   |  |   |log_start                  |   kvm_log_start 
+   |  |   |log_stop                   |   kvm_log_stop  
+   |  |   |log_sync                   |   kvm_log_sync  
+   |  |   |priority                   |   10  
    |  |   |eventfd_add                |   kvm_mem_ioeventfd_add
-   |  |   |eventfd_del)               |   kvm_mem_ioeventfd_del
+   |  |   |eventfd_del                |   kvm_mem_ioeventfd_del
    |  |   |coalesced_mmio_add         |   kvm_coalesce_mmio_region
    |  |   |coalesced_mmio_del         |   kvm_uncoalesce_mmio_region
    |  |   +---------------------------+
-   |  |slots                          |
+   |  |slots                          |   number of nr_slots
    |  |   (KVMSlot *)                 |
+   |  |   +---------------------------+
+   |  |   |slot                       |
+   |  |   |flags                      |
+   |  |   |  (int)                    |
+   |  |   |start_addr                 |
+   |  |   |  (hwaddr)                 |
+   |  |   |memory_size                |
+   |  |   |  (ram_addr_t)             |
+   |  |   |ram                        |
+   |  |   |  (void *)                 |
+   |  |   +---------------------------+
    |  |as_id                          |
    |  |   (int)                       |
    +--+-------------------------------+
+   |nr_slots                          | -> KVM_CAP_NR_MEMSLOTS
+   |slots                             |
+   |                                  |
+   +----------------------------------+
