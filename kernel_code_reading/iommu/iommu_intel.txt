@@ -189,7 +189,64 @@ out_free_dmar:
 	return ret;
 }
 
+2.1 iommu_init_mempool(), create iova_cache, iommu_domain_cache, iommu_devinfo_cache
+================================================================================
+static int __init iommu_init_mempool(void)
+{
+	int ret;
+	ret = iova_cache_get();
+	if (ret)
+		return ret;
+
+	ret = iommu_domain_cache_init();
+	if (ret)
+		goto domain_error;
+
+	ret = iommu_devinfo_cache_init();
+	if (!ret)
+		return ret;
+
+	kmem_cache_destroy(iommu_domain_cache);
+domain_error:
+	iova_cache_put();
+
+	return -ENOMEM;
+}
+
+2.2 dmar_table_init()
+================================================================================
+
+2.3 dmar_dev_scope_init()
+================================================================================
+
+2.4 dmar_init_reserved_ranges()
+================================================================================
+
+2.5 init_no_remapping_devices()
+================================================================================
+
+2.6 init_dmars()
+================================================================================
+
+2.7 dma_ops = &intel_dma_ops;
+================================================================================
+
+2.8 init_iommu_pm_ops()
+================================================================================
+
+2.9 iommu_device_create()
+================================================================================
+
+2.10 bus_set_iommu(&pci_bus_type, &intel_iommu_ops)
+================================================================================
+
+2.11 bus_register_notifier(&pci_bus_type, &device_nb)
+================================================================================
+
 0. data structure
+================================================================================
+                        
+0.1 DMAR in ACPI
 ================================================================================
                         
                           DMA Remapping Reporting Structure
