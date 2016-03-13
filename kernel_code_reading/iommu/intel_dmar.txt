@@ -192,11 +192,589 @@ out:
 	return 0;
 }
 
-2.1 dmar_alloc_dev_scope()
+2.1 dmar_alloc_dev_scope(), allocate dmar_dev_scope
 ================================================================================
+void *dmar_alloc_dev_scope(void *start, void *end, int *cnt)
+{
+	struct acpi_dmar_device_scope *scope;
+
+	*cnt = 0;
+	while (start < end) {
+		scope = start;
+		if (scope->entry_type == ACPI_DMAR_SCOPE_TYPE_NAMESPACE ||
+		    scope->entry_type == ACPI_DMAR_SCOPE_TYPE_ENDPOINT ||
+		    scope->entry_type == ACPI_DMAR_SCOPE_TYPE_BRIDGE)
+			(*cnt)++;
+		else if (scope->entry_type != ACPI_DMAR_SCOPE_TYPE_IOAPIC &&
+			scope->entry_type != ACPI_DMAR_SCOPE_TYPE_HPET) {
+			pr_warn("Unsupported device scope\n");
+		}
+		start += scope->length;
+	}
+	if (*cnt == 0)
+		return NULL;
+
+	return kcalloc(*cnt, sizeof(struct dmar_dev_scope), GFP_KERNEL);
+}
 
 2.2 alloc_iommu()
 ================================================================================
+static int alloc_iommu(struct dmar_drhd_unit *drhd)
+{
+	struct intel_iommu *iommu;
+	u32 ver, sts;
+	int agaw = 0;
+	int msagaw = 0;
+	int err;
 
-2.3 dmar_register_drhd_unit()
+	if (!drhd->reg_base_addr) {
+		warn_invalid_dmar(0, "");
+		return -EINVAL;
+	}
+
+	iommu = kzalloc(sizeof(*iommu), GFP_KERNEL);
+	if (!iommu)
+		return -ENOMEM;
+
+	if (dmar_alloc_seq_id(iommu) < 0) {
+		pr_err("Failed to allocate seq_id\n");
+		err = -ENOSPC;
+		goto error;
+	}
+
+	err = map_iommu(iommu, drhd->reg_base_addr);
+	if (err) {
+		pr_err("Failed to map %s\n", iommu->name);
+		goto error_free_seq_id;
+	}
+
+	err = -EINVAL;
+	agaw = iommu_calculate_agaw(iommu);
+	if (agaw < 0) {
+		pr_err("Cannot get a valid agaw for iommu (seq_id = %d)\n",
+			iommu->seq_id);
+		goto err_unmap;
+	}
+	msagaw = iommu_calculate_max_sagaw(iommu);
+	if (msagaw < 0) {
+		pr_err("Cannot get a valid max agaw for iommu (seq_id = %d)\n",
+			iommu->seq_id);
+		goto err_unmap;
+	}
+	iommu->agaw = agaw;
+	iommu->msagaw = msagaw;
+	iommu->segment = drhd->segment;
+
+	iommu->node = -1;
+
+	ver = readl(iommu->reg + DMAR_VER_REG);
+	pr_info("%s: reg_base_addr %llx ver %d:%d cap %llx ecap %llx\n",
+		iommu->name,
+		(unsigned long long)drhd->reg_base_addr,
+		DMAR_VER_MAJOR(ver), DMAR_VER_MINOR(ver),
+		(unsigned long long)iommu->cap,
+		(unsigned long long)iommu->ecap);
+
+	/* Reflect status in gcmd */
+	sts = readl(iommu->reg + DMAR_GSTS_REG);
+	if (sts & DMA_GSTS_IRES)
+		iommu->gcmd |= DMA_GCMD_IRE;
+	if (sts & DMA_GSTS_TES)
+		iommu->gcmd |= DMA_GCMD_TE;
+	if (sts & DMA_GSTS_QIES)
+		iommu->gcmd |= DMA_GCMD_QIE;
+
+	raw_spin_lock_init(&iommu->register_lock);
+
+	drhd->iommu = iommu;
+
+	if (intel_iommu_enabled)
+		iommu->iommu_dev = iommu_device_create(NULL, iommu,
+						       intel_iommu_groups,
+						       "%s", iommu->name);
+
+	return 0;
+
+err_unmap:
+	unmap_iommu(iommu);
+error_free_seq_id:
+	dmar_free_seq_id(iommu);
+error:
+	kfree(iommu);
+	return err;
+}
+
+2.2.1 dmar_alloc_seq_id()
 ================================================================================
+static int dmar_alloc_seq_id(struct intel_iommu *iommu)
+{
+	iommu->seq_id = find_first_zero_bit(dmar_seq_ids,
+					    DMAR_UNITS_SUPPORTED);
+	if (iommu->seq_id >= DMAR_UNITS_SUPPORTED) {
+		iommu->seq_id = -1;
+	} else {
+		set_bit(iommu->seq_id, dmar_seq_ids);
+		sprintf(iommu->name, "dmar%d", iommu->seq_id);
+	}
+
+	return iommu->seq_id;
+}
+
+2.2.2 map_iommu()
+================================================================================
+static int map_iommu(struct intel_iommu *iommu, u64 phys_addr)
+{
+	int map_size, err=0;
+
+	iommu->reg_phys = phys_addr;
+	iommu->reg_size = VTD_PAGE_SIZE;
+
+	if (!request_mem_region(iommu->reg_phys, iommu->reg_size, iommu->name)) {
+		pr_err("Can't reserve memory\n");
+		err = -EBUSY;
+		goto out;
+	}
+
+	iommu->reg = ioremap(iommu->reg_phys, iommu->reg_size);
+	if (!iommu->reg) {
+		pr_err("Can't map the region\n");
+		err = -ENOMEM;
+		goto release;
+	}
+
+	iommu->cap = dmar_readq(iommu->reg + DMAR_CAP_REG);
+	iommu->ecap = dmar_readq(iommu->reg + DMAR_ECAP_REG);
+
+	if (iommu->cap == (uint64_t)-1 && iommu->ecap == (uint64_t)-1) {
+		err = -EINVAL;
+		warn_invalid_dmar(phys_addr, " returns all ones");
+		goto unmap;
+	}
+
+	/* the registers might be more than one page */
+	map_size = max_t(int, ecap_max_iotlb_offset(iommu->ecap),
+			 cap_max_fault_reg_offset(iommu->cap));
+	map_size = VTD_PAGE_ALIGN(map_size);
+	if (map_size > iommu->reg_size) {
+		iounmap(iommu->reg);
+		release_mem_region(iommu->reg_phys, iommu->reg_size);
+		iommu->reg_size = map_size;
+		if (!request_mem_region(iommu->reg_phys, iommu->reg_size,
+					iommu->name)) {
+			pr_err("Can't reserve memory\n");
+			err = -EBUSY;
+			goto out;
+		}
+		iommu->reg = ioremap(iommu->reg_phys, iommu->reg_size);
+		if (!iommu->reg) {
+			pr_err("Can't map the region\n");
+			err = -ENOMEM;
+			goto release;
+		}
+	}
+	err = 0;
+	goto out;
+
+unmap:
+	iounmap(iommu->reg);
+release:
+	release_mem_region(iommu->reg_phys, iommu->reg_size);
+out:
+	return err;
+}
+
+2.2.3 iommu_calculate_agaw()
+================================================================================
+
+2.2.4 iommu_calculate_max_agaw()
+================================================================================
+
+2.2.5 iommu_device_create()
+================================================================================
+
+2.3 dmar_register_drhd_unit(), link to dmar_drhd_units
+================================================================================
+static void dmar_register_drhd_unit(struct dmar_drhd_unit *drhd)
+{
+	/*
+	 * add INCLUDE_ALL at the tail, so scan the list will find it at
+	 * the very end.
+	 */
+	if (drhd->include_all)
+		list_add_tail_rcu(&drhd->list, &dmar_drhd_units);
+	else
+		list_add_rcu(&drhd->list, &dmar_drhd_units);
+}
+
+3. dmar_dev_scope_init()
+================================================================================
+int __init dmar_dev_scope_init(void)
+{
+	struct pci_dev *dev = NULL;
+	struct dmar_pci_notify_info *info;
+
+	if (dmar_dev_scope_status != 1)
+		return dmar_dev_scope_status;
+
+	if (list_empty(&dmar_drhd_units)) {
+		dmar_dev_scope_status = -ENODEV;
+	} else {
+		dmar_dev_scope_status = 0;
+
+		dmar_acpi_dev_scope_init();
+
+		for_each_pci_dev(dev) {
+			if (dev->is_virtfn)
+				continue;
+
+			info = dmar_alloc_pci_notify_info(dev,
+					BUS_NOTIFY_ADD_DEVICE);
+			if (!info) {
+				return dmar_dev_scope_status;
+			} else {
+				dmar_pci_bus_add_dev(info);
+				dmar_free_pci_notify_info(info);
+			}
+		}
+
+		bus_register_notifier(&pci_bus_type, &dmar_pci_bus_nb);
+	}
+
+	return dmar_dev_scope_status;
+}
+
+3.1 dmar_acpi_dev_scope_init()
+================================================================================
+static int __init dmar_acpi_dev_scope_init(void)
+{
+	struct acpi_dmar_andd *andd;
+
+	if (dmar_tbl == NULL)
+		return -ENODEV;
+
+	for (andd = (void *)dmar_tbl + sizeof(struct acpi_table_dmar);
+	     ((unsigned long)andd) < ((unsigned long)dmar_tbl) + dmar_tbl->length;
+	     andd = ((void *)andd) + andd->header.length) {
+		if (andd->header.type == ACPI_DMAR_TYPE_NAMESPACE) {
+			acpi_handle h;
+			struct acpi_device *adev;
+
+			if (!ACPI_SUCCESS(acpi_get_handle(ACPI_ROOT_OBJECT,
+							  andd->device_name,
+							  &h))) {
+				pr_err("Failed to find handle for ACPI object %s\n",
+				       andd->device_name);
+				continue;
+			}
+			if (acpi_bus_get_device(h, &adev)) {
+				pr_err("Failed to get device for ACPI object %s\n",
+				       andd->device_name);
+				continue;
+			}
+			dmar_acpi_insert_dev_scope(andd->device_number, adev);
+		}
+	}
+	return 0;
+}
+
+3.1.1 dmar_acpi_insert_dev_scope()
+================================================================================
+static void __init dmar_acpi_insert_dev_scope(u8 device_number,
+					      struct acpi_device *adev)
+{
+	struct dmar_drhd_unit *dmaru;
+	struct acpi_dmar_hardware_unit *drhd;
+	struct acpi_dmar_device_scope *scope;
+	struct device *tmp;
+	int i;
+
+	for_each_drhd_unit(dmaru) {
+		drhd = (struct acpi_dmar_hardware_unit *)dmaru->hdr;
+
+		for (scope = drhd->dev_scope;
+		     (unsigned long)scope < ((unsigned long)drhd) + drhd->header.length;
+		     scope = ((void *)scope) + scope->length) {
+			if (scope->entry_type != ACPI_DMAR_SCOPE_TYPE_NAMESPACE)
+				continue;
+			if (scope->enumeration_id != device_number)
+				continue;
+
+			pr_info("ACPI device \"%s\" under DMAR at %llx as %02x:%02x.%d\n",
+				dev_name(&adev->dev), dmaru->reg_base_addr,
+				scope->bus, scope->path->device,
+				scope->path->function);
+			for_each_dev_scope(dmaru->devices, dmaru->devices_cnt, i, tmp)
+				if (tmp == NULL) {
+					dmaru->devices[i].bus = scope->bus;
+					dmaru->devices[i].devfn =
+					  PCI_DEVFN(scope->path->device,
+						    scope->path->function);
+					rcu_assign_pointer(dmaru->devices[i].dev,
+							   get_device(&adev->dev));
+					return;
+				}
+			BUG_ON(i >= dmaru->devices_cnt);
+		}
+	}
+	pr_warn("No IOMMU scope found for ANDD enumeration ID %d (%s)\n",
+		device_number, dev_name(&adev->dev));
+}
+
+3.2 dmar_alloc_pci_notify_info(), allocate nitify_info
+================================================================================
+static struct dmar_pci_notify_info *
+dmar_alloc_pci_notify_info(struct pci_dev *dev, unsigned long event)
+{
+	int level = 0;
+	size_t size;
+	struct pci_dev *tmp;
+	struct dmar_pci_notify_info *info;
+
+	BUG_ON(dev->is_virtfn);
+
+	/* Only generate path[] for device addition event */
+	if (event == BUS_NOTIFY_ADD_DEVICE)
+		for (tmp = dev; tmp; tmp = tmp->bus->self)
+			level++;
+
+	size = sizeof(*info) + level * sizeof(struct acpi_dmar_pci_path);
+	if (size <= sizeof(dmar_pci_notify_info_buf)) {
+		info = (struct dmar_pci_notify_info *)dmar_pci_notify_info_buf;
+	} else {
+		info = kzalloc(size, GFP_KERNEL);
+		if (!info) {
+			pr_warn("Out of memory when allocating notify_info "
+				"for %s.\n", pci_name(dev));
+			if (dmar_dev_scope_status == 0)
+				dmar_dev_scope_status = -ENOMEM;
+			return NULL;
+		}
+	}
+
+	info->event = event;
+	info->dev = dev;
+	info->seg = pci_domain_nr(dev->bus);
+	info->level = level;
+	if (event == BUS_NOTIFY_ADD_DEVICE) {
+		for (tmp = dev; tmp; tmp = tmp->bus->self) {
+			level--;
+			info->path[level].bus = tmp->bus->number;
+			info->path[level].device = PCI_SLOT(tmp->devfn);
+			info->path[level].function = PCI_FUNC(tmp->devfn);
+			if (pci_is_root_bus(tmp->bus))
+				info->bus = tmp->bus->number;
+		}
+	}
+
+	return info;
+}
+
+3.3 dmar_pci_bus_add_dev()
+================================================================================
+static int dmar_pci_bus_add_dev(struct dmar_pci_notify_info *info)
+{
+	int ret = 0;
+	struct dmar_drhd_unit *dmaru;
+	struct acpi_dmar_hardware_unit *drhd;
+
+	for_each_drhd_unit(dmaru) {
+		if (dmaru->include_all)
+			continue;
+
+		drhd = (struct acpi_dmar_hardware_unit *)dmaru->hdr;
+		ret = dmar_insert_dev_scope(info, (void *)(drhd + 1),
+				((void *)drhd) + drhd->header.length,
+				dmaru->segment,
+				dmaru->devices, dmaru->devices_cnt);
+		if (ret != 0)
+			break;
+	}
+	if (ret >= 0)
+		ret = dmar_iommu_notify_scope_dev(info);
+	if (ret < 0 && dmar_dev_scope_status == 0)
+		dmar_dev_scope_status = ret;
+
+	return ret;
+}
+
+3.3.1 dmar_insert_dev_scope()
+================================================================================
+int dmar_insert_dev_scope(struct dmar_pci_notify_info *info,
+			  void *start, void*end, u16 segment,
+			  struct dmar_dev_scope *devices,
+			  int devices_cnt)
+{
+	int i, level;
+	struct device *tmp, *dev = &info->dev->dev;
+	struct acpi_dmar_device_scope *scope;
+
+	if (segment != info->seg)
+		return 0;
+
+	for (; start < end; start += scope->length) {
+		scope = start;
+		if (scope->entry_type != ACPI_DMAR_SCOPE_TYPE_ENDPOINT &&
+		    scope->entry_type != ACPI_DMAR_SCOPE_TYPE_BRIDGE)
+			continue;
+
+		level = (scope->length - sizeof(*scope)) / sizeof(*scope->path);
+		if (!dmar_match_pci_path(info, scope->bus, scope->path, level))
+			continue;
+
+		if ((scope->entry_type == ACPI_DMAR_SCOPE_TYPE_ENDPOINT) ^
+		    (info->dev->hdr_type == PCI_HEADER_TYPE_NORMAL)) {
+			pr_warn("Device scope type does not match for %s\n",
+				pci_name(info->dev));
+			return -EINVAL;
+		}
+
+		for_each_dev_scope(devices, devices_cnt, i, tmp)
+			if (tmp == NULL) {
+				devices[i].bus = info->dev->bus->number;
+				devices[i].devfn = info->dev->devfn;
+				rcu_assign_pointer(devices[i].dev,
+						   get_device(dev));
+				return 1;
+			}
+		BUG_ON(i >= devices_cnt);
+	}
+
+	return 0;
+}
+
+3.3.2 dmar_iommu_notify_scope_dev()
+================================================================================
+int dmar_iommu_notify_scope_dev(struct dmar_pci_notify_info *info)
+{
+	int ret = 0;
+	struct dmar_rmrr_unit *rmrru;
+	struct dmar_atsr_unit *atsru;
+	struct acpi_dmar_atsr *atsr;
+	struct acpi_dmar_reserved_memory *rmrr;
+
+	if (!intel_iommu_enabled && system_state != SYSTEM_BOOTING)
+		return 0;
+
+	list_for_each_entry(rmrru, &dmar_rmrr_units, list) {
+		rmrr = container_of(rmrru->hdr,
+				    struct acpi_dmar_reserved_memory, header);
+		if (info->event == BUS_NOTIFY_ADD_DEVICE) {
+			ret = dmar_insert_dev_scope(info, (void *)(rmrr + 1),
+				((void *)rmrr) + rmrr->header.length,
+				rmrr->segment, rmrru->devices,
+				rmrru->devices_cnt);
+			if(ret < 0)
+				return ret;
+		} else if (info->event == BUS_NOTIFY_DEL_DEVICE) {
+			dmar_remove_dev_scope(info, rmrr->segment,
+				rmrru->devices, rmrru->devices_cnt);
+		}
+	}
+
+	list_for_each_entry(atsru, &dmar_atsr_units, list) {
+		if (atsru->include_all)
+			continue;
+
+		atsr = container_of(atsru->hdr, struct acpi_dmar_atsr, header);
+		if (info->event == BUS_NOTIFY_ADD_DEVICE) {
+			ret = dmar_insert_dev_scope(info, (void *)(atsr + 1),
+					(void *)atsr + atsr->header.length,
+					atsr->segment, atsru->devices,
+					atsru->devices_cnt);
+			if (ret > 0)
+				break;
+			else if(ret < 0)
+				return ret;
+		} else if (info->event == BUS_NOTIFY_DEL_DEVICE) {
+			if (dmar_remove_dev_scope(info, atsr->segment,
+					atsru->devices, atsru->devices_cnt))
+				break;
+		}
+	}
+
+	return 0;
+}
+
+3.4 dmar_free_pci_notify_info()
+================================================================================
+static inline void dmar_free_pci_notify_info(struct dmar_pci_notify_info *info)
+{
+	if ((void *)info != dmar_pci_notify_info_buf)
+		kfree(info);
+}
+
+3.5 bus_register_notifier(&pci_bus_type, &dmar_pci_bus_nb)
+================================================================================
+
+0. Data Structure
+================================================================================
+
+0.1 dmar_drhd_unit
+================================================================================
+
+   dmar_drhd_units
+   +------------------------+
+   |LIST_HEAD()             |
+   +------------------------+
+    |
+    |
+    |
+    |   struct dmar_drhd_unit 
+    |   +------------------------------+
+    +-->|list                          |
+        |     (struct list_head)       |
+        +------------------------------+
+        |reg_base_addr                 |
+        |     (u64)                    |
+        +------------------------------+
+        |segment                       |   PCI domain
+        |     (u16)                    |
+        +------------------------------+
+        |iommu                         |
+        |     (struct intel_iommu*)    |
+        +------------------------------+
+        |devices_cnt                   |
+        |     (int)                    |
+        |devices                       |
+        |     (struct dmar_dev_scope *)|
+        |     +------------------------+
+        |     |bus                     |
+        |     |devfn                   |
+        |     |    (u8)                |
+        |     |dev                     |
+        |     |    (struct device *)   |  point pci_dev's acpi device
+        +-----+------------------------+
+        |                              |
+        |                              |
+        +------------------------------+
+
+0.2 intel_iommu
+================================================================================
+
+        struct intel_iommu
+        +------------------------------+
+        |seq_id                        |    unique id
+        |                              |
+        +------------------------------+
+        |reg_phys                      |    dmaru->reg_base_addr
+        |reg_size                      |    
+        |     (u64)                    |
+        +------------------------------+
+        |cap                           |
+        |ecap                          |
+        |     (u64)                    |
+        +------------------------------+
+        |segment                       |
+        |     (u16)                    |
+        +------------------------------+
+        |                              |
+        |                              |
+        +------------------------------+
+        |                              |
+        |                              |
+        +------------------------------+
+
+
+
+
+
