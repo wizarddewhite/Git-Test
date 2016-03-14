@@ -221,9 +221,111 @@ domain_error:
 
 2.4 dmar_init_reserved_ranges()
 ================================================================================
+static int dmar_init_reserved_ranges(void)
+{
+	struct pci_dev *pdev = NULL;
+	struct iova *iova;
+	int i;
 
-2.5 init_no_remapping_devices()
+	init_iova_domain(&reserved_iova_list, VTD_PAGE_SIZE, IOVA_START_PFN,
+			DMA_32BIT_PFN);
+
+	lockdep_set_class(&reserved_iova_list.iova_rbtree_lock,
+		&reserved_rbtree_key);
+
+	/* IOAPIC ranges shouldn't be accessed by DMA */
+	iova = reserve_iova(&reserved_iova_list, IOVA_PFN(IOAPIC_RANGE_START),
+		IOVA_PFN(IOAPIC_RANGE_END));
+	if (!iova) {
+		pr_err("Reserve IOAPIC range failed\n");
+		return -ENODEV;
+	}
+
+	/* Reserve all PCI MMIO to avoid peer-to-peer access */
+	for_each_pci_dev(pdev) {
+		struct resource *r;
+
+		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+			r = &pdev->resource[i];
+			if (!r->flags || !(r->flags & IORESOURCE_MEM))
+				continue;
+			iova = reserve_iova(&reserved_iova_list,
+					    IOVA_PFN(r->start),
+					    IOVA_PFN(r->end));
+			if (!iova) {
+				pr_err("Reserve iova failed\n");
+				return -ENODEV;
+			}
+		}
+	}
+	return 0;
+}
+
+2.4.1 init_iova_domain()
 ================================================================================
+init_iova_domain(struct iova_domain *iovad, unsigned long granule,
+	unsigned long start_pfn, unsigned long pfn_32bit)
+{
+	/*
+	 * IOVA granularity will normally be equal to the smallest
+	 * supported IOMMU page size; both *must* be capable of
+	 * representing individual CPU pages exactly.
+	 */
+	BUG_ON((granule > PAGE_SIZE) || !is_power_of_2(granule));
+
+	spin_lock_init(&iovad->iova_rbtree_lock);
+	iovad->rbroot = RB_ROOT;
+	iovad->cached32_node = NULL;
+	iovad->granule = granule;
+	iovad->start_pfn = start_pfn;
+	iovad->dma_32bit_pfn = pfn_32bit;
+}
+
+2.4.2 reserve_iova()
+================================================================================
+
+2.5 init_no_remapping_devices(), interesting
+================================================================================
+static void __init init_no_remapping_devices(void)
+{
+	struct dmar_drhd_unit *drhd;
+	struct device *dev;
+	int i;
+
+	for_each_drhd_unit(drhd) {
+		if (!drhd->include_all) {
+			for_each_active_dev_scope(drhd->devices,
+						  drhd->devices_cnt, i, dev)
+				break;
+			/* ignore DMAR unit if no devices exist */
+			if (i == drhd->devices_cnt)
+				drhd->ignored = 1;
+		}
+	}
+
+	for_each_active_drhd_unit(drhd) {
+		if (drhd->include_all)
+			continue;
+
+		for_each_active_dev_scope(drhd->devices,
+					  drhd->devices_cnt, i, dev)
+			if (!dev_is_pci(dev) || !IS_GFX_DEVICE(to_pci_dev(dev)))
+				break;
+		if (i < drhd->devices_cnt)
+			continue;
+
+		/* This IOMMU has *only* gfx devices. Either bypass it or
+		   set the gfx_mapped flag, as appropriate */
+		if (dmar_map_gfx) {
+			intel_iommu_gfx_mapped = 1;
+		} else {
+			drhd->ignored = 1;
+			for_each_active_dev_scope(drhd->devices,
+						  drhd->devices_cnt, i, dev)
+				dev->archdata.iommu = DUMMY_DEVICE_DOMAIN_INFO;
+		}
+	}
+}
 
 2.6 init_dmars()
 ================================================================================
