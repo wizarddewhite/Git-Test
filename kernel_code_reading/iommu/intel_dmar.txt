@@ -477,8 +477,10 @@ static int __init dmar_acpi_dev_scope_init(void)
 	return 0;
 }
 
-3.1.1 dmar_acpi_insert_dev_scope(), match dmaru->devices with acip device
+3.1.1 dmar_acpi_insert_dev_scope(), handle scope with type NAMESPACE
 ================================================================================
+; match dmaru->devices with acip device
+
 static void __init dmar_acpi_insert_dev_scope(u8 device_number,
 					      struct acpi_device *adev)
 {
