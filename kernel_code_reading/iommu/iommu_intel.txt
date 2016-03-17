@@ -559,9 +559,95 @@ error:
 
 2.6.1 intel_iommu_init_qi()
 ================================================================================
+static void intel_iommu_init_qi(struct intel_iommu *iommu)
+{
+	/*
+	 * Start from the sane iommu hardware state.
+	 * If the queued invalidation is already initialized by us
+	 * (for example, while enabling interrupt-remapping) then
+	 * we got the things already rolling from a sane state.
+	 */
+	if (!iommu->qi) {
+		/*
+		 * Clear any previous faults.
+		 */
+		dmar_fault(-1, iommu);
+		/*
+		 * Disable queued invalidation if supported and already enabled
+		 * before OS handover.
+		 */
+		dmar_disable_qi(iommu);
+	}
+
+	if (dmar_enable_qi(iommu)) {
+		/*
+		 * Queued Invalidate not enabled, use Register Based Invalidate
+		 */
+		iommu->flush.flush_context = __iommu_flush_context;
+		iommu->flush.flush_iotlb = __iommu_flush_iotlb;
+		pr_info("%s: Using Register based invalidation\n",
+			iommu->name);
+	} else {
+		iommu->flush.flush_context = qi_flush_context;
+		iommu->flush.flush_iotlb = qi_flush_iotlb;
+		pr_info("%s: Using Queued invalidation\n", iommu->name);
+	}
+}
+
+2.6.1.1 dmar_enable_qi(), disable qi
+================================================================================
 
 2.6.2 iommu_init_domains()
 ================================================================================
+static int iommu_init_domains(struct intel_iommu *iommu)
+{
+	u32 ndomains, nlongs;
+	size_t size;
+
+	ndomains = cap_ndoms(iommu->cap);
+	pr_debug("%s: Number of Domains supported <%d>\n",
+		 iommu->name, ndomains);
+	nlongs = BITS_TO_LONGS(ndomains);
+
+	spin_lock_init(&iommu->lock);
+
+	iommu->domain_ids = kcalloc(nlongs, sizeof(unsigned long), GFP_KERNEL);
+	if (!iommu->domain_ids) {
+		pr_err("%s: Allocating domain id array failed\n",
+		       iommu->name);
+		return -ENOMEM;
+	}
+
+	size = ((ndomains >> 8) + 1) * sizeof(struct dmar_domain **);
+	iommu->domains = kzalloc(size, GFP_KERNEL);
+
+	if (iommu->domains) {
+		size = 256 * sizeof(struct dmar_domain *);
+		iommu->domains[0] = kzalloc(size, GFP_KERNEL);
+	}
+
+	if (!iommu->domains || !iommu->domains[0]) {
+		pr_err("%s: Allocating domain array failed\n",
+		       iommu->name);
+		kfree(iommu->domain_ids);
+		kfree(iommu->domains);
+		iommu->domain_ids = NULL;
+		iommu->domains    = NULL;
+		return -ENOMEM;
+	}
+
+
+
+	/*
+	 * If Caching mode is set, then invalid translations are tagged
+	 * with domain-id 0, hence we need to pre-allocate it. We also
+	 * use domain-id 0 as a marker for non-allocated domain-id, so
+	 * make sure it is not used for a real domain.
+	 */
+	set_bit(0, iommu->domain_ids);
+
+	return 0;
+}
 
 2.6.3 init_translation_status()
 ================================================================================
@@ -703,12 +789,24 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
 0.3 intel_iommu
 ================================================================================
 
+    g_iommus(struct intel_iommu **), point to an array of DMAR_UNITS_SUPPORTED elements
+        +-------------------------+      +-------------------------+
+        |[seq_id]                 | ---> |                         | --->   
+        |                         |      |                         |
+        +-------------------------+      +-------------------------+
+                    |
+                    |
+                    |
+                    v
+
         struct intel_iommu
         +------------------------------+
         |seq_id                        |    unique id
         |                              |
         +------------------------------+
-        |reg_phys                      |    dmaru->reg_base_addr
+        |reg                           |    io_remapped
+        |     (void __iomem *)         |
+        |reg_phys                      | == dmaru->reg_base_addr
         |reg_size                      |    
         |     (u64)                    |
         +------------------------------+
@@ -719,9 +817,44 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |segment                       |
         |     (u16)                    |
         +------------------------------+
+        |qi                            |    queued invalidation info
+        |     (struct q_inval *)       |
+        |     +------------------------+
+        |     |q_lock                  |
+        |     |free_head               |
+        |     |free_tail               |
+        |     |free_cnt                |
+        |     |    (int)               |
+        |     |desc                    |
+        |     |    (struct qi_desc *)  |
+        |     |    +-------------------+
+        |     |    |low, high          |
+        |     |    |   (u64)           |
+        |     |    +-------------------+
+        |     |desc_status             |
+        |     |    (int)               |
+        +-----+------------------------+
+        |flush                         |
+        |     (struct iommu_flush)     |
+        |     +------------------------+
+        |     |flush_context           |
+        |     |flush_iotlb             |
+        |     |                        |
+        +-----+------------------------+
+        |domain_ids                    |    bitmap of domains(just first level)
+        |     (unsigned long *)        |
+        |domains                       |
+        |     (struct dmar_domain ***) |
         |                              |
         |                              |
         +------------------------------+
         |                              |
+        +------------------------------+
+        |                              |
+        +------------------------------+
+        |                              |
+        +------------------------------+
+        |                              |
+        +------------------------------+
         |                              |
         +------------------------------+
