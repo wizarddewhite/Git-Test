@@ -651,15 +651,67 @@ static int iommu_init_domains(struct intel_iommu *iommu)
 
 2.6.3 init_translation_status()
 ================================================================================
+static void init_translation_status(struct intel_iommu *iommu)
+{
+	u32 gsts;
 
-2.6.4 iommu_alloc_root_entry()
+	gsts = readl(iommu->reg + DMAR_GSTS_REG);
+	if (gsts & DMA_GSTS_TES)
+		iommu->flags |= VTD_FLAG_TRANS_PRE_ENABLED;
+}
+
+2.6.4 iommu_alloc_root_entry(), why alloc an entire page?
+================================================================================
+static int iommu_alloc_root_entry(struct intel_iommu *iommu)
+{
+	struct root_entry *root;
+	unsigned long flags;
+
+	root = (struct root_entry *)alloc_pgtable_page(iommu->node);
+	if (!root) {
+		pr_err("Allocating root entry for %s failed\n",
+			iommu->name);
+		return -ENOMEM;
+	}
+
+	__iommu_flush_cache(iommu, root, ROOT_SIZE);
+
+	spin_lock_irqsave(&iommu->lock, flags);
+	iommu->root_entry = root;
+	spin_unlock_irqrestore(&iommu->lock, flags);
+
+	return 0;
+}
+
+2.6.4.1 __iommu_flush_cache(), VTD_PAGE_SIZE
 ================================================================================
 
 2.6.5 iommu_flush_write_buffer()
 ================================================================================
 
-2.6.6 iommu_set_root_entry()
+2.6.6 iommu_set_root_entry(), write Root Table Address in hardware
 ================================================================================
+static void iommu_set_root_entry(struct intel_iommu *iommu)
+{
+	u64 addr;
+	u32 sts;
+	unsigned long flag;
+
+	addr = virt_to_phys(iommu->root_entry);
+	if (ecs_enabled(iommu))
+		addr |= DMA_RTADDR_RTT;
+
+	raw_spin_lock_irqsave(&iommu->register_lock, flag);
+	dmar_writeq(iommu->reg + DMAR_RTADDR_REG, addr);
+
+	writel(iommu->gcmd | DMA_GCMD_SRTP, iommu->reg + DMAR_GCMD_REG);
+
+	/* Make sure hardware complete it */
+	IOMMU_WAIT_OP(iommu, DMAR_GSTS_REG,
+		      readl, (sts & DMA_GSTS_RTPS), sts);
+
+	raw_spin_unlock_irqrestore(&iommu->register_lock, flag);
+}
 
 2.7 dma_ops = &intel_dma_ops;
 ================================================================================
@@ -804,6 +856,12 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |seq_id                        |    unique id
         |                              |
         +------------------------------+
+        |root_entry                    |
+        |     (struct root_entry)      |
+        |     +------------------------+
+        |     |lo, hi                  |
+        |     |   (u64)                |
+        +-----+------------------------+
         |reg                           |    io_remapped
         |     (void __iomem *)         |
         |reg_phys                      | == dmaru->reg_base_addr
