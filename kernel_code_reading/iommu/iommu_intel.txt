@@ -688,6 +688,23 @@ static int iommu_alloc_root_entry(struct intel_iommu *iommu)
 
 2.6.5 iommu_flush_write_buffer()
 ================================================================================
+static void iommu_flush_write_buffer(struct intel_iommu *iommu)
+{
+	u32 val;
+	unsigned long flag;
+
+	if (!rwbf_quirk && !cap_rwbf(iommu->cap))
+		return;
+
+	raw_spin_lock_irqsave(&iommu->register_lock, flag);
+	writel(iommu->gcmd | DMA_GCMD_WBF, iommu->reg + DMAR_GCMD_REG);
+
+	/* Make sure hardware complete it */
+	IOMMU_WAIT_OP(iommu, DMAR_GSTS_REG,
+		      readl, (!(val & DMA_GSTS_WBFS)), val);
+
+	raw_spin_unlock_irqrestore(&iommu->register_lock, flag);
+}
 
 2.6.6 iommu_set_root_entry(), write Root Table Address in hardware
 ================================================================================
@@ -731,7 +748,7 @@ static void iommu_set_root_entry(struct intel_iommu *iommu)
 2.8 init_iommu_pm_ops()
 ================================================================================
 
-2.9 iommu_device_create()
+2.9 iommu_device_create(), /sys/devices/virtual/iommu/dmarX
 ================================================================================
 
 2.10 bus_set_iommu(&pci_bus_type, &intel_iommu_ops)
@@ -919,12 +936,16 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |                              |
         +------------------------------+
         |                              |
-        +------------------------------+
         |                              |
         +------------------------------+
-        |                              |
-        +------------------------------+
-        |                              |
-        +------------------------------+
-        |                              |
-        +------------------------------+
+
+0.4 dma_ops = &intel_dma_ops, driver calls dma_alloc_coherent
+================================================================================
+
+   driver
+   +--------------------+
+   |dma_alloc_coherent  | ---->  dma_ops->alloc()
+   +--------------------+
+
+0.5 intel_iommu_ops, set bus->iommu_ops to intel_iommu_ops
+================================================================================
