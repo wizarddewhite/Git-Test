@@ -36,11 +36,11 @@
       +-----------------------------------+
       |watchdog_timer                     |
       |     (struct timer_list)           |
-      |watchdog_task                      |
-      |reset_task                         |
-      |adminq_task                        |
+      |watchdog_task                      |  i40evf_watchdog_task
+      |reset_task                         |  i40evf_reset_task
+      |adminq_task                        |  i40evf_adminq_task
       |     (struct work_struct)          |
-      |init_task                          |
+      |init_task                          |  i40evf_init_task
       |     (struct delayed_work)         |
       +-----------------------------------+
       |tx_rings[I40E_MAX_VSI_QP]          |
@@ -77,5 +77,148 @@
       +-----------------------------------+
       |hw                                 |
       |     (struct i40e_hw)              |
+      |     +-----------------------------+
+      |     |back                         |  point back to i40evf_adapter
+      |     |   (void *)                  |
+      +-----+-----------------------------+
+
+0.2 i40e_ring
+================================================================================
+
+0.3 i40e_q_vector
+================================================================================
+
+0.4 i40e_hw
+================================================================================
+
+      i40e_hw
+      +-----------------------------------+
+      |hw_addr                            |
+      |     (u8 __iomem *)                |
+      +-----------------------------------+
+      |adapter_stopped                    |
+      |     (bool)                        |
+      |                                   |
+      |dev_caps                           |
+      |func_caps                          |
+      |     (struct i40e_hw_capabilities) |
+      +-----------------------------------+
+      |mac                                |
+      |     (struct i40e_mac_info)        |
+      |     +-----------------------------+
+      |     |type                         |
+      |     |   (enum i40e_mac_type)      |
+      |     |addr[ETH_ALEN]               |
+      |     |perm_addr[ETH_ALEN]          |
+      |     |san_addr[ETH_ALEN]           |
+      |     |max_foceq                    |
+      |     |                             |
+      +-----+-----------------------------+
+      |                                   |
+      |                                   |
+      +-----------------------------------+
+      |aq                                 |
+      |     (struct i40e_adminq_info)     |
+      |                                   |
       +-----------------------------------+
 
+0.5 i40e_adminq_info
+================================================================================
+
+      i40e_adminq_info
+      +-----------------------------------+
+      |nvm_release_on_done                |
+      |fw_maj_ver                         |
+      |fw_min_ver                         |
+      |fw_build                           |
+      |api_maj_ver                        |
+      |api_min_ver                        |
+      |                                   |
+      |                                   |
+      +-----------------------------------+
+      |asq_mutex                          |
+      |      (struct mutex)               |
+      |asq_last_status                    |
+      |      (enum i40e_admin_queue_err)  |
+      |asq_cmd_timeout                    |  I40E_ASQ_CMD_TIMEOUT 
+      |      (u32)                        |
+      |num_asq_entries                    |  number of entries in the ring
+      |                                   |  set to I40EVF_AQ_LEN
+      |asq_buf_size                       |  AQ buffer size in ring
+      |                                   |  set to I40EVF_MAX_AQ_BUF_SIZE
+      |      (u16)                        |
+      |asq                                |
+      |      (struct i40e_adminq_ring)    |
+      |                                   |
+      +-----------------------------------+
+      |arq_mutex                          |
+      |      (struct mutex)               |
+      |arq_last_status                    |
+      |      (enum i40e_admin_queue_err)  |
+      |num_arq_entries                    |
+      |arq_buf_size                       |
+      |      (u16)                        |
+      |arq                                |
+      |      (struct i40e_adminq_ring)    |
+      |                                   |
+      +-----------------------------------+
+
+0.6 i40e_adminq_ring
+================================================================================
+
+      i40e_adminq_ring
+      +-----------------------------------+
+      |head/tail                          |   hardware reg address
+      |len                                |
+      |bal/bah                            |
+      |      (u32)                        |
+      +-----------------------------------+
+      |count                              |   = aq.num_[asq/arq]_entries
+      |rx_buf_len                         |   
+      |      (u16)                        |
+      +-----------------------------------+
+      |next_to_use                        |
+      |next_to_clean                      |
+      |      (u16)                        |
+      +-----------------------------------+
+      |desc_buf                           |
+      |      (struct i40e_dma_mem)        |       num_asq_entries of
+      |      +----------------------------+       i40e_aq_desc
+      |      |va                          | ----->+---------------------------+
+      |      |pa                          |       |flags                      |
+      |      |size                        |       |opcode                     |
+      |      +----------------------------+       |datalen                    |
+      |                                   |       |retval                     |
+      |                                   |       |cookie_high                |
+      |                                   |       |cookie_low                 |
+      |                                   |       +---------------------------+
+      |                                   |
+      |                                   |
+      +-----------------------------------+
+      |cmd_buf                            |
+      |      (struct i40e_virt_mem)       |       num_asq_entries of
+      |      +----------------------------+       i40e_asq_cmd_details
+      |      |va                          | ----->+---------------------------+
+      |      |size                        |       |callback                   |
+      |      +----------------------------+       |cookie                     |
+      |                                   |       |flags_ena                  |
+      |                                   |       |flags_dis                  |
+      |                                   |       |wb_desc                    |
+      |                                   |       |                           |
+      |                                   |       +---------------------------+
+      |                                   |
+      +-----------------------------------+
+      |dma_head                           |
+      |      (struct i40e_virt_mem)       |       num_asq_entries of
+      |      +----------------------------+       i40e_dma_mem
+      |      |va                ----+-----| ----->+---------------------------+
+      |      |size                  |     |       |va    ----+                |
+      |      +----------------------------+       |pa        |                |
+      |                             |     |       |size      |                |
+      |                             |     |       +---------------------------+
+      |                             |     |                  |
+      |r.asq_bi/arq_bi          ----+     |                  v
+      |      (struct i40e_dma_mem *)      |             A mem region with
+      |                                   |             hw.aq.asq_buf_size
+      |                                   |
+      +-----------------------------------+
