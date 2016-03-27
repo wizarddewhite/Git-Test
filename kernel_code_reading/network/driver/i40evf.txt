@@ -31,7 +31,7 @@
       |aq_required                        |
       |flags                              |
       |     (u32)                         |
-      |num_active_queues                  |
+      |num_active_queues                  |  = vsi_res->num_queue_pairs
       |     (int)                         |
       +-----------------------------------+
       |watchdog_timer                     |
@@ -43,18 +43,18 @@
       |init_task                          |  i40evf_init_task
       |     (struct delayed_work)         |
       +-----------------------------------+
+      |tx_timeout_count                   |
+      |tx_desc_count                      |  I40EVF_DEFAULT_TXD
+      |     (u32)                         |
       |tx_rings[I40E_MAX_VSI_QP]          |
       |     (struct i40e_ring *)          |
-      |tx_timeout_count                   |
-      |tx_desc_count                      |
-      |     (u32)                         |
       |                                   |
-      |rx_rings[I40E_MAX_VSI_QP]          |
-      |     (struct i40e_ring *)          |
-      |tx_desc_count                      |
-      |     (u32)                         |
       |hw_csum_rx_error                   |
       |     (u64)                         |
+      |tx_desc_count                      |  I40EVF_DEFAULT_RXD
+      |     (u32)                         |
+      |rx_rings[I40E_MAX_VSI_QP]          |
+      |     (struct i40e_ring *)          |
       |                                   |
       |num_msix_vectors                   |
       |     (int)                         |
@@ -64,12 +64,21 @@
       |q_vector[MAX_MSIX_Q_VECTORS]       |
       |     (struct i40e_q_vector *)      |
       +-----------------------------------+
-      |vsi                                |
-      |     (struct i40e_vsi)             |
       |vf_res                             |
       |     (i40e_virtchnl_vf_resource)   |
-      |vsi_res                            |
-      |     (i40e_virtchnl_vsi_resource)  |
+      |     +-----------------------------+
+      |     |max_mtu                      |
+      |     |max_vectors                  |
+      |     |num_queue_pairs              |
+      |     |num_vsis                     |
+      |     |                             |
+      |     |vsi_res[1]            <------|------+
+      |     | (i40e_virtchnl_vsi_resource)|      |
+      |     +-----------------------------+      |
+      |vsi_res                     -------|------+
+      |     (i40e_virtchnl_vsi_resource *)|
+      |vsi                                |  copied from vsi_res
+      |     (struct i40e_vsi)             |
       |pf_version                         |
       |     (i40e_virtchnl_version_info)  |
       |current_op                         |
@@ -95,6 +104,8 @@
       +-----------------------------------+
       |hw_addr                            |
       |     (u8 __iomem *)                |
+      |back                               |  back to adapter
+      |     (void *)                      |
       +-----------------------------------+
       |adapter_stopped                    |
       |     (bool)                        |
@@ -173,7 +184,7 @@
       |bal/bah                            |
       |      (u32)                        |
       +-----------------------------------+
-      |count                              |   = aq.num_[asq/arq]_entries
+      |count                              |   = aq.num_[asq/arq]_entries (just an indicator)
       |rx_buf_len                         |   
       |      (u16)                        |
       +-----------------------------------+
@@ -187,7 +198,10 @@
       |      |va                          | ----->+---------------------------+
       |      |pa                          |       |flags                      |
       |      |size                        |       |opcode                     |
-      |      +----------------------------+       |datalen                    |
+      |      +----------------------------+       |datalen                    |  len in buffer
+      |                                   |       |params                     |
+      |                                   |       |   addr_high               |  dma address
+      |                                   |       |   addr_low                |
       |                                   |       |retval                     |
       |                                   |       |cookie_high                |
       |                                   |       |cookie_low                 |
