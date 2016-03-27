@@ -1,0 +1,81 @@
+0. Data Structure
+================================================================================
+
+0.1 i40evf_adapter
+================================================================================
+
+      i40evf_adapter
+      +-----------------------------------+
+      |pdev                               |
+      |     (struct pci_dev *)            |
+      |netdev                             |
+      |     (struct net_device *)         |
+      |net_stats                          |
+      |     (struct net_device_stats)     |
+      +-----------------------------------+
+      |misc_vector_name[IFNAMSIZ + 9]     |
+      |     (char)                        |
+      |current_stats                      |  eth statistics
+      |     (struct i40e_eth_stats)       |
+      +-----------------------------------+
+      |state                              |  device state
+      |     (enum i40evf_state_t)         |
+      |mac_filter_list                    |
+      |vlan_filter_list                   |
+      |     (struct list_head)            |
+      |link_up                            |
+      |netdev_registered                  |
+      |     (bool)                        |
+      |msg_enable                         |  ethtool debug level bitmap
+      |     (u32)                         |
+      |aq_required                        |
+      |flags                              |
+      |     (u32)                         |
+      |num_active_queues                  |
+      |     (int)                         |
+      +-----------------------------------+
+      |watchdog_timer                     |
+      |     (struct timer_list)           |
+      |watchdog_task                      |
+      |reset_task                         |
+      |adminq_task                        |
+      |     (struct work_struct)          |
+      |init_task                          |
+      |     (struct delayed_work)         |
+      +-----------------------------------+
+      |tx_rings[I40E_MAX_VSI_QP]          |
+      |     (struct i40e_ring *)          |
+      |tx_timeout_count                   |
+      |tx_desc_count                      |
+      |     (u32)                         |
+      |                                   |
+      |rx_rings[I40E_MAX_VSI_QP]          |
+      |     (struct i40e_ring *)          |
+      |tx_desc_count                      |
+      |     (u32)                         |
+      |hw_csum_rx_error                   |
+      |     (u64)                         |
+      |                                   |
+      |num_msix_vectors                   |
+      |     (int)                         |
+      |msix_entries                       |
+      |     (struct msix_entry *)         |
+      +-----------------------------------+
+      |q_vector[MAX_MSIX_Q_VECTORS]       |
+      |     (struct i40e_q_vector *)      |
+      +-----------------------------------+
+      |vsi                                |
+      |     (struct i40e_vsi)             |
+      |vf_res                             |
+      |     (i40e_virtchnl_vf_resource)   |
+      |vsi_res                            |
+      |     (i40e_virtchnl_vsi_resource)  |
+      |pf_version                         |
+      |     (i40e_virtchnl_version_info)  |
+      |current_op                         |
+      |     (i40e_virtchnl_ops)           |
+      +-----------------------------------+
+      |hw                                 |
+      |     (struct i40e_hw)              |
+      +-----------------------------------+
+
