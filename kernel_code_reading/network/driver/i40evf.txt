@@ -31,8 +31,6 @@
       |aq_required                        |
       |flags                              |
       |     (u32)                         |
-      |num_active_queues                  |  = vsi_res->num_queue_pairs
-      |     (int)                         |
       +-----------------------------------+
       |watchdog_timer                     |
       |     (struct timer_list)           |
@@ -43,27 +41,36 @@
       |init_task                          |  i40evf_init_task
       |     (struct delayed_work)         |
       +-----------------------------------+
+      |num_active_queues                  |  = vsi_res->num_queue_pairs
+      |     (int)                         |
+      |                                   |
       |tx_timeout_count                   |
       |tx_desc_count                      |  I40EVF_DEFAULT_TXD
       |     (u32)                         |
-      |tx_rings[I40E_MAX_VSI_QP]          |
+      |tx_rings[I40E_MAX_VSI_QP]          |  just init num_active_queues element
       |     (struct i40e_ring *)          |
       |                                   |
       |hw_csum_rx_error                   |
       |     (u64)                         |
-      |tx_desc_count                      |  I40EVF_DEFAULT_RXD
+      |rx_desc_count                      |  I40EVF_DEFAULT_RXD
       |     (u32)                         |
       |rx_rings[I40E_MAX_VSI_QP]          |
       |     (struct i40e_ring *)          |
       |                                   |
-      |num_msix_vectors                   |
-      |     (int)                         |
+      |num_msix_vectors                   |  msix_entry registered
+      |     (int)                         |  try to allocate min(num_cpus, num_active_queues, vf_res->max_vectors)
       |msix_entries                       |
       |     (struct msix_entry *)         |
-      +-----------------------------------+
-      |q_vector[MAX_MSIX_Q_VECTORS]       |
+      |                                   |
+      |q_vector[MAX_MSIX_Q_VECTORS]       |  (num_msix_vectors - NONQ_VECS) number of entry
       |     (struct i40e_q_vector *)      |
-      +-----------------------------------+
+      |     +-----------------------------+
+      |     |name                         |
+      |     |    (char [IFNAMSIZ + 9])    |
+      |     |napi                         |  i40evf_napi_poll
+      |     |    (struct napi_struct)     |
+      |     |                             |
+      +-----+-----------------------------+
       |vf_res                             |
       |     (i40e_virtchnl_vf_resource)   |
       |     +-----------------------------+
@@ -91,11 +98,71 @@
       |     |   (void *)                  |
       +-----+-----------------------------+
 
-0.2 i40e_ring
+0.2 i40e_ring (tx_ring) / i40e_q_vector
 ================================================================================
 
-0.3 i40e_q_vector
-================================================================================
+                  i40e_ring
+         +------->+-----------------------------------+
+         |        |dev                                |
+         |        |      (struct device *)            |
+         |        |netdev                             |
+         |        |      (struct net_device *)        |
+         |        +-----------------------------------+
+         |        |queue_index                        |  index in ring array
+         |        |      (u8)                         |
+         |        |stats                              |
+         |        |      (struct i40e_queue_stats)    |
+         |        |      +----------------------------+
+         |        |      |packets                     |
+         |        |      |bytes                       |
+         |        |      +----------------------------+
+         |        |                                   |
+         |        +-----------------------------------+
+         |        |count                              |  number of array size
+         |        |      (u16)                        |  set to [tx/rx]_desc_count
+         |        |                                   |
+         |        |tx_bi/rx_bi                        |  an array of i40e_[tx/rx]_buffer 
+         |        |      (struct i40e_tx_buffer)      |  with "count" elements
+         |        |      +----------------------------+
+         |        |      |skb/raw_buf                 |  points to the skb to be sent
+         |        |      |next_to_watch               |
+         |        |      |  (struct i40e_tx_desc *)   |
+         |        |      +----------------------------+
+         |        |desc     "an array of i40e_tx_desc"|  
+         |        |      (void *)                     |
+         |        |size     "length of the desc array"|  
+         |        |                                   |
+         |        |dma      "dma addr of desc"        |  
+         |        |      (dma_addr_t)                 |
+         |        |tail                               |
+         |        |      (u8 __iomem *)               |
+         |        |                                   |
+         |        |                                   |
+         |        |                                   |
+         |        +-----------------------------------+
+         |        |q_vector                       ----|---------+
+         |        |      (struct i40e_q_vector *)     |         |
+         |        +-----------------------------------+         |
+         |                                                      |
+         |        i40e_q_vector                                 |
+         |        +-----------------------------------+<--------+
+         |        |rx                                 |      
+         |        |      (struct i40e_ring_container) |      
+         |        |                                   |      
+         +--------|----   ring                        |        
+                  |            (struct i40e_ring *)   |
+                  |       count                       |
+                  |                                   |
+                  +-----------------------------------+
+                  |num_ringpairs                      |
+                  |      (u8)                         |
+                  |name[IFNAMSIZ + 9]                 |
+                  |      (char)                       |
+                  |                                   |
+                  +-----------------------------------+
+                  |                                   |
+                  |                                   |
+                  +-----------------------------------+
 
 0.4 i40e_hw
 ================================================================================
@@ -133,7 +200,7 @@
       |                                   |
       +-----------------------------------+
 
-0.5 i40e_adminq_info
+0.4.1 i40e_adminq_info
 ================================================================================
 
       i40e_adminq_info
@@ -174,7 +241,7 @@
       |                                   |
       +-----------------------------------+
 
-0.6 i40e_adminq_ring
+0.4.1.1 i40e_adminq_ring
 ================================================================================
 
       i40e_adminq_ring
