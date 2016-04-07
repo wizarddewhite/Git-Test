@@ -757,6 +757,470 @@ static void iommu_set_root_entry(struct intel_iommu *iommu)
 2.11 bus_register_notifier(&pci_bus_type, &device_nb)
 ================================================================================
 
+3. intel_iommu_ops
+================================================================================
+
+3.1 add_device(), intel_iommu_add_device()
+================================================================================
+static int intel_iommu_add_device(struct device *dev)
+{
+	struct intel_iommu *iommu;
+	struct iommu_group *group;
+	u8 bus, devfn;
+
+	iommu = device_to_iommu(dev, &bus, &devfn);
+	if (!iommu)
+		return -ENODEV;
+
+	iommu_device_link(iommu->iommu_dev, dev);
+
+	group = iommu_group_get_for_dev(dev);
+
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	iommu_group_put(group);
+	return 0;
+}
+
+3.1.1 device_to_iommu(), search dmar_drhd_unit list, return the intel_iommu contains the dev
+================================================================================
+static struct intel_iommu *device_to_iommu(struct device *dev, u8 *bus, u8 *devfn)
+{
+	struct dmar_drhd_unit *drhd = NULL;
+	struct intel_iommu *iommu;
+	struct device *tmp;
+	struct pci_dev *ptmp, *pdev = NULL;
+	u16 segment = 0;
+	int i;
+
+	if (iommu_dummy(dev))
+		return NULL;
+
+	if (dev_is_pci(dev)) {
+		pdev = to_pci_dev(dev);
+		segment = pci_domain_nr(pdev->bus);
+	} else if (has_acpi_companion(dev))
+		dev = &ACPI_COMPANION(dev)->dev;
+
+	rcu_read_lock();
+	for_each_active_iommu(iommu, drhd) {
+		if (pdev && segment != drhd->segment)
+			continue;
+
+		for_each_active_dev_scope(drhd->devices,
+					  drhd->devices_cnt, i, tmp) {
+			if (tmp == dev) {
+				*bus = drhd->devices[i].bus;
+				*devfn = drhd->devices[i].devfn;
+				goto out;
+			}
+
+			if (!pdev || !dev_is_pci(tmp))
+				continue;
+
+			ptmp = to_pci_dev(tmp);
+			if (ptmp->subordinate &&
+			    ptmp->subordinate->number <= pdev->bus->number &&
+			    ptmp->subordinate->busn_res.end >= pdev->bus->number)
+				goto got_pdev;
+		}
+
+		if (pdev && drhd->include_all) {
+		got_pdev:
+			*bus = pdev->bus->number;
+			*devfn = pdev->devfn;
+			goto out;
+		}
+	}
+	iommu = NULL;
+ out:
+	rcu_read_unlock();
+
+	return iommu;
+}
+
+3.1.2 iommu_device_link(iommu->iommu_dev, dev), sysfs
+================================================================================
+int iommu_device_link(struct device *dev, struct device *link)
+{
+	int ret;
+
+	if (!dev || IS_ERR(dev))
+		return -ENODEV;
+
+	ret = sysfs_add_link_to_group(&dev->kobj, "devices",
+				      &link->kobj, dev_name(link));
+	if (ret)
+		return ret;
+
+	ret = sysfs_create_link_nowarn(&link->kobj, &dev->kobj, "iommu");
+	if (ret)
+		sysfs_remove_link_from_group(&dev->kobj, "devices",
+					     dev_name(link));
+
+	return ret;
+}
+
+3.1.3 iommu_group_get_for_dev()
+================================================================================
+
+3.1.4 iommu_group_put()
+================================================================================
+void iommu_group_put(struct iommu_group *group)
+{
+	if (group)
+		kobject_put(group->devices_kobj);
+}
+
+3.2 device_group(), pci_device_group()
+================================================================================
+struct iommu_group *pci_device_group(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct group_for_pci_data data;
+	struct pci_bus *bus;
+	struct iommu_group *group = NULL;
+	u64 devfns[4] = { 0 };
+
+	if (WARN_ON(!dev_is_pci(dev)))
+		return ERR_PTR(-EINVAL);
+
+	/*
+	 * Find the upstream DMA alias for the device.  A device must not
+	 * be aliased due to topology in order to have its own IOMMU group.
+	 * If we find an alias along the way that already belongs to a
+	 * group, use it.
+	 */
+	if (pci_for_each_dma_alias(pdev, get_pci_alias_or_group, &data))
+		return data.group;
+
+	pdev = data.pdev;
+
+	/*
+	 * Continue upstream from the point of minimum IOMMU granularity
+	 * due to aliases to the point where devices are protected from
+	 * peer-to-peer DMA by PCI ACS.  Again, if we find an existing
+	 * group, use it.
+	 */
+	for (bus = pdev->bus; !pci_is_root_bus(bus); bus = bus->parent) {
+		if (!bus->self)
+			continue;
+
+		if (pci_acs_path_enabled(bus->self, NULL, REQ_ACS_FLAGS))
+			break;
+
+		pdev = bus->self;
+
+		group = iommu_group_get(&pdev->dev);
+		if (group)
+			return group;
+	}
+
+	/*
+	 * Look for existing groups on device aliases.  If we alias another
+	 * device or another device aliases us, use the same group.
+	 */
+	group = get_pci_alias_group(pdev, (unsigned long *)devfns);
+	if (group)
+		return group;
+
+	/*
+	 * Look for existing groups on non-isolated functions on the same
+	 * slot and aliases of those funcions, if any.  No need to clear
+	 * the search bitmap, the tested devfns are still valid.
+	 */
+	group = get_pci_function_alias_group(pdev, (unsigned long *)devfns);
+	if (group)
+		return group;
+
+	/* No shared group found, allocate new */
+	group = iommu_group_alloc();
+	if (IS_ERR(group))
+		return NULL;
+
+	return group;
+}
+
+3.2.1 get_pci_alias_or_group()
+================================================================================
+static int get_pci_alias_or_group(struct pci_dev *pdev, u16 alias, void *opaque)
+{
+	struct group_for_pci_data *data = opaque;
+
+	data->pdev = pdev;
+	data->group = iommu_group_get(&pdev->dev);
+
+	return data->group != NULL;
+}
+
+3.2.2 get_pci_alias_group()
+================================================================================
+static struct iommu_group *get_pci_alias_group(struct pci_dev *pdev,
+					       unsigned long *devfns)
+{
+	struct pci_dev *tmp = NULL;
+	struct iommu_group *group;
+
+	if (test_and_set_bit(pdev->devfn & 0xff, devfns))
+		return NULL;
+
+	group = iommu_group_get(&pdev->dev);
+	if (group)
+		return group;
+
+	for_each_pci_dev(tmp) {
+		if (tmp == pdev || tmp->bus != pdev->bus)
+			continue;
+
+		/* We alias them or they alias us */
+		if (((pdev->dev_flags & PCI_DEV_FLAGS_DMA_ALIAS_DEVFN) &&
+		     pdev->dma_alias_devfn == tmp->devfn) ||
+		    ((tmp->dev_flags & PCI_DEV_FLAGS_DMA_ALIAS_DEVFN) &&
+		     tmp->dma_alias_devfn == pdev->devfn)) {
+
+			group = get_pci_alias_group(tmp, devfns);
+			if (group) {
+				pci_dev_put(tmp);
+				return group;
+			}
+
+			group = get_pci_function_alias_group(tmp, devfns);
+			if (group) {
+				pci_dev_put(tmp);
+				return group;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+3.2.3 get_pci_function_alias_group()
+================================================================================
+static struct iommu_group *get_pci_function_alias_group(struct pci_dev *pdev,
+							unsigned long *devfns)
+{
+	struct pci_dev *tmp = NULL;
+	struct iommu_group *group;
+
+	if (!pdev->multifunction || pci_acs_enabled(pdev, REQ_ACS_FLAGS))
+		return NULL;
+
+	for_each_pci_dev(tmp) {
+		if (tmp == pdev || tmp->bus != pdev->bus ||
+		    PCI_SLOT(tmp->devfn) != PCI_SLOT(pdev->devfn) ||
+		    pci_acs_enabled(tmp, REQ_ACS_FLAGS))
+			continue;
+
+		group = get_pci_alias_group(tmp, devfns);
+		if (group) {
+			pci_dev_put(tmp);
+			return group;
+		}
+	}
+
+	return NULL;
+}
+
+3.2.4 iommu_group_alloc()
+================================================================================
+
+3.3 domain_alloc(), just for type IOMMU_DOMAIN_UNMANAGED
+================================================================================
+static struct iommu_domain *intel_iommu_domain_alloc(unsigned type)
+{
+	struct dmar_domain *dmar_domain;
+	struct iommu_domain *domain;
+
+	if (type != IOMMU_DOMAIN_UNMANAGED)
+		return NULL;
+
+	dmar_domain = alloc_domain(DOMAIN_FLAG_VIRTUAL_MACHINE);
+	if (!dmar_domain) {
+		pr_err("Can't allocate dmar_domain\n");
+		return NULL;
+	}
+	if (md_domain_init(dmar_domain, DEFAULT_DOMAIN_ADDRESS_WIDTH)) {
+		pr_err("Domain initialization failed\n");
+		domain_exit(dmar_domain);
+		return NULL;
+	}
+	domain_update_iommu_cap(dmar_domain);
+
+	domain = &dmar_domain->domain;
+	domain->geometry.aperture_start = 0;
+	domain->geometry.aperture_end   = __DOMAIN_MAX_ADDR(dmar_domain->gaw);
+	domain->geometry.force_aperture = true;
+
+	return domain;
+}
+
+3.3.1 domain_alloc()
+================================================================================
+static struct dmar_domain *alloc_domain(int flags)
+{
+	struct dmar_domain *domain;
+
+	domain = alloc_domain_mem();
+	if (!domain)
+		return NULL;
+
+	memset(domain, 0, sizeof(*domain));
+	domain->nid = -1;
+	domain->flags = flags;
+	INIT_LIST_HEAD(&domain->devices);
+
+	return domain;
+}
+
+3.3.2 md_domain_init()
+================================================================================
+static int md_domain_init(struct dmar_domain *domain, int guest_width)
+{
+	int adjust_width;
+
+	init_iova_domain(&domain->iovad, VTD_PAGE_SIZE, IOVA_START_PFN,
+			DMA_32BIT_PFN);
+	domain_reserve_special_ranges(domain);
+
+	/* calculate AGAW */
+	domain->gaw = guest_width;
+	adjust_width = guestwidth_to_adjustwidth(guest_width);
+	domain->agaw = width_to_agaw(adjust_width);
+
+	domain->iommu_coherency = 0;
+	domain->iommu_snooping = 0;
+	domain->iommu_superpage = 0;
+	domain->max_addr = 0;
+
+	/* always allocate the top pgd */
+	domain->pgd = (struct dma_pte *)alloc_pgtable_page(domain->nid);
+	if (!domain->pgd)
+		return -ENOMEM;
+	domain_flush_cache(domain, domain->pgd, PAGE_SIZE);
+	return 0;
+}
+
+3.3.2.1 init_iova_domain()
+================================================================================
+void
+init_iova_domain(struct iova_domain *iovad, unsigned long granule,
+	unsigned long start_pfn, unsigned long pfn_32bit)
+{
+	/*
+	 * IOVA granularity will normally be equal to the smallest
+	 * supported IOMMU page size; both *must* be capable of
+	 * representing individual CPU pages exactly.
+	 */
+	BUG_ON((granule > PAGE_SIZE) || !is_power_of_2(granule));
+
+	spin_lock_init(&iovad->iova_rbtree_lock);
+	iovad->rbroot = RB_ROOT;
+	iovad->cached32_node = NULL;
+	iovad->granule = granule;
+	iovad->start_pfn = start_pfn;
+	iovad->dma_32bit_pfn = pfn_32bit;
+}
+
+3.3.2.2 domain_reserve_special_ranges()
+================================================================================
+static void domain_reserve_special_ranges(struct dmar_domain *domain)
+{
+	copy_reserved_iova(&reserved_iova_list, &domain->iovad);
+}
+
+3.3.2.2 guestwidth_to_adjustwidth()
+================================================================================
+static inline int guestwidth_to_adjustwidth(int gaw)
+{
+	int agaw;
+	int r = (gaw - 12) % 9;
+
+	if (r == 0)
+		agaw = gaw;
+	else
+		agaw = gaw + 9 - r;
+	if (agaw > 64)
+		agaw = 64;
+	return agaw;
+}
+
+3.3.3 domain_update_iommu_cap()
+================================================================================
+static void domain_update_iommu_cap(struct dmar_domain *domain)
+{
+	domain_update_iommu_coherency(domain);
+	domain->iommu_snooping = domain_update_iommu_snooping(NULL);
+	domain->iommu_superpage = domain_update_iommu_superpage(NULL);
+}
+
+3.4 attach_dev(), intel_iommu_attach_device
+================================================================================
+static int intel_iommu_attach_device(struct iommu_domain *domain,
+				     struct device *dev)
+{
+	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+	struct intel_iommu *iommu;
+	int addr_width;
+	u8 bus, devfn;
+
+	if (device_is_rmrr_locked(dev)) {
+		dev_warn(dev, "Device is ineligible for IOMMU domain attach due to platform RMRR requirement.  Contact your platform vendor.\n");
+		return -EPERM;
+	}
+
+	/* normally dev is not mapped */
+	if (unlikely(domain_context_mapped(dev))) {
+		struct dmar_domain *old_domain;
+
+		old_domain = find_domain(dev);
+		if (old_domain) {
+			rcu_read_lock();
+			dmar_remove_one_dev_info(old_domain, dev);
+			rcu_read_unlock();
+
+			if (!domain_type_is_vm_or_si(old_domain) &&
+			     list_empty(&old_domain->devices))
+				domain_exit(old_domain);
+		}
+	}
+
+	iommu = device_to_iommu(dev, &bus, &devfn);
+	if (!iommu)
+		return -ENODEV;
+
+	/* check if this iommu agaw is sufficient for max mapped address */
+	addr_width = agaw_to_width(iommu->agaw);
+	if (addr_width > cap_mgaw(iommu->cap))
+		addr_width = cap_mgaw(iommu->cap);
+
+	if (dmar_domain->max_addr > (1LL << addr_width)) {
+		pr_err("%s: iommu width (%d) is not "
+		       "sufficient for the mapped address (%llx)\n",
+		       __func__, addr_width, dmar_domain->max_addr);
+		return -EFAULT;
+	}
+	dmar_domain->gaw = addr_width;
+
+	/*
+	 * Knock out extra levels of page tables if necessary
+	 */
+	while (iommu->agaw < dmar_domain->agaw) {
+		struct dma_pte *pte;
+
+		pte = dmar_domain->pgd;
+		if (dma_pte_present(pte)) {
+			dmar_domain->pgd = (struct dma_pte *)
+				phys_to_virt(dma_pte_addr(pte));
+			free_pgtable_page(pte);
+		}
+		dmar_domain->agaw--;
+	}
+
+	return domain_add_dev_info(dmar_domain, dev);
+}
+
 0. data structure
 ================================================================================
                         
@@ -774,7 +1238,7 @@ static void iommu_set_root_entry(struct intel_iommu *iommu)
                           |DMA Remapping Hardware Unit Definition  | is represented by dmar_drhd_unit
                           |                                        |
                           |            +---------------------------+
-                          |            |Register Base Address      |
+                          |            |Register Base Address      | dmar_drhd_unit->reg_base_addr
                           |            +---------------------------+
                           |                      |                 |
                           |                      |                 |
@@ -790,7 +1254,7 @@ static void iommu_set_root_entry(struct intel_iommu *iommu)
                           .                                        .
                           |                                        |
                      020h +----------------------------------------+
-                          | Root Table Address     ----+           |
+                          | Root Table Address     ----+           | intel_iommu->root_entry
                           +----------------------------------------+
                           |                            |           |
                           +----------------------------------------+
@@ -842,7 +1306,7 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
     +-->|list                          |
         |     (struct list_head)       |
         +------------------------------+
-        |reg_base_addr                 |
+        |reg_base_addr                 |   Register Base Address
         |     (u64)                    |
         +------------------------------+
         |segment                       |   PCI domain
@@ -882,7 +1346,7 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
 
         struct intel_iommu
         +------------------------------+
-        |seq_id                        |    unique id
+        |seq_id                        |    unique id, bind to dmar remmapping hardware definition
         |                              |
         +------------------------------+
         |root_entry                    |
@@ -901,6 +1365,8 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |ecap                          |
         |     (u64)                    |
         +------------------------------+
+        |agaw                          |
+        |msagaw                        |
         |segment                       |
         |     (u16)                    |
         +------------------------------+
@@ -928,16 +1394,83 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |     |flush_iotlb             |
         |     |                        |
         +-----+------------------------+
-        |domain_ids                    |    bitmap of domains(just first level)
+        |domain_ids                    |    bitmap of domains (total size is cap_ndoms(iommu->cap))
         |     (unsigned long *)        |
-        |domains                       |
-        |     (struct dmar_domain ***) |
-        |                              |
-        |                              |
-        +------------------------------+
-        |                              |
-        |                              |
-        +------------------------------+
+        |domains                       |    (struct dmar_domain**)
+        |     (struct dmar_domain ***) |    +-------------------+     +-------------------+
+        |                              | -->|    ---+           | --> |                   |
+        |                              |    +-------------------+     +-------------------+
+        |                              |            |
+        |                              |            |      (struct dmar_domain*)
+        |                              |            +----->+----------------+
+        +------------------------------+                   |                |
+        |                              |            256    |                |
+        |                              |            entries|                |
+        +------------------------------+                   |                |
+                                                           +----------------+
+                                                 +---------|----            |
+                                                 |         +----------------+
+                                                 |         |                |
+        +----------------------------------------+         +----------------+
+        |
+        |
+        v
+	struct dmar_domain
+        +------------------------------------+
+        |nid                                 |  numa node id
+        |iommu_did[]                         |
+        |iommu_refcnt[]                      |
+        |iommu_count                         |
+        |                                    |
+        +------------------------------------+
+        |gaw                                 |  max guest address width (48 by default)
+        |agaw                                |  adjusted guest address width based on gaw
+        |max_addr                            |  maximum mapped address
+        |                                    |
+        +------------------------------------+
+        |pgd                                 |
+        |    (struct dma_pte *)              |
+        |    +-------------------------------+
+        |    |val(u64)                       |
+        +----+-------------------------------+
+        |domain                              |
+        |   (struct iommu_domain)            |
+        |   +--------------------------------+
+        |   |type                            |
+        |   |ops(iommu_ops)                  |
+        |   |iova_cookie                     |
+        |   |geometry                        |
+        |   |  (struct iommu_domain_geometry)|
+        |   |  +-----------------------------+
+        |   |  |aperture_start               |
+        |   |  |aperture_end                 |
+        |   |  |force_aperture               |
+        +---+--+-----------------------------+
+        |                                    |
+        |                                    |
+        +------------------------------------+
+        |iovad                               |
+        |    (struct iova_domain)            |
+        |    +-------------------------------+
+        |    |rbroot                         |
+        |    |  (struct rb_root)             |
+        |    |cached32_node                  |
+        |    |  (struct rb_node *)           |
+        |    |granule                        |  VTD_PAGE_SIZE(4K)
+        |    |start_pfn                      |  IOVA_START_PFN(1)
+        |    |dma_32bit_pfn                  |  DMA_32BIT_PFN
+        |    |                               |
+        +----+-------------------------------+
+        |devices                             |
+        |    (struct list_head) ---+         |
+        +------------------------------------+
+                                   |
+                                   |
+        struct device_domain_info  v
+        +------------------------------------+
+        |                                    |
+        |                                    |
+        +------------------------------------+
 
 0.4 dma_ops = &intel_dma_ops, driver calls dma_alloc_coherent
 ================================================================================
@@ -949,3 +1482,31 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
 
 0.5 intel_iommu_ops, set bus->iommu_ops to intel_iommu_ops
 ================================================================================
+
+    intel_iommu_ops
+    +----------------------------------+
+    |pgsize_bitmap                     |   INTEL_IOMMU_PGSIZES(~0xFFFUL)
+    |device_group                      |   pci_device_group
+    +----------------------------------+
+    |add_device                        |   intel_iommu_add_device
+    |remove_device                     |   intel_iommu_remove_device
+    |                                  |
+    +----------------------------------+
+    |map                               |   intel_iommu_map
+    |unmap                             |   intel_iommu_unmap
+    |                                  |
+    +----------------------------------+
+    |domain_alloc                      |   intel_iommu_domain_alloc
+    |domain_free                       |   intel_iommu_domain_free
+    |                                  |
+    +----------------------------------+
+    |attach_dev                        |   intel_iommu_attach_device
+    |detach_dev                        |   intel_iommu_detach_device
+    |                                  |
+    +----------------------------------+
+    |iova_to_phys                      |   intel_iommu_iova_to_phys
+    |                                  |
+    +----------------------------------+
+    |                                  |
+    |                                  |
+    +----------------------------------+

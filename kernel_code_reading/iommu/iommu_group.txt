@@ -1,9 +1,13 @@
 1. Note
 ================================================================================
 
-bus_set_iommu() is the first place in boot stage to connect devices and iommu.
+bus_set_iommu() is the first place in boot stage to connect devices and iommu,
+by invoke add_iommu_group on each bus devices. Which in turns call
+ops->add_device() to do the real job.
 
 iommu_group_get_for_dev() is a magic function which also create iommu_group.
+When take a look into the code, this is the function called in
+ops->add_device().
 
 2. iommu_init(), create /sys/kernel/iommu_groups/
 ================================================================================
@@ -716,6 +720,66 @@ void iommu_group_remove_device(struct device *dev)
 	dev->iommu_group = NULL;
 	kobject_put(group->devices_kobj);
 }
+
+14. iommu_group_get_for_dev(), find or create a IOMMU group for a dev
+================================================================================
+struct iommu_group *iommu_group_get_for_dev(struct device *dev)
+{
+	const struct iommu_ops *ops = dev->bus->iommu_ops;
+	struct iommu_group *group;
+	int ret;
+
+	group = iommu_group_get(dev);
+	if (group)
+		return group;
+
+	group = ERR_PTR(-EINVAL);
+
+	if (ops && ops->device_group)
+		group = ops->device_group(dev);
+
+	if (IS_ERR(group))
+		return group;
+
+	/*
+	 * Try to allocate a default domain - needs support from the
+	 * IOMMU driver.
+	 */
+	if (!group->default_domain) {
+		group->default_domain = __iommu_domain_alloc(dev->bus,
+							     IOMMU_DOMAIN_DMA);
+		group->domain = group->default_domain;
+	}
+
+	ret = iommu_group_add_device(group, dev);
+	if (ret) {
+		iommu_group_put(group);
+		return ERR_PTR(ret);
+	}
+
+	return group;
+}
+
+14.1 iommu_group_get()
+================================================================================
+struct iommu_group *iommu_group_get(struct device *dev)
+{
+	struct iommu_group *group = dev->iommu_group;
+
+	if (group)
+		kobject_get(group->devices_kobj);
+
+	return group;
+}
+
+14.2 ops->device_group()
+================================================================================
+
+14.3 __iommu_domain_alloc()
+================================================================================
+
+14.4 iommu_group_add_device()
+================================================================================
 
 0. Data structures
 ================================================================================
