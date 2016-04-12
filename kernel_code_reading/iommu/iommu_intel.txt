@@ -213,7 +213,7 @@ domain_error:
 	return -ENOMEM;
 }
 
-2.2 dmar_table_init()
+2.2 dmar_table_init(), see intel_dmar.txt
 ================================================================================
 
 2.3 dmar_dev_scope_init()
@@ -862,7 +862,7 @@ int iommu_device_link(struct device *dev, struct device *link)
 	return ret;
 }
 
-3.1.3 iommu_group_get_for_dev()
+3.1.3 iommu_group_get_for_dev(), get iommu_group and create domain
 ================================================================================
 
 3.1.4 iommu_group_put()
