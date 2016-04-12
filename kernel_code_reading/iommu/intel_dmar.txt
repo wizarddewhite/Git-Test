@@ -1,4 +1,4 @@
-1. dmar_table_init()
+1. dmar_table_init(), called in intel_iommu_init()
 ================================================================================
 int __init dmar_table_init(void)
 {
@@ -139,7 +139,22 @@ static int dmar_walk_remapping_entries(struct acpi_dmar_header *start,
 	return ret;
 }
 
-1.1.2.1 dmar_parse_one_drhd()
+1.1.2.1 dmar_parse_one_drhd(), hardware unit
+================================================================================
+; linked in dmar_drhd_units
+
+1.1.2.2 dmar_parse_one_rmrr(), reserved memory
+================================================================================
+; linked in dmar_rmrr_units
+
+1.1.2.3 dmar_parse_one_atsr(), root ats
+================================================================================
+; linked in dmar_atsr_units
+
+1.1.2.4 dmar_parse_one_rhsa(), hardware affinity
+================================================================================
+
+1.1.2.5 dmar_parse_one_andd(), namespace
 ================================================================================
 
 2. dmar_parse_one_drhd()
@@ -406,7 +421,7 @@ static void dmar_register_drhd_unit(struct dmar_drhd_unit *drhd)
 		list_add_rcu(&drhd->list, &dmar_drhd_units);
 }
 
-3. dmar_dev_scope_init()
+3. dmar_dev_scope_init(), called in intel_iommu_init()
 ================================================================================
 int __init dmar_dev_scope_init(void)
 {
@@ -711,7 +726,7 @@ static inline void dmar_free_pci_notify_info(struct dmar_pci_notify_info *info)
 0. Data Structure
 ================================================================================
 
-0.1 dmar_drhd_unit
+0.1 dmar_drhd_unit, store Hardware Unit Definition
 ================================================================================
 
    dmar_drhd_units
@@ -721,11 +736,11 @@ static inline void dmar_free_pci_notify_info(struct dmar_pci_notify_info *info)
     |
     |
     |
-    |   struct dmar_drhd_unit 
-    |   +------------------------------+
-    +-->|list                          |
-        |     (struct list_head)       |
-        +------------------------------+
+    |   struct dmar_drhd_unit                struct dmar_drhd_unit 
+    |   +------------------------------+     +------------------------------+
+    +-->|list                     -----|---->|list                          |
+        |     (struct list_head)       |     |     (struct list_head)       |
+        +------------------------------+     +------------------------------+
         |reg_base_addr                 |
         |     (u64)                    |
         +------------------------------+
@@ -750,7 +765,7 @@ static inline void dmar_free_pci_notify_info(struct dmar_pci_notify_info *info)
         |                              |
         +------------------------------+
 
-0.2 intel_iommu
+0.1.12 intel_iommu
 ================================================================================
 
         struct intel_iommu
@@ -777,6 +792,50 @@ static inline void dmar_free_pci_notify_info(struct dmar_pci_notify_info *info)
         +------------------------------+
 
 
+0.2 dmar_rmrr_unit, Reserved Memory Region
+================================================================================
 
+   dmar_rmrr_units
+   +------------------------+
+   |LIST_HEAD()             |
+   +------------------------+
+    |
+    |
+    |
+    |   struct dmar_rmrr_unit                struct dmar_rmrr_unit 
+    |   +------------------------------+     +------------------------------+
+    +-->|list                     -----|---->|list                          |
+        |     (struct list_head)       |     |     (struct list_head)       |
+        +------------------------------+     +------------------------------+
+        |base_address                  |
+        |end_address                   |
+        |     (u64)                    |
+        +------------------------------+
+        |devices_cnt                   |
+        |     (int)                    |
+        |devices                       |
+        |     (struct dmar_dev_scope *)|
+        +------------------------------+
+
+0.3 dmar_atsr_unit, ATS Root
+================================================================================
+
+   dmar_atsr_units
+   +------------------------+
+   |LIST_HEAD()             |
+   +------------------------+
+    |
+    |
+    |
+    |   struct dmar_atsr_unit                struct dmar_atsr_unit 
+    |   +------------------------------+     +------------------------------+
+    +-->|list                     -----|---->|list                          |
+        |     (struct list_head)       |     |     (struct list_head)       |
+        +------------------------------+     +------------------------------+
+        |devices_cnt                   |
+        |     (int)                    |
+        |devices                       |
+        |     (struct dmar_dev_scope *)|
+        +------------------------------+
 
 
