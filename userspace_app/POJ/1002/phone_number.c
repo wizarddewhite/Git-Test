@@ -1,27 +1,9 @@
-/*
- * =====================================================================================
- *
- *       Filename:  phone_number.c
- *
- *    Description:  
- *
- *        Version:  1.0
- *        Created:  04/16/2016 07:13:53 AM
- *       Revision:  none
- *       Compiler:  gcc
- *
- *         Author:  Wei Yang (weiyang), weiyang.kernel@gmail.com
- *        Company:  
- *
- * =====================================================================================
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+
+#define DEBUG 1
 
 struct phone_number_record {
 	int phone_number;
@@ -114,13 +96,13 @@ int memchar_to_number(char *memchar, int len, struct phone_number_record *entry)
 
 int main(int argc, char *argv[])
 {
-	FILE *fp;
-	char *line = NULL;
 	size_t len = 0;
-	ssize_t read;
+	int duplicate = 0;
+	char line[1024];
+	FILE *fp;
+	size_t read;
 	int entries, i;
 	struct phone_number_record *iter;
-	int duplicate = 0;
 
 	if (argc != 2) {
 		printf("No Input File\n");
@@ -134,10 +116,14 @@ int main(int argc, char *argv[])
 	}
 
 	/* The first line is the number of entries in the file */
-	if ((read = getline(&line, &len, fp) != -1))
+	if (fgets(line, 1024, fp))
 		sscanf(line, "%d", &entries);
 	else
 		exit(-1);
+
+#if DEBUG
+	printf("File has %d entries\n", entries);
+#endif
 
 	phone_numbers = calloc(sizeof(*phone_numbers), entries);
 	if (!phone_numbers) {
@@ -146,7 +132,11 @@ int main(int argc, char *argv[])
 	}
 
 	i = 0;
-	while ((read = getline(&line, &len, fp) != -1)) {
+	while (!feof(fp)) {
+		fgets(line, 1024, fp);
+#if DEBUG
+		printf("File readline %s \n", line);
+#endif
 		if (!memchar_to_number(line, read, phone_numbers + i))
 			i++;
 		if (i >= entries)
@@ -164,9 +154,6 @@ int main(int argc, char *argv[])
 
 	if (!duplicate)
 		printf("No duplicates\n");
-
-	if (line)
-		free(line);
 	fclose(fp);
 
 	return 0;
