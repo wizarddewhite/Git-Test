@@ -3,7 +3,7 @@
 #include <string.h>
 #include <errno.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 struct phone_number_record {
 	int phone_number;
@@ -80,7 +80,7 @@ int memchar_to_number(char *memchar, int len, struct phone_number_record *entry)
 
 	for (iter = phone_numbers; iter < entry; iter++) {
 		if (iter->phone_number > number) {
-			memmove(iter, iter + 1, sizeof(*iter) * (entry - iter));
+			memmove(iter +1, iter, sizeof(*iter) * (entry - iter));
 			break;
 		}
 
@@ -158,12 +158,14 @@ int main(int argc, char *argv[])
 	printf("Processed %d entries\n", i);
 #endif
 
-	if (!duplicate)
-		printf("No duplicates\n");
+	if (!duplicate) {
+		printf("No duplicates.\n");
+		return 0;
+	}
 
 	for (iter = phone_numbers; ; iter++) {
 #if DEBUG
-	printf("Iter on %p entries with count %d\n", iter, iter->counts);
+		printf("Iter on %p entries with count %d\n", iter, iter->counts);
 #endif
 		if (!iter->counts)
 			break;
