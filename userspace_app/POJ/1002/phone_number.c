@@ -42,6 +42,7 @@ char alpha_digit_map[] = {
 	'0',   /* 'Z' */
 };
 
+int duplicate = 0;
 int memchar_to_number(char *memchar, int len, struct phone_number_record *entry)
 {
 	char tmp[7] = {0};
@@ -71,7 +72,12 @@ int memchar_to_number(char *memchar, int len, struct phone_number_record *entry)
 	if (j != 7)
 		return -1;
 
+	tmp[7] ='\0';
 	sscanf(tmp, "%d", &number);
+#if DEBUG
+	printf("\tClean up char %s ", tmp);
+#endif
+
 	for (iter = phone_numbers; iter < entry; iter++) {
 		if (iter->phone_number > number) {
 			memmove(iter, iter + 1, sizeof(*iter) * (entry - iter));
@@ -79,17 +85,24 @@ int memchar_to_number(char *memchar, int len, struct phone_number_record *entry)
 		}
 
 		if (iter->phone_number == number) {
+#if DEBUG
+			printf("duplicate number to %p\n", iter);
+#endif
 			iter->counts++;
+			duplicate = 1;
 			return 1;
 		}
 	}
 
-	entry->phone_number = number;
-	entry->counts = 1;
-	memcpy(entry->normal_form, tmp, 3);
-	entry->normal_form[3] = '-';
-	memcpy(entry->normal_form + 4, tmp + 3, 4);
-	entry->normal_form[8] = '\0';
+#if DEBUG
+	printf("new number to %p\n", iter);
+#endif
+	iter->phone_number = number;
+	iter->counts = 1;
+	memcpy(iter->normal_form, tmp, 3);
+	iter->normal_form[3] = '-';
+	memcpy(iter->normal_form + 4, tmp + 3, 4);
+	iter->normal_form[8] = '\0';
 
 	return 0;
 }
@@ -97,7 +110,6 @@ int memchar_to_number(char *memchar, int len, struct phone_number_record *entry)
 int main(int argc, char *argv[])
 {
 	size_t len = 0;
-	int duplicate = 0;
 	char line[1024];
 	FILE *fp;
 	size_t read;
@@ -132,10 +144,9 @@ int main(int argc, char *argv[])
 	}
 
 	i = 0;
-	while (!feof(fp)) {
-		fgets(line, 1024, fp);
+	while (fgets(line, 1024, fp)) {
 #if DEBUG
-		printf("File readline %s \n", line);
+		printf("File readline %s ", line);
 #endif
 		if (!memchar_to_number(line, read, phone_numbers + i))
 			i++;
@@ -143,17 +154,23 @@ int main(int argc, char *argv[])
 			break;
 	}
 
-	for (iter = phone_numbers; ;iter++) {
-		if (!iter->counts)
-			break;
-		if (iter->counts > 1) {
-			duplicate = 1;
-			printf("%s %d\n", iter->normal_form, iter->counts);
-		}
-	}
+#if DEBUG
+	printf("Processed %d entries\n", i);
+#endif
 
 	if (!duplicate)
 		printf("No duplicates\n");
+
+	for (iter = phone_numbers; ; iter++) {
+#if DEBUG
+	printf("Iter on %p entries with count %d\n", iter, iter->counts);
+#endif
+		if (!iter->counts)
+			break;
+		if (iter->counts > 1)
+			printf("%s %d\n", iter->normal_form, iter->counts);
+	}
+
 	fclose(fp);
 
 	return 0;
