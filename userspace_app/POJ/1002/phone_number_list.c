@@ -37,7 +37,6 @@ char alpha_digit_map[] = {
 
 struct phone_number_record {
 	struct phone_number_record *next_record;
-	int phone_number;
 	char normal_form[9];
 	int counts;
 };
@@ -58,8 +57,12 @@ static inline void free_record(struct phone_number_record *record)
 struct phone_number_record *memchar_to_record(char *memchar, int len)
 {
 	char tmp[7] = {0};
-	int i, j, number;
+	int i, j;
 	struct phone_number_record *record;
+
+	record = alloc_record();
+	if (!record)
+		return NULL;
 
 	for (i = 0, j = 0; i < strlen(memchar) - 1; i++) {
 		if (memchar[i] == '-')
@@ -69,43 +72,41 @@ struct phone_number_record *memchar_to_record(char *memchar, int len)
 			memchar[i] = toupper(memchar[i]);
 			/* Q and Z are not valid */
 			if (memchar[i] == 'Q' || memchar[i] == 'Z')
-				return NULL;
+				goto fail;
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
 		}
 
-		tmp[j++] = memchar[i];
 
-		/* Just has 7 character in total */
-		if (j >= 7)
+		record->normal_form[j++] = memchar[i];
+		if (j == 3)
+			record->normal_form[j++] = '-';
+
+		/* Just has 9 character in total */
+		if (j >= 8)
 			break;
 	}
 
-	/* Just has 7 character in total */
-	if (j != 7)
-		return NULL;
+	/* Just has 9 character in total */
+	if (j != 8)
+		goto fail;
 
-	record = alloc_record();
-	if (!record)
-		return NULL;
-
-	sscanf(tmp, "%d", &number);
-	record->phone_number = number;
 	record->counts = 1;
-	memcpy(record->normal_form, tmp, 3);
-	record->normal_form[3] = '-';
-	memcpy(record->normal_form + 4, tmp + 3, 4);
 	record->normal_form[8] = '\0';
 #if DEBUG
-	printf("\tcreate record %s:%d \n",
-			record->normal_form, record->phone_number);
+	printf("\tcreate record %s \n", record->normal_form);
 #endif
 
 	return record;
+
+fail:
+	free(record);
+	return NULL;
 }
 
 void insert_record(struct phone_number_record *record)
 {
 	struct phone_number_record **prev;
+	int result;
 
 	/* First Insertion */
 	if (!phone_numbers) {
@@ -116,7 +117,8 @@ void insert_record(struct phone_number_record *record)
 	prev = &phone_numbers;
 	while (*prev) {
 		/* Duplicate record, increase counts and return */
-		if (record->phone_number == (*prev)->phone_number) {
+		result = strcmp(record->normal_form, (*prev)->normal_form);
+		if (!result) {
 #if DEBUG
 	printf("\tget dup record %p \n", *prev);
 #endif
@@ -126,7 +128,7 @@ void insert_record(struct phone_number_record *record)
 			return;
 		}
 
-		if (record->phone_number < (*prev)->phone_number)
+		if (result < 0)
 			break;
 		prev = &(*prev)->next_record;
 	}
