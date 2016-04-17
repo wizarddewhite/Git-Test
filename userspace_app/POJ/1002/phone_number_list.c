@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 #define DEBUG 0
+#define PRE_ALLOC 1
 
 char alpha_digit_map[] = {
 	'2',   /* 'A' */
@@ -44,6 +45,20 @@ struct phone_number_record {
 struct phone_number_record *phone_numbers = NULL;
 int duplicate = 0;
 
+#if PRE_ALLOC
+struct phone_number_record phone_number[100000];
+int allocated_records = 0;
+
+static inline struct phone_number_record *alloc_record()
+{
+	return phone_number + allocated_records++;
+}
+
+static inline void free_record(struct phone_number_record *record)
+{
+	allocated_records--;
+}
+#else
 static inline struct phone_number_record *alloc_record()
 {
 	return calloc(sizeof(struct phone_number_record), 1);
@@ -51,8 +66,9 @@ static inline struct phone_number_record *alloc_record()
 
 static inline void free_record(struct phone_number_record *record)
 {
-	return free(record);
+	free(record);
 }
+#endif
 
 struct phone_number_record *memchar_to_record(char *memchar, int len)
 {
