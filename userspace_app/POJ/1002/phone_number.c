@@ -111,24 +111,12 @@ int main(int argc, char *argv[])
 {
 	size_t len = 0;
 	char line[1024];
-	FILE *fp;
 	size_t read;
 	int entries, i;
 	struct phone_number_record *iter;
 
-	if (argc != 2) {
-		printf("No Input File\n");
-		exit(-1);
-	}
-
-	fp = fopen(argv[1], "r");
-	if (fp == NULL) {
-		perror("Open File");
-		exit(-1);
-	}
-
 	/* The first line is the number of entries in the file */
-	if (fgets(line, 1024, fp))
+	if (fgets(line, 1024, stdin))
 		sscanf(line, "%d", &entries);
 	else
 		exit(-1);
@@ -144,7 +132,7 @@ int main(int argc, char *argv[])
 	}
 
 	i = 0;
-	while (fgets(line, 1024, fp)) {
+	while (fgets(line, 1024, stdin)) {
 #if DEBUG
 		printf("File readline %s ", line);
 #endif
@@ -173,7 +161,7 @@ int main(int argc, char *argv[])
 			printf("%s %d\n", iter->normal_form, iter->counts);
 	}
 
-	fclose(fp);
+	fclose(stdin);
 
 	return 0;
 }
