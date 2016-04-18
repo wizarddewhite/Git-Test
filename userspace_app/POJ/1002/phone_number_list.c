@@ -37,9 +37,12 @@ char alpha_digit_map[] = {
 };
 
 struct phone_number_record {
+#if PRE_ALLOC
+#else
 	struct phone_number_record *next_record;
-	char normal_form[9];
 	int counts;
+#endif
+	char normal_form[9];
 };
 
 struct phone_number_record *phone_numbers = NULL;
@@ -58,10 +61,21 @@ static inline void free_record(struct phone_number_record *record)
 {
 	allocated_records--;
 }
+
+int record_compare(const void *r1, const void *r2)
+{
+	return strcmp(((struct phone_number_record *)r1)->normal_form,
+		      ((struct phone_number_record *)r2)->normal_form);
+}
 #else
 static inline struct phone_number_record *alloc_record()
 {
-	return calloc(sizeof(struct phone_number_record), 1);
+	struct phone_number_record *record;
+
+	record = calloc(sizeof(struct phone_number_record), 1);
+	record->counts = 1;
+
+	return record;
 }
 
 static inline void free_record(struct phone_number_record *record)
@@ -106,7 +120,6 @@ struct phone_number_record *memchar_to_record(char *memchar, int len)
 	if (j != 8)
 		goto fail;
 
-	record->counts = 1;
 	record->normal_form[8] = '\0';
 #if DEBUG
 	printf("\tcreate record %s \n", record->normal_form);
@@ -119,6 +132,9 @@ fail:
 	return NULL;
 }
 
+#if PRE_ALLOC
+void insert_record(struct phone_number_record *record) {}
+#else
 void insert_record(struct phone_number_record *record)
 {
 	struct phone_number_record **prev;
@@ -156,13 +172,14 @@ void insert_record(struct phone_number_record *record)
 	*prev = record;
 	return;
 }
+#endif
 
 int main(int argc, char *argv[])
 {
 	size_t len = 0;
 	char line[1024];
 	size_t read;
-	int entries, i;
+	int entries, i, j;
 	struct phone_number_record *record;
 
 	/* The first line is the number of entries in the file */
@@ -186,6 +203,28 @@ int main(int argc, char *argv[])
 		insert_record(record);
 	}
 
+#if PRE_ALLOC
+	qsort(phone_number, entries, sizeof(struct phone_number_record),
+		record_compare);
+
+	i = 0;
+	while (i < entries) {
+		j = i;
+		i++;
+		while (i < entries &&
+			!strcmp(phone_number[i].normal_form, phone_number[j].normal_form))
+			i++;
+		if ((i - j) > 1) {
+			printf("%s %d\n", phone_number[j].normal_form, i - j);
+			duplicate = 1;
+		}
+	}
+
+	if (!duplicate)
+		printf("No duplicates.\n");
+
+	return 0;
+#else
 	if (!duplicate) {
 		printf("No duplicates.\n");
 		return 0;
@@ -199,4 +238,5 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
+#endif
 }
