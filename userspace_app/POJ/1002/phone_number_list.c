@@ -37,24 +37,22 @@ char alpha_digit_map[] = {
 };
 
 struct phone_number_record {
-#if PRE_ALLOC
-#else
+#if (!PRE_ALLOC)
 	struct phone_number_record *next_record;
 	int counts;
 #endif
 	char normal_form[9];
 };
 
-struct phone_number_record *phone_numbers = NULL;
 int duplicate = 0;
 
 #if PRE_ALLOC
-struct phone_number_record phone_number[100000];
+struct phone_number_record phone_numbers[100000];
 int allocated_records = 0;
 
 static inline struct phone_number_record *alloc_record()
 {
-	return phone_number + allocated_records++;
+	return phone_numbers + allocated_records++;
 }
 
 static inline void free_record(struct phone_number_record *record)
@@ -68,6 +66,7 @@ int record_compare(const void *r1, const void *r2)
 		      ((struct phone_number_record *)r2)->normal_form);
 }
 #else
+struct phone_number_record *phone_numbers = NULL;
 static inline struct phone_number_record *alloc_record()
 {
 	struct phone_number_record *record;
@@ -204,7 +203,7 @@ int main(int argc, char *argv[])
 	}
 
 #if PRE_ALLOC
-	qsort(phone_number, entries, sizeof(struct phone_number_record),
+	qsort(phone_numbers, entries, sizeof(struct phone_number_record),
 		record_compare);
 
 	i = 0;
@@ -212,10 +211,10 @@ int main(int argc, char *argv[])
 		j = i;
 		i++;
 		while (i < entries &&
-			!strcmp(phone_number[i].normal_form, phone_number[j].normal_form))
+			!strcmp(phone_numbers[i].normal_form, phone_numbers[j].normal_form))
 			i++;
 		if ((i - j) > 1) {
-			printf("%s %d\n", phone_number[j].normal_form, i - j);
+			printf("%s %d\n", phone_numbers[j].normal_form, i - j);
 			duplicate = 1;
 		}
 	}
