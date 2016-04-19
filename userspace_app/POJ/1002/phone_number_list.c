@@ -42,13 +42,14 @@ struct phone_number_record {
 	int counts;
 #endif
 	char normal_form[9];
+	unsigned int number;
 };
 
 int duplicate = 0;
 
 #if PRE_ALLOC
 struct phone_number_record phone_numbers[100000] = {
-	{.normal_form = {0}},
+	{.normal_form = {0}, .number = 0},
 };
 int allocated_records = 0;
 
@@ -64,8 +65,8 @@ static inline void free_record(struct phone_number_record *record)
 
 int record_compare(const void *r1, const void *r2)
 {
-	return strcmp(((struct phone_number_record *)r1)->normal_form,
-		      ((struct phone_number_record *)r2)->normal_form);
+	return ((struct phone_number_record *)r1)->number -
+		((struct phone_number_record *)r2)->number;
 }
 #else
 struct phone_number_record *phone_numbers = NULL;
@@ -85,7 +86,7 @@ static inline void free_record(struct phone_number_record *record)
 }
 #endif
 
-struct phone_number_record *memchar_to_record(char *memchar, int len)
+static inline struct phone_number_record *memchar_to_record(char *memchar, int len)
 {
 	char tmp[7] = {0};
 	int i, j;
@@ -103,6 +104,7 @@ struct phone_number_record *memchar_to_record(char *memchar, int len)
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
 
 		record->normal_form[j++] = memchar[i];
+		record->number = record->number * 10 + memchar[i] - 48;
 		if (j == 3)
 			record->normal_form[j++] = '-';
 	}
