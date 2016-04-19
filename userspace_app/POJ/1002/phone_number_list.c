@@ -103,8 +103,8 @@ static inline struct phone_number_record *memchar_to_record(char *memchar, int l
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
 
 		record->normal_form[j++] = memchar[i];
+		record->number = record->number * 10 + memchar[i] - 48;
 	}
-	record->number = atoi(record->normal_form);
 
 #if DEBUG
 	printf("\tcreate record %s \n", record->normal_form);
