@@ -197,7 +197,7 @@ int main(int argc, char *argv[])
 		j = i;
 		i++;
 		while (i < entries &&
-			!strcmp(phone_numbers[i].normal_form, phone_numbers[j].normal_form))
+			(phone_numbers[i].number == phone_numbers[j].number))
 			i++;
 		if ((i - j) > 1) {
 			printf("%c%c%c-%s %d\n",
