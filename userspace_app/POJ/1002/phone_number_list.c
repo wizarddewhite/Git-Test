@@ -93,31 +93,17 @@ struct phone_number_record *memchar_to_record(char *memchar, int len)
 	if (!record)
 		return NULL;
 
-	for (i = 0, j = 0; i < strlen(memchar) - 1; i++) {
+	for (i = 0, j = 0; j < 8; i++) {
 		if (memchar[i] == '-')
 			continue;
 
-		if (memchar[i] >= 'A' && memchar[i] <= 'Z') {
-			memchar[i] = toupper(memchar[i]);
-			/* Q and Z are not valid */
-			if (memchar[i] == 'Q' || memchar[i] == 'Z')
-				goto fail;
+		if (memchar[i] >= 'A' && memchar[i] <= 'Z')
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
-		}
-
 
 		record->normal_form[j++] = memchar[i];
 		if (j == 3)
 			record->normal_form[j++] = '-';
-
-		/* Just has 9 character in total */
-		if (j >= 8)
-			break;
 	}
-
-	/* Just has 9 character in total */
-	if (j != 8)
-		goto fail;
 
 	record->normal_form[8] = '\0';
 #if DEBUG
