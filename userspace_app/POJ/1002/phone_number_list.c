@@ -47,7 +47,9 @@ struct phone_number_record {
 int duplicate = 0;
 
 #if PRE_ALLOC
-struct phone_number_record phone_numbers[100000];
+struct phone_number_record phone_numbers[100000] = {
+	{.normal_form = {0}},
+};
 int allocated_records = 0;
 
 static inline struct phone_number_record *alloc_record()
@@ -105,7 +107,6 @@ struct phone_number_record *memchar_to_record(char *memchar, int len)
 			record->normal_form[j++] = '-';
 	}
 
-	record->normal_form[8] = '\0';
 #if DEBUG
 	printf("\tcreate record %s \n", record->normal_form);
 #endif
