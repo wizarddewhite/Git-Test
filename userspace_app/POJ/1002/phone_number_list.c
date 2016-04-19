@@ -40,8 +40,8 @@ struct phone_number_record {
 #if (!PRE_ALLOC)
 	struct phone_number_record *next_record;
 	int counts;
-#endif
 	char normal_form[8];
+#endif
 	unsigned int number;
 };
 
@@ -49,7 +49,7 @@ int duplicate = 0;
 
 #if PRE_ALLOC
 struct phone_number_record phone_numbers[100000] = {
-	{.normal_form = {0}, .number = 0},
+	{.number = 0},
 };
 int allocated_records = 0;
 
@@ -102,7 +102,7 @@ static inline struct phone_number_record *memchar_to_record(char *memchar, int l
 		if (memchar[i] >= 'A' && memchar[i] <= 'Z')
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
 
-		record->normal_form[j++] = memchar[i];
+		j++;
 		record->number = record->number * 10 + memchar[i] - 48;
 	}
 
