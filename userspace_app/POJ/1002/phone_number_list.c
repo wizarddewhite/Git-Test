@@ -41,7 +41,7 @@ struct phone_number_record {
 	struct phone_number_record *next_record;
 	int counts;
 #endif
-	char normal_form[9];
+	char normal_form[8];
 	unsigned int number;
 };
 
@@ -88,7 +88,6 @@ static inline void free_record(struct phone_number_record *record)
 
 static inline struct phone_number_record *memchar_to_record(char *memchar, int len)
 {
-	char tmp[7] = {0};
 	int i, j;
 	struct phone_number_record *record;
 
@@ -96,7 +95,7 @@ static inline struct phone_number_record *memchar_to_record(char *memchar, int l
 	if (!record)
 		return NULL;
 
-	for (i = 0, j = 0; j < 8; i++) {
+	for (i = 0, j = 0; j < 7; i++) {
 		if (memchar[i] == '-')
 			continue;
 
@@ -104,10 +103,8 @@ static inline struct phone_number_record *memchar_to_record(char *memchar, int l
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
 
 		record->normal_form[j++] = memchar[i];
-		record->number = record->number * 10 + memchar[i] - 48;
-		if (j == 3)
-			record->normal_form[j++] = '-';
 	}
+	record->number = atoi(record->normal_form);
 
 #if DEBUG
 	printf("\tcreate record %s \n", record->normal_form);
@@ -203,7 +200,11 @@ int main(int argc, char *argv[])
 			!strcmp(phone_numbers[i].normal_form, phone_numbers[j].normal_form))
 			i++;
 		if ((i - j) > 1) {
-			printf("%s %d\n", phone_numbers[j].normal_form, i - j);
+			printf("%c%c%c-%s %d\n",
+				*phone_numbers[j].normal_form,
+				*(phone_numbers[j].normal_form + 1),
+				*(phone_numbers[j].normal_form + 2),
+				phone_numbers[j].normal_form + 3, i - j);
 			duplicate = 1;
 		}
 	}
