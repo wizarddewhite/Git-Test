@@ -200,11 +200,10 @@ int main(int argc, char *argv[])
 			(phone_numbers[i].number == phone_numbers[j].number))
 			i++;
 		if ((i - j) > 1) {
-			printf("%c%c%c-%s %d\n",
-				*phone_numbers[j].normal_form,
-				*(phone_numbers[j].normal_form + 1),
-				*(phone_numbers[j].normal_form + 2),
-				phone_numbers[j].normal_form + 3, i - j);
+			printf("%03d-%04d %d\n",
+				phone_numbers[j].number / 10000,
+				phone_numbers[j].number % 10000,
+				i - j);
 			duplicate = 1;
 		}
 	}
