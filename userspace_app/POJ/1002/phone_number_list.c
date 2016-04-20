@@ -42,14 +42,17 @@ struct phone_number_record {
 	int counts;
 	char normal_form[8];
 #endif
-	unsigned int number;
+	union record {
+		long long number;
+		char normal_form[8];
+	}val;
 };
 
 int duplicate = 0;
 
 #if PRE_ALLOC
 struct phone_number_record phone_numbers[100000] = {
-	{.number = 0},
+	{.val.number = 0},
 };
 int allocated_records = 0;
 
@@ -65,8 +68,15 @@ static inline void free_record(struct phone_number_record *record)
 
 int record_compare(const void *r1, const void *r2)
 {
-	return ((struct phone_number_record *)r1)->number -
-		((struct phone_number_record *)r2)->number;
+	long long number1, number2;
+	number1 = ((struct phone_number_record *)r1)->val.number; 
+	number2 = ((struct phone_number_record *)r2)->val.number; 
+
+	if (!(number1 - number2))
+		return 0;
+	if ((number1 - number2) > 0)
+		return 1;
+	return -1;
 }
 #else
 struct phone_number_record *phone_numbers = NULL;
@@ -95,19 +105,20 @@ static inline struct phone_number_record *memchar_to_record(char *memchar, int l
 	if (!record)
 		return NULL;
 
-	for (i = 0, j = 0; j < 7; i++) {
+	for (i = 0, j = 6; j >= 0; i++) {
 		if (memchar[i] == '-')
 			continue;
 
 		if (memchar[i] >= 'A' && memchar[i] <= 'Z')
 			memchar[i] = alpha_digit_map[memchar[i] - 65];
 
-		j++;
-		record->number = record->number * 10 + memchar[i] - 48;
+		record->val.normal_form[j--] = memchar[i];
 	}
 
 #if DEBUG
-	printf("\tcreate record %s \n", record->normal_form);
+	printf("\tcreate record %s:%llx \n",
+			record->val.normal_form,
+			record->val.number);
 #endif
 
 	return record;
@@ -197,12 +208,17 @@ int main(int argc, char *argv[])
 		j = i;
 		i++;
 		while (i < entries &&
-			(phone_numbers[i].number == phone_numbers[j].number))
+			(phone_numbers[i].val.number == phone_numbers[j].val.number))
 			i++;
 		if ((i - j) > 1) {
-			printf("%03d-%04d %d\n",
-				phone_numbers[j].number / 10000,
-				phone_numbers[j].number % 10000,
+			printf("%c%c%c-%c%c%c%c %d\n",
+				*(phone_numbers[j].val.normal_form + 6),
+				*(phone_numbers[j].val.normal_form + 5),
+				*(phone_numbers[j].val.normal_form + 4),
+				*(phone_numbers[j].val.normal_form + 3),
+				*(phone_numbers[j].val.normal_form + 2),
+				*(phone_numbers[j].val.normal_form + 1),
+				*(phone_numbers[j].val.normal_form),
 				i - j);
 			duplicate = 1;
 		}
