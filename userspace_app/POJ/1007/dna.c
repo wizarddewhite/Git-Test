@@ -21,6 +21,33 @@ void calc_inversion(struct dna *dp)
 	}
 }
 
+void calc_inversion2(struct dna *dp)
+{
+	int A, C, G, T;
+	A = C = G = T = 0;
+	char *p;
+	for (p = dp->string; *p; p++) {
+		switch (*p) {
+			case 'A':
+				dp->inversion += C + G + T;
+				A++;
+				break;
+			case 'C':
+				dp->inversion += G + T;
+				C++;
+				break;
+			case 'G':
+				dp->inversion += T;
+				G++;
+				break;
+			case 'T':
+				T++;
+				break;
+
+		}
+	}
+}
+
 int dna_comp(const void *d1, const void *d2)
 {
 	int inv1, inv2;
@@ -46,7 +73,7 @@ int main()
 		fgets(line, 1024, stdin);
 		dp = dnas + i;
 		dp->string = strdup(line);
-		calc_inversion(dp);
+		calc_inversion2(dp);
 	}
 
 	qsort(dnas, num, sizeof(struct dna), dna_comp);
