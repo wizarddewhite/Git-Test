@@ -3,6 +3,14 @@
 #include <string.h>
 #include <math.h>
 
+#define DEBUG 0
+
+#if DEBUG
+#define DEBUG_PRINT printf
+#else
+#define DEBUG_PRINT
+#endif
+
 struct rle {
 	int val;
 	int rep;
@@ -13,14 +21,6 @@ char line[1024];
 struct rle pix[1024];
 int width, total_pix;
 
-#define DEBUG 0
-
-#if DEBUG
-#define DEBUG_PRINT printf
-#else
-#define DEBUG_PRINT 
-#endif
-
 /* Return val of a pix in [1, total_pix]
  *
  * For a pos exceed the range, abort or return 0.
@@ -28,38 +28,39 @@ int width, total_pix;
 int get_value(int pos)
 {
 	int i;
-	if (pos < 0)
+	if (pos <= 0)
 		abort();
 
+	DEBUG_PRINT("\tpos(%d) is in idx:", pos);
 	i = 0;
 	for (i = 0;
 	     pos > pix[i].rep && (pix[i].val || pix[i].rep);
 	     i++)
 		pos = pos - pix[i].rep;
 
-	//printf("\tidx:%d\n", i);
+	DEBUG_PRINT("%d\n", i);
 	return pix[i].val;
 }
 
 void test_get_value(void)
 {
-	printf("Pos: %d, Value: %d\n", 4, get_value(4));
-	printf("Pos: %d, Value: %d\n", 5, get_value(5));
-	printf("Pos: %d, Value: %d\n", 27, get_value(27));
-	printf("Pos: %d, Value: %d\n", 28, get_value(28));
-	printf("Pos: %d, Value: %d\n", 34, get_value(34));
-	printf("Pos: %d, Value: %d\n", 35, get_value(35));
-	//printf("Pos: %d, Value: %d\n", 500000000, get_value(500000000));
-	//printf("Pos: %d, Value: %d\n", 500000001, get_value(500000001));
+	DEBUG_PRINT("Pos: %d, Value: %d\n", 4, get_value(4));
+	DEBUG_PRINT("Pos: %d, Value: %d\n", 5, get_value(5));
+	DEBUG_PRINT("Pos: %d, Value: %d\n", 27, get_value(27));
+	DEBUG_PRINT("Pos: %d, Value: %d\n", 28, get_value(28));
+	DEBUG_PRINT("Pos: %d, Value: %d\n", 34, get_value(34));
+	DEBUG_PRINT("Pos: %d, Value: %d\n", 35, get_value(35));
+	//DEBUG_PRINT("Pos: %d, Value: %d\n", 500000000, get_value(500000000));
+	//DEBUG_PRINT("Pos: %d, Value: %d\n", 500000001, get_value(500000001));
 }
 
 int get_max_diff(int pos)
 {
 	int neighbour;
 	int max_diff = 0, diff = 0;
-	int self_val = get_value(pos);
+	int neighbour_val, self_val = get_value(pos);
 
-	DEBUG_PRINT("##self val is %d\n", self_val);
+	DEBUG_PRINT("##self val at pos(%d) is %d\n", pos, self_val);
 
 	/* diff with left */
 	if ((pos % width) != 1) {
@@ -68,47 +69,57 @@ int get_max_diff(int pos)
 		/* upper left */
 		neighbour = pos - width - 1;
 		if (neighbour >= 1) {
-			diff = abs(self_val - get_value(neighbour));
+			neighbour_val = get_value(neighbour);
+			diff = abs(self_val - neighbour_val);
 			if (diff > max_diff)
 				max_diff = diff;
-			DEBUG_PRINT("##upper left diff %d\n", diff);
+			DEBUG_PRINT("\tupper left diff |%d - %d| = %d\n",
+				    self_val, neighbour_val, diff);
 		}
 
 		/* left */
 		neighbour = pos - 1;
 		if (neighbour >= 1) {
-			diff = abs(self_val - get_value(neighbour));
+			neighbour_val = get_value(neighbour);
+			diff = abs(self_val - neighbour_val);
 			if (diff > max_diff)
 				max_diff = diff;
-			DEBUG_PRINT("##left diff %d\n", diff);
+			DEBUG_PRINT("\tleft diff |%d - %d| = %d\n",
+				    self_val, neighbour_val, diff);
 		}
 
 		/* bottom left */
 		neighbour = pos + width - 1;
 		if (neighbour <= total_pix) {
-			diff = abs(self_val - get_value(neighbour));
+			neighbour_val = get_value(neighbour);
+			diff = abs(self_val - neighbour_val);
 			if (diff > max_diff)
 				max_diff = diff;
-			DEBUG_PRINT("##bottom left diff %d\n", diff);
+			DEBUG_PRINT("\tbottom left diff |%d - %d| = %d\n",
+				    self_val, neighbour_val, diff);
 		}
 	}
 
 	/* diff with upper */
 	neighbour = pos - width;
 	if (neighbour >= 1) {
-		diff = abs(self_val - get_value(neighbour));
+		neighbour_val = get_value(neighbour);
+		diff = abs(self_val - neighbour_val);
 		if (diff > max_diff)
 			max_diff = diff;
-		DEBUG_PRINT("##upper diff %d\n", diff);
+		DEBUG_PRINT("\tupper diff |%d - %d| = %d\n",
+			    self_val, neighbour_val, diff);
 	}
 
 	/* diff with bottom */
 	neighbour = pos + width;
 	if (neighbour <= total_pix) {
-		diff = abs(self_val - get_value(neighbour));
+		neighbour_val = get_value(neighbour);
+		diff = abs(self_val - neighbour_val);
 		if (diff > max_diff)
 			max_diff = diff;
-		DEBUG_PRINT("##bottom diff %d\n", diff);
+		DEBUG_PRINT("\tbottom diff |%d - %d| = %d\n",
+			    self_val, neighbour_val, diff);
 	}
 
 	/* diff with right */
@@ -118,51 +129,57 @@ int get_max_diff(int pos)
 		/* upper right */
 		neighbour = pos - width + 1;
 		if (neighbour >= 1) {
-			diff = abs(self_val - get_value(neighbour));
+			neighbour_val = get_value(neighbour);
+			diff = abs(self_val - neighbour_val);
 			if (diff > max_diff)
 				max_diff = diff;
-			DEBUG_PRINT("##upper right diff %d\n", diff);
+			DEBUG_PRINT("\tupper right diff |%d - %d| = %d\n",
+			            self_val, neighbour_val, diff);
 		}
 
 		/* diff with right */
 		neighbour = pos + 1;
 		if (neighbour <= total_pix) {
-			diff = abs(self_val - get_value(neighbour));
+			neighbour_val = get_value(neighbour);
+			diff = abs(self_val - neighbour_val);
 			if (diff > max_diff)
 				max_diff = diff;
-			DEBUG_PRINT("##right diff %d\n", diff);
+			DEBUG_PRINT("\tright diff |%d - %d| = %d\n",
+			            self_val, neighbour_val, diff);
 		}
 
 
 		/* diff with bottom right */
 		neighbour = pos + width + 1;
 		if (neighbour <= total_pix) {
-			diff = abs(self_val - get_value(neighbour));
+			neighbour_val = get_value(neighbour);
+			diff = abs(self_val - neighbour_val);
 			if (diff > max_diff)
 				max_diff = diff;
-			DEBUG_PRINT("##bottom right diff %d\n", diff);
+			DEBUG_PRINT("\tbottom right diff |%d - %d| = %d\n",
+			            self_val, neighbour_val, diff);
 		}
 	}
 
+	DEBUG_PRINT("\tMax diff %d\n", max_diff);
 	return max_diff;
 }
 
 void test_get_max_diff()
 {
-	printf("Pos: %d, Max diff: %d\n", 1, get_max_diff(1));
-	printf("Pos: %d, Max diff: %d\n", 4, get_max_diff(4));
-	printf("Pos: %d, Max diff: %d\n", 7, get_max_diff(7));
-	printf("Pos: %d, Max diff: %d\n", 21, get_max_diff(21));
-	printf("Pos: %d, Max diff: %d\n", 22, get_max_diff(22));
-	printf("Pos: %d, Max diff: %d\n", 25, get_max_diff(25));
-	printf("Pos: %d, Max diff: %d\n", 35, get_max_diff(35));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 1, get_max_diff(1));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 4, get_max_diff(4));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 7, get_max_diff(7));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 21, get_max_diff(21));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 22, get_max_diff(22));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 25, get_max_diff(25));
+	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 35, get_max_diff(35));
 }
 
 void print_compress_image()
 {
 	int i;
 	int diff_val, diff_val_old, len;
-	//test_get_max_diff();
 	printf("%d\n", width);
 	
 	diff_val = diff_val_old = 0;
@@ -204,12 +221,9 @@ void dump_image()
 	return;
 }
 
-void process_image()
+void store_image()
 {
-	int idx;
-	DEBUG_PRINT("Image width is %d\n", width);
-
-	idx = 0;
+	int idx = 0;
 	while(fgets(line, 1024, stdin)) {
 		sscanf(line, "%d %d\n", &pix[idx].val, &pix[idx].rep);
 
@@ -226,10 +240,19 @@ void process_image()
 	}
 
 	total_pix = pix[idx-1].start_pos + pix[idx-1].rep - 1;
-	DEBUG_PRINT("\tTotal pix is %d\n", total_pix);
-	dump_image();
+	DEBUG_PRINT("Total pix is %d\n", total_pix);
+	//dump_image();
 
 	//test_get_value();
+	//test_get_max_diff();
+	return;
+}
+
+void process_image()
+{
+	DEBUG_PRINT("Image width is %d\n", width);
+	store_image();
+
 	print_compress_image();
 	return;
 }
