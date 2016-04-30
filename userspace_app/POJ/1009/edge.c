@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <math.h>
 
@@ -176,19 +177,65 @@ void test_get_max_diff()
 	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 35, get_max_diff(35));
 }
 
+int cal_skip(int pix_idx, int *skip_start, int *skip_len)
+{
+	*skip_start = 0;
+	*skip_len = 0;
+	return 0;
+}
+
 void print_compress_image()
 {
 	int i;
 	int diff_val, diff_val_old, len;
+	bool skipped = true;
+	int dup_val;  /* duplicated value */
+	int skip_start, skip_len;
+	int next_pix_pos, pix_idx;
 	printf("%d\n", width);
 	
-	diff_val = diff_val_old = 0;
+	next_pix_pos = 1;
+	pix_idx = 0;
+	diff_val = diff_val_old = -1;
 	for (i = 1; i <= total_pix; i++) {
+		/* On each new pix range, we calculate the skip case */
+		if (next_pix_pos == i) {
+			dup_val = cal_skip(pix_idx, &skip_start, &skip_len);
+			DEBUG_PRINT("\tpos(%d) skip_start(%d) skip_len(%d)\n",
+				i, skip_start, skip_len);
+
+			/* move to next pix range */
+			next_pix_pos = pix[pix_idx].start_pos + pix[pix_idx].rep;
+			pix_idx++;
+		}
+
+		if (i == skip_start) {
+			/* the dup range has the same diff value as previous,
+			 * so accumulate */
+			if (dup_val == diff_val)
+				skip_len += len;
+			/* otherwise, print what we have before */
+			else
+				printf("%d %d\n", diff_val, len);
+
+			i = i + skip_len;
+			skipped = true;
+			diff_val = diff_val_old = -1;
+		}
+
 		diff_val = get_max_diff(i);
 
-		if (i == 1) {
+		if (skipped) {
+			/* The diff value of previous skip range has different
+			 * value, just print it.
+			 *
+			 * Or accumulate the len.
+			 * */
+			if (skip_len && dup_val != diff_val)
+				printf("%d %d\n", dup_val, skip_len);
 			diff_val_old = diff_val;
-			len = 1;
+			len = skip_len + 1;
+			skipped = false;
 			continue;
 		}
 
