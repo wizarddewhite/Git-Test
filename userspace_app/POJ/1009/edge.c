@@ -189,6 +189,21 @@ void print_compress_image()
 	return;
 }
 
+void dump_image()
+{
+	int idx;
+
+	for (idx = 0; ;idx++) {
+		DEBUG_PRINT("%d: (%d %d) start_pos:%d\n",
+			    idx, pix[idx].val, pix[idx].rep,
+			    pix[idx].start_pos);
+
+		if (!pix[idx].val && !pix[idx].rep)
+			break;
+	}
+	return;
+}
+
 void process_image()
 {
 	int idx;
@@ -203,15 +218,16 @@ void process_image()
 			break;
 
 		if (!idx)
-			pix[idx].start_pos = 0;
+			pix[idx].start_pos = 1;
 		else
 			pix[idx].start_pos = pix[idx-1].start_pos + pix[idx-1].rep;
 
 		idx++;
 	}
 
-	total_pix = pix[idx-1].start_pos + pix[idx-1].rep;
+	total_pix = pix[idx-1].start_pos + pix[idx-1].rep - 1;
 	DEBUG_PRINT("\tTotal pix is %d\n", total_pix);
+	dump_image();
 
 	//test_get_value();
 	print_compress_image();
