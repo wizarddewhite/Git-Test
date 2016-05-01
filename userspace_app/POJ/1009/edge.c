@@ -194,6 +194,14 @@ int cal_skip(int pix_idx, unsigned long *skip_start, unsigned long *skip_len)
 		return 0;
 	}
 
+	/* Handle special case for only one large line */
+	if (pix_idx == 0 && !pix[1].val && !pix[1].rep
+	    && !(pix[0].rep % width)) {
+		*skip_start = 2;
+		*skip_len = width - 3;
+		return 0;
+	}
+
 	*skip_start = 0;
 	*skip_len = 0;
 	return 0;
