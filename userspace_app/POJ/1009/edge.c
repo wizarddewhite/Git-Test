@@ -179,6 +179,13 @@ void test_get_max_diff()
 
 int cal_skip(int pix_idx, int *skip_start, int *skip_len)
 {
+	/* Handle special case for a range with more than 3 * width len */
+	if (pix[pix_idx].rep >= 3 * width) {
+		*skip_start = pix[pix_idx].start_pos + width;
+		*skip_len = pix[pix_idx].rep - 2 * width;
+		return 0;
+	}
+
 	*skip_start = 0;
 	*skip_len = 0;
 	return 0;
