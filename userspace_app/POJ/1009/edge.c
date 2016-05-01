@@ -14,13 +14,13 @@
 
 struct rle {
 	int val;
-	int rep;
-	int start_pos;
+	unsigned long rep;
+	unsigned long start_pos;
 };
 
 char line[1024];
 struct rle pix[1024];
-int width, total_pix;
+unsigned long width, total_pix;
 
 /* Return val of a pix in [1, total_pix]
  *
@@ -177,9 +177,17 @@ void test_get_max_diff()
 	DEBUG_PRINT("Pos: %d, Max diff: %d\n", 35, get_max_diff(35));
 }
 
-int cal_skip(int pix_idx, int *skip_start, int *skip_len)
+int cal_skip(int pix_idx, unsigned long *skip_start, unsigned long *skip_len)
 {
-	/* Handle special case for a range with more than 3 * width len */
+	/* Handle special case for a range with more than 3 * width len
+	 *
+	 * Like the pattern:
+	 * AAAAAAAAAAAAAAAAA
+	 * AAAAAAAAAAAAAAAAA
+	 * AAAAAAAAAAAAAAAAA
+	 *
+	 * The middle one's max_diff are all 0.
+	 * */
 	if (pix[pix_idx].rep >= 3 * width) {
 		*skip_start = pix[pix_idx].start_pos + width;
 		*skip_len = pix[pix_idx].rep - 2 * width;
@@ -197,19 +205,20 @@ void print_compress_image()
 	int diff_val, diff_val_old, len;
 	bool skipped = true;
 	int dup_val;  /* duplicated value */
-	int skip_start, skip_len;
+	unsigned long skip_start, skip_len;
 	int next_pix_pos, pix_idx;
-	printf("%d\n", width);
+	printf("%ld\n", width);
 	
 	next_pix_pos = 1;
 	pix_idx = 0;
 	diff_val = diff_val_old = -1;
+	len = 0;
 	for (i = 1; i <= total_pix; i++) {
 		/* On each new pix range, we calculate the skip case */
 		if (next_pix_pos == i) {
 			dup_val = cal_skip(pix_idx, &skip_start, &skip_len);
-			DEBUG_PRINT("\tpos(%d) skip_start(%d) skip_len(%d)\n",
-				i, skip_start, skip_len);
+			DEBUG_PRINT("\tpos(%d) skip_start(%ld) skip_len(%ld) dup_val(%d)\n",
+				i, skip_start, skip_len, dup_val);
 
 			/* move to next pix range */
 			next_pix_pos = pix[pix_idx].start_pos + pix[pix_idx].rep;
@@ -217,17 +226,27 @@ void print_compress_image()
 		}
 
 		if (i == skip_start) {
-			/* the dup range has the same diff value as previous,
-			 * so accumulate */
-			if (dup_val == diff_val)
-				skip_len += len;
-			/* otherwise, print what we have before */
-			else
-				printf("%d %d\n", diff_val, len);
-
-			i = i + skip_len;
+			DEBUG_PRINT("\tat skip_start(%d) dup_val(%d) diff_val(%d) diff_val_old(%d)\n\tlen(%d) skip_len(%d)\n",
+					i, dup_val, diff_val, diff_val_old, len, skip_len);
+			i = i + skip_len - 1;
 			skipped = true;
-			diff_val = diff_val_old = -1;
+
+			/* We are skipped here with previous un-printed value */
+			if (len) {
+				/* the dup range has the same diff value as previous,
+				 * so accumulate */
+				if (dup_val == diff_val_old) {
+					len += skip_len;
+					DEBUG_PRINT("same val(%d) with len(%d)\n", dup_val, len);
+				} else {
+				/* otherwise, print what we have before */
+					printf("%d %d\n", diff_val_old, len);
+					len = skip_len;
+					diff_val_old = dup_val;
+				}
+			}
+			skip_start = skip_len = dup_val = 0;
+			continue;
 		}
 
 		diff_val = get_max_diff(i);
@@ -238,10 +257,16 @@ void print_compress_image()
 			 *
 			 * Or accumulate the len.
 			 * */
-			if (skip_len && dup_val != diff_val)
-				printf("%d %d\n", dup_val, skip_len);
-			diff_val_old = diff_val;
-			len = skip_len + 1;
+			if (i == 1) {
+				diff_val_old = diff_val;
+				len = 1;
+			} else if (diff_val != diff_val_old) {
+				printf("%d %d\n", diff_val_old, len);
+				diff_val_old = diff_val;
+				len = 1;
+			} else {
+				len++;
+			}
 			skipped = false;
 			continue;
 		}
@@ -265,7 +290,7 @@ void dump_image()
 	int idx;
 
 	for (idx = 0; ;idx++) {
-		DEBUG_PRINT("%d: (%d %d) start_pos:%d\n",
+		printf("%d: (%d %lu) start_pos:%lu\n",
 			    idx, pix[idx].val, pix[idx].rep,
 			    pix[idx].start_pos);
 
@@ -279,7 +304,7 @@ void store_image()
 {
 	int idx = 0;
 	while(fgets(line, 1024, stdin)) {
-		sscanf(line, "%d %d\n", &pix[idx].val, &pix[idx].rep);
+		sscanf(line, "%d %ld\n", &pix[idx].val, &pix[idx].rep);
 
 		/* "0 0" means the end of an image */
 		if (!pix[idx].val && !pix[idx].rep)
@@ -304,7 +329,7 @@ void store_image()
 
 void process_image()
 {
-	DEBUG_PRINT("Image width is %d\n", width);
+	DEBUG_PRINT("Image width is %lu\n", width);
 	store_image();
 
 	print_compress_image();
@@ -315,7 +340,7 @@ int main()
 {
 
 	while(fgets(line, 1024, stdin)) {
-		sscanf(line, "%d\n", &width);
+		sscanf(line, "%ld\n", &width);
 
 		if (!width)
 			break;
