@@ -202,6 +202,28 @@ int cal_skip(int pix_idx, unsigned long *skip_start, unsigned long *skip_len)
 		return 0;
 	}
 
+	/* Handle special case for three line
+	 *
+	 * Like the pattern:
+	 * AAAAAAAAAAAAAAAAA
+	 * BBBBBBBBBBBBBBBBB
+	 * CCCCCCCCCCCCCCCCC
+	 *
+	 * The middle line has the same diff value.
+	 * */
+	/* First we have two lines */
+	if (pix[pix_idx].rep == width &&
+	    pix[pix_idx+1].rep == width) {
+		/* Maybe we have the same third line
+		 * or this is end of the image*/
+		if (pix[pix_idx+2].rep == width ||
+		    pix[pix_idx+2].rep == 0) {
+			*skip_start = pix[pix_idx].start_pos + width;
+			*skip_len = width;
+			return get_value(*skip_start);
+		}
+	}
+
 	*skip_start = 0;
 	*skip_len = 0;
 	return 0;
