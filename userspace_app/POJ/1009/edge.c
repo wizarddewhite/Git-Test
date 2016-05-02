@@ -20,6 +20,11 @@ struct rle {
 
 char line[1024];
 struct rle pix[1024];
+/* 1000 range at most,
+ * each range has two end,
+ * each end has 9 adj at most */
+int boundary[1000 * 2 * 9];
+int num_boundary;
 unsigned long width, total_pix;
 
 int adj[8][2] = {
@@ -283,6 +288,9 @@ void dump_image()
 void store_image()
 {
 	int idx = 0;
+	int a, i;
+
+	num_boundary = 0;
 	while(fgets(line, 1024, stdin)) {
 		sscanf(line, "%d %ld\n", &pix[idx].val, &pix[idx].rep);
 
@@ -295,11 +303,36 @@ void store_image()
 		else
 			pix[idx].start_pos = pix[idx-1].start_pos + pix[idx-1].rep;
 
+
 		idx++;
 	}
 
 	total_pix = pix[idx-1].start_pos + pix[idx-1].rep - 1;
-	DEBUG_PRINT("Total pix is %d\n", total_pix);
+	DEBUG_PRINT("Total pix is %lu\n", total_pix);
+
+	for (i = 0; i < idx; i++) {
+		for (a = 0; a < 8; a++) {
+			if (is_valid_adj(pix[i].start_pos, a)) {
+				boundary[num_boundary++] = pix[i].start_pos +
+					                 width * adj[a][0] + adj[a][1];
+				DEBUG_PRINT("%lu boundary[%d] = %d\n", pix[i].start_pos, num_boundary-1, boundary[num_boundary-1]);
+			}
+		}
+		boundary[num_boundary++] = pix[i].start_pos;
+		DEBUG_PRINT("%lu boundary[%d] = %d\n", pix[i].start_pos, num_boundary-1, boundary[num_boundary-1]);
+		for (a = 0; a < 8; a++) {
+			if (is_valid_adj(pix[i].start_pos + pix[i].rep - 1, a)) {
+				boundary[num_boundary++] = pix[i].start_pos + pix[i].rep - 1 +
+					                 width * adj[a][0] + adj[a][1];
+				DEBUG_PRINT("%lu boundary[%d] = %d\n", pix[i].start_pos + pix[i].rep - 1,
+						num_boundary-1, boundary[num_boundary-1]);
+			}
+		}
+		boundary[num_boundary++] = pix[i].start_pos + pix[i].rep - 1;
+		DEBUG_PRINT("%lu boundary[%d] = %d\n", pix[i].start_pos + pix[i].rep - 1, num_boundary-1, boundary[num_boundary-1]);
+	}
+	boundary[num_boundary] = 0;
+
 	//dump_image();
 	//test_adj(10);
 
