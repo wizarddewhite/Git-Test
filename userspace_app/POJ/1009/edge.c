@@ -22,6 +22,18 @@ char line[1024];
 struct rle pix[1024];
 unsigned long width, total_pix;
 
+int adj[8][2] = {
+	/* row, col */
+	{-1, -1},
+	{-1,  0},
+	{-1,  1},
+	{ 0, -1},
+	{ 0,  1},
+	{ 1, -1},
+	{ 1,  0},
+	{ 1,  1},
+};
+
 /* Return val of a pix in [1, total_pix]
  *
  * For a pos exceed the range, abort or return 0.
@@ -55,111 +67,49 @@ void test_get_value(void)
 	//DEBUG_PRINT("Pos: %d, Value: %d\n", 500000001, get_value(500000001));
 }
 
+int is_valid_adj(int pos, int idx)
+{
+	int row, col;
+	row = (pos - 1) / width;
+	col = (pos - 1) % width;
+
+	row = row + adj[idx][0];
+	col = col + adj[idx][1];
+
+	if (row == -1 || row == (total_pix / width))
+		return 0;
+	if (col == -1 || col == width)
+		return 0;
+
+	return 1;
+}
+
+void test_adj(int pos)
+{
+	int i;
+	for (i = 0; i < 8; i++) {
+		if (is_valid_adj(pos, i))
+			printf("pos(%d)'s %d's adj is valid\n", pos, i);
+	}
+}
+
 int get_max_diff(int pos)
 {
 	int neighbour;
 	int max_diff = 0, diff = 0;
+	int i;
 	int neighbour_val, self_val = get_value(pos);
-
 	DEBUG_PRINT("##self val at pos(%d) is %d\n", pos, self_val);
 
-	/* diff with left */
-	if ((pos % width) != 1) {
-		/* First pix of each row doesn't has this neighbour */
+	for (i = 0; i < 8; i++) {
+		if (!is_valid_adj(pos, i))
+			continue;
 
-		/* upper left */
-		neighbour = pos - width - 1;
-		if (neighbour >= 1) {
-			neighbour_val = get_value(neighbour);
-			diff = abs(self_val - neighbour_val);
-			if (diff > max_diff)
-				max_diff = diff;
-			DEBUG_PRINT("\tupper left diff |%d - %d| = %d\n",
-				    self_val, neighbour_val, diff);
-		}
-
-		/* left */
-		neighbour = pos - 1;
-		if (neighbour >= 1) {
-			neighbour_val = get_value(neighbour);
-			diff = abs(self_val - neighbour_val);
-			if (diff > max_diff)
-				max_diff = diff;
-			DEBUG_PRINT("\tleft diff |%d - %d| = %d\n",
-				    self_val, neighbour_val, diff);
-		}
-
-		/* bottom left */
-		neighbour = pos + width - 1;
-		if (neighbour <= total_pix) {
-			neighbour_val = get_value(neighbour);
-			diff = abs(self_val - neighbour_val);
-			if (diff > max_diff)
-				max_diff = diff;
-			DEBUG_PRINT("\tbottom left diff |%d - %d| = %d\n",
-				    self_val, neighbour_val, diff);
-		}
-	}
-
-	/* diff with upper */
-	neighbour = pos - width;
-	if (neighbour >= 1) {
+		neighbour = pos + width * adj[i][0] + adj[i][1];
 		neighbour_val = get_value(neighbour);
 		diff = abs(self_val - neighbour_val);
 		if (diff > max_diff)
 			max_diff = diff;
-		DEBUG_PRINT("\tupper diff |%d - %d| = %d\n",
-			    self_val, neighbour_val, diff);
-	}
-
-	/* diff with bottom */
-	neighbour = pos + width;
-	if (neighbour <= total_pix) {
-		neighbour_val = get_value(neighbour);
-		diff = abs(self_val - neighbour_val);
-		if (diff > max_diff)
-			max_diff = diff;
-		DEBUG_PRINT("\tbottom diff |%d - %d| = %d\n",
-			    self_val, neighbour_val, diff);
-	}
-
-	/* diff with right */
-	if ((pos % width) != 0) {
-		/* Last pix of each row doesn't has this neighbour */
-
-		/* upper right */
-		neighbour = pos - width + 1;
-		if (neighbour >= 1) {
-			neighbour_val = get_value(neighbour);
-			diff = abs(self_val - neighbour_val);
-			if (diff > max_diff)
-				max_diff = diff;
-			DEBUG_PRINT("\tupper right diff |%d - %d| = %d\n",
-			            self_val, neighbour_val, diff);
-		}
-
-		/* diff with right */
-		neighbour = pos + 1;
-		if (neighbour <= total_pix) {
-			neighbour_val = get_value(neighbour);
-			diff = abs(self_val - neighbour_val);
-			if (diff > max_diff)
-				max_diff = diff;
-			DEBUG_PRINT("\tright diff |%d - %d| = %d\n",
-			            self_val, neighbour_val, diff);
-		}
-
-
-		/* diff with bottom right */
-		neighbour = pos + width + 1;
-		if (neighbour <= total_pix) {
-			neighbour_val = get_value(neighbour);
-			diff = abs(self_val - neighbour_val);
-			if (diff > max_diff)
-				max_diff = diff;
-			DEBUG_PRINT("\tbottom right diff |%d - %d| = %d\n",
-			            self_val, neighbour_val, diff);
-		}
 	}
 
 	DEBUG_PRINT("\tMax diff %d\n", max_diff);
@@ -351,6 +301,7 @@ void store_image()
 	total_pix = pix[idx-1].start_pos + pix[idx-1].rep - 1;
 	DEBUG_PRINT("Total pix is %d\n", total_pix);
 	//dump_image();
+	//test_adj(10);
 
 	//test_get_value();
 	//test_get_max_diff();
