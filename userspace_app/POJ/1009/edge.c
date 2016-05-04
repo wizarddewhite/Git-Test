@@ -184,6 +184,34 @@ int cal_skip(int pix_idx, unsigned long *skip_start, unsigned long *skip_len)
 	return 0;
 }
 
+void print_compress_image2()
+{
+	int i;
+	int diff_val, diff_val_old;
+	int index, index_old;
+
+	index_old = 1;
+	diff_val_old = get_max_diff(1);
+
+	printf("%ld\n", width);
+
+	for (i = 0; i < num_boundary; i++) {
+		index = boundary[i];
+		if (index == index_old)
+			continue;
+
+		diff_val = get_max_diff(index);
+		if (diff_val != diff_val_old) {
+			printf("%d %d\n", diff_val_old, index - index_old);
+			index_old = index;
+			diff_val_old = diff_val;
+		}
+
+	}
+	printf("%d %lu\n", diff_val_old, total_pix - index_old + 1);
+	printf("0 0\n");
+}
+
 void print_compress_image()
 {
 	int i;
@@ -285,6 +313,22 @@ void dump_image()
 	return;
 }
 
+int boundary_comp(const void *r1, const void *r2)
+{
+	int number1, number2;
+	number1 = *(int *)r1; 
+	number2 = *(int *)r2; 
+
+	return number1 - number2;
+}
+
+void dump_boundary(void)
+{
+	int i;
+	for (i = 0; i < num_boundary; i++)
+		printf("%d %d\n", i, boundary[i]);
+}
+
 void store_image()
 {
 	int idx = 0;
@@ -333,6 +377,8 @@ void store_image()
 	}
 	boundary[num_boundary] = 0;
 
+	qsort(boundary, num_boundary, sizeof(boundary[0]), boundary_comp);
+	//dump_boundary();
 	//dump_image();
 	//test_adj(10);
 
@@ -346,7 +392,8 @@ void process_image()
 	DEBUG_PRINT("Image width is %lu\n", width);
 	store_image();
 
-	print_compress_image();
+	//print_compress_image();
+	print_compress_image2();
 	return;
 }
 
