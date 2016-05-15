@@ -751,16 +751,18 @@ static inline void dmar_free_pci_notify_info(struct dmar_pci_notify_info *info)
         |     (struct intel_iommu*)    |
         +------------------------------+
         |devices_cnt                   |
-        |     (int)                    |
-        |devices                       |
-        |     (struct dmar_dev_scope *)|
-        |     +------------------------+
-        |     |bus                     |
-        |     |devfn                   |
-        |     |    (u8)                |
-        |     |dev                     |  point pci_dev's acpi device
-        |     |    (struct device *)   |
-        +-----+------------------------+
+        |     (int)                    |      struct dmar_dev_scope         struct dmar_dev_scope         struct dmar_dev_scope
+        |devices                       | ---->+----------------------+ ---->+----------------------+ ---->+----------------------+      
+        |     (struct dmar_dev_scope *)|      |bus                   |      |bus                   |      |bus                   |
+        +------------------------------+      |devfn                 |      |devfn                 |      |devfn                 |
+        |                              |      |    (u8)              |      |    (u8)              |      |    (u8)              |
+        |                              |      |dev                   |      |dev                   |      |dev                   |
+        |                              |      |    (struct device *) |      |    (struct device *) |      |    (struct device *) |
+        |                              |      +----------------------+      +----------------------+      +----------------------+ 
+        |                              |
+        |                              |       point the acpi device
+        |                              |
+        +------------------------------+
         |                              |
         |                              |
         +------------------------------+
