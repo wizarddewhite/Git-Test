@@ -284,8 +284,9 @@ init_iova_domain(struct iova_domain *iovad, unsigned long granule,
 2.4.2 reserve_iova()
 ================================================================================
 
-2.5 init_no_remapping_devices(), interesting
+2.5 init_no_remapping_devices(), set dev->archdata.iommu for no remmapping dev
 ================================================================================
+; set dev->archdata.iommu to DUMMY_DEVICE_DOMAIN_INFO
 static void __init init_no_remapping_devices(void)
 {
 	struct dmar_drhd_unit *drhd;
@@ -1376,16 +1377,17 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |     |q_lock                  |
         |     |free_head               |
         |     |free_tail               |
-        |     |free_cnt                |
-        |     |    (int)               |
-        |     |desc                    |
-        |     |    (struct qi_desc *)  |
-        |     |    +-------------------+
+        |     |free_cnt                |    QI_LENGTH(256)
+        |     |    (int)               |       an array of qi_desc
+        |     |desc                    | ---->+-------------------+
+        |     |    (struct qi_desc *)  |      |                   |
+        |     |    +-------------------+      +-------------------+
         |     |    |low, high          |
         |     |    |   (u64)           |
-        |     |    +-------------------+
-        |     |desc_status             |
-        |     |    (int)               |
+        |     |    +-------------------+       an array of desc status
+        |     |desc_status             | ---->+-------------------+
+        |     |    (int *)             |      |                   |
+        |     |                        |      +-------------------+
         +-----+------------------------+
         |flush                         |
         |     (struct iommu_flush)     |
