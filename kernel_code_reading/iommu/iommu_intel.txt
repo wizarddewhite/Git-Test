@@ -731,16 +731,94 @@ static void iommu_set_root_entry(struct intel_iommu *iommu)
 	raw_spin_unlock_irqrestore(&iommu->register_lock, flag);
 }
 
-2.6.7 iommu_flush_write_buffer()
+2.6.7 intel_svm_alloc_pasid_tables()
 ================================================================================
 
-2.6.8 dmar_set_interrupt()
+2.6.8 iommu_prepare_static_identity_mapping()
+================================================================================
+static int __init iommu_prepare_static_identity_mapping(int hw)
+{
+	struct pci_dev *pdev = NULL;
+	struct dmar_drhd_unit *drhd;
+	struct intel_iommu *iommu;
+	struct device *dev;
+	int i;
+	int ret = 0;
+
+	for_each_pci_dev(pdev) {
+		ret = dev_prepare_static_identity_mapping(&pdev->dev, hw);
+		if (ret)
+			return ret;
+	}
+
+	for_each_active_iommu(iommu, drhd)
+		for_each_active_dev_scope(drhd->devices, drhd->devices_cnt, i, dev) {
+			struct acpi_device_physical_node *pn;
+			struct acpi_device *adev;
+
+			if (dev->bus != &acpi_bus_type)
+				continue;
+
+			adev= to_acpi_device(dev);
+			mutex_lock(&adev->physical_node_lock);
+			list_for_each_entry(pn, &adev->physical_node_list, node) {
+				ret = dev_prepare_static_identity_mapping(pn->dev, hw);
+				if (ret)
+					break;
+			}
+			mutex_unlock(&adev->physical_node_lock);
+			if (ret)
+				return ret;
+		}
+
+	return 0;
+}
+
+2.6.8.1 dev_prepare_static_identity_mapping(), add info to domain
+================================================================================
+static int __init dev_prepare_static_identity_mapping(struct device *dev, int hw)
+{
+	int ret;
+
+	if (!iommu_should_identity_map(dev, 1))
+		return 0;
+
+	ret = domain_add_dev_info(si_domain, dev);
+	if (!ret)
+		pr_info("%s identity mapping for device %s\n",
+			hw ? "Hardware" : "Software", dev_name(dev));
+	else if (ret == -ENODEV)
+		/* device not associated with an iommu */
+		ret = 0;
+
+	return ret;
+}
+
+2.6.9 iommu_prepare_rmrr_dev()
 ================================================================================
 
-2.6.9 iommu_enable_translation()
+2.6.10 dmar_set_interrupt()
 ================================================================================
 
-2.6.10 iommu_disable_protect_mem_regions()
+2.6.11 iommu_enable_translation(), set TE bit in GCMD register
+================================================================================
+static void iommu_enable_translation(struct intel_iommu *iommu)
+{
+	u32 sts;
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&iommu->register_lock, flags);
+	iommu->gcmd |= DMA_GCMD_TE;
+	writel(iommu->gcmd, iommu->reg + DMAR_GCMD_REG);
+
+	/* Make sure hardware complete it */
+	IOMMU_WAIT_OP(iommu, DMAR_GSTS_REG,
+		      readl, (sts & DMA_GSTS_TES), sts);
+
+	raw_spin_unlock_irqrestore(&iommu->register_lock, flags);
+}
+
+2.6.12 iommu_disable_protect_mem_regions()
 ================================================================================
 
 2.7 dma_ops = &intel_dma_ops;
@@ -1420,8 +1498,8 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
 	struct dmar_domain
         +------------------------------------+
         |nid                                 |  numa node id
-        |iommu_did[]                         |
-        |iommu_refcnt[]                      |
+        |iommu_did[DMAR_UNITS_SUPPORTED]     |
+        |iommu_refcnt[DMAR_UNITS_SUPPORTED]  |
         |iommu_count                         |
         |                                    |
         +------------------------------------+
@@ -1470,8 +1548,17 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
                                    |
         struct device_domain_info  v
         +------------------------------------+
-        |                                    |
-        |                                    |
+        |dev                                 |
+        |      (struct device *)             |
+        |bus                                 |
+        |devfn                               |
+        |      (u8)                          |
+        +------------------------------------+
+        |domain                              |
+        |      (struct dmar_domain *)        |
+        +------------------------------------+
+        |iommu                               |
+        |      (struct intel_iommu *)        |
         +------------------------------------+
 
 0.4 dma_ops = &intel_dma_ops, driver calls dma_alloc_coherent
