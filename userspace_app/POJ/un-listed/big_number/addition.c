@@ -1,21 +1,3 @@
-/*
- * =====================================================================================
- *
- *       Filename:  addition.c
- *
- *    Description:  
- *
- *        Version:  1.0
- *        Created:  06/06/2016 06:36:38 AM
- *       Revision:  none
- *       Compiler:  gcc
- *
- *         Author:  Wei Yang (weiyang), weiyang.kernel@gmail.com
- *        Company:  
- *
- * =====================================================================================
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
