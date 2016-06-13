@@ -1,6 +1,7 @@
 SOURCES := $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
 OBJS := $(subst .c,.o,$(SOURCES))
+LIB := rb_tree.a
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
 CFLAGS = -g -I../
 LD_FLAGS = -lm
@@ -8,16 +9,16 @@ LD_FLAGS = -lm
 #$(warning $(OBJS))
 
 .PHONY: all clean cscope
-all: main
+all: $(PROGRAM)
 
-main: $(OBJS)
-	gcc $(CFLAGS) $(LD_FLAGS) -o main $(OBJS)
+%: %.o $(LIB)
+	gcc $(CFLAGS) $(LD_FLAGS) $^ -o $@
 
-%: %.o
-	gcc $(CFLAGS) $<  -o $@ 
-
-%.o : %.c
+%.o: %.c
 	gcc $(CFLAGS) -c $< -o $@
+
+%.a: %.o
+	ar cr $@ $^
 
 ifneq "$(MAKECMDGOALS)" "clean"
         include $(DEPENDENCY)
@@ -34,6 +35,7 @@ clean:
 	rm -f *.o
 	rm -f cscope.*
 	rm -f tags
+	rm -f $(LIB)
 
 cscope:
 	cscope -Rbkq
