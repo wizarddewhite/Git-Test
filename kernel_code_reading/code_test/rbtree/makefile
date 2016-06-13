@@ -1,9 +1,9 @@
 SOURCES := $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
 OBJS := $(subst .c,.o,$(SOURCES))
-LIB := rb_tree.a
+LIB := lib/rb_tree.a
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -g -I../
+CFLAGS = -g -I../ -Ilib/
 LD_FLAGS = -lm
 
 #$(warning $(OBJS))
