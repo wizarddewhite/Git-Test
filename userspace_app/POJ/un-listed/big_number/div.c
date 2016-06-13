@@ -56,20 +56,27 @@ void get_input()
 /* val1 = val1 - val2 * (10 * shift) */
 int minus(int shift)
 {
-	int i;
+	int i, j, last_non_zero = 0;
 
 	for (i = MAX_NUMBER - 1; i >= 0; i--) {
 		if (val2[i - shift] > val1[i]) {
 			/*
-			 * val1 < val2
-			 * reverse the process
+			 * if val1 < val2 reverse the process
+			 *
+			 * Can we borrow from higher?
 			 */
-			if (val1[i + 1] == 0)
+			if (!last_non_zero)
 				goto reverse;
-			val1[i + 1]--;
+			/* borrow one from last non-zero */
+			val1[last_non_zero]--;
+			/* add 9 to [j - 1, i + 1] */
+			for (j = last_non_zero - 1; j > i; j--)
+				val1[j] += 9;
 			val1[i] += 10;
 		}
 		val1[i] -= val2[i - shift];
+		if (val1[i])
+			last_non_zero = i;
 
 		if ((i - shift) == 0)
 			break;
@@ -119,10 +126,10 @@ int main()
 	get_input();
 
 	/* Test minus */
-	//minus(0);
+	minus(0);
 
 	/* Do div */
-	div();
+	//div();
 
 	return 0;
 }
