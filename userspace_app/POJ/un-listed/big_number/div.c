@@ -9,7 +9,7 @@ int len1, len2;
 unsigned int val1[MAX_NUMBER], val2[MAX_NUMBER];
 unsigned int res[MAX_NUMBER * 2];
 
-void print_num_array(int num_array[MAX_NUMBER])
+void print_num_array(unsigned int num_array[MAX_NUMBER])
 {
 	int i;
 	bool zero_skipped = false;
@@ -75,6 +75,8 @@ int minus(int shift)
 			break;
 	}
 
+	//printf("minus: ");
+	//print_num_array(val1);
 	return 0;
 
 reverse:
@@ -84,13 +86,10 @@ reverse:
 	return -1;
 }
 
-int main()
+unsigned int div()
 {
 	unsigned int times = 0;
 	int shift;
-
-	/* Get div value */
-	get_input();
 
 	/* Div2 > Div1 */
 	if (len2 > len1 || 
@@ -104,12 +103,26 @@ int main()
 		unsigned int tmp = 0;
 		while (!minus(shift))
 			tmp++;
-		times += (!shift)? tmp : tmp * pow(10, shift);
+		times += tmp * pow(10, shift);
 	}
 
 	/* print what left */
-	//print_num_array(val1);
 	printf("times: %u\n", times);
+
+	return times;
+}
+
+int main()
+{
+
+	/* Get div value */
+	get_input();
+
+	/* Test minus */
+	//minus(0);
+
+	/* Do div */
+	div();
 
 	return 0;
 }
