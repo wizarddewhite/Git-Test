@@ -9,10 +9,10 @@ LD_FLAGS = -lm
 #$(warning $(OBJS))
 
 .PHONY: all clean cscope
-all: $(PROGRAM)
+all: $(LIB) $(PROGRAM)
 
-%: %.o $(LIB)
-	gcc $(CFLAGS) $(LD_FLAGS) $^ -o $@
+%: %.c
+	gcc $(CFLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
 
 %.o: %.c
 	gcc $(CFLAGS) -c $< -o $@
