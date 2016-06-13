@@ -88,8 +88,13 @@ int minus(int shift)
 
 reverse:
 	/* In case val1 < val2, add back val2 and return -1 */
-	for (i += 1; i < MAX_NUMBER; i++)
+	for (i += 1; i < MAX_NUMBER; i++) {
 		val1[i] += val2[i - shift];
+		if (val1[i] >= 10) {
+			val1[i] -= 10;
+			val1[i + 1]++;
+		}
+	}
 	return -1;
 }
 
