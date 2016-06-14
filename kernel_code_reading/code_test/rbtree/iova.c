@@ -148,5 +148,13 @@ int main()
 
 	dump_rb_tree(reserved_iova_list.rbroot.rb_node, 0, root_node, iova_print);
 
+	iova = reserve_iova(&reserved_iova_list, IOVA_PFN(IOAPIC_RANGE_START - 0x100000),
+		IOVA_PFN(IOAPIC_RANGE_END));
+	dump_rb_tree(reserved_iova_list.rbroot.rb_node, 0, root_node, iova_print);
+
+	iova = reserve_iova(&reserved_iova_list, IOVA_PFN(IOAPIC_RANGE_START - 0x100000),
+		IOVA_PFN(IOAPIC_RANGE_END + 0x100000));
+	dump_rb_tree(reserved_iova_list.rbroot.rb_node, 0, root_node, iova_print);
+
 	return 0;
 }
