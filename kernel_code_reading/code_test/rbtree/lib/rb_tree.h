@@ -86,4 +86,14 @@ struct rb_node *rb_prev(const struct rb_node *node);
 void rb_insert_color(struct rb_node *node, struct rb_root *root);
 void rb_erase(struct rb_node *node, struct rb_root *root);
 
+enum child_dir {
+	left_child,
+	right_child,
+	root_node
+};
+
+typedef void (*dp)(struct rb_node *node, char *prefix, int level);
+void dump_rb_tree(struct rb_node *node, int level,
+		enum child_dir state, dp print);
+
 #endif	//_RBTREE_H

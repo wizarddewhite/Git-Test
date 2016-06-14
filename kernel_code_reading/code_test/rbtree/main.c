@@ -19,12 +19,6 @@
 #include <string.h>
 #include "rb_tree.h"
 
-enum child_dir {
-	left_child,
-	right_child,
-	root_node
-};
-
 struct dummy_struct {
 	int idx;
 	struct rb_node rb;
@@ -37,30 +31,14 @@ static struct rb_root tree_root;
 
 struct dummy_struct tree_nodes[NODES];
 
-void dump_rb_tree(struct rb_node *node, int level, enum child_dir state)
+void dummy_print(struct rb_node *node, char *prefix, int level)
 {
 	struct dummy_struct *this;
-	char prefix[40] = {0};
-	int  i;
 
-	if (!node)
-		return;
-
-	dump_rb_tree(node->rb_right, level+1, right_child);
-
-	for (i = 0; i < level && i < 10; i++)
-		strcat(prefix, "   ");
-
-	if (state == left_child)
-		printf("   %s|\n", prefix);
 	this = rb_to_dummy(node);
 	printf("%02d %s -%02d(%c)\n",
 			level, prefix, this->idx,
 			rb_is_red(node)?'r':'b');
-	if (state == right_child)
-		printf("   %s|\n", prefix);
-
-	dump_rb_tree(node->rb_left, level+1, left_child);
 }
 
 static int insert_dummy_to_tree(struct dummy_struct *node)
@@ -111,7 +89,7 @@ void insert_test()
 		insert_dummy_to_tree(&tree_nodes[i]);
 	}
 
-	dump_rb_tree(tree_root.rb_node, 0, root_node);
+	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
 
 	iter = rb_first(&tree_root);
 	while (iter) {
@@ -134,7 +112,7 @@ void case2_verify()
 	rb_set_parent_color(&tree_nodes[6].rb, &tree_nodes[5].rb, RB_BLACK);
 	insert_dummy_to_tree(&tree_nodes[4]);
 
-	dump_rb_tree(tree_root.rb_node, 0, root_node);
+	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
 
 	iter = rb_first(&tree_root);
 	while (iter) {
@@ -155,15 +133,15 @@ void erase_test()
 		insert_dummy_to_tree(&tree_nodes[i]);
 	}
 
-	dump_rb_tree(tree_root.rb_node, 0, root_node);
+	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
 
 	printf("Erase element %d\n", 19);
 	rb_erase(&tree_nodes[19].rb, &tree_root);
-	dump_rb_tree(tree_root.rb_node, 0, root_node);
+	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
 
 	printf("Erase element %d\n", 11);
 	rb_erase(&tree_nodes[11].rb, &tree_root);
-	dump_rb_tree(tree_root.rb_node, 0, root_node);
+	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
 }
 
 int main()

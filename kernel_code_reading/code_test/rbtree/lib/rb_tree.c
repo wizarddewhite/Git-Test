@@ -16,7 +16,34 @@
  * =====================================================================================
  */
 
+#include <stdio.h>
 #include "rbtree_augmented.h"
+
+void dump_rb_tree(struct rb_node *node, int level,
+		enum child_dir state, dp print)
+{
+	struct dummy_struct *this;
+	char prefix[40] = {0};
+	int  i;
+
+	if (!node)
+		return;
+
+	dump_rb_tree(node->rb_right, level+1, right_child, print);
+
+	for (i = 0; i < level && i < 10; i++)
+		strcat(prefix, "   ");
+
+	if (state == left_child)
+		printf("   %s|\n", prefix);
+
+	(*print)(node, prefix, level);
+
+	if (state == right_child)
+		printf("   %s|\n", prefix);
+
+	dump_rb_tree(node->rb_left, level+1, left_child, print);
+}
 
 static inline void rb_set_black(struct rb_node *rb)
 {
