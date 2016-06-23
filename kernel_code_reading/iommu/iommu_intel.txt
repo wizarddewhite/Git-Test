@@ -215,6 +215,7 @@ domain_error:
 
 2.2 dmar_table_init(), see intel_dmar.txt
 ================================================================================
+; allocate struct intel_iommu for each dmar_drhd_unit
 
 2.3 dmar_dev_scope_init()
 ================================================================================
@@ -1536,7 +1537,7 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |     (u64)                    |
         +------------------------------+
         |segment                       |   PCI domain
-        |     (u16)                    |
+        |     (u16)                    |   copied from hardware
         +------------------------------+
         |iommu                         |
         |     (struct intel_iommu*)    |
@@ -1557,7 +1558,7 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         +------------------------------+
 
                         
-0.3 intel_iommu
+0.3 intel_iommu, one dmar_drhd_unit one intel_iommu
 ================================================================================
 
     g_iommus(struct intel_iommu **), point to an array of DMAR_UNITS_SUPPORTED elements
@@ -1572,8 +1573,11 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
 
         struct intel_iommu
         +------------------------------+
-        |seq_id                        |    unique id, bind to dmar remmapping hardware definition
-        |                              |
+        |segment                       |    == dmar_drhd_unit.segment
+        |     (u16)                    |    so that can get the propre dmar_drhd_unit
+        +------------------------------+
+        |seq_id                        |    unique id, from dmar_seq_id
+        |     (int)                    |
         +------------------------------+
         |root_entry                    |
         |     (struct root_entry)      |
@@ -1583,7 +1587,7 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         +-----+------------------------+
         |reg                           |    io_remapped
         |     (void __iomem *)         |
-        |reg_phys                      | == dmaru->reg_base_addr
+        |reg_phys                      |    == dmaru->reg_base_addr
         |reg_size                      |    
         |     (u64)                    |
         +------------------------------+
