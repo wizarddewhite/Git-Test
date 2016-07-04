@@ -830,6 +830,45 @@ static void iommu_enable_translation(struct intel_iommu *iommu)
 
 2.9 iommu_device_create(), /sys/devices/virtual/iommu/dmarX
 ================================================================================
+; the sysfs hierarchy is set in device_add() -> get_device_parent()
+; 1. parent is NULL 
+; 2. class is iommu_class
+
+struct device *iommu_device_create(struct device *parent, void *drvdata,
+				   const struct attribute_group **groups,
+				   const char *fmt, ...)
+{
+	struct device *dev;
+	va_list vargs;
+	int ret;
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return ERR_PTR(-ENOMEM);
+
+	device_initialize(dev);
+
+	dev->class = &iommu_class;
+	dev->parent = parent;
+	dev->groups = groups;
+	dev_set_drvdata(dev, drvdata);
+
+	va_start(vargs, fmt);
+	ret = kobject_set_name_vargs(&dev->kobj, fmt, vargs);
+	va_end(vargs);
+	if (ret)
+		goto error;
+
+	ret = device_add(dev);
+	if (ret)
+		goto error;
+
+	return dev;
+
+error:
+	put_device(dev);
+	return ERR_PTR(ret);
+}
 
 2.10 bus_set_iommu(&pci_bus_type, &intel_iommu_ops)
 ================================================================================
@@ -1404,6 +1443,7 @@ found_domain:
 
 4.2 si_domain_init()
 ================================================================================
+; called in init_dmars()
 
 4.2.1 alloc_domain(DOMAIN_FLAG_STATIC_IDENTITY)
 ================================================================================
@@ -1413,6 +1453,9 @@ found_domain:
 ; calle trace
 ; vfio_iommu_type1_attach_group()
 ;     iommu_domain_allloc()
+;
+; in case the device is already attached to a domain, this domain will be
+; un-attached, see intel_iommu_attach_device()
 
 static struct iommu_domain *intel_iommu_domain_alloc(unsigned type)
 {
@@ -1668,7 +1711,7 @@ One dmar_drhd_unit corresponds to one DMA Remapping Hardware Unit Definition
         |   (struct iommu_domain)            |
         |   +--------------------------------+
         |   |type                            |
-        |   |ops(iommu_ops)                  |
+        |   |ops(iommu_ops)                  |  set to bus->iommu_ops, = intel_iommu_ops
         |   |iova_cookie                     |
         |   |geometry                        |
         |   |  (struct iommu_domain_geometry)|
