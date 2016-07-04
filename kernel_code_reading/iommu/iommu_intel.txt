@@ -833,6 +833,42 @@ static void iommu_enable_translation(struct intel_iommu *iommu)
 ; the sysfs hierarchy is set in device_add() -> get_device_parent()
 ; 1. parent is NULL 
 ; 2. class is iommu_class
+;
+; There are two directories contain the iommu sysfs
+; 1. /sys/devices/virtual/iommu/dmar0
+; 2. /sys/class/iommu/dmar0  (a symlink to above)
+;
+; ------------------------------------------------------
+; $ pwd
+; /sys/devices/virtual/iommu/dmar0
+; $ ls
+; devices  intel-iommu  power  subsystem  uevent
+;
+; intel-iommu is created by intel_iommu_group
+;
+; static struct attribute_group intel_iommu_group = {
+; 	.name = "intel-iommu",
+; 	.attrs = intel_iommu_attrs,
+; };
+;
+; devices is create by iommu_class's group attribute
+; and those symlinks in this directory is create by iommu_device_link()
+;
+; static const struct attribute_group iommu_devices_attr_group = {
+; 	.name = "devices",
+; 	.attrs = devices_attr,
+; };
+;
+; subsystem is create in device_add_class_symlinks()
+;
+; sysfs_create_link(, "subsystem");
+;
+; ------------------------------------------------------
+; $ pwd
+; /sys/class/iommu/
+;
+; this is created in device_add_class_symlinks()'s second
+; sysfs_create_link()
 
 struct device *iommu_device_create(struct device *parent, void *drvdata,
 				   const struct attribute_group **groups,
@@ -961,6 +997,13 @@ static struct intel_iommu *device_to_iommu(struct device *dev, u8 *bus, u8 *devf
 
 3.1.2 iommu_device_link(iommu->iommu_dev, dev), sysfs
 ================================================================================
+; a link like this
+;
+; $ pwd
+; /sys/devices/virtual/iommu/dmar0/devices
+; $ ll
+; 0000:00:02.0 -> ../../../../pci0000:00/0000:00:02.0/
+
 int iommu_device_link(struct device *dev, struct device *link)
 {
 	int ret;
