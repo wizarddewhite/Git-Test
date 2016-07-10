@@ -145,8 +145,41 @@ static ssize_t ltc1_store(struct kobject *kobj, struct kobj_attribute *attr,
 static struct kobj_attribute ltc1_attribute =
 	__ATTR(ltc1, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, ltc1_show, ltc1_store);
 
+static ssize_t example_sub_show(struct kobject *kobj, struct attribute *attr,
+				   char *buf)
+{
+	return sprintf(buf, "%d\n", ltc1);
+}
+
+static const struct sysfs_ops example_sub_sysfs_ops = {
+	.show = example_sub_show,
+	.store = NULL,
+};
+
+static ssize_t sub_show(struct kobject *kobj, struct kobj_attribute *attr,
+		char *buf)
+{
+	return sprintf(buf, "%d\n", ltc1);
+}
+
+static struct kobj_attribute example_sub_attribute =
+	__ATTR(sub_val, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, sub_show, NULL);
+
+static struct attribute *example_sub_attrs[] = {
+	&example_sub_attribute.attr,
+	NULL
+};
+
+static struct kobj_type ktype_example = {
+	.sysfs_ops = &example_sub_sysfs_ops,
+	.default_attrs = example_sub_attrs,
+	.release = NULL,
+};
+
+
 static struct kobject *example_kobj;
 static struct kobject *example_link_kobj;
+static struct kobject  example_sub_kobj;
 
 static int __init example_init(void)
 {
@@ -188,11 +221,19 @@ static int __init example_init(void)
 	if (retval)
 		printk("failed to create link to example_kobj\n");
 
+	retval = kobject_init_and_add(&example_sub_kobj, &ktype_example,
+				      example_kobj, "sub_dir");
+	if (retval) {
+		kobject_put(example_kobj);
+		kobject_put(example_link_kobj);
+	}
+
 	return retval;
 }
 
 static void __exit example_exit(void)
 {
+	kobject_put(&example_sub_kobj);
 	kobject_put(example_kobj);
 	kobject_put(example_link_kobj);
 }
