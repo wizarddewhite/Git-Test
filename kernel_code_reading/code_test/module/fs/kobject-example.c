@@ -147,6 +147,7 @@ static struct kobj_attribute ltc1_attribute =
 
 enum {
 	attr_ltc,
+	attr_ltc1,
 };
 
 struct sub_attr {
@@ -161,6 +162,7 @@ static struct sub_attr sub_attr_##_name = {				\
 }
 
 SUB_ATTR(ltc, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+SUB_ATTR(ltc1, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 
 static ssize_t example_sub_show(struct kobject *kobj, struct attribute *attr,
 				   char *buf)
@@ -170,6 +172,8 @@ static ssize_t example_sub_show(struct kobject *kobj, struct attribute *attr,
 	switch (a->attr_id) {
 	case attr_ltc:
 		return sprintf(buf, "%d\n", ltc);
+	case attr_ltc1:
+		return sprintf(buf, "%d\n", ltc1);
 	}
 	return 0;
 }
@@ -181,6 +185,7 @@ static const struct sysfs_ops example_sub_sysfs_ops = {
 
 static struct attribute *example_sub_attrs[] = {
 	&sub_attr_ltc.attr,
+	&sub_attr_ltc1.attr,
 	NULL
 };
 
