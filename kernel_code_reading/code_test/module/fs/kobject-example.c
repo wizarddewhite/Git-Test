@@ -145,10 +145,33 @@ static ssize_t ltc1_store(struct kobject *kobj, struct kobj_attribute *attr,
 static struct kobj_attribute ltc1_attribute =
 	__ATTR(ltc1, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, ltc1_show, ltc1_store);
 
+enum {
+	attr_ltc,
+};
+
+struct sub_attr {
+	struct attribute attr;
+	short  attr_id;
+};
+
+#define SUB_ATTR(_name,_mode)       					\
+static struct sub_attr sub_attr_##_name = {				\
+	.attr = {.name = __stringify(_name), .mode = _mode },		\
+	.attr_id = attr_##_name,						\
+}
+
+SUB_ATTR(ltc, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+
 static ssize_t example_sub_show(struct kobject *kobj, struct attribute *attr,
 				   char *buf)
 {
-	return sprintf(buf, "%d\n", ltc1);
+	struct sub_attr *a = container_of(attr, struct sub_attr, attr);
+
+	switch (a->attr_id) {
+	case attr_ltc:
+		return sprintf(buf, "%d\n", ltc);
+	}
+	return 0;
 }
 
 static const struct sysfs_ops example_sub_sysfs_ops = {
@@ -156,17 +179,8 @@ static const struct sysfs_ops example_sub_sysfs_ops = {
 	.store = NULL,
 };
 
-static ssize_t sub_show(struct kobject *kobj, struct kobj_attribute *attr,
-		char *buf)
-{
-	return sprintf(buf, "%d\n", ltc1);
-}
-
-static struct kobj_attribute example_sub_attribute =
-	__ATTR(sub_val, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, sub_show, NULL);
-
 static struct attribute *example_sub_attrs[] = {
-	&example_sub_attribute.attr,
+	&sub_attr_ltc.attr,
 	NULL
 };
 
