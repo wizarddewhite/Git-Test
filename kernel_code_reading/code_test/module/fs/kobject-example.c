@@ -153,21 +153,42 @@ enum {
 struct sub_attr {
 	struct attribute attr;
 	short  attr_id;
+	ssize_t (*show)(struct sub_attr *, \
+					char *);
+	ssize_t (*store)(struct sub_attr *, \
+			 const char *, size_t);
 };
 
 #define SUB_ATTR(_name,_mode)       					\
 static struct sub_attr sub_attr_##_name = {				\
 	.attr = {.name = __stringify(_name), .mode = _mode },		\
-	.attr_id = attr_##_name,						\
+	.attr_id = attr_##_name,					\
+}
+
+#define SUB_ATTR_FUNC(_name,_mode, _show, _store) 			\
+static struct sub_attr sub_attr_##_name = {				\
+	.attr = {.name = __stringify(_name), .mode = _mode },		\
+	.show = _show,							\
+	.store = _store,							\
 }
 
 SUB_ATTR(ltc, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 SUB_ATTR(ltc1, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 
+static ssize_t show_foo(struct sub_attr *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", foo);
+}
+
+SUB_ATTR_FUNC(foo, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, show_foo, NULL);
+
 static ssize_t example_sub_show(struct kobject *kobj, struct attribute *attr,
 				   char *buf)
 {
 	struct sub_attr *a = container_of(attr, struct sub_attr, attr);
+
+	if (a->show)
+		return a->show(a, buf);
 
 	switch (a->attr_id) {
 	case attr_ltc:
@@ -186,6 +207,7 @@ static const struct sysfs_ops example_sub_sysfs_ops = {
 static struct attribute *example_sub_attrs[] = {
 	&sub_attr_ltc.attr,
 	&sub_attr_ltc1.attr,
+	&sub_attr_foo.attr,
 	NULL
 };
 
