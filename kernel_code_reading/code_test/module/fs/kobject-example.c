@@ -180,7 +180,18 @@ static ssize_t show_foo(struct sub_attr *attr, char *buf)
 	return sprintf(buf, "%d\n", foo);
 }
 
+int array[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+static ssize_t show_array(struct sub_attr *attr, char *buf)
+{
+	int i, ret = 0;
+	for (i = 0; i < 10; i++)
+		ret += sprintf(buf + ret, "%d\n", array[i]);
+	return ret;
+}
+
 SUB_ATTR_FUNC(foo, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, show_foo, NULL);
+SUB_ATTR_FUNC(array, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP, show_array, NULL);
 
 static ssize_t example_sub_show(struct kobject *kobj, struct attribute *attr,
 				   char *buf)
@@ -208,6 +219,7 @@ static struct attribute *example_sub_attrs[] = {
 	&sub_attr_ltc.attr,
 	&sub_attr_ltc1.attr,
 	&sub_attr_foo.attr,
+	&sub_attr_array.attr,
 	NULL
 };
 
