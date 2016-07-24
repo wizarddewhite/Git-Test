@@ -152,11 +152,37 @@ static struct pci_driver test_e1000e_driver = {
 	.remove   = test_e1000_remove,
 };
 
+void __pci_tree_iteration(struct pci_bus *bus)
+{
+	struct pci_dev *pdev;
+	struct pci_bus *child;
+
+	dev_info(&bus->dev, "Iterating on \n");
+
+	list_for_each_entry(pdev, &bus->devices, bus_list)
+		dev_info(&pdev->dev, "\t found\n");
+
+	list_for_each_entry(child, &bus->children, node)
+		__pci_tree_iteration(child);
+}
+
+void pci_tree_iteration(void)
+{
+	struct pci_bus *bus;
+
+	list_for_each_entry(bus, &pci_root_buses, node)
+		__pci_tree_iteration(bus);
+
+	return;
+}
+
 static int pci_driver_test_init(void)
 {
 	int ret;
 	pr_info("--- A test driver for pci device ---\n");
 	ret = pci_register_driver(&test_e1000e_driver);
+
+	pci_tree_iteration();
 
         return ret;
 }
