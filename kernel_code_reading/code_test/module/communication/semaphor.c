@@ -25,6 +25,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 static struct semaphore eventlist_sem;
 struct task_struct *event_thread;
+struct task_struct *trigger_thread;
 
 static int event_handler(void * dummy)
 {
@@ -35,7 +36,21 @@ static int event_handler(void * dummy)
 			continue;
 
 		printk("\tprocessing event...\n");
+		msleep(200);
 	}
+	printk("%s: quit...\n", __func__);
+	return 0;
+}
+
+static int event_trigger(void * dummy)
+{
+	printk("%s: running...\n", __func__);
+	while(!kthread_should_stop()) {
+		msleep(20000);
+		printk("trigger event\n");
+		up(&eventlist_sem);
+	}
+	printk("%s: quit...\n", __func__);
 	return 0;
 }
 
@@ -53,8 +68,14 @@ static int semaphor_init(void)
 		return ret;
 	}
 
-	msleep(2000);
-	up(&eventlist_sem);
+	trigger_thread = kthread_run(event_trigger, NULL, "sema_trigger");
+	if (IS_ERR(trigger_thread)) {
+		ret = PTR_ERR(trigger_thread);
+		pr_err("%s: Failed to start trigger daemon (%d)\n",
+			__func__, ret);
+		kthread_stop(event_thread);
+		return ret;
+	}
 
 	return 0;
 }
@@ -62,6 +83,7 @@ static void semaphor_exit(void)
 {
         printk(KERN_ALERT "set thread stop state\n");
 	kthread_stop(event_thread);
+	kthread_stop(trigger_thread);
         printk(KERN_ALERT "up the semaphor\n");
 	up(&eventlist_sem);
         printk(KERN_ALERT "Goodbye, cruel world\n");
