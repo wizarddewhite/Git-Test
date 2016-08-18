@@ -1,5 +1,5 @@
 #Print the length of the longest input line
-awk '{ if (length($0) > max) max = length($0) } END {print max} data
+awk '{ if (length($0) > max) max = length($0) } END {print max}' data
 #Print every line that is longer than 80 characters
 awk 'length($0) > 80' data
 #Print every line that has at least one field:
