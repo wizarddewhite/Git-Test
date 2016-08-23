@@ -363,6 +363,9 @@ static int __init_memblock memblock_search(struct memblock_type *type, phys_addr
 	return -1;
 }
 
+4. memblock_alloc(), simple memory allocation
+================================================================================
+
 0. data structure
 ================================================================================
 The global variable memblock is defined in mm/memblock.c
