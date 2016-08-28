@@ -24,8 +24,10 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h>
+#include <semaphore.h>
 
 unsigned long jobs_delivered;
+sem_t sem_jobs, sem_workers;
 
 #define MAX_WORKERS 100
 pthread_t worker_id[MAX_WORKERS];
@@ -34,7 +36,27 @@ unsigned int period;
 
 void jobs_statistic()
 {
-	printf("%lu jobs delivered\n", jobs_delivered);
+	printf("%lu jobs done\n", jobs_delivered);
+}
+
+void find_job()
+{
+	sem_wait(&sem_jobs);
+}
+
+void deliver_job()
+{
+	sem_post(&sem_jobs);
+}
+
+void find_worker()
+{
+	sem_wait(&sem_workers);
+}
+
+void return_worker()
+{
+	sem_post(&sem_workers);
 }
 
 void signal_handle_init()
@@ -56,11 +78,40 @@ void signal_handle_init()
 	}
 }
 
+void setup(int argc, char *argv[])
+{
+	if (argc != 3) {
+		printf("Usage: %s workers period\n", argv[0]);
+		exit(-1);
+	}
+
+	workers = atoi(argv[1]);
+	if (workers > MAX_WORKERS)
+		workers = MAX_WORKERS;
+	period = atoi(argv[2]);
+
+	signal_handle_init();
+
+	sem_init(&sem_jobs, 0, 0);
+	sem_init(&sem_workers, 0, workers);
+}
+
 void *worker(void *arg)
 {
 	pthread_t self;
 	self = pthread_self();
-	printf("---- Worker %lu running ----\n", self);
+
+	while (1) {
+		find_job();
+		printf("---- Worker %lu invoked ----\n", self);
+
+
+		sleep(10);
+
+		jobs_delivered++;
+		return_worker();
+		printf("---- Worker %lu done ----\n", self);
+	}
 
 	return NULL;
 }
@@ -69,21 +120,18 @@ int main (int argc, char *argv[])
 {
 	int i;
 
-	if (argc != 3) {
-		printf("Usage: %s workers period\n", argv[0]);
-		exit(-1);
-	}
+	setup(argc, argv);
 
-	signal_handle_init();
-
-	workers = atoi(argv[1]);
-	if (workers > MAX_WORKERS)
-		workers = MAX_WORKERS;
-	period = atoi(argv[2]);
 	printf("Deliver jobs to %u workers every %uns\n", workers, period);
 
 	for (i = 0; i < workers; i++)
 		pthread_create(&worker_id[i], NULL, (void *)worker, NULL);
+
+	while (1) {
+		find_worker();
+		deliver_job();
+		sleep(1);
+	}
 
 	for (i = 0; i < workers; i++)
 		pthread_join(worker_id[i], NULL);
