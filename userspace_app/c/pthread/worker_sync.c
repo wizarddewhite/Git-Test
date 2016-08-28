@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <sys/time.h>
 
 unsigned long jobs_delivered;
 sem_t sem_jobs, sem_workers;
@@ -99,18 +100,20 @@ void setup(int argc, char *argv[])
 void *worker(void *arg)
 {
 	pthread_t self;
+	struct timeval local_time;
+
 	self = pthread_self();
 
 	while (1) {
 		find_job();
-		printf("---- Worker %lu invoked ----\n", self);
+		printf("\t---- Worker %lu invoked ----\n", self);
 
-
-		sleep(10);
+		sleep(2);
+		gettimeofday(&local_time, NULL);
 
 		jobs_delivered++;
 		return_worker();
-		printf("---- Worker %lu done ----\n", self);
+		printf("\t---- Worker %lu done ----\n", self);
 	}
 
 	return NULL;
@@ -128,9 +131,26 @@ int main (int argc, char *argv[])
 		pthread_create(&worker_id[i], NULL, (void *)worker, NULL);
 
 	while (1) {
-		find_worker();
-		deliver_job();
-		sleep(1);
+		struct timeval date;
+		int current_jobs;
+		int waiting_workers;
+
+		/* Approximate random jobs */
+		current_jobs = time(NULL) % workers;
+		printf("Try to deliver %d jobs\n", current_jobs);
+
+		/* Place holder for tasks */
+		gettimeofday(&date, NULL);
+
+		/* Deliver jobs */
+		for (i = 0; i < current_jobs; i++) {
+			find_worker();
+			deliver_job();
+		}
+
+		waiting_workers = 0;
+		while (waiting_workers != workers)
+			sem_getvalue(&sem_workers, &waiting_workers);
 	}
 
 	for (i = 0; i < workers; i++)
