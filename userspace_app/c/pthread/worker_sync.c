@@ -28,12 +28,15 @@
 #include <sys/time.h>
 
 unsigned long jobs_delivered;
-sem_t sem_jobs, sem_workers;
+sem_t sem_jobs;
+pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 #define MAX_WORKERS 100
 pthread_t worker_id[MAX_WORKERS];
 unsigned int workers;
 unsigned int period;
+unsigned int available_workers;
 
 void jobs_statistic()
 {
@@ -48,16 +51,6 @@ void find_job()
 void deliver_job()
 {
 	sem_post(&sem_jobs);
-}
-
-void find_worker()
-{
-	sem_wait(&sem_workers);
-}
-
-void return_worker()
-{
-	sem_post(&sem_workers);
 }
 
 void signal_handle_init()
@@ -89,12 +82,14 @@ void setup(int argc, char *argv[])
 	workers = atoi(argv[1]);
 	if (workers > MAX_WORKERS)
 		workers = MAX_WORKERS;
+	available_workers = workers;
 	period = atoi(argv[2]);
 
 	signal_handle_init();
 
 	sem_init(&sem_jobs, 0, 0);
-	sem_init(&sem_workers, 0, workers);
+
+	srand(time(NULL));
 }
 
 void *worker(void *arg)
@@ -106,14 +101,21 @@ void *worker(void *arg)
 
 	while (1) {
 		find_job();
-		printf("\t---- Worker %lu invoked ----\n", self);
+		printf("\t---- Worker %lu invoked, (%d) left ----\n",
+			self, available_workers);
 
 		sleep(2);
 		gettimeofday(&local_time, NULL);
 
+		/* update statistics */
 		jobs_delivered++;
-		return_worker();
 		printf("\t---- Worker %lu done ----\n", self);
+
+		/* Tell boss we are done */
+		pthread_mutex_lock(&mut);
+		if (++available_workers == workers)
+			pthread_cond_signal(&cond);
+		pthread_mutex_unlock(&mut);
 	}
 
 	return NULL;
@@ -133,10 +135,9 @@ int main (int argc, char *argv[])
 	while (1) {
 		struct timeval date;
 		int current_jobs;
-		int waiting_workers;
 
 		/* Approximate random jobs */
-		current_jobs = time(NULL) % workers;
+		current_jobs = rand() % workers;
 		printf("Try to deliver %d jobs\n", current_jobs);
 
 		/* Place holder for tasks */
@@ -144,13 +145,15 @@ int main (int argc, char *argv[])
 
 		/* Deliver jobs */
 		for (i = 0; i < current_jobs; i++) {
-			find_worker();
 			deliver_job();
+			available_workers--;
 		}
 
-		waiting_workers = 0;
-		while (waiting_workers != workers)
-			sem_getvalue(&sem_workers, &waiting_workers);
+		/* Wait until all worker finish */
+		pthread_mutex_lock(&mut);
+		while (available_workers != workers)
+			pthread_cond_wait(&cond, &mut);
+		pthread_mutex_unlock(&mut);
 	}
 
 	for (i = 0; i < workers; i++)
