@@ -15,6 +15,17 @@ awk 'NR % 2 == 0' data
 #print the file length in line number
 awk 'END {print NR}' data
 
+
+#====================================================
+# arithmetic
+#====================================================
+#convert hex to decimal
+echo "FF" | awk '{print strtonum("0x" $1)}'
+echo "0xFF" | awk '{print strtonum( $1)}'
+
+#lshift
+echo "01:FF" | awk -F":" '{print lshift(strtonum("0x" $1), 8) + strtonum("0x" $2)}'
+
 #====================================================
 # Regex
 #====================================================
