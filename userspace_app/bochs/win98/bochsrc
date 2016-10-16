@@ -1,0 +1,28 @@
+###############################################################
+# Configuration file for Bochs
+###############################################################
+debugger_log: debugger.log
+
+# how much memory the emulated machine will have
+megs: 512
+
+# filename of ROM images
+romimage: file=/usr/share/bochs/BIOS-bochs-latest
+vgaromimage: file=/usr/share/vgabios/vgabios.bin
+
+# what disk images will be used
+ata0-master: type=disk, path="bochs_win98.img", mode=flat, cylinders=20317, heads=16, spt=63
+#floppya: 1_44=a.img, status=inserted
+ata0-slave:  type=cdrom, path="win98/win98.iso", status=inserted
+
+# choose the boot disk.
+boot: disk
+
+# where do we send log messages?
+log: bochsout.txt
+
+# disable the mouse
+mouse: enabled=0
+
+# enable key mapping, using US layout as default.
+#keyboard_mapping: enabled=1, map=/usr/share/bochs/keymaps/x11-pc-us.map
