@@ -13,7 +13,9 @@
                   +........................+  5th jump: after compressed kernel relocated
                   |                        |
                   |                        |
+                  |                        |  9th jump: to start_kernel()
                   |                        |
+                  |                        |  8th jump: to the c code world
                   |                        |
                   |                        |  7th jump: use virtual address
                   |                        |
