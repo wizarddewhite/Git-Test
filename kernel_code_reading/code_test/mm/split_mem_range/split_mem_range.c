@@ -61,6 +61,10 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 
 	/* head if not big page alignment ? */
 	pfn = start_pfn = PFN_DOWN(start);
+	printf("## start    :0x%08lx, end      :0x%08lx\n", start, end);
+	printf("## limit_pfn:0x%08lx\n", limit_pfn);
+	printf("-- processing head --\n");
+	printf("   start_pfn:0x%08lx (Page Aligned)\n", start_pfn);
 #ifdef CONFIG_X86_32
 	/*
 	 * Don't use a large page for the first 2/4MB of memory
@@ -74,6 +78,7 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 		end_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
 #else /* CONFIG_X86_64 */
 	end_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
+	printf("   end_pfn  :0x%08lx (Page Aligned)\n", end_pfn);
 #endif
 	if (end_pfn > limit_pfn)
 		end_pfn = limit_pfn;
@@ -84,12 +89,18 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 
 	/* big page (2M) range */
 	start_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
+	printf("-- processing 2M page --\n");
+	printf("   start_pfn:0x%08lx (PMD Aligned)\n", start_pfn);
 #ifdef CONFIG_X86_32
 	end_pfn = round_down(limit_pfn, PFN_DOWN(PMD_SIZE));
+	printf("  end_pfn  :0x%08lx\n", end_pfn);
 #else /* CONFIG_X86_64 */
 	end_pfn = round_up(pfn, PFN_DOWN(PUD_SIZE));
-	if (end_pfn > round_down(limit_pfn, PFN_DOWN(PMD_SIZE)))
+	printf("   end_pfn  :0x%08lx (PUD Aligned)\n", end_pfn);
+	if (end_pfn > round_down(limit_pfn, PFN_DOWN(PMD_SIZE))) {
 		end_pfn = round_down(limit_pfn, PFN_DOWN(PMD_SIZE));
+		printf("   end_pfn  :0x%08lx\n", end_pfn);
+	}
 #endif
 
 	if (start_pfn < end_pfn) {
@@ -98,10 +109,14 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 		pfn = end_pfn;
 	}
 
-#ifdef CONFIG_X86_64
+#ifdef CONFIG_X86_32
+#else //CONFIG_X86_64
 	/* big page (1G) range */
 	start_pfn = round_up(pfn, PFN_DOWN(PUD_SIZE));
 	end_pfn = round_down(limit_pfn, PFN_DOWN(PUD_SIZE));
+	printf("-- processing 1G page --\n");
+	printf("   start_pfn:0x%08lx (PUD Aligned)\n", start_pfn);
+	printf("   end_pfn  :0x%08lx (PUD Aligned)\n", end_pfn);
 	if (start_pfn < end_pfn) {
 		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
 				page_size_mask &
@@ -112,6 +127,9 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 	/* tail is not big page (1G) alignment */
 	start_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
 	end_pfn = round_down(limit_pfn, PFN_DOWN(PMD_SIZE));
+	printf("-- processing 2M page --\n");
+	printf("   start_pfn:0x%08lx (PMD Aligned)\n", start_pfn);
+	printf("   end_pfn  :0x%08lx (PMD Aligned)\n", end_pfn);
 	if (start_pfn < end_pfn) {
 		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
 				page_size_mask & (1<<PG_LEVEL_2M));
@@ -122,6 +140,9 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 	/* tail is not big page (2M) alignment */
 	start_pfn = pfn;
 	end_pfn = limit_pfn;
+	printf("-- processing tail page --\n");
+	printf("   start_pfn:0x%08lx (Page Aligned)\n", start_pfn);
+	printf("   end_pfn  :0x%08lx (Page Aligned)\n", end_pfn);
 	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
 
 	///if (!after_bootmem)
@@ -149,14 +170,40 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 	return nr_range;
 }
 
+void normal_test()
+{
+	int nr_range;
+
+	memset(mr, 0, sizeof(mr));
+	page_size_mask = (1 << PG_LEVEL_1G) | (1 << PG_LEVEL_2M);
+	nr_range = split_mem_range(mr, 0, 0, 0x1000);
+	nr_range = split_mem_range(mr, nr_range, 0x40000000, 0x80000000);
+	nr_range = split_mem_range(mr, nr_range, 0x80000000, 0x90000000);
+}
+
+void merge_test1()
+{
+	int nr_range;
+
+	memset(mr, 0, sizeof(mr));
+	page_size_mask = (1 << PG_LEVEL_1G) | (1 << PG_LEVEL_2M);
+	nr_range = split_mem_range(mr, 0, 0, 0x1000);
+	nr_range = split_mem_range(mr, nr_range, 0x1000, 0x2000);
+}
+
+void merge_test2()
+{
+	int nr_range;
+
+	memset(mr, 0, sizeof(mr));
+	page_size_mask = (1 << PG_LEVEL_1G) | (1 << PG_LEVEL_2M);
+	nr_range = split_mem_range(mr, 0, 0x1000, 0x2000);
+	nr_range = split_mem_range(mr, nr_range, 0, 0x1000);
+}
+
 int main()
 {
-	memset(mr, 0, sizeof(mr));
-
-	page_size_mask = 1 << PG_LEVEL_1G;
-	split_mem_range(mr, 0, 0, 0x1000);
-	split_mem_range(mr, 0, 0x80000000, 0x90000000);
-
+	merge_test2();
 	return 0;
 
 }
