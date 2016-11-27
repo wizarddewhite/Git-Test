@@ -32,4 +32,8 @@ struct map_range {
 	unsigned page_size_mask;
 };
 
+extern int page_size_mask;
+int split_mem_range(struct map_range *mr, int nr_range,
+				     unsigned long start,
+				     unsigned long end);
 #endif //SPLIT_MEM_RANGE

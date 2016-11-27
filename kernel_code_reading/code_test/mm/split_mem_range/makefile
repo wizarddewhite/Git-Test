@@ -1,6 +1,6 @@
 SOURCES := $(wildcard *.c)
-PROGRAM := $(basename $(SOURCES))
-OBJS := $(subst .c,.o,$(SOURCES))
+PROGRAM := main
+OBJS := $(filter-out main.o, $(subst .c,.o,$(SOURCES)))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
 CFLAGS = -g -I../
 LD_FLAGS = -lm
@@ -10,8 +10,8 @@ LD_FLAGS = -lm
 .PHONY: all clean cscope
 all: $(PROGRAM)
 
-%: %.o
-	gcc $(CFLAGS) $<  -o $@ 
+main: main.c $(OBJS)
+	gcc $(CFLAGS) $^ -o $@
 
 %.o : %.c
 	gcc $(CFLAGS) -c $< -o $@
