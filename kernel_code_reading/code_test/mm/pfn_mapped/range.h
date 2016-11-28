@@ -12,5 +12,7 @@ struct range {
 extern struct range pfn_mapped[E820_X_MAX];
 extern int nr_pfn_mapped;
 void dump_pfn_mapped();
+int add_range_with_merge(struct range *range, int az, int nr_range,
+		     u64 start, u64 end);
 #endif // _RANGE_H
 
