@@ -35,10 +35,17 @@ void sanitize_bootmap()
 	e820_print_map("bootmap", &bootmap);
 }
 
+void append_to_e820()
+{
+	sanitize_bootmap();
 
+	append_e820_map(bootmap.map, bootmap.nr_map);
+	printf("--- append to e820 ---\n");
+	e820_print_map("e820", &e820);
+}
 
 int main()
 {
-	sanitize_bootmap();
+	append_to_e820();
 	return 0;
 }

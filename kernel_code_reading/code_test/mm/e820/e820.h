@@ -17,7 +17,10 @@
 
 typedef	unsigned long long	__u64;
 typedef	unsigned int		__u32;
+typedef	unsigned long long	u64;
 typedef	unsigned int		u32;
+
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 struct e820entry {
 	__u64 addr;	/* start of memory segment */
@@ -102,4 +105,5 @@ extern struct e820map e820_saved;
 
 int sanitize_e820_map(struct e820entry *biosmap, int max_nr_map,
 			     u32 *pnr_map);
+int append_e820_map(struct e820entry *biosmap, int nr_map);
 #endif //E820_H

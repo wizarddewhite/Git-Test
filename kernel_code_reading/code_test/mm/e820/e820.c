@@ -196,3 +196,55 @@ int sanitize_e820_map(struct e820entry *biosmap, int max_nr_map,
 
 	return 0;
 }
+
+static void __e820_add_region(struct e820map *e820x, u64 start, u64 size,
+					 int type)
+{
+	int x = e820x->nr_map;
+
+	if (x >= ARRAY_SIZE(e820x->map)) {
+		printf("e820: too many entries; ignoring [mem %#010llx-%#010llx]\n",
+		       (unsigned long long) start,
+		       (unsigned long long) (start + size - 1));
+		return;
+	}
+
+	e820x->map[x].addr = start;
+	e820x->map[x].size = size;
+	e820x->map[x].type = type;
+	e820x->nr_map++;
+}
+
+void e820_add_region(u64 start, u64 size, int type)
+{
+	__e820_add_region(&e820, start, size, type);
+}
+
+static int __append_e820_map(struct e820entry *biosmap, int nr_map)
+{
+	while (nr_map) {
+		u64 start = biosmap->addr;
+		u64 size = biosmap->size;
+		u64 end = start + size - 1;
+		u32 type = biosmap->type;
+
+		/* Overflow in 64 bits? Ignore the memory map. */
+		if (start > end && (size))
+			return -1;
+
+		e820_add_region(start, size, type);
+
+		biosmap++;
+		nr_map--;
+	}
+	return 0;
+}
+
+int append_e820_map(struct e820entry *biosmap, int nr_map)
+{
+	/* Only one memory region (or negative)? Ignore it */
+	if (nr_map < 2)
+		return -1;
+
+	return __append_e820_map(biosmap, nr_map);
+}
