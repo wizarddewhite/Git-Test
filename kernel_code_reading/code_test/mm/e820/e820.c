@@ -248,3 +248,49 @@ int append_e820_map(struct e820entry *biosmap, int nr_map)
 
 	return __append_e820_map(biosmap, nr_map);
 }
+
+/*
+ * Find the highest page frame number we have available
+ */
+unsigned long long e820_end_pfn(unsigned long long limit_pfn)
+{
+	int i;
+	unsigned long long last_pfn = 0;
+	unsigned long long max_arch_pfn = MAX_ARCH_PFN;
+
+	for (i = 0; i < e820.nr_map; i++) {
+		struct e820entry *ei = &e820.map[i];
+		unsigned long start_pfn;
+		unsigned long end_pfn;
+
+		/*
+		 * Persistent memory is accounted as ram for purposes of
+		 * establishing max_pfn and mem_map.
+		 */
+		if (ei->type != E820_RAM && ei->type != E820_PRAM)
+			continue;
+
+		start_pfn = ei->addr >> PAGE_SHIFT;
+		end_pfn = (ei->addr + ei->size) >> PAGE_SHIFT;
+
+		if (start_pfn >= limit_pfn)
+			continue;
+		if (end_pfn > limit_pfn) {
+			last_pfn = limit_pfn;
+			break;
+		}
+		if (end_pfn > last_pfn)
+			last_pfn = end_pfn;
+	}
+
+	if (last_pfn > max_arch_pfn)
+		last_pfn = max_arch_pfn;
+
+	printf("e820: last_pfn = %#Lx max_arch_pfn = %#Lx\n",
+			 last_pfn, max_arch_pfn);
+	return last_pfn;
+}
+unsigned long e820_end_of_ram_pfn(void)
+{
+	return e820_end_pfn(MAX_ARCH_PFN);
+}
