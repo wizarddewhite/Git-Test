@@ -252,16 +252,16 @@ int append_e820_map(struct e820entry *biosmap, int nr_map)
 /*
  * Find the highest page frame number we have available
  */
-unsigned long long e820_end_pfn(unsigned long long limit_pfn)
+__u64 e820_end_pfn(unsigned long long limit_pfn)
 {
 	int i;
-	unsigned long long last_pfn = 0;
-	unsigned long long max_arch_pfn = MAX_ARCH_PFN;
+	__u64 last_pfn = 0;
+	__u64 max_arch_pfn = MAX_ARCH_PFN;
 
 	for (i = 0; i < e820.nr_map; i++) {
 		struct e820entry *ei = &e820.map[i];
-		unsigned long start_pfn;
-		unsigned long end_pfn;
+		__u64 start_pfn;
+		__u64 end_pfn;
 
 		/*
 		 * Persistent memory is accounted as ram for purposes of

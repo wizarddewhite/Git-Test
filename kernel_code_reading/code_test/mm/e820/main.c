@@ -48,7 +48,7 @@ void get_end_pfn()
 {
 	append_to_e820();
 	printf("end_pfn: %#018Lx\n", e820_end_pfn(MAX_ARCH_PFN));
-	e820_add_region(0x5000, MAXMEM - 0x5000, E820_RAM);
+	e820_add_region((u64)0x5000, (u64)(MAXMEM - 0x5000), E820_RAM);
 	e820_print_map("e820", &e820);
 	printf("end_pfn: %#018Lx\n", e820_end_pfn(MAX_ARCH_PFN));
 }
