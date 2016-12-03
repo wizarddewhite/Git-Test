@@ -20,12 +20,17 @@ typedef	unsigned int		__u32;
 typedef	unsigned long long	u64;
 typedef	unsigned int		u32;
 
+#define ULLONG_MAX	(~0ULL)
+
 # define PAGE_SHIFT		12
 # define MAX_PHYSMEM_BITS	46
 # define MAXMEM			(1LL << MAX_PHYSMEM_BITS)
 # define MAX_ARCH_PFN 		(MAXMEM >> PAGE_SHIFT)
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+#define max(a,b) ((a) > (b) ? a : b)
+#define min(a,b) ((a) < (b) ? a : b)
 
 struct e820entry {
 	__u64 addr;	/* start of memory segment */
@@ -112,4 +117,8 @@ int sanitize_e820_map(struct e820entry *biosmap, int max_nr_map,
 			     u32 *pnr_map);
 int append_e820_map(struct e820entry *biosmap, int nr_map);
 unsigned long long e820_end_pfn(unsigned long long limit_pfn);
+void e820_print_map(char *who, struct e820map *e820);
+void e820_add_region(u64 start, u64 size, int type);
+u64 e820_remove_range(struct e820map *e820, u64 start, u64 size,
+			unsigned old_type, int checktype);
 #endif //E820_H

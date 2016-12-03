@@ -290,7 +290,68 @@ __u64 e820_end_pfn(unsigned long long limit_pfn)
 			 last_pfn, max_arch_pfn);
 	return last_pfn;
 }
+
 unsigned long e820_end_of_ram_pfn(void)
 {
 	return e820_end_pfn(MAX_ARCH_PFN);
+}
+
+u64 e820_remove_range(struct e820map *e820, u64 start, u64 size,
+			unsigned old_type, int checktype)
+{
+	int i;
+	u64 end;
+	u64 real_removed_size = 0;
+
+	if (size > (ULLONG_MAX - start))
+		size = ULLONG_MAX - start;
+
+	end = start + size;
+	printf("e820: remove [mem %#010Lx-%#010Lx] ",
+	       (unsigned long long) start, (unsigned long long) (end - 1));
+	if (checktype)
+		e820_print_type(old_type);
+	printf("\n");
+
+	for (i = 0; i < e820->nr_map; i++) {
+		struct e820entry *ei = &e820->map[i];
+		u64 final_start, final_end;
+		u64 ei_end;
+
+		if (checktype && ei->type != old_type)
+			continue;
+
+		ei_end = ei->addr + ei->size;
+		/* totally covered? */
+		if (ei->addr >= start && ei_end <= end) {
+			real_removed_size += ei->size;
+			memset(ei, 0, sizeof(struct e820entry));
+			continue;
+		}
+
+		/* new range is totally covered? */
+		if (ei->addr < start && ei_end > end) {
+			e820_add_region(end, ei_end - end, ei->type);
+			ei->size = start - ei->addr;
+			real_removed_size += size;
+			continue;
+		}
+
+		/* partially covered */
+		final_start = max(start, ei->addr);
+		final_end = min(end, ei_end);
+		if (final_start >= final_end)
+			continue;
+		real_removed_size += final_end - final_start;
+
+		/*
+		 * left range could be head or tail, so need to update
+		 * size at first.
+		 */
+		ei->size -= final_end - final_start;
+		if (ei->addr < final_start)
+			continue;
+		ei->addr = final_end;
+	}
+	return real_removed_size;
 }

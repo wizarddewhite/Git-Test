@@ -53,8 +53,29 @@ void get_end_pfn()
 	printf("end_pfn: %#018Lx\n", e820_end_pfn(MAX_ARCH_PFN));
 }
 
+void add_remove_range()
+{
+	e820_add_region((u64)0x1000, (u64)(0x1000), E820_RAM);
+	e820_add_region((u64)0x3000, (u64)(0x2000), E820_UNUSABLE);
+	e820_add_region((u64)0x5000, (u64)(0x5000), E820_RAM);
+	e820_add_region((u64)0x10000, (u64)(0x5000), E820_RAM);
+	e820_print_map("e820", &e820);
+
+	/* remote a total range */
+	e820_remove_range(&e820, 0x5000, 0x5000, E820_RAM, 1);
+	e820_print_map("e820", &e820);
+
+	/* remote a partial range */
+	e820_remove_range(&e820, 0x11000, 0x2000, E820_RAM, 1);
+	e820_print_map("e820", &e820);
+
+	/* remote a head range */
+	e820_remove_range(&e820, 0x13000, 0x1000, E820_RAM, 1);
+	e820_print_map("e820", &e820);
+}
+
 int main()
 {
-	get_end_pfn();
+	add_remove_range();
 	return 0;
 }
