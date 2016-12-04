@@ -26,12 +26,24 @@ struct memblock_type memory = {
 	.max		= INIT_MEMBLOCK_REGIONS,
 };
 
-int main()
+void add_test()
 {
 	memblock_add_range(&memory, 0x10, 0x10, 0, 0);
 	memblock_add_range(&memory, 0x30, 0x10, 0, 0);
 	memblock_add_range(&memory, 0x05, 0x10, 0, 0);
 	printf("%s: dumping memory\n", __func__);
 	memblock_dump(&memory, "test");
+}
+
+void search_test()
+{
+	add_test();
+	printf("addr 0x31 is at index: %d\n", memblock_search(&memory, 0x31));
+	printf("addr 0x41 is at index: %d\n", memblock_search(&memory, 0x41));
+}
+
+int main()
+{
+	search_test();
 	return 0;
 }

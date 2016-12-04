@@ -176,3 +176,22 @@ void memblock_dump(struct memblock_type *type, char *name)
 			name, i, base, base + size - 1, size, nid_buf, flags);
 	}
 }
+
+int memblock_search(struct memblock_type *type, phys_addr_t addr)
+{
+	unsigned int left = 0, right = type->cnt;
+
+	do {
+		unsigned int mid = (right + left) / 2;
+
+		if (addr < type->regions[mid].base)
+			right = mid;
+		else if (addr >= (type->regions[mid].base +
+				  type->regions[mid].size))
+			left = mid + 1;
+		else
+			return mid;
+	} while (left < right);
+	return -1;
+}
+
