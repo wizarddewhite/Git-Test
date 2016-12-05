@@ -522,7 +522,13 @@ void __init setup_arch(char **cmdline_p)
 #endif
 }
 
-1.1.1 early_ioremap_init()
+1.1.1 memblock_reserve(__text, ), reserve kernel code
+================================================================================
+
+1.1.2 early_reserve_initrd()
+================================================================================
+
+1.1.3 early_ioremap_init()
 ================================================================================
 void __init early_ioremap_init(void)
 {
@@ -563,7 +569,7 @@ void __init early_ioremap_init(void)
 	}
 }
 
-1.1.1.1 early_ioremap_setup()
+1.1.3.1 early_ioremap_setup()
 ================================================================================
 void __init early_ioremap_setup(void)
 {
@@ -577,7 +583,7 @@ void __init early_ioremap_setup(void)
 		slot_virt[i] = __fix_to_virt(FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*i);
 }
 
-1.1.1.2 pmd_populate_kernel()
+1.1.3.2 pmd_populate_kernel()
 ================================================================================
 static inline void pmd_populate_kernel(struct mm_struct *mm,
 				       pmd_t *pmd, pte_t *pte)
@@ -586,7 +592,7 @@ static inline void pmd_populate_kernel(struct mm_struct *mm,
 	set_pmd(pmd, __pmd(__pa(pte) | _PAGE_TABLE));
 }
 
-1.1.1.3 early_ioremap_pmd()
+1.1.3.3 early_ioremap_pmd()
 ================================================================================
 static inline pmd_t * __init early_ioremap_pmd(unsigned long addr)
 {
@@ -599,7 +605,7 @@ static inline pmd_t * __init early_ioremap_pmd(unsigned long addr)
 	return pmd;
 }
 
-1.1.2 setup_memory_map(), setup e820 data from bios info
+1.1.4 setup_memory_map(), setup e820 data from bios info
 ================================================================================
 ; see details in e820.txt
 
@@ -634,13 +640,13 @@ void __init setup_memory_map(void)
 	e820_print_map(who);
 }
 
-1.1.2.1 x86_init.resource.memory_setup()
+1.1.4.1 x86_init.resource.memory_setup()
 ================================================================================
 
-1.1.2.2 e820_print_map()
+1.1.4.2 e820_print_map()
 ================================================================================
 
-1.1.3 memblock_x86_reserve_range_setup_data(), fill memblock.reserved
+1.1.5 memblock_x86_reserve_range_setup_data(), fill memblock.reserved
 ================================================================================
 static void __init memblock_x86_reserve_range_setup_data(void)
 {
@@ -656,7 +662,7 @@ static void __init memblock_x86_reserve_range_setup_data(void)
 	}
 }
 
-1.1.4 e820_reserve_setup_data()
+1.1.6 e820_reserve_setup_data()
 ================================================================================
 static void __init e820_reserve_setup_data(void)
 {
@@ -682,7 +688,7 @@ static void __init e820_reserve_setup_data(void)
 	e820_print_map("reserve setup_data");
 }
 
-1.1.4.1 early_memremap()
+1.1.6.1 early_memremap()
 ================================================================================
 void __init *
 early_memremap(resource_size_t phys_addr, unsigned long size)
@@ -691,13 +697,13 @@ early_memremap(resource_size_t phys_addr, unsigned long size)
 					       FIXMAP_PAGE_NORMAL);
 }
 
-1.1.4.2 e820_update_range()
+1.1.6.2 e820_update_range()
 ================================================================================
 
-1.1.4.3 sanitize_e820_map()
+1.1.6.3 sanitize_e820_map()
 ================================================================================
 
-1.1.5 finish_e820_parsing(), userdef e820 range
+1.1.7 finish_e820_parsing(), userdef e820 range
 ================================================================================
 void __init finish_e820_parsing(void)
 {
@@ -711,7 +717,7 @@ void __init finish_e820_parsing(void)
 	}
 }
 
-1.1.6 e820_add_kernel_range(), check all mapped
+1.1.8 e820_add_kernel_range(), check all mapped
 ================================================================================
 static void __init e820_add_kernel_range(void)
 {
@@ -733,21 +739,27 @@ static void __init e820_add_kernel_range(void)
 	e820_add_region(start, size, E820_RAM);
 }
 
-1.1.7 max_pfn = e820_end_of_ram_pfn();
+1.1.9 max_pfn = e820_end_of_ram_pfn();
 ================================================================================
 unsigned long __init e820_end_of_ram_pfn(void)
 {
 	return e820_end_pfn(MAX_ARCH_PFN, E820_RAM);
 }
 
-1.1.8 max_low_pfn = e820_end_of_low_ram_pfn()
+1.1.10 max_low_pfn = e820_end_of_low_ram_pfn()
 ================================================================================
 unsigned long __init e820_end_of_low_ram_pfn(void)
 {
 	return e820_end_pfn(1UL<<(32 - PAGE_SHIFT), E820_RAM);
 }
 
-1.1.9 memblock_x86_fill(), add e820 info to memblock
+1.1.11 early_alloc_pgt_buf()
+================================================================================
+
+1.1.12 reserve_brk()
+================================================================================
+
+1.1.13 memblock_x86_fill(), add e820 info to memblock
 ================================================================================
 void __init memblock_x86_fill(void)
 {
@@ -781,10 +793,10 @@ void __init memblock_x86_fill(void)
 	memblock_dump_all();
 }
 
-1.1.9.1 memblock_add(), add in memblock.memory
+1.1.13.1 memblock_add(), add in memblock.memory
 ================================================================================
 
-1.1.9.2 memblock_trim_memory()
+1.1.13.2 memblock_trim_memory()
 ================================================================================
 void __init_memblock memblock_trim_memory(phys_addr_t align)
 {
@@ -811,7 +823,7 @@ void __init_memblock memblock_trim_memory(phys_addr_t align)
 	}
 }
 
-1.1.9.3 memblock_dump_all()
+1.1.13.3 memblock_dump_all()
 ================================================================================
 static inline void memblock_dump_all(void)
 {
@@ -819,7 +831,13 @@ static inline void memblock_dump_all(void)
 		__memblock_dump_all();
 }
 
-1.1.10 x86_init.paging.pagetable_init(), mmzone.txt
+1.1.14 init_mem_mapping()
+================================================================================
+
+1.1.15 initmem_init(), numa init
+================================================================================
+
+1.1.16 x86_init.paging.pagetable_init(), mmzone.txt
 ================================================================================
 void __init native_pagetable_init(void)
 {
@@ -868,7 +886,7 @@ void __init native_pagetable_init(void)
 	paging_init();
 }
 
-1.1.10.1 paging_init()
+1.1.16.1 paging_init()
 ================================================================================
 void __init paging_init(void)
 {
@@ -888,7 +906,16 @@ void __init paging_init(void)
 	zone_sizes_init();
 }
 
+1.1.17 e820_reserve_resources(), reserve in iomem
+================================================================================
+
+1.1.18 x86_init.resources.reserve_resource(), reserve in ioport
+================================================================================
+
 1.2 build_all_zonelists(), init node_data's zonelist
+================================================================================
+
+1.3 page_alloc_init()
 ================================================================================
 
 1.3 mm_init()
