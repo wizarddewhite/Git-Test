@@ -19,6 +19,7 @@
 #ifndef _LINUX_MEMBLOCK_H
 #define _LINUX_MEMBLOCK_H
 #define ULLONG_MAX	(~0ULL)
+#define MAX_NUMNODES    (1 << 3)
 
 typedef unsigned long phys_addr_t ;
 
@@ -35,6 +36,12 @@ struct memblock_type {
 	phys_addr_t total_size;	/* size of all regions */
 	struct memblock_region *regions;
 };
+
+#define for_each_memblock_type(memblock_type, rgn)			\
+	idx = 0;							\
+	rgn = &memblock_type->regions[idx];				\
+	for (idx = 0; idx < memblock_type->cnt;				\
+	     idx++,rgn = &memblock_type->regions[idx])
 
 static phys_addr_t min(phys_addr_t a, phys_addr_t b)
 {

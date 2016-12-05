@@ -42,8 +42,20 @@ void search_test()
 	printf("addr 0x41 is at index: %d\n", memblock_search(&memory, 0x41));
 }
 
+void remove_test()
+{
+	memblock_add_range(&memory, 0x1000, 0x1000, 0, 0);
+	memblock_add_range(&memory, 0x3000, 0x1000, 0, 0);
+	memblock_add_range(&memory, 0x5000, 0x1000, 0, 0);
+	memblock_add_range(&memory, 0x7000, 0x1000, 0, 0);
+	memblock_dump(&memory, "test");
+
+	memblock_remove_region(&memory, 0x1200, 0x100);
+	memblock_dump(&memory, "test");
+}
+
 int main()
 {
-	search_test();
+	remove_test();
 	return 0;
 }

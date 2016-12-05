@@ -195,3 +195,119 @@ int memblock_search(struct memblock_type *type, phys_addr_t addr)
 	return -1;
 }
 
+int memblock_double_array(struct memblock_type *type,
+						phys_addr_t new_area_start,
+						phys_addr_t new_area_size)
+{
+	return 0;
+}
+
+/**
+ * memblock_isolate_range - isolate given range into disjoint memblocks
+ * @type: memblock type to isolate range for
+ * @base: base of range to isolate
+ * @size: size of range to isolate
+ * @start_rgn: out parameter for the start of isolated region
+ * @end_rgn: out parameter for the end of isolated region
+ *
+ * Walk @type and ensure that regions don't cross the boundaries defined by
+ * [@base,@base+@size).  Crossing regions are split at the boundaries,
+ * which may create at most two more regions.  The index of the first
+ * region inside the range is returned in *@start_rgn and end in *@end_rgn.
+ *
+ * RETURNS:
+ * 0 on success, -errno on failure.
+ */
+int memblock_isolate_range(struct memblock_type *type,
+					phys_addr_t base, phys_addr_t size,
+					int *start_rgn, int *end_rgn)
+{
+	phys_addr_t end = base + memblock_cap_size(base, &size);
+	int idx;
+	struct memblock_region *rgn;
+
+	*start_rgn = *end_rgn = 0;
+
+	if (!size)
+		return 0;
+
+	/* we'll create at most two more regions */
+	while (type->cnt + 2 > type->max)
+		if (memblock_double_array(type, base, size) < 0)
+			return -2;
+
+	for_each_memblock_type(type, rgn) {
+		phys_addr_t rbase = rgn->base;
+		phys_addr_t rend = rbase + rgn->size;
+
+		if (rbase >= end)
+			break;
+		if (rend <= base)
+			continue;
+
+		if (rbase < base) {
+			/*
+			 * @rgn intersects from below.  Split and continue
+			 * to process the next region - the new top half.
+			 */
+			rgn->base = base;
+			rgn->size -= base - rbase;
+			type->total_size -= base - rbase;
+			memblock_insert_region(type, idx, rbase, base - rbase,
+					       memblock_get_region_node(rgn),
+					       rgn->flags);
+		} else if (rend > end) {
+			/*
+			 * @rgn intersects from above.  Split and redo the
+			 * current region - the new bottom half.
+			 */
+			rgn->base = end;
+			rgn->size -= end - rbase;
+			type->total_size -= end - rbase;
+			memblock_insert_region(type, idx--, rbase, end - rbase,
+					       memblock_get_region_node(rgn),
+					       rgn->flags);
+		} else {
+			/* @rgn is fully contained, record it */
+			if (!*end_rgn)
+				*start_rgn = idx;
+			*end_rgn = idx + 1;
+		}
+	}
+
+	return 0;
+}
+
+void memblock_remove_region(struct memblock_type *type, unsigned long r)
+{
+	type->total_size -= type->regions[r].size;
+	memmove(&type->regions[r], &type->regions[r + 1],
+		(type->cnt - (r + 1)) * sizeof(type->regions[r]));
+	type->cnt--;
+
+	/* Special case for empty arrays */
+	if (type->cnt == 0) {
+		//WARN_ON(type->total_size != 0);
+		type->cnt = 1;
+		type->regions[0].base = 0;
+		type->regions[0].size = 0;
+		type->regions[0].flags = 0;
+		memblock_set_region_node(&type->regions[0], MAX_NUMNODES);
+	}
+}
+
+int memblock_remove_range(struct memblock_type *type,
+					  phys_addr_t base, phys_addr_t size)
+{
+	int start_rgn, end_rgn;
+	int i, ret;
+
+	ret = memblock_isolate_range(type, base, size, &start_rgn, &end_rgn);
+	if (ret)
+		return ret;
+
+	for (i = end_rgn - 1; i >= start_rgn; i--)
+		memblock_remove_region(type, i);
+	return 0;
+}
+
