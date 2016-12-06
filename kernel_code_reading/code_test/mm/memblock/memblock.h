@@ -63,4 +63,6 @@ int memblock_add_range(struct memblock_type *type,
 				int nid, unsigned long flags);
 void memblock_dump(struct memblock_type *type, char *name);
 int memblock_search(struct memblock_type *type, phys_addr_t addr);
+int memblock_remove_range(struct memblock_type *type,
+					  phys_addr_t base, phys_addr_t size);
 #endif /* _LINUX_MEMBLOCK_H */

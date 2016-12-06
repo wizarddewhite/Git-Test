@@ -50,7 +50,7 @@ void remove_test()
 	memblock_add_range(&memory, 0x7000, 0x1000, 0, 0);
 	memblock_dump(&memory, "test");
 
-	memblock_remove_region(&memory, 0x1200, 0x100);
+	memblock_remove_range(&memory, 0x1200, 0x100);
 	memblock_dump(&memory, "test");
 }
 
