@@ -18,6 +18,9 @@
 
 #ifndef _LINUX_MEMBLOCK_H
 #define _LINUX_MEMBLOCK_H
+
+#include <stdbool.h>
+
 #define ULLONG_MAX	(~0ULL)
 #define MAX_NUMNODES    (1 << 3)
 
@@ -35,6 +38,16 @@ struct memblock_type {
 	unsigned long max;	/* size of the allocated array */
 	phys_addr_t total_size;	/* size of all regions */
 	struct memblock_region *regions;
+};
+
+struct memblock {
+	bool bottom_up;  /* is bottom up direction? */
+	phys_addr_t current_limit;
+	struct memblock_type memory;
+	struct memblock_type reserved;
+#ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
+	struct memblock_type physmem;
+#endif
 };
 
 #define for_each_memblock_type(memblock_type, rgn)			\
