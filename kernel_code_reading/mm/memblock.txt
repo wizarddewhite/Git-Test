@@ -6,7 +6,7 @@ int __init_memblock memblock_add(phys_addr_t base, phys_addr_t size)
 				   MAX_NUMNODES, 0);
 }
 
-1.1 memblock_add_range() 
+1.1 memblock_add_range(), allow overlap 
 ================================================================================
 int __init_memblock memblock_add_range(struct memblock_type *type,
 				phys_addr_t base, phys_addr_t size,
