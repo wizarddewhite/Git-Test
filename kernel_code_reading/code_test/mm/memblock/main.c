@@ -46,8 +46,23 @@ void remove_test()
 	memblock_dump(&memblock.memory, "test");
 }
 
+void alloc_free_test()
+{
+	phys_addr_t addr;
+	memblock_debug = 1;
+
+	/* First add some range in memory */
+	memblock_add_range(&memblock.memory, 0x1000, 0x1000, 0, 0);
+	memblock_add_range(&memblock.memory, 0x3000, 0x1000, 0, 0);
+	memblock_dump_all();
+
+	addr = memblock_alloc(0x100, 0x100);
+	printf("--allocated address is %#lx\n", addr);
+	memblock_dump_all();
+}
+
 int main()
 {
-	remove_test();
+	alloc_free_test();
 	return 0;
 }
