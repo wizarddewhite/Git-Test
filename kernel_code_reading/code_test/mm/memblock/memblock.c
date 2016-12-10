@@ -22,6 +22,37 @@
 #include <string.h>
 #include "memblock.h"
 
+int memblock_debug ;
+
+#define MEMBLOCK_ALLOC_ANYWHERE	(~(phys_addr_t)0)
+#define MEMBLOCK_ALLOC_ACCESSIBLE	0
+
+#define INIT_MEMBLOCK_REGIONS	128
+static struct memblock_region memblock_memory_init_regions[INIT_MEMBLOCK_REGIONS] ;
+static struct memblock_region memblock_reserved_init_regions[INIT_MEMBLOCK_REGIONS] ;
+#ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
+static struct memblock_region memblock_physmem_init_regions[INIT_PHYSMEM_REGIONS] ;
+#endif
+
+struct memblock memblock = {
+	.memory.regions		= memblock_memory_init_regions,
+	.memory.cnt		= 1,	/* empty dummy entry */
+	.memory.max		= INIT_MEMBLOCK_REGIONS,
+
+	.reserved.regions	= memblock_reserved_init_regions,
+	.reserved.cnt		= 1,	/* empty dummy entry */
+	.reserved.max		= INIT_MEMBLOCK_REGIONS,
+
+#ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
+	.physmem.regions	= memblock_physmem_init_regions,
+	.physmem.cnt		= 1,	/* empty dummy entry */
+	.physmem.max		= INIT_PHYSMEM_REGIONS,
+#endif
+
+	.bottom_up		= false,
+	.current_limit		= MEMBLOCK_ALLOC_ANYWHERE,
+};
+
 /* adjust *@size so that (@base + *@size) doesn't overflow, return new size */
 static inline phys_addr_t memblock_cap_size(phys_addr_t base, phys_addr_t *size)
 {
@@ -161,20 +192,34 @@ void memblock_dump(struct memblock_type *type, char *name)
 {
 	unsigned long long base, size;
 	unsigned long flags;
-	int i;
+	int idx;
+	struct memblock_region *rgn;
 
 	printf(" %s.cnt  = 0x%lx\n", name, type->cnt);
 
-	for (i = 0; i < type->cnt; i++) {
-		struct memblock_region *rgn = &type->regions[i];
+	for_each_memblock_type(type, rgn) {
 		char nid_buf[32] = "";
 
 		base = rgn->base;
 		size = rgn->size;
 		flags = rgn->flags;
+		if (memblock_get_region_node(rgn) != MAX_NUMNODES)
+			snprintf(nid_buf, sizeof(nid_buf), " on node %d",
+				 memblock_get_region_node(rgn));
 		printf(" %s[%#x]\t[%#016llx-%#016llx], %#llx bytes%s flags: %#lx\n",
-			name, i, base, base + size - 1, size, nid_buf, flags);
+			name, idx, base, base + size - 1, size, nid_buf, flags);
 	}
+}
+
+void __memblock_dump_all(void)
+{
+	printf("MEMBLOCK configuration:\n");
+	printf(" memory size = %#llx reserved size = %#llx\n",
+		(unsigned long long)memblock.memory.total_size,
+		(unsigned long long)memblock.reserved.total_size);
+
+	memblock_dump(&memblock.memory, "memory");
+	memblock_dump(&memblock.reserved, "reserved");
 }
 
 int memblock_search(struct memblock_type *type, phys_addr_t addr)

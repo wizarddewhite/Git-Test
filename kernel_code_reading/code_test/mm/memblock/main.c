@@ -18,35 +18,6 @@
 #include <stdio.h>
 #include "memblock.h"
 
-#define MEMBLOCK_ALLOC_ANYWHERE	(~(phys_addr_t)0)
-#define MEMBLOCK_ALLOC_ACCESSIBLE	0
-
-#define INIT_MEMBLOCK_REGIONS	128
-static struct memblock_region memblock_memory_init_regions[INIT_MEMBLOCK_REGIONS] ;
-static struct memblock_region memblock_reserved_init_regions[INIT_MEMBLOCK_REGIONS] ;
-#ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
-static struct memblock_region memblock_physmem_init_regions[INIT_PHYSMEM_REGIONS] ;
-#endif
-
-struct memblock memblock = {
-	.memory.regions		= memblock_memory_init_regions,
-	.memory.cnt		= 1,	/* empty dummy entry */
-	.memory.max		= INIT_MEMBLOCK_REGIONS,
-
-	.reserved.regions	= memblock_reserved_init_regions,
-	.reserved.cnt		= 1,	/* empty dummy entry */
-	.reserved.max		= INIT_MEMBLOCK_REGIONS,
-
-#ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
-	.physmem.regions	= memblock_physmem_init_regions,
-	.physmem.cnt		= 1,	/* empty dummy entry */
-	.physmem.max		= INIT_PHYSMEM_REGIONS,
-#endif
-
-	.bottom_up		= false,
-	.current_limit		= MEMBLOCK_ALLOC_ANYWHERE,
-};
-
 void add_test()
 {
 	memblock_add_range(&memblock.memory, 0x10, 0x10, 0, 0);

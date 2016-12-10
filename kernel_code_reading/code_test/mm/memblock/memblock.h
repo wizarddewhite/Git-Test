@@ -51,9 +51,8 @@ struct memblock {
 };
 
 #define for_each_memblock_type(memblock_type, rgn)			\
-	idx = 0;							\
-	rgn = &memblock_type->regions[idx];				\
-	for (idx = 0; idx < memblock_type->cnt;				\
+	for (idx = 0, rgn = &memblock_type->regions[idx]; 		\
+	     idx < memblock_type->cnt;					\
 	     idx++,rgn = &memblock_type->regions[idx])
 
 static phys_addr_t min(phys_addr_t a, phys_addr_t b)
@@ -78,4 +77,14 @@ void memblock_dump(struct memblock_type *type, char *name);
 int memblock_search(struct memblock_type *type, phys_addr_t addr);
 int memblock_remove_range(struct memblock_type *type,
 					  phys_addr_t base, phys_addr_t size);
+
+extern struct memblock memblock;
+extern int memblock_debug;
+extern void __memblock_dump_all(void);
+static inline void memblock_dump_all(void)
+{
+	if (memblock_debug)
+		__memblock_dump_all();
+}
+
 #endif /* _LINUX_MEMBLOCK_H */
