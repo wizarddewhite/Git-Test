@@ -423,6 +423,17 @@ phys_addr_t memblock_alloc(phys_addr_t size, phys_addr_t align)
 	return memblock_alloc_base(size, align, MEMBLOCK_ALLOC_ACCESSIBLE);
 }
 
+int memblock_free(phys_addr_t base, phys_addr_t size)
+{
+	//memblock_dbg("   memblock_free: [%#016llx-%#016llx] %pF\n",
+	//	     (unsigned long long)base,
+	//	     (unsigned long long)base + size - 1,
+	//	     (void *)_RET_IP_);
+
+	//kmemleak_free_part(__va(base), size);
+	return memblock_remove_range(&memblock.reserved, base, size);
+}
+
 /**
  * __memblock_find_range_top_down - find free area utility, in top-down
  * @start: start of candidate range

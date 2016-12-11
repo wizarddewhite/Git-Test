@@ -56,9 +56,20 @@ void alloc_free_test()
 	memblock_add_range(&memblock.memory, 0x3000, 0x1000, 0, 0);
 	memblock_dump_all();
 
+	/* Allocate 0x100 */
 	addr = memblock_alloc(0x100, 0x100);
 	printf("--allocated address is %#lx\n", addr);
 	memblock_dump_all();
+
+	/* Allocate 0x100 with 0x400 alignment */
+	addr = memblock_alloc(0x100, 0x400);
+	printf("--allocated address is %#lx\n", addr);
+	memblock_dump_all();
+
+	/* Free the last one */
+	memblock_free(addr, 0x100);
+	memblock_dump_all();
+
 }
 
 int main()
