@@ -2,7 +2,7 @@ This directory contains the records when learning linux MM system. And the
 file here is the INDEX of the files in this directory.
 
 1. Memory management hierarchy
-1.1 e820.txt
+1.1 <a href="./e820.txt">e820.txt</a>
 
 e820 is the lowest level hardware who know the exact information of the memory
 range. Software gets memory range information from e820.
