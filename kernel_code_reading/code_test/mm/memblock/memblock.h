@@ -132,6 +132,7 @@ static inline void memblock_dump_all(void)
 }
 phys_addr_t memblock_alloc(phys_addr_t size, phys_addr_t align);
 int memblock_free(phys_addr_t base, phys_addr_t size);
+int memblock_is_region_memory(phys_addr_t base, phys_addr_t size);
 
 /**
  * for_each_mem_range_rev - reverse iterate through memblock areas from

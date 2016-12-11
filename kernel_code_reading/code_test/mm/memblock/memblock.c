@@ -658,4 +658,24 @@ void __next_mem_range_rev(u64 *idx, int nid, ulong flags,
 	*idx = ULLONG_MAX;
 }
 
+/**
+ * memblock_is_region_memory - check if a region is a subset of memory
+ * @base: base of region to check
+ * @size: size of region to check
+ *
+ * Check if the region [@base, @base+@size) is a subset of a memory block.
+ *
+ * RETURNS:
+ * 0 if false, non-zero if true
+ */
+int memblock_is_region_memory(phys_addr_t base, phys_addr_t size)
+{
+	int idx = memblock_search(&memblock.memory, base);
+	phys_addr_t end = base + memblock_cap_size(base, &size);
 
+	if (idx == -1)
+		return 0;
+	return /* memblock.memory.regions[idx].base <= base && */
+		(memblock.memory.regions[idx].base +
+		 memblock.memory.regions[idx].size) >= end;
+}

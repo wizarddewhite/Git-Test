@@ -32,6 +32,12 @@ void search_test()
 	add_test();
 	printf("addr 0x31 is at index: %d\n", memblock_search(&memblock.memory, 0x31));
 	printf("addr 0x41 is at index: %d\n", memblock_search(&memblock.memory, 0x41));
+	printf("range [0x30, 0x30+0x10] is%smemory region\n",
+		memblock_is_region_memory(0x30, 0x10)?" ": "n't ");
+	printf("range [0x30, 0x30+0x11] is%smemory region\n",
+		memblock_is_region_memory(0x30, 0x11)?" ": "n't ");
+	printf("range [0x2f, 0x2f+0x11] is%smemory region\n",
+		memblock_is_region_memory(0x30, 0x11)?" ": "n't ");
 }
 
 void remove_test()
@@ -74,6 +80,6 @@ void alloc_free_test()
 
 int main()
 {
-	alloc_free_test();
+	search_test();
 	return 0;
 }
