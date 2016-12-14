@@ -121,4 +121,5 @@ void e820_print_map(char *who, struct e820map *e820);
 void e820_add_region(u64 start, u64 size, int type);
 u64 e820_remove_range(struct e820map *e820, u64 start, u64 size,
 			unsigned old_type, int checktype);
+int e820_all_mapped(u64 start, u64 end, unsigned type);
 #endif //E820_H
