@@ -369,10 +369,15 @@ int e820_all_mapped(u64 start, u64 end, unsigned type)
 	for (i = 0; i < e820.nr_map; i++) {
 		struct e820entry *ei = &e820.map[i];
 
+		/* Since the e820 table is sorted, when the region less than
+		 * the current region, no need to continue */
+		if (ei->addr >= end)
+			break;
+
 		if (type && ei->type != type)
 			continue;
 		/* is the region (part) in overlap with the current region ?*/
-		if (ei->addr >= end || ei->addr + ei->size <= start)
+		if (ei->addr + ei->size <= start)
 			continue;
 
 		/* if the region is at the beginning of <start,end> we move
