@@ -413,7 +413,7 @@ int e820_search_gap(unsigned long *gapstart, unsigned long *gapsize,
 		unsigned long long end = start + e820.map[i].size;
 
 		if (end < start_addr)
-			continue;
+			end = start_addr;
 
 		/*
 		 * Since "last" is at most 4GB, we know we'll
