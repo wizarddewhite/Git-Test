@@ -109,13 +109,11 @@ void biggest_gap()
 	int found;
 	u32 new_nr;
 
-	e820_add_region((u64)0x1000, (u64)(0x1000), E820_RAM);
-	e820_add_region((u64)0x10000, (u64)(0x5000), E820_RAM);
-	e820_add_region((u64)0x3000, (u64)(0x2000), E820_UNUSABLE);
-	e820_add_region((u64)0x5000, (u64)(0x5000), E820_RAM);
+	e820_add_region((u64)0xe0000000, (u64)(0x10), E820_RAM);
+	e820_add_region((u64)0x0, (u64)(0x10), E820_RAM);
 
-	//new_nr = e820.nr_map;
-	//sanitize_e820_map(e820.map, E820_X_MAX, &new_nr);
+	new_nr = e820.nr_map;
+	sanitize_e820_map(e820.map, E820_X_MAX, &new_nr);
 	e820_print_map("e820", &e820);
 
 	gapstart = 0x10000000;
