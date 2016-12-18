@@ -118,7 +118,7 @@ void biggest_gap()
 
 	gapstart = 0x10000000;
 	gapsize = 0x400000;
-	found  = e820_search_gap(&gapstart, &gapsize, 0, MAX_GAP_END);
+	found  = e820_search_gap(&gapstart, &gapsize, 0x11, MAX_GAP_END);
 
 	if (!found) {
 		printf(
