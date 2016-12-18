@@ -399,6 +399,39 @@ __init int e820_search_gap(unsigned long *gapstart, unsigned long *gapsize,
 	return found;
 }
 
+6. memblock_x86_fill(), translate e820 region to memblock
+================================================================================
+void __init memblock_x86_fill(void)
+{
+	int i;
+	u64 end;
+
+	/*
+	 * EFI may have more than 128 entries
+	 * We are safe to enable resizing, beause memblock_x86_fill()
+	 * is rather later for x86
+	 */
+	memblock_allow_resize();
+
+	for (i = 0; i < e820.nr_map; i++) {
+		struct e820entry *ei = &e820.map[i];
+
+		end = ei->addr + ei->size;
+		if (end != (resource_size_t)end)
+			continue;
+
+		if (ei->type != E820_RAM && ei->type != E820_RESERVED_KERN)
+			continue;
+
+		memblock_add(ei->addr, ei->size);
+	}
+
+	/* throw away partial pages */
+	memblock_trim_memory(PAGE_SIZE);
+
+	memblock_dump_all();
+}
+
 0. data structure
 ================================================================================
 
