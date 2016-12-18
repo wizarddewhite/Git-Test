@@ -394,3 +394,38 @@ int e820_all_mapped(u64 start, u64 end, unsigned type)
 	}
 	return 0;
 }
+
+int e820_search_gap(unsigned long *gapstart, unsigned long *gapsize,
+		unsigned long start_addr, unsigned long long end_addr)
+{
+	unsigned long long last;
+	int i = e820.nr_map;
+	int found = 0;
+
+	last = (end_addr && end_addr < MAX_GAP_END) ? end_addr : MAX_GAP_END;
+
+	while (--i >= 0) {
+		unsigned long long start = e820.map[i].addr;
+		unsigned long long end = start + e820.map[i].size;
+
+		if (end < start_addr)
+			continue;
+
+		/*
+		 * Since "last" is at most 4GB, we know we'll
+		 * fit in 32 bits if this condition is true
+		 */
+		if (last > end) {
+			unsigned long gap = last - end;
+
+			if (gap >= *gapsize) {
+				*gapsize = gap;
+				*gapstart = end;
+				found = 1;
+			}
+		}
+		if (start < last)
+			last = start;
+	}
+	return found;
+}

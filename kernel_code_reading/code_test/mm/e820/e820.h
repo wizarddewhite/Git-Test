@@ -122,4 +122,7 @@ void e820_add_region(u64 start, u64 size, int type);
 u64 e820_remove_range(struct e820map *e820, u64 start, u64 size,
 			unsigned old_type, int checktype);
 int e820_all_mapped(u64 start, u64 end, unsigned type);
+#define MAX_GAP_END 0x100000000ull
+int e820_search_gap(unsigned long *gapstart, unsigned long *gapsize,
+		unsigned long start_addr, unsigned long long end_addr);
 #endif //E820_H
