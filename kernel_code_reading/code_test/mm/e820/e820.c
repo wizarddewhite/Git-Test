@@ -395,6 +395,10 @@ int e820_all_mapped(u64 start, u64 end, unsigned type)
 	return 0;
 }
 
+/*
+ * Search for a gap in the e820 memory space from start_addr to end_addr.
+ * And the e820 should be sorted.
+ */
 int e820_search_gap(unsigned long *gapstart, unsigned long *gapsize,
 		unsigned long start_addr, unsigned long long end_addr)
 {
