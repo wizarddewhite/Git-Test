@@ -78,8 +78,26 @@ void alloc_free_test()
 
 }
 
+void isolate_test()
+{
+	int start_rgn, end_rgn;
+	memblock_debug = 1;
+
+	/* First add some range in memory */
+	memblock_add_range(&memblock.memory, 0x1000, 0x1000, 0, 0);
+	memblock_add_range(&memblock.memory, 0x3000, 0x1000, 0, 0);
+	memblock_add_range(&memblock.memory, 0x6000, 0x1000, 0, 0);
+	memblock_dump_all();
+
+	memblock_isolate_range(&memblock.memory, 0x3500, 0x500,
+			&start_rgn, &end_rgn);
+	printf("start: %d end: %d\n", start_rgn, end_rgn);
+	memblock_dump_all();
+
+}
+
 int main()
 {
-	search_test();
+	isolate_test();
 	return 0;
 }

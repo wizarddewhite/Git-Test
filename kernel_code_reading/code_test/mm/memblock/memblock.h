@@ -115,6 +115,9 @@ void memblock_dump(struct memblock_type *type, char *name);
 int memblock_search(struct memblock_type *type, phys_addr_t addr);
 int memblock_remove_range(struct memblock_type *type,
 					  phys_addr_t base, phys_addr_t size);
+int memblock_isolate_range(struct memblock_type *type,
+					phys_addr_t base, phys_addr_t size,
+					int *start_rgn, int *end_rgn);
 int memblock_reserve(phys_addr_t base, phys_addr_t size);
 
 void __next_mem_range_rev(u64 *idx, int nid, unsigned long flags,
