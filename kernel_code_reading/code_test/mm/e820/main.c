@@ -74,6 +74,34 @@ void add_remove_range()
 	e820_print_map("e820", &e820);
 }
 
+void check_all_mapped_unsorted()
+{
+	/*
+	 * We have a range
+	 *
+	 * [0x1000, 0x1fff][0x2000, 0x2fff]
+	 *
+	 * if unsorted, e820_all_mapped() wouldn't work.
+	 * if sorted, it works well.
+	 */
+	e820_add_region((u64)0x2000, (u64)(0x1000), E820_RAM);
+	e820_add_region((u64)0x20000, (u64)(0x1000), E820_RAM);
+	e820_add_region((u64)0x1000, (u64)(0x1000), E820_RAM);
+	e820_print_map("e820", &e820);
+
+	printf("region %#llx-%#llx is%s mapped\n",
+		(u64)0x1500, (u64)(0x1500 + 0x1000 - 1),
+		e820_all_mapped(0x1500, 0x1500 + 0x1000 - 1, E820_RAM)?"":"n't");
+
+	sanitize_e820_map(e820.map, E820_X_MAX, &e820.nr_map);
+	e820_print_map("e820", &e820);
+
+	printf("region %#llx-%#llx is%s mapped\n",
+		(u64)0x1500, (u64)(0x1500 + 0x1000 - 1),
+		e820_all_mapped(0x1500, 0x1500 + 0x1000 - 1, E820_RAM)?"":"n't");
+
+}
+
 void check_all_mapped()
 {
 	u32 new_nr;
@@ -82,8 +110,7 @@ void check_all_mapped()
 	e820_add_region((u64)0x3000, (u64)(0x2000), E820_UNUSABLE);
 	e820_add_region((u64)0x5000, (u64)(0x5000), E820_RAM);
 
-	new_nr = e820.nr_map;
-	sanitize_e820_map(e820.map, E820_X_MAX, &new_nr);
+	sanitize_e820_map(e820.map, E820_X_MAX, &e820.nr_map);
 	e820_print_map("e820", &e820);
 
 	printf("region %#llx-%#llx is%s mapped\n",
@@ -134,6 +161,6 @@ void biggest_gap()
 
 int main()
 {
-	biggest_gap();
+	check_all_mapped();
 	return 0;
 }
