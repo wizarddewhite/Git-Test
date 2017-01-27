@@ -50,6 +50,14 @@ set signature='echo "Wei Yang\nHelp you, Help me"|'
 #set mail display format in pager
 folder-hook . "ignore *; unignore from to subject date X-mailer"
 
+#GPG
+source ~/gpg.rc
+set pgp_verify_command="gpg --no-verbose --batch --output - --verify %s %f"
+set pgp_clearsign_command="gpg --no-verbose --batch --output - --passphrase-fd 0 --armor --textmode --clearsign %?a?-u %a? %f"
+set pgp_autosign=yes
+set pgp_sign_as=4FE5C4DD
+set pgp_timeout=1800
+
 # the mail list you subscribed, press 'L' to reply to list
 #subscribe shlug@googlegroups.com
 
