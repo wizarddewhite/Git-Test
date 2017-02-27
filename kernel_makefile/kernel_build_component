@@ -1,0 +1,146 @@
+1. bzImage
+================================================================================
+
+
+bzImage
+  |                                                             
+  +-- arch/x86/boot/setup.bin                                   
+  |     |                                                       
+  |     | objcopy from :                                        
+  |     +-arch/x86/boot/setup.elf                               
+  |                                                             
+  |                                                             
+  +-- arch/x86/boot/vmlinux.bin                                 
+        |                                                       
+        | objcopy from :                                        
+        +-arch/x86/boot/compressed/vmlinux                      
+            |                                                   
+            | linked from :                                     
+            +-arch/x86/boot/compressed/head_$(BITS).o           
+            |                                                   
+            +-arch/x86/boot/compressed/misc.o                   
+            |                                                   
+            +-arch/x86/boot/compressed/string.o                 
+            |                                                   
+            +-arch/x86/boot/compressed/cmdline.o                
+            |                                                   
+            +-arch/x86/boot/compressed/error.o                  
+            |                                                   
+            +-arch/x86/boot/compressed/cpuflags.o               
+            |                                                   
+            +-arch/x86/boot/compressed/piggy.o                  
+                |                                               
+                | linked with :                                 
+                +-arch/x86/boot/compressed/vmlinux.bin.gz       
+                    |                                           
+                    |  compressed from :                        
+                    +- vmlinux                                  
+                                                                
+                                                                
+
+1.1. vmlinux
+================================================================================
+
+       
+       
+                                   kernel/built-in.o  certs/built-in.o
+                                   mm/built-in.o      fs/built-in.o
+                                   ipc/buit-in.o      security/built-in.o
+                                   crypto/built-in.o  block/built-in.o
+                                   lib/built-in.o     lib/lib.a
+        head_64.o                  usr/built-in.o     drivers/built-in.o
+        head64.o                   sound/built-in.o   firmware/built-in.o
+        head.o    init/built-in.o  net/built-in.o     virt/built-in.o
+           ||          ||             ||                ||
+       
+        $(head-y)    $(init-y)     $(core-y)  $(drivers-y)
+                                   $(net-y)   $(libs-y)  
+       	                    $(virt-y)
+            |            |             |          |
+            |            |             |          |
+             \          /               \        /
+              \        /                 \      /
+       
+           KBUILD_VMLINUX_INIT         KBUILD_VMLINUX_MAIN
+       
+       
+                              vmlinux
+
+
+1.2. arch/x86/boot/bzImage
+================================================================================
+
+
+
+
+         setup.bin    vmlinux.bin  
+               \         /
+                \       /
+                 bzImage
+
+
+
+1.3. arch/x86/boot/setup.bin
+================================================================================
+
+
+
+        a20.o bioscall.o cmdline.o copy.o
+        cpu.o cpuflags.o cpucheck.o
+        edd.o header.o main.o memory.o
+        tty.o pmjump.o printf.o regs.o
+        pm.o  string.o video.o
+        video-mode.o version.o
+        early_serial_console.o 
+
+        video-vga.o
+        video-vesa.o
+        video-bios.o
+
+                    ||
+                    \/
+
+		 setup.elf
+
+                    ||
+                    \/
+
+		 setup.bin
+
+
+1.4. arch/x86/boot/vmlinux.bin
+================================================================================
+
+
+              vmlinux
+
+                ||
+                \/
+
+              compressed/vmlinux.bin
+
+
+                ||
+                \/
+
+              compressed/vmlinux.bin.gz
+
+                ||
+                \/
+
+              piggy.o       head_$(BITS).o
+                            misc.o
+                            cmdline.o
+                            error.o
+                            cpuflsgs.o
+
+                    ||
+                    \/
+
+		 compressed/vmlinux
+
+                    ||
+                    \/
+
+		 vmlinux.bin
+
