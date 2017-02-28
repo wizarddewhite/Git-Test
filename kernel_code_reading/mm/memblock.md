@@ -26,7 +26,7 @@ memblock maintains two regions: memblock.memory and memblock.reserved.
 All available physical memory will be added to the memblock.memory region.
 And each allocated memory will be added to the memblock.reserved region.
 
-Attention, allocated memory will not be removed from memblock.memory region.
+Attention: allocated memory will not be removed from memblock.memory region.
 
 Let me borrow a chart and change it a little. The original chart is from
 [here][3], which is one of my favorite series.
@@ -53,12 +53,12 @@ Let me borrow a chart and change it a little. The original chart is from
     |                           |   |                           |
     +---------------------------+   +---------------------------+
 
-For example, corrent status of the memblock is:
+For example, current status of the memblock is:
 1. There are three memory regions in the system, [start1/2/3, end1/2/3)
 2. And two of them are allocated, [start1/2, end1/2)
 
-In case you want to release [start2, end2), no changes to memblock.memory
-while it will not be in memblock.reserved any more.
+In case you want to release [start2, end2), no changes to memblock.memory,
+just remove [start2, end2) from memblock.reserved.
 
 Ok, hope this may help you to get a whole picture about memblock :-)
 
@@ -132,9 +132,9 @@ They just touch memblock.reserved.
 ## memblock_add_range()
 
 This function is used to add a range to a memblock_type, memblock.memory or
-memblock.reserved. And this guarantee the range added will be sorted.
+memblock.reserved. And this guarantees the range added will be sorted.
 
-The idea is simple, add and merge. Generally, there are three cases:
+The idea is simple, add and merge. Generally, there are four cases:
 
 * total covered
 * no overlap
@@ -189,7 +189,7 @@ is assigned with end. Then fall back to a special case of total covered.
                         (base,          end)
         [rbase,             rend]
 
-   After insert the lower part.
+   After truncate the lower part.
 
                ||
                ||
@@ -204,7 +204,9 @@ rend. Then fall back to the no overlap case.
 
 ## memblock_isolate_range()
 
-The purpose of this function is used to split memblock regions.
+This function is used in several places, like memblock_remove_range() and
+memblock_set_node(). The purpose of this function is used to split memblock
+regions.
 
 ```
                          (base,                         end)
@@ -224,6 +226,10 @@ The purpose of this function is used to split memblock regions.
 
                           start_rgn         end_rgn
 ```
+
+The function will pass two parameters, base & end. And it use these two
+parameter to split the memblock region and return the index in the region of
+beginning and end.
 
 [1]: https://lkml.org/lkml/2010/7/13/114
 [2]: https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/mm/memblock.c?id=95f72d1ed41a66f1c1c29c24d479de81a0bea36f
