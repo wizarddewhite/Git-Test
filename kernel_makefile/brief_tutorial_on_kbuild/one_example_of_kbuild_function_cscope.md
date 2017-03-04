@@ -113,7 +113,7 @@ esac
 ```
     Makefile             <--- scripts/Kbuild.include
     ---------------
-    cscope: FORCE 
+    cscope: FORCE
     	$(call cmd,tags)
 
     Makefile
@@ -122,7 +122,9 @@ esac
     	scripts/tags.sh $@
 ```
 
-根目录的Makefile，在Kbuild.include中定义的函数帮助下，有了一些些变换让kbuild系统多了一些标准化的辅助函数。
+在Kbuild.include中定义了一些辅助函数，而整个kbuild系统都构建在这些辅助函数的基础上。这次我们看到的例子着实简单，看上去把规格在本地展开要更加清晰。不过随着内核复杂度增加，每次都本地展开会显得代码冗长且不易维护。
+
+虽然这么些在理解上增加了一些难度，不过也经过了一些些努力就能水落石出。若能真的理解，就已经做好了kbuild系统探索的基本准备了。
 
 [1]: http://blog.csdn.net/richardysteven/article/details/56666283
 [2]: https://www.gnu.org/software/make/manual/html_node/Call-Function.html
