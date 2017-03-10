@@ -1,0 +1,185 @@
+1. sparse_memory_present_with_active_regions()
+================================================================================
+void __init sparse_memory_present_with_active_regions(int nid)
+{
+	unsigned long start_pfn, end_pfn;
+	int i, this_nid;
+
+	for_each_mem_pfn_range(i, nid, &start_pfn, &end_pfn, &this_nid)
+		memory_present(this_nid, start_pfn, end_pfn);
+}
+
+1.1 memory_present(), check which section is present
+================================================================================
+/* Record a memory area against a node. */
+void __init memory_present(int nid, unsigned long start, unsigned long end)
+{
+	unsigned long pfn;
+
+	start &= PAGE_SECTION_MASK;
+	mminit_validate_memmodel_limits(&start, &end);
+	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) {
+		unsigned long section = pfn_to_section_nr(pfn);
+		struct mem_section *ms;
+
+		sparse_index_init(section, nid);
+		set_section_nid(section, nid);
+
+		ms = __nr_to_section(section);
+		if (!ms->section_mem_map)
+			ms->section_mem_map = sparse_encode_early_nid(nid) |
+							SECTION_MARKED_PRESENT;
+	}
+}
+
+2. sparse_init()
+================================================================================
+void __init sparse_init(void)
+{
+	unsigned long pnum;
+	struct page *map;
+	unsigned long *usemap;
+	unsigned long **usemap_map;
+	int size;
+#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
+	int size2;
+	struct page **map_map;
+#endif
+	unsigned long last_section_nr;
+
+	/* see include/linux/mmzone.h 'struct mem_section' definition */
+	BUILD_BUG_ON(!is_power_of_2(sizeof(struct mem_section)));
+
+	/* Setup pageblock_order for HUGETLB_PAGE_SIZE_VARIABLE */
+	set_pageblock_order();
+
+	/*
+	 * map is using big page (aka 2M in x86 64 bit)
+	 * usemap is less one page (aka 24 bytes)
+	 * so alloc 2M (with 2M align) and 24 bytes in turn will
+	 * make next 2M slip to one more 2M later.
+	 * then in big system, the memory will have a lot of holes...
+	 * here try to allocate 2M pages continuously.
+	 *
+	 * powerpc need to call sparse_init_one_section right after each
+	 * sparse_early_mem_map_alloc, so allocate usemap_map at first.
+	 */
+	size = sizeof(unsigned long *) * NR_MEM_SECTIONS;
+	usemap_map = memblock_virt_alloc(size, 0);
+	if (!usemap_map)
+		panic("can not allocate usemap_map\n");
+	alloc_usemap_and_memmap(sparse_early_usemaps_alloc_node,
+							(void *)usemap_map);
+
+#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
+	size2 = sizeof(struct page *) * NR_MEM_SECTIONS;
+	map_map = memblock_virt_alloc(size2, 0);
+	if (!map_map)
+		panic("can not allocate map_map\n");
+	alloc_usemap_and_memmap(sparse_early_mem_maps_alloc_node,
+							(void *)map_map);
+#endif
+
+	last_section_nr = pfn_to_section_nr(get_last_pfn());
+	for (pnum = 0; pnum <= last_section_nr; pnum++) {
+		if (!present_section_nr(pnum))
+			continue;
+
+		usemap = usemap_map[pnum];
+		if (!usemap)
+			continue;
+
+#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
+		map = map_map[pnum];
+#else
+		map = sparse_early_mem_map_alloc(pnum);
+#endif
+		if (!map)
+			continue;
+
+		sparse_init_one_section(__nr_to_section(pnum), pnum, map,
+								usemap);
+	}
+
+	vmemmap_populate_print_last();
+
+#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
+	memblock_free_early(__pa(map_map), size2);
+#endif
+	memblock_free_early(__pa(usemap_map), size);
+}
+
+2.1 sparse_init_one_section()
+================================================================================
+static int __meminit sparse_init_one_section(struct mem_section *ms,
+		unsigned long pnum, struct page *mem_map,
+		unsigned long *pageblock_bitmap)
+{
+	if (!present_section(ms))
+		return -EINVAL;
+
+	ms->section_mem_map &= ~SECTION_MAP_MASK;
+	ms->section_mem_map |= sparse_encode_mem_map(mem_map, pnum) |
+							SECTION_HAS_MEM_MAP;
+ 	ms->pageblock_flags = pageblock_bitmap;
+
+	return 1;
+}
+
+2.1.1 sparse_encode_mem_map()
+================================================================================
+static unsigned long sparse_encode_mem_map(struct page *mem_map, unsigned long pnum)
+{
+	return (unsigned long)(mem_map - (section_nr_to_pfn(pnum)));
+}
+
+0. data structure
+================================================================================
+
+0.1 section_to_node_table[NR_MEM_SECTIONS]
+================================================================================
+
+A node must has a size larger than section size?
+
+0.2 mem_section
+================================================================================
+; This is an array with total NR_MEM_SECTIONS
+; each row is one Page size
+
+    mem_section[NR_SECTION_ROOTS][SECTIONS_PER_ROOT]
+
+        +------------+------------+         +------------+------------+
+        |            |            |   ...   |            |            |
+        +------------+------------+         +------------+------------+
+      
+        +------------+------------+         +------------+------------+
+        |            |            |   ...   |            |            |
+        +------------+------------+         +------------+------------+
+
+        +------------+------------+         +------------+------------+
+        |            |            |   ...   |            |            |
+        +------------+------------+         +------------+------------+
+
+
+
+                                                    [PAGES_PER_SECTION]
+                                           +------> +------------------------+
+                                           |        |struct page             |
+                                           |        |                        |
+    mem_section                            |        +------------------------+
+    +-----------------------------+        |        |struct page             |
+    |section_mem_map              | -------+        |                        |
+    |   (unsigned long)           |                 +------------------------+
+    +-----------------------------+                 |                        |
+    |pageblock_flags              |                 .                        .
+    |   (unsigned long *)         |                 |                        |
+    +-----------------------------+                 +------------------------+
+       |                            
+       |                            
+       +----> +------------------------+                             
+              |                        |                             
+              |                        |
+              |                        |
+              |                        |
+              |                        |
+              +------------------------+

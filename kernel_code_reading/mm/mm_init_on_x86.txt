@@ -901,7 +901,7 @@ void __init paging_init(void)
 1.1.16.1 sparse_memory_present_with_active_regions()
 ================================================================================
 
-1.1.16.2 spare_init()
+1.1.16.2 sparse_init(), allocate the page table
 ================================================================================
 
 1.1.16.3 zone_sizes_init()
