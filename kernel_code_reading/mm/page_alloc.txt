@@ -1155,3 +1155,156 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 
 6.4 pfn_valid_within()
 ================================================================================
+
+7. free_area_init_nodes()
+================================================================================
+void __init free_area_init_nodes(unsigned long *max_zone_pfn)
+{
+	unsigned long start_pfn, end_pfn;
+	int i, nid;
+
+	/* Record where the zone boundaries are */
+	memset(arch_zone_lowest_possible_pfn, 0,
+				sizeof(arch_zone_lowest_possible_pfn));
+	memset(arch_zone_highest_possible_pfn, 0,
+				sizeof(arch_zone_highest_possible_pfn));
+
+	start_pfn = find_min_pfn_with_active_regions();
+
+	for (i = 0; i < MAX_NR_ZONES; i++) {
+		if (i == ZONE_MOVABLE)
+			continue;
+
+		end_pfn = max(max_zone_pfn[i], start_pfn);
+		arch_zone_lowest_possible_pfn[i] = start_pfn;
+		arch_zone_highest_possible_pfn[i] = end_pfn;
+
+		start_pfn = end_pfn;
+	}
+	arch_zone_lowest_possible_pfn[ZONE_MOVABLE] = 0;
+	arch_zone_highest_possible_pfn[ZONE_MOVABLE] = 0;
+
+	/* Find the PFNs that ZONE_MOVABLE begins at in each node */
+	memset(zone_movable_pfn, 0, sizeof(zone_movable_pfn));
+	find_zone_movable_pfns_for_nodes();
+
+	/* Print out the zone ranges */
+	pr_info("Zone ranges:\n");
+	for (i = 0; i < MAX_NR_ZONES; i++) {
+		if (i == ZONE_MOVABLE)
+			continue;
+		pr_info("  %-8s ", zone_names[i]);
+		if (arch_zone_lowest_possible_pfn[i] ==
+				arch_zone_highest_possible_pfn[i])
+			pr_cont("empty\n");
+		else
+			pr_cont("[mem %#018Lx-%#018Lx]\n",
+				(u64)arch_zone_lowest_possible_pfn[i]
+					<< PAGE_SHIFT,
+				((u64)arch_zone_highest_possible_pfn[i]
+					<< PAGE_SHIFT) - 1);
+	}
+
+	/* Print out the PFNs ZONE_MOVABLE begins at in each node */
+	pr_info("Movable zone start for each node\n");
+	for (i = 0; i < MAX_NUMNODES; i++) {
+		if (zone_movable_pfn[i])
+			pr_info("  Node %d: %#018Lx\n", i,
+			       (u64)zone_movable_pfn[i] << PAGE_SHIFT);
+	}
+
+	/* Print out the early node map */
+	pr_info("Early memory node ranges\n");
+	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, &nid)
+		pr_info("  node %3d: [mem %#018Lx-%#018Lx]\n", nid,
+			(u64)start_pfn << PAGE_SHIFT,
+			((u64)end_pfn << PAGE_SHIFT) - 1);
+
+	/* Initialise every node */
+	mminit_verify_pageflags_layout();
+	setup_nr_node_ids();
+	for_each_online_node(nid) {
+		pg_data_t *pgdat = NODE_DATA(nid);
+		free_area_init_node(nid, NULL,
+				find_min_pfn_for_node(nid), NULL);
+
+		/* Any memory on that node */
+		if (pgdat->node_present_pages)
+			node_set_state(nid, N_MEMORY);
+		check_for_memory(pgdat, nid);
+	}
+}
+
+7.1 find_zone_movable_pfns_for_nodes()
+================================================================================
+static void __init find_zone_movable_pfns_for_nodes(void)
+
+7.1.1 early_calculate_totalpages()
+================================================================================
+
+7.2 setup_nr_node_ids(), interesting, it stores the highest instead of the #
+================================================================================
+
+7.3 free_area_init_node(nid, NULL, min_pfn, NULL), setup pg_data for nid
+================================================================================
+
+7.3.1 calculate_node_totalpages(), pgdat->node_spanned/present_pages
+================================================================================
+
+7.3.1.1 zone_spanned_pages_in_node(), zone->spanned_pages
+================================================================================
+
+7.3.1.2 zone_absent_pages_in_node(), zone->present_pages
+================================================================================
+
+7.3.2 alloc_node_mem_map(), empty when using sparse_mem
+================================================================================
+
+7.3.3 free_area_init_core()
+================================================================================
+
+7.3.3.1 calc_memmap_size() <- interesting
+================================================================================
+
+7.3.3.2 is_highmem_idx()
+================================================================================
+
+7.3.3.3 zone_pcp_init()
+================================================================================
+
+7.3.3.4 set_pageblock_order()
+================================================================================
+
+7.3.3.5 setup_usemap()
+================================================================================
+
+7.3.3.6 init_currently_empty_zone()
+================================================================================
+
+7.3.3.7 memmap_init(), looks this is the core function
+================================================================================
+
+7.4 node_set_state(nid, N_MEMORY)
+================================================================================
+
+7.5 check_for_memory()
+================================================================================
+
+0. data structure
+================================================================================
+
+0.1 arch_zone_lowest/highest_possible_pfn[]
+================================================================================
+; dmesg: "Zone ranges:"
+; an example on x86_64
+
+   Memory
+
+                 16M                   4G
+   [   ZONE_DMA   |      ZONE_DMA32     |            ZONE_NORMAL      ]
+   ^              ^                     ^                             ^
+   |              |                     |                             |
+lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
+                lowest_pfn[1]        lowest_pfn[2]
+
+

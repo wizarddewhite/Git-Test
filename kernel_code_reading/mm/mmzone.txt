@@ -298,517 +298,6 @@ void __init zone_sizes_init(void)
 ; Early memory node ranges
 ; ...
 
-void __init free_area_init_nodes(unsigned long *max_zone_pfn)
-{
-	unsigned long start_pfn, end_pfn;
-	int i, nid;
-
-	/* Record where the zone boundaries are */
-	memset(arch_zone_lowest_possible_pfn, 0,
-				sizeof(arch_zone_lowest_possible_pfn));
-	memset(arch_zone_highest_possible_pfn, 0,
-				sizeof(arch_zone_highest_possible_pfn));
-	arch_zone_lowest_possible_pfn[0] = find_min_pfn_with_active_regions();
-	arch_zone_highest_possible_pfn[0] = max_zone_pfn[0];
-	for (i = 1; i < MAX_NR_ZONES; i++) {
-		if (i == ZONE_MOVABLE)
-			continue;
-		arch_zone_lowest_possible_pfn[i] =
-			arch_zone_highest_possible_pfn[i-1];
-		arch_zone_highest_possible_pfn[i] =
-			max(max_zone_pfn[i], arch_zone_lowest_possible_pfn[i]);
-	}
-	arch_zone_lowest_possible_pfn[ZONE_MOVABLE] = 0;
-	arch_zone_highest_possible_pfn[ZONE_MOVABLE] = 0;
-
-	/* Find the PFNs that ZONE_MOVABLE begins at in each node */
-	memset(zone_movable_pfn, 0, sizeof(zone_movable_pfn));
-	find_zone_movable_pfns_for_nodes();
-
-	/* Print out the zone ranges */
-	pr_info("Zone ranges:\n");
-	for (i = 0; i < MAX_NR_ZONES; i++) {
-		if (i == ZONE_MOVABLE)
-			continue;
-		pr_info("  %-8s ", zone_names[i]);
-		if (arch_zone_lowest_possible_pfn[i] ==
-				arch_zone_highest_possible_pfn[i])
-			pr_cont("empty\n");
-		else
-			pr_cont("[mem %#018Lx-%#018Lx]\n",
-				(u64)arch_zone_lowest_possible_pfn[i]
-					<< PAGE_SHIFT,
-				((u64)arch_zone_highest_possible_pfn[i]
-					<< PAGE_SHIFT) - 1);
-	}
-
-	/* Print out the PFNs ZONE_MOVABLE begins at in each node */
-	pr_info("Movable zone start for each node\n");
-	for (i = 0; i < MAX_NUMNODES; i++) {
-		if (zone_movable_pfn[i])
-			pr_info("  Node %d: %#018Lx\n", i,
-			       (u64)zone_movable_pfn[i] << PAGE_SHIFT);
-	}
-
-	/* Print out the early node map */
-	pr_info("Early memory node ranges\n");
-	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, &nid)
-		pr_info("  node %3d: [mem %#018Lx-%#018Lx]\n", nid,
-			(u64)start_pfn << PAGE_SHIFT,
-			((u64)end_pfn << PAGE_SHIFT) - 1);
-
-	/* Initialise every node */
-	mminit_verify_pageflags_layout();
-	setup_nr_node_ids();
-	for_each_online_node(nid) {
-		pg_data_t *pgdat = NODE_DATA(nid);
-		free_area_init_node(nid, NULL,
-				find_min_pfn_for_node(nid), NULL);
-
-		/* Any memory on that node */
-		if (pgdat->node_present_pages)
-			node_set_state(nid, N_MEMORY);
-		check_for_memory(pgdat, nid);
-	}
-}
-
-1.4.1.1 find_min_pfn_with_active_regions(), minimum value in memory region
-================================================================================
-unsigned long __init find_min_pfn_with_active_regions(void)
-{
-	return find_min_pfn_for_node(MAX_NUMNODES);
-}
-
-static unsigned long __init find_min_pfn_for_node(int nid)
-{
-	unsigned long min_pfn = ULONG_MAX;
-	unsigned long start_pfn;
-	int i;
-
-	for_each_mem_pfn_range(i, nid, &start_pfn, NULL, NULL)
-		min_pfn = min(min_pfn, start_pfn);
-
-	if (min_pfn == ULONG_MAX) {
-		printk(KERN_WARNING
-			"Could not find start_pfn for node %d\n", nid);
-		return 0;
-	}
-
-	return min_pfn;
-}
-
-1.4.1.2 find_zone_movable_pfns_for_nodes()
-================================================================================
-static void __init find_zone_movable_pfns_for_nodes(void)
-{
-	int i, nid;
-	unsigned long usable_startpfn;
-	unsigned long kernelcore_node, kernelcore_remaining;
-	/* save the state before borrow the nodemask */
-	nodemask_t saved_node_state = node_states[N_MEMORY];
-	unsigned long totalpages = early_calculate_totalpages();
-	int usable_nodes = nodes_weight(node_states[N_MEMORY]);
-	struct memblock_region *r;
-
-	/* Need to find movable_zone earlier when movable_node is specified. */
-	find_usable_zone_for_movable();
-
-	/*
-	 * If movable_node is specified, ignore kernelcore and movablecore
-	 * options.
-	 */
-	if (movable_node_is_enabled()) {
-		for_each_memblock(memory, r) {
-			if (!memblock_is_hotpluggable(r))
-				continue;
-
-			nid = r->nid;
-
-			usable_startpfn = PFN_DOWN(r->base);
-			zone_movable_pfn[nid] = zone_movable_pfn[nid] ?
-				min(usable_startpfn, zone_movable_pfn[nid]) :
-				usable_startpfn;
-		}
-
-		goto out2;
-	}
-
-	/*
-	 * If movablecore=nn[KMG] was specified, calculate what size of
-	 * kernelcore that corresponds so that memory usable for
-	 * any allocation type is evenly spread. If both kernelcore
-	 * and movablecore are specified, then the value of kernelcore
-	 * will be used for required_kernelcore if it's greater than
-	 * what movablecore would have allowed.
-	 */
-	if (required_movablecore) {
-		unsigned long corepages;
-
-		/*
-		 * Round-up so that ZONE_MOVABLE is at least as large as what
-		 * was requested by the user
-		 */
-		required_movablecore =
-			roundup(required_movablecore, MAX_ORDER_NR_PAGES);
-		corepages = totalpages - required_movablecore;
-
-		required_kernelcore = max(required_kernelcore, corepages);
-	}
-
-	/* If kernelcore was not specified, there is no ZONE_MOVABLE */
-	if (!required_kernelcore)
-		goto out;
-
-	/* usable_startpfn is the lowest possible pfn ZONE_MOVABLE can be at */
-	usable_startpfn = arch_zone_lowest_possible_pfn[movable_zone];
-
-restart:
-	/* Spread kernelcore memory as evenly as possible throughout nodes */
-	kernelcore_node = required_kernelcore / usable_nodes;
-	for_each_node_state(nid, N_MEMORY) {
-		unsigned long start_pfn, end_pfn;
-
-		/*
-		 * Recalculate kernelcore_node if the division per node
-		 * now exceeds what is necessary to satisfy the requested
-		 * amount of memory for the kernel
-		 */
-		if (required_kernelcore < kernelcore_node)
-			kernelcore_node = required_kernelcore / usable_nodes;
-
-		/*
-		 * As the map is walked, we track how much memory is usable
-		 * by the kernel using kernelcore_remaining. When it is
-		 * 0, the rest of the node is usable by ZONE_MOVABLE
-		 */
-		kernelcore_remaining = kernelcore_node;
-
-		/* Go through each range of PFNs within this node */
-		for_each_mem_pfn_range(i, nid, &start_pfn, &end_pfn, NULL) {
-			unsigned long size_pages;
-
-			start_pfn = max(start_pfn, zone_movable_pfn[nid]);
-			if (start_pfn >= end_pfn)
-				continue;
-
-			/* Account for what is only usable for kernelcore */
-			if (start_pfn < usable_startpfn) {
-				unsigned long kernel_pages;
-				kernel_pages = min(end_pfn, usable_startpfn)
-								- start_pfn;
-
-				kernelcore_remaining -= min(kernel_pages,
-							kernelcore_remaining);
-				required_kernelcore -= min(kernel_pages,
-							required_kernelcore);
-
-				/* Continue if range is now fully accounted */
-				if (end_pfn <= usable_startpfn) {
-
-					/*
-					 * Push zone_movable_pfn to the end so
-					 * that if we have to rebalance
-					 * kernelcore across nodes, we will
-					 * not double account here
-					 */
-					zone_movable_pfn[nid] = end_pfn;
-					continue;
-				}
-				start_pfn = usable_startpfn;
-			}
-
-			/*
-			 * The usable PFN range for ZONE_MOVABLE is from
-			 * start_pfn->end_pfn. Calculate size_pages as the
-			 * number of pages used as kernelcore
-			 */
-			size_pages = end_pfn - start_pfn;
-			if (size_pages > kernelcore_remaining)
-				size_pages = kernelcore_remaining;
-			zone_movable_pfn[nid] = start_pfn + size_pages;
-
-			/*
-			 * Some kernelcore has been met, update counts and
-			 * break if the kernelcore for this node has been
-			 * satisfied
-			 */
-			required_kernelcore -= min(required_kernelcore,
-								size_pages);
-			kernelcore_remaining -= size_pages;
-			if (!kernelcore_remaining)
-				break;
-		}
-	}
-
-	/*
-	 * If there is still required_kernelcore, we do another pass with one
-	 * less node in the count. This will push zone_movable_pfn[nid] further
-	 * along on the nodes that still have memory until kernelcore is
-	 * satisfied
-	 */
-	usable_nodes--;
-	if (usable_nodes && required_kernelcore > usable_nodes)
-		goto restart;
-
-out2:
-	/* Align start of ZONE_MOVABLE on all nids to MAX_ORDER_NR_PAGES */
-	for (nid = 0; nid < MAX_NUMNODES; nid++)
-		zone_movable_pfn[nid] =
-			roundup(zone_movable_pfn[nid], MAX_ORDER_NR_PAGES);
-
-out:
-	/* restore the node_state */
-	node_states[N_MEMORY] = saved_node_state;
-}
-
-1.4.1.3 mminit_verify_pageflags_layout(), mem debug info
-================================================================================
-
-1.4.1.4 setup_nr_node_ids(), Figure out the number of possible node ids.
-================================================================================
-void __init setup_nr_node_ids(void)
-{
-	unsigned int node;
-	unsigned int highest = 0;
-
-	for_each_node_mask(node, node_possible_map)
-		highest = node;
-	nr_node_ids = highest + 1;
-}
-
-1.4.1.5 free_area_init_node(), init node_data
-================================================================================
-see below 1.4.2 for detail
-
-1.4.1.6 check_for_memory()
-================================================================================
-static void check_for_memory(pg_data_t *pgdat, int nid)
-{
-	enum zone_type zone_type;
-
-	if (N_MEMORY == N_NORMAL_MEMORY)
-		return;
-
-	for (zone_type = 0; zone_type <= ZONE_MOVABLE - 1; zone_type++) {
-		struct zone *zone = &pgdat->node_zones[zone_type];
-		if (populated_zone(zone)) {
-			node_set_state(nid, N_HIGH_MEMORY);
-			if (N_NORMAL_MEMORY != N_HIGH_MEMORY &&
-			    zone_type <= ZONE_NORMAL)
-				node_set_state(nid, N_NORMAL_MEMORY);
-			break;
-		}
-	}
-}
-
-1.4.2 free_area_init_node(), init each NODE_DATA(nid)
-================================================================================
-void __paginginit free_area_init_node(int nid, unsigned long *zones_size,
-		unsigned long node_start_pfn, unsigned long *zholes_size)
-{
-	pg_data_t *pgdat = NODE_DATA(nid);
-	unsigned long start_pfn = 0;
-	unsigned long end_pfn = 0;
-
-	/* pg_data_t should be reset to zero when it's allocated */
-	WARN_ON(pgdat->nr_zones || pgdat->classzone_idx);
-
-	pgdat->node_id = nid;
-	pgdat->node_start_pfn = node_start_pfn;
-#ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
-	get_pfn_range_for_nid(nid, &start_pfn, &end_pfn);
-	pr_info("Initmem setup node %d [mem %#018Lx-%#018Lx]\n", nid,
-		(u64)start_pfn << PAGE_SHIFT, ((u64)end_pfn << PAGE_SHIFT) - 1);
-#endif
-	calculate_node_totalpages(pgdat, start_pfn, end_pfn,
-				  zones_size, zholes_size);
-
-	alloc_node_mem_map(pgdat);
-#ifdef CONFIG_FLAT_NODE_MEM_MAP
-	printk(KERN_DEBUG "free_area_init_node: node %d, pgdat %08lx, node_mem_map %08lx\n",
-		nid, (unsigned long)pgdat,
-		(unsigned long)pgdat->node_mem_map);
-#endif
-
-	free_area_init_core(pgdat, start_pfn, end_pfn,
-			    zones_size, zholes_size);
-}
-
-1.4.2.1 calculate_node_totalpages(), calculate spanned/real pages for node
-================================================================================
-static void __meminit calculate_node_totalpages(struct pglist_data *pgdat,
-						unsigned long node_start_pfn,
-						unsigned long node_end_pfn,
-						unsigned long *zones_size,
-						unsigned long *zholes_size)
-{
-	unsigned long realtotalpages, totalpages = 0;
-	enum zone_type i;
-
-	for (i = 0; i < MAX_NR_ZONES; i++)
-		totalpages += zone_spanned_pages_in_node(pgdat->node_id, i,
-							 node_start_pfn,
-							 node_end_pfn,
-							 zones_size);
-	pgdat->node_spanned_pages = totalpages;
-
-	realtotalpages = totalpages;
-	for (i = 0; i < MAX_NR_ZONES; i++)
-		realtotalpages -=
-			zone_absent_pages_in_node(pgdat->node_id, i,
-						  node_start_pfn, node_end_pfn,
-						  zholes_size);
-	pgdat->node_present_pages = realtotalpages;
-	printk(KERN_DEBUG "On node %d totalpages: %lu\n", pgdat->node_id,
-							realtotalpages);
-}
-
-1.4.2.2 alloc_node_mem_map(), allocate struct 'page' for mem
-================================================================================
-static void __init_refok alloc_node_mem_map(struct pglist_data *pgdat)
-{
-	/* Skip empty nodes */
-	if (!pgdat->node_spanned_pages)
-		return;
-
-#ifdef CONFIG_FLAT_NODE_MEM_MAP
-	/* ia64 gets its own node_mem_map, before this, without bootmem */
-	if (!pgdat->node_mem_map) {
-		unsigned long size, start, end;
-		struct page *map;
-
-		/*
-		 * The zone's endpoints aren't required to be MAX_ORDER
-		 * aligned but the node_mem_map endpoints must be in order
-		 * for the buddy allocator to function correctly.
-		 */
-		start = pgdat->node_start_pfn & ~(MAX_ORDER_NR_PAGES - 1);
-		end = pgdat_end_pfn(pgdat);
-		end = ALIGN(end, MAX_ORDER_NR_PAGES);
-		size =  (end - start) * sizeof(struct page);
-		map = alloc_remap(pgdat->node_id, size);
-		if (!map)
-			map = memblock_virt_alloc_node_nopanic(size,
-							       pgdat->node_id);
-		pgdat->node_mem_map = map + (pgdat->node_start_pfn - start);
-	}
-#ifndef CONFIG_NEED_MULTIPLE_NODES
-	/*
-	 * With no DISCONTIG, the global mem_map is just set as node 0's
-	 */
-	if (pgdat == NODE_DATA(0)) {
-		mem_map = NODE_DATA(0)->node_mem_map;
-#ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
-		if (page_to_pfn(mem_map) != pgdat->node_start_pfn)
-			mem_map -= (pgdat->node_start_pfn - ARCH_PFN_OFFSET);
-#endif /* CONFIG_HAVE_MEMBLOCK_NODE_MAP */
-	}
-#endif
-#endif /* CONFIG_FLAT_NODE_MEM_MAP */
-}
-
-1.4.2.3 free_area_init_core(), setup the pgdat for each node, also page
-================================================================================
-static void __paginginit free_area_init_core(struct pglist_data *pgdat,
-		unsigned long node_start_pfn, unsigned long node_end_pfn,
-		unsigned long *zones_size, unsigned long *zholes_size)
-{
-	enum zone_type j;
-	int nid = pgdat->node_id;
-	unsigned long zone_start_pfn = pgdat->node_start_pfn;
-	int ret;
-
-	pgdat_resize_init(pgdat);
-#ifdef CONFIG_NUMA_BALANCING
-	spin_lock_init(&pgdat->numabalancing_migrate_lock);
-	pgdat->numabalancing_migrate_nr_pages = 0;
-	pgdat->numabalancing_migrate_next_window = jiffies;
-#endif
-	init_waitqueue_head(&pgdat->kswapd_wait);
-	init_waitqueue_head(&pgdat->pfmemalloc_wait);
-	pgdat_page_ext_init(pgdat);
-
-	for (j = 0; j < MAX_NR_ZONES; j++) {
-		struct zone *zone = pgdat->node_zones + j;
-		unsigned long size, realsize, freesize, memmap_pages;
-
-		size = zone_spanned_pages_in_node(nid, j, node_start_pfn,
-						  node_end_pfn, zones_size);
-		realsize = freesize = size - zone_absent_pages_in_node(nid, j,
-								node_start_pfn,
-								node_end_pfn,
-								zholes_size);
-
-		/*
-		 * Adjust freesize so that it accounts for how much memory
-		 * is used by this zone for memmap. This affects the watermark
-		 * and per-cpu initialisations
-		 */
-		memmap_pages = calc_memmap_size(size, realsize);
-		if (!is_highmem_idx(j)) {
-			if (freesize >= memmap_pages) {
-				freesize -= memmap_pages;
-				if (memmap_pages)
-					printk(KERN_DEBUG
-					       "  %s zone: %lu pages used for memmap\n",
-					       zone_names[j], memmap_pages);
-			} else
-				printk(KERN_WARNING
-					"  %s zone: %lu pages exceeds freesize %lu\n",
-					zone_names[j], memmap_pages, freesize);
-		}
-
-		/* Account for reserved pages */
-		if (j == 0 && freesize > dma_reserve) {
-			freesize -= dma_reserve;
-			printk(KERN_DEBUG "  %s zone: %lu pages reserved\n",
-					zone_names[0], dma_reserve);
-		}
-
-		if (!is_highmem_idx(j))
-			nr_kernel_pages += freesize;
-		/* Charge for highmem memmap if there are enough kernel pages */
-		else if (nr_kernel_pages > memmap_pages * 2)
-			nr_kernel_pages -= memmap_pages;
-		nr_all_pages += freesize;
-
-		zone->spanned_pages = size;
-		zone->present_pages = realsize;
-		/*
-		 * Set an approximate value for lowmem here, it will be adjusted
-		 * when the bootmem allocator frees pages into the buddy system.
-		 * And all highmem pages will be managed by the buddy system.
-		 */
-		zone->managed_pages = is_highmem_idx(j) ? realsize : freesize;
-#ifdef CONFIG_NUMA
-		zone->node = nid;
-		zone->min_unmapped_pages = (freesize*sysctl_min_unmapped_ratio)
-						/ 100;
-		zone->min_slab_pages = (freesize * sysctl_min_slab_ratio) / 100;
-#endif
-		zone->name = zone_names[j];
-		spin_lock_init(&zone->lock);
-		spin_lock_init(&zone->lru_lock);
-		zone_seqlock_init(zone);
-		zone->zone_pgdat = pgdat;
-		zone_pcp_init(zone);
-
-		/* For bootup, initialized properly in watermark setup */
-		mod_zone_page_state(zone, NR_ALLOC_BATCH, zone->managed_pages);
-
-		lruvec_init(&zone->lruvec);
-		if (!size)
-			continue;
-
-		set_pageblock_order();
-		setup_usemap(pgdat, zone, zone_start_pfn, size);
-		ret = init_currently_empty_zone(zone, zone_start_pfn,
-						size, MEMMAP_EARLY);
-		BUG_ON(ret);
-		memmap_init(size, nid, j, zone_start_pfn);
-		zone_start_pfn += size;
-	}
-}
 
 1. build_all_zonelists(), called from start_kernel()
 ================================================================================
@@ -1092,59 +581,11 @@ static int page_alloc_cpu_notify(struct notifier_block *self,
 ================================================================================
 http://wiki.osdev.org/Detecting_Memory_(x86)
 
-0.1 node_data, each node has one
+0.1 arch_zone_lowest/highest_possible_pfn, node info included? -> no
 ================================================================================
-The zonelist in each node_data is built by build_zonelists()/build_zonelist_cache().
-node_data->node_zonelists[] will point to zones in all node_data.
+static unsigned long arch_zone_lowest_possible_pfn[MAX_NR_ZONES];
+static unsigned long arch_zone_highest_possible_pfn[MAX_NR_ZONES];
 
-
-MAX_NR_ZONES is defined in kernel/bounds.c DEFINE(MAX_NR_ZONES, __MAX_NR_ZONES);
-MAX_ZONELISTS is defined to 1 or 2.
-#define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES)
-
-   node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t), 
-   +-----------------------------+   <--------------------------------+
-   |node_id(int)                 |                                    |
-   |                             |                                    |
-   +-----------------------------+                                    |
-   |nr_zones (int)               |                                    |
-   |                             |                                    |
-   |                             |                                    |
-   +-----------------------------+       struct zone                  |
-   |node_zones[MAX_NR_ZONES]     |------>+-----------------------------------+<---------------------------------+
-   |   (struct zone)             |       |zone_pgdat                  |      |                                  |
-   |                             |       |  (struct pglist_data*)   --+      |                                  |
-   |                             |       +-----------------------------------+                                  |
-   |                             |       |                                   |                                  |
-   |                             |       |                                   |                                  |
-   |                             |       +-----------------------------------+                                  |
-   |                             |                                                                              |
-   +-----------------------------+                                                                              |
-   |node_zonelists[MAX_ZONELISTS]|                                                                              |
-   |   (struct zonelist)         |       struct zonelist                                                        |                                                                          |
-   |                             | ----->+-----------------------------------+                                  |
-   +-----------------------------+       |zlcache_ptr                        |                                  |
-   |node_start_pfn               |       |  (struct zonelist_cache*)         |                                  |
-   |node_present_pages           |       +-----------------------------------+    struct zoneref                |
-   |node_spanned_pages           |       |_zonerefs[MAX_ZONES_PER_ZONELIST]  |--->+------------------------+    |
-   |                             |       |  (struct zoneref)                 |    |zone                    |----+
-   +-----------------------------+       +-----------------------------------+    |   (struct zone*)       |
-   |reclaim_nodes                |       |                                   |    +------------------------+
-   |    (nodemask_t)             |       |                                   |    |zone_idx                |
-   +-----------------------------+       +-----------------------------------+    |   (int)                |
-   |kswapd_wait                  |       |zlcache                            |    +------------------------+
-   |    (wait_queue_head_t)      |       |  (struct zonelist_cache)          |
-   +-----------------------------+       +-----------------------------------+
-   |pfmemalloc_wait              |                                   
-   |    (wait_queue_head_t)      |
-   +-----------------------------+
-
-
-
-
-
-
-                                      
 0.2 nodemask_t node_stats[NR_NODE_STATES]
 ================================================================================
 
@@ -1171,13 +612,107 @@ enum node_states {
 	NR_NODE_STATES
 };
 
-0.3 zone
+0.3 node_data[], each node has one
+================================================================================
+; node_data[MAX_NUMNODES] is an array with pointers to pg_data_t.
+;
+; It is allocated in numa_register_memblks(). Each node with proper memory
+; would has one entry in node_data[].
+;
+; Then free_area_init_node() sets
+; * node_start_pfn/node_present_pages
+; * zone->start_pfn/spanned_pages
+;
+; The zonelist in each node_data is built by
+; build_zonelists()/build_zonelist_cache().  node_data->node_zonelists[] will
+; point to zones in all node_data.
+
+
+MAX_NR_ZONES is defined in kernel/bounds.c DEFINE(MAX_NR_ZONES, __MAX_NR_ZONES);
+MAX_ZONELISTS is defined to 1 or 2.
+#define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES)
+
+   node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t)
+   +-----------------------------+        
+   |node_id                <---+ |        
+   |   (int)                   | |        
+   +-----------------------------+        
+   |node_start_pfn             | |        
+   |   (unsigned long)         | |        
+   |node_present_pages         | |        
+   |node_spanned_pages         | |        
+   |   (unsigned long)         | |        
+   |                           | |        
+   +-----------------------------+        
+   |nr_zones                   | |        
+   |    (int)                  | |        
+   |                           | |        
+   +-----------------------------+    
+   |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
+   |   (struct zone)           | |    +---------------+    +---------------+    +---------------+
+   |   +-------------------------+    |               |    |               |    |               |
+   |   |                       | |    |               |    |               |    |               |
+   |   |zone_pgdat         ----+ |    +---------------+    +---------------+    +---------------+
+   |   |   (struct pglist_data*) |
+   |   +-------------------------+
+   |   |zone_start_pfn           |
+   |   |  (unsigned long)        |
+   |   |spanned_pages            |
+   |   |present_pages            |
+   |   |managed_pages            |
+   |   |  (unsigned long)        |
+   |   |                         |
+   +---+-------------------------+                                                                               
+   |node_zonelists[MAX_ZONELISTS]|
+   |   (struct zonelist)         |
+   |   +-------------------------+
+   |   |_zonerefs[]              | = MAX_NUMNODES * MAX_NR_ZONES + 1
+   |   | (struct zoneref)        | Node 0:
+   |   |  +----------------------+
+   |   |  |zone                  |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
+   |   |  |   (struct zone*)     |    +---------------+    +---------------+    +---------------+
+   |   |  |zone_idx              |    |               |    |               |    |               |
+   |   |  |   (int)              |    |               |    |               |    |               |
+   |   |  |                      |    +---------------+    +---------------+    +---------------+
+   |   |  |                      |
+   |   |  |                      | Node 1:
+   |   |  |                      |
+   |   |  |                      |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
+   |   |  |                      |    +---------------+    +---------------+    +---------------+
+   |   |  |                      |    |               |    |               |    |               |
+   |   |  |                      |    |               |    |               |    |               |
+   |   |  |                      |    +---------------+    +---------------+    +---------------+
+   |   |  |                      |
+   |   |  |                      |
+   +---+--+----------------------+
+   |reclaim_nodes                |
+   |    (nodemask_t)             |
+   +-----------------------------+
+   |kswapd_wait                  |
+   |    (wait_queue_head_t)      |
+   +-----------------------------+
+   |pfmemalloc_wait              |                                   
+   |    (wait_queue_head_t)      |
+   +-----------------------------+
+   |                             |
+   |                             |
+   |                             |
+   |                             |
+   +-----------------------------+
+
+
+
+
+0.4 zone
 ================================================================================
       struct zone
       +------------------------------+
       |watermark[NR_WMARK]           |
       |   (unsigned long)            |
       +------------------------------+
+      |zone_start_pfn                |
+      |   (unsigned long)            |
+      |spanned_pages                 |
       |present_pages                 |
       |managed_pages                 |
       |   (unsigned long)            |
@@ -1198,38 +733,39 @@ enum node_states {
       |   (unsigned int)             |
       +------------------------------+      The buddy system
       |free_area[MAX_ORDER]  0...11  |
-      |   (struct free_area)         |      page
-      |   +--------------------------+      +-----------+
-      |   |free_list[MIGRATE_TYPES]  |----->|lru        |
-      |   |(struct list_head)        |      |           |
-      |   +--------------------------+      +-----------+
-      |   |nr_free                   |  number of available pages in this area
-      |   |(unsigned long)           |
+      |   (struct free_area)         | 
+      |   +--------------------------+
+      |   |nr_free                   |  number of available pages
+      |   |(unsigned long)           |  in this zone
+      |   |                          |
+      |   +--------------------------+
+      |   |                          |     free_area[0]              free_area[1]              free_area[2]
+      |   |free_list[MIGRATE_TYPES]  |     +-------------------+     +-------------------+     +-------------------+
+      |   |(struct list_head)        |     |                   |     |                   |     |                   |
+      |   |                          |     +-------------------+     +-------------------+     +-------------------+
+      |   |                          |                | 
+      |   |                          |                |
+      |   |                          |                |
+      |   |                          |     free_list  |
+      |   |                          |     (list_head)v
+      |   |                          |          +--------------+
+      |   |                          |     [0]  |              |
+      |   |                          |          +--------------+
+      |   |                          |     [1]  |              |
+      |   |                          |          +--------------+
+      |   |                          |     [2]  |              |
+      |   |                          |          +--------------+
+      |   |                          |     [3]  |              |
+      |   |                          |          +--------------+
       |   |                          |
       +---+--------------------------+
+      |                              |
+      |                              |
+      |                              |
+      |                              |
+      |                              |
+      +------------------------------+
+           
 
-
-0.4 mem_section
+0.5 page
 ================================================================================
-
-struct mem_section mem_section[NR_SECTION_ROOTS][SECTIONS_PER_ROOT] ;
-
-       mem_section
-       +---------------------------+
-       |section_mem_map            |
-       |   (unsigned long)         |
-       +---------------------------+
-       |pageblock_flags            |
-       |   (unsigned long*)        |
-       +---------------------------+
-       |                           |
-       |                           |
-       +---------------------------+
-       |pad                        |
-       |   (unsigned long)         |
-       +---------------------------+
-
-0.5 arch_zone_lowest/highest_possible_pfn, node info included?
-================================================================================
-static unsigned long arch_zone_lowest_possible_pfn[MAX_NR_ZONES];
-static unsigned long arch_zone_highest_possible_pfn[MAX_NR_ZONES];
