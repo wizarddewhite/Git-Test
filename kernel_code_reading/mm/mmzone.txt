@@ -669,7 +669,7 @@ MAX_ZONELISTS is defined to 1 or 2.
    |   |_zonerefs[]              | = MAX_NUMNODES * MAX_NR_ZONES + 1
    |   | (struct zoneref)        | Node 0:
    |   |  +----------------------+
-   |   |  |zone                  |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
+   |   |  |zone                  |    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
    |   |  |   (struct zone*)     |    +---------------+    +---------------+    +---------------+
    |   |  |zone_idx              |    |               |    |               |    |               |
    |   |  |   (int)              |    |               |    |               |    |               |
@@ -677,7 +677,7 @@ MAX_ZONELISTS is defined to 1 or 2.
    |   |  |                      |
    |   |  |                      | Node 1:
    |   |  |                      |
-   |   |  |                      |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
+   |   |  |                      |    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
    |   |  |                      |    +---------------+    +---------------+    +---------------+
    |   |  |                      |    |               |    |               |    |               |
    |   |  |                      |    |               |    |               |    |               |
