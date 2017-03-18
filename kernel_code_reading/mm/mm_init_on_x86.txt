@@ -957,7 +957,16 @@ void __init mem_init(void)
 	mem_init_print_info(NULL);
 }
 
-1.3.1.1 free_all_bootmem(), bootmem is freed and added "page" to free_list
+1.3.1.1 pci_iommu_alloc(), interesting iommu table handling
+================================================================================
+
+1.3.1.2 register_page_bootmem_info(), resever node_data and mem_map in page
+================================================================================
+
+1.3.1.3 free_all_bootmem(), bootmem is freed and added "page" to free_list
+================================================================================
+
+1.3.1.4 mem_init_print_info()
 ================================================================================
 
 
