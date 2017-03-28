@@ -705,6 +705,13 @@ MAX_ZONELISTS is defined to 1 or 2.
 
 0.4 zone
 ================================================================================
+; zone->managed_pages
+;
+; calculated in free_area_init_core()
+; cleared at free_all_bootmem()
+; increased at __free_pages_boot_core()
+
+
       struct zone
       +------------------------------+
       |watermark[NR_WMARK]           |
