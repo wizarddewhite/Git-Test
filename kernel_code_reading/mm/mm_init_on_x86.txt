@@ -846,6 +846,10 @@ static inline void memblock_dump_all(void)
 1.1.14.2 load_cr3(), use init_level4_pgt
 ================================================================================
 
+1.1.15 memblock_set_current_limit(get_max_mapped())
+================================================================================
+; memblock_alloc could allocate from the whole memory space
+
 1.1.15 initmem_init(), numa_64.txt
 ================================================================================
 ; retrieve numa info
@@ -913,6 +917,9 @@ void __init paging_init(void)
 1.1.18 x86_init.resources.reserve_resource(), reserve in ioport
 ================================================================================
 
+1.2 setup_per_cpu_areas()
+================================================================================
+
 1.2 build_all_zonelists(), init node_data's zonelist
 ================================================================================
 
@@ -972,6 +979,21 @@ void __init mem_init(void)
 
 1.3.2 kmem_cache_init(), init the kmem_cache(slab)
 ================================================================================
+
+1.4 setup_per_cpu_pageset(), zone->per_cpu_pageset
+================================================================================
+void __init setup_per_cpu_pageset(void)
+{
+	struct pglist_data *pgdat;
+	struct zone *zone;
+
+	for_each_populated_zone(zone)
+		setup_zone_pageset(zone);
+
+	for_each_online_pgdat(pgdat)
+		pgdat->per_cpu_nodestats =
+			alloc_percpu(struct per_cpu_nodestat);
+}
 
 1.4 rest_init()
 ================================================================================

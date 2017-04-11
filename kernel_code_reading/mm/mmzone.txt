@@ -760,6 +760,18 @@ MAX_ZONELISTS is defined to 1 or 2.
       |percpu_drift_mark             |
       |   (unsigned long)            |
       +------------------------------+
+      |pageset                       |
+      |   (struct per_cpu_pageset *) |
+      |   +--------------------------+
+      |   |pcp                       |
+      |   |  (struct per_cpu_pages)  |
+      |   |  +-----------------------+
+      |   |  |count                  |
+      |   |  |high                   |
+      |   |  |batch                  |
+      |   |  |                       |
+      |   |  |lists[MIGRATE_PCPTYPES]|
+      +---+--+-----------------------+
       |lowmem_reserve[MAX_NR_ZONES]  |
       |   (unsigned long)            |
       +------------------------------+

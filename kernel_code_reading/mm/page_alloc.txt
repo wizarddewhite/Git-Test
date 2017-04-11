@@ -480,86 +480,60 @@ void __free_pages(struct page *page, unsigned int order)
 	}
 }
 
-5.1 __free_pages_ok()
+5.1 free_hot_cold_page()
 ================================================================================
-static void __free_pages_ok(struct page *page, unsigned int order)
+/*
+ * Free a 0-order page
+ * cold == true ? free a cold page : free a hot page
+ */
+void free_hot_cold_page(struct page *page, bool cold)
 {
+	struct zone *zone = page_zone(page);
+	struct per_cpu_pages *pcp;
 	unsigned long flags;
-	int migratetype;
 	unsigned long pfn = page_to_pfn(page);
+	int migratetype;
 
-	if (!free_pages_prepare(page, order))
+	if (!free_pcp_prepare(page))
 		return;
 
 	migratetype = get_pfnblock_migratetype(page, pfn);
+	set_pcppage_migratetype(page, migratetype);
 	local_irq_save(flags);
-	__count_vm_events(PGFREE, 1 << order);
-	set_freepage_migratetype(page, migratetype);
-	free_one_page(page_zone(page), page, pfn, order, migratetype);
+	__count_vm_event(PGFREE);
+
+	/*
+	 * We only track unmovable, reclaimable and movable on pcp lists.
+	 * Free ISOLATE pages back to the allocator because they are being
+	 * offlined but treat RESERVE as movable pages so we can get those
+	 * areas back if necessary. Otherwise, we may have to free
+	 * excessively into the page allocator
+	 */
+	if (migratetype >= MIGRATE_PCPTYPES) {
+		if (unlikely(is_migrate_isolate(migratetype))) {
+			free_one_page(zone, page, pfn, 0, migratetype);
+			goto out;
+		}
+		migratetype = MIGRATE_MOVABLE;
+	}
+
+	pcp = &this_cpu_ptr(zone->pageset)->pcp;
+	if (!cold)
+		list_add(&page->lru, &pcp->lists[migratetype]);
+	else
+		list_add_tail(&page->lru, &pcp->lists[migratetype]);
+	pcp->count++;
+	if (pcp->count >= pcp->high) {
+		unsigned long batch = READ_ONCE(pcp->batch);
+		free_pcppages_bulk(zone, batch, pcp);
+		pcp->count -= batch;
+	}
+
+out:
 	local_irq_restore(flags);
 }
 
-5.1.1 free_pages_prepare()
-================================================================================
-static bool free_pages_prepare(struct page *page, unsigned int order)
-{
-	bool compound = PageCompound(page);
-	int i, bad = 0;
-
-	VM_BUG_ON_PAGE(PageTail(page), page);
-	VM_BUG_ON_PAGE(compound && compound_order(page) != order, page);
-
-	trace_mm_page_free(page, order);
-	kmemcheck_free_shadow(page, order);
-	kasan_free_pages(page, order);
-
-	if (PageAnon(page))
-		page->mapping = NULL;
-	bad += free_pages_check(page);
-	for (i = 1; i < (1 << order); i++) {
-		if (compound)
-			bad += free_tail_pages_check(page, page + i);
-		bad += free_pages_check(page + i);
-	}
-	if (bad)
-		return false;
-
-	reset_page_owner(page, order);
-
-	if (!PageHighMem(page)) {
-		debug_check_no_locks_freed(page_address(page),
-					   PAGE_SIZE << order);
-		debug_check_no_obj_freed(page_address(page),
-					   PAGE_SIZE << order);
-	}
-	arch_free_page(page, order);
-	kernel_map_pages(page, 1 << order, 0);
-
-	return true;
-}
-
-5.1.2 free_one_page()
-================================================================================
-static void free_one_page(struct zone *zone,
-				struct page *page, unsigned long pfn,
-				unsigned int order,
-				int migratetype)
-{
-	unsigned long nr_scanned;
-	spin_lock(&zone->lock);
-	nr_scanned = zone_page_state(zone, NR_PAGES_SCANNED);
-	if (nr_scanned)
-		__mod_zone_page_state(zone, NR_PAGES_SCANNED, -nr_scanned);
-
-	if (unlikely(has_isolate_pageblock(zone) ||
-		is_migrate_isolate(migratetype))) {
-		migratetype = get_pfnblock_migratetype(page, pfn);
-	}
-	__free_one_page(page, pfn, zone, order, migratetype);
-	spin_unlock(&zone->lock);
-}
-
-5.1.2.1 __free_one_page(), freeing function for a buddy system allocator
+5.2 __free_pages_ok()
 ================================================================================
 
 6 __free_one_page(), freeing function for a buddy system allocator
@@ -1003,4 +977,7 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
 	alloc_pages_vma()
 	alloc_hugepage_vma()
 	alloc_slab_page()
+
+0.6 per_cpu_pages
+================================================================================
 
