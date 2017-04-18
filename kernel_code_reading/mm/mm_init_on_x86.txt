@@ -52,7 +52,7 @@ void main(void)
 	go_to_protected_mode();
 }
 
-0.1 detect_memory()
+0.1 detect_memory(), e820_init
 ================================================================================
 int detect_memory(void)
 {
@@ -643,10 +643,10 @@ void __init setup_memory_map(void)
 	e820_print_map(who);
 }
 
-1.1.4.1 x86_init.resource.memory_setup()
+1.1.4.1 x86_init.resource.memory_setup(), e820_init
 ================================================================================
 
-1.1.4.2 e820_print_map()
+1.1.4.2 e820_print_map(), e820_init
 ================================================================================
 
 1.1.5 memblock_x86_reserve_range_setup_data(), fill memblock.reserved
@@ -762,7 +762,7 @@ unsigned long __init e820_end_of_low_ram_pfn(void)
 1.1.12 reserve_brk()
 ================================================================================
 
-1.1.12 cleanup_highmap()
+1.1.12 cleanup_highmap(), kernel_pgtable
 ================================================================================
 
 1.1.13 memblock_x86_fill(), add e820 info to memblock
@@ -840,10 +840,10 @@ static inline void memblock_dump_all(void)
 1.1.14 init_mem_mapping(), kernel memory page table init
 ================================================================================
 
-1.1.14.1 memory_map_top_down()
+1.1.14.1 memory_map_top_down(), kernel_pgtable
 ================================================================================
 
-1.1.14.2 load_cr3(), use init_level4_pgt
+1.1.14.2 load_cr3(), use init_level4_pgt, kernel_pgtable
 ================================================================================
 
 1.1.15 memblock_set_current_limit(get_max_mapped())
@@ -917,7 +917,16 @@ void __init paging_init(void)
 1.1.18 x86_init.resources.reserve_resource(), reserve in ioport
 ================================================================================
 
-1.2 setup_per_cpu_areas()
+1.2 setup_per_cpu_areas(), percpu_init
+================================================================================
+
+1.2.1 pcpu_embed_first_chunk(), percpu_init
+================================================================================
+
+1.2.1.1 pcpu_build_alloc_info(), percpu_init
+================================================================================
+
+1.2.1.2 pcpu_setup_first_chunk(), percpu_init
 ================================================================================
 
 1.2 build_all_zonelists(), init node_data's zonelist
@@ -1056,4 +1065,106 @@ void __init setup_per_cpu_pageset(void)
      |   |type                  |
      +---+----------------------+
 
+0.0 memory init code path
+================================================================================
 
+After some period of digest, the memory management in linux kernel are divided
+into several pieces:
+
+* e820
+* memblock
+* pcpu
+* page
+* slub
+* kernel pagetable
+* etc
+
+In this section, I extract the code path for each part.
+
+0.0.1 kernel pagetable
+================================================================================
+
+```
+    /* use pgtable
+     * arch/x86/boot/compressed/head_64.S
+     */
+    leal	pgtable(%ebx), %eax
+    movl	%eax, %cr3
+
+    /* use early_level4_pgt
+     * arch/x86/kernel/head_64.S
+     */
+    movq	$(early_level4_pgt - __START_KERNEL_map), %rax
+    addq	phys_base(%rip), %rax
+    movq	%rax, %cr3
+
+    /* set init_level4_pgt kernel high mapping */
+    x86_64_start_kernel()
+        init_level4_pgt[511] = early_level4_pgt[511];
+
+    start_kernel()
+        setup_arch()
+            /* cleanup highmap */
+            cleanup_highmap()
+            init_mem_mapping()
+                /* map whole memory space */
+                memory_map_top_down()
+                /* switch to init_level4_pgt */
+                load_cr3(swapper_pg_dir);
+```
+
+0.0.2 e820
+================================================================================
+
+```
+    /* Retrieve the e820 table from BIOS */
+    main(), arch/x86/boot/main.c, called from arch/x86/boot/header.S
+        detect_memory()
+            detect_memory_e820(), save bios info to boot_params.e820_entries
+
+    /* store and sort e820 table to kernel area */
+    start_kernel()
+        setup_arch()
+            setup_memory_map(), 
+                default_machine_specific_memory_setup(), store and sort e820 table
+                e820_print_map()
+```
+
+0.0.3 memblock
+================================================================================
+
+```
+    start_kernel()
+        setup_arch()
+            memblock_x86_fill()
+            memblock_set_current_limit()
+```
+
+0.0.4 percpu_init
+================================================================================
+
+```
+    start_kernel()
+        setup_per_cpu_areas()
+            pcpu_embed_first_chunk()
+                pcpu_build_alloc_info()
+                pcpu_setup_first_chunk()
+```
+
+0.0.5 node->zone->page
+================================================================================
+
+```
+    start_kernel()
+        setup_arch()
+            initmem_init()
+                numa_init()                     retrieve numa info
+                    numa_register_memblks()     allocate pg_data for each node
+            paging_init()
+                sparse_init()                   allocate page structure
+                zone_sizes_init()               setup zone for each pg_data
+        build_all_zonelists()                   setup zone order
+        mm_init()
+            mem_init()
+                free_all_bootmem()              link page structure to zone
+```
