@@ -1,0 +1,45 @@
+1. x86_64_start_kernel()
+================================================================================
+
+1.1 set_intr_gate()
+================================================================================
+
+1.2 load_idt()
+================================================================================
+
+
+2. setup_arch()
+================================================================================
+
+2.1 early_trap_init(), DB and BP
+================================================================================
+/* Set of traps needed for early debugging. */
+void __init early_trap_init(void)
+{
+	/*
+	 * Don't use IST to set DEBUG_STACK as it doesn't work until TSS
+	 * is ready in cpu_init() <-- trap_init(). Before trap_init(),
+	 * CPU runs at ring 0 so it is impossible to hit an invalid
+	 * stack.  Using the original stack works well enough at this
+	 * early stage. DEBUG_STACK will be equipped after cpu_init() in
+	 * trap_init().
+	 *
+	 * We don't need to set trace_idt_table like set_intr_gate(),
+	 * since we don't have trace_debug and it will be reset to
+	 * 'debug' in trap_init() by set_intr_gate_ist().
+	 */
+	set_intr_gate_notrace(X86_TRAP_DB, debug);
+	/* int3 can be called from all */
+	set_system_intr_gate(X86_TRAP_BP, &int3);
+#ifdef CONFIG_X86_32
+	set_intr_gate(X86_TRAP_PF, page_fault);
+#endif
+	load_idt(&idt_descr);
+}
+
+
+2.1.1 debug, int3, defined in arch/x86/entry/entry_64.S
+================================================================================
+idtentry debug			do_debug		has_error_code=0	paranoid=1 shift_ist=DEBUG_STACK
+idtentry int3			do_int3			has_error_code=0	paranoid=1 shift_ist=DEBUG_STACK
+
