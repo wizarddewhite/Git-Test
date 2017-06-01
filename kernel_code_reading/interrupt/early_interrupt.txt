@@ -8,10 +8,13 @@
 ================================================================================
 
 
-2. setup_arch()
+2. start_kernel()
 ================================================================================
 
-2.1 early_trap_init(), DB and BP
+2.1 setup_arch()
+================================================================================
+
+2.1.1 early_trap_init(), DB and BP
 ================================================================================
 /* Set of traps needed for early debugging. */
 void __init early_trap_init(void)
@@ -38,8 +41,180 @@ void __init early_trap_init(void)
 }
 
 
-2.1.1 debug, int3, defined in arch/x86/entry/entry_64.S
+2.1.1.1 debug, int3, defined in arch/x86/entry/entry_64.S
 ================================================================================
 idtentry debug			do_debug		has_error_code=0	paranoid=1 shift_ist=DEBUG_STACK
 idtentry int3			do_int3			has_error_code=0	paranoid=1 shift_ist=DEBUG_STACK
 
+2.1.2 early_trap_pf_init()
+================================================================================
+
+2.1.2.1 do_page_fault()
+================================================================================
+trace_idtentry page_fault	do_page_fault		has_error_code=1
+
+
+2.2 trap_init()
+================================================================================
+
+
+2.3 early_irq_init()
+================================================================================
+
+2.3.1 init_irq_default_affinity()
+================================================================================
+static void __init init_irq_default_affinity(void)
+{
+#ifdef CONFIG_CPUMASK_OFFSTACK
+	if (!irq_default_affinity)
+		zalloc_cpumask_var(&irq_default_affinity, GFP_NOWAIT);
+#endif
+	if (cpumask_empty(irq_default_affinity))
+		cpumask_setall(irq_default_affinity);
+}
+
+2.3.2 arch_probe_nr_irqs()
+================================================================================
+int __init arch_probe_nr_irqs(void)
+{
+	int nr;
+
+	if (nr_irqs > (NR_VECTORS * nr_cpu_ids))
+		nr_irqs = NR_VECTORS * nr_cpu_ids;
+
+	nr = (gsi_top + nr_legacy_irqs()) + 8 * nr_cpu_ids;
+#if defined(CONFIG_PCI_MSI) || defined(CONFIG_HT_IRQ)
+	/*
+	 * for MSI and HT dyn irq
+	 */
+	if (gsi_top <= NR_IRQS_LEGACY)
+		nr +=  8 * nr_cpu_ids;
+	else
+		nr += gsi_top * 16;
+#endif
+	if (nr < nr_irqs)
+		nr_irqs = nr;
+
+	/*
+	 * We don't know if PIC is present at this point so we need to do
+	 * probe() to get the right number of legacy IRQs.
+	 */
+	return legacy_pic->probe();
+}
+
+2.3.2.1 legacy_pic->probe(), probe_8259A()
+================================================================================
+
+2.3.3 alloc_desc()
+================================================================================
+
+2.3.4 irq_insert_desc()
+================================================================================
+static void irq_insert_desc(unsigned int irq, struct irq_desc *desc)
+{
+	radix_tree_insert(&irq_desc_tree, irq, desc);
+}
+
+2.3.5 arch_early_irq_init()
+================================================================================
+
+2.3.5.1 init_legacy_irqs()
+================================================================================
+
+2.3.5.2 irq_domain_add_tree(), init x86_vector_domain
+================================================================================
+
+2.3.5.3 irq_set_default_host()
+================================================================================
+
+2.3.5.4 arch_init_msi_domain(), msi_default_domain
+================================================================================
+
+2.3.5.5 arch_init_htirq_domain(), htirq_domain
+================================================================================
+
+2.3.5.6 arch_early_ioapic_init()
+================================================================================
+
+
+2.4 init_IRQ()
+================================================================================
+
+
+0. data structure
+================================================================================
+
+0.1 irq_desc
+================================================================================
+
+    irq_desc
+    +--------------------------+   
+    |depth                     |
+    |wake_depth                |
+    |     (unsigned int)       |
+    +--------------------------+
+    |irq_common_data           |
+    | (struct irq_common_data) |
+    |  +-----------------------+
+    |  |state_use_accessors    |
+    |  |affinity               |
+    |  |msi_desc               |
+    |  |    (struct msi_desc *)|
+    |  |handler_data           |
+    |  |    (void *)           |
+    +--+-----------------------+
+    |irq_data                  |
+    |    (struct irq_data)     |
+    |  +-----------------------+
+    |  |mask                   |
+    |  |irq                    |
+    |  |                       |
+    |  |common                 |
+    |  |irq_chip               |     i8259A_chip
+    |  |irq_domain             |
+    |  |chip_data              |
+    |  |                       |
+    +--+-----------------------+
+    |handle_irq                |     handle_bad_irq, handle_level_irq
+    |                          |
+    +--------------------------+
+    |                          |
+    |                          |
+    +--------------------------+
+
+0.2 irq_domain
+================================================================================
+
+    +--------------------------+
+    |name                      |
+    |    (char *)              |
+    +--------------------------+
+    |ops                       |
+    |  (struct irq_domain_ops) |
+    |  +-----------------------+
+    |  |match                  |
+    |  |select                 |
+    |  |map                    |
+    |  |unmap                  |
+    |  |                       |
+    +--+-----------------------+
+    |host_data                 |
+    |   (void *)               |
+    +--------------------------+
+    |                          |
+    |                          |
+    +--------------------------+
+
+0.2 irq_desc_tree, a radix tree
+================================================================================
+
+            irq_desc_tree
+               /   \
+              /     \
+         irq_desc   irq_desc
+
+
+0.3 irq_default_domain
+================================================================================
+
+irq_default_domain = x86_vector_domain

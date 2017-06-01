@@ -1,39 +1,29 @@
-1. init_IRQ(void)
+1. init_IRQ()
 ================================================================================
 void __init init_IRQ(void)
 {
 	int i;
 
 	/*
-	 * We probably need a better place for this, but it works for
-	 * now ...
-	 */
-	x86_add_irq_domains();
-
-	/*
-	 * On cpu 0, Assign IRQ0_VECTOR..IRQ15_VECTOR's to IRQ 0..15.
+	 * On cpu 0, Assign ISA_IRQ_VECTOR(irq) to IRQ 0..15.
 	 * If these IRQ's are handled by legacy interrupt-controllers like PIC,
 	 * then this configuration will likely be static after the boot. If
 	 * these IRQ's are handled by more mordern controllers like IO-APIC,
 	 * then this vector space can be freed and re-used dynamically as the
 	 * irq's migrate etc.
 	 */
-	for (i = 0; i < legacy_pic->nr_legacy_irqs; i++)
-		per_cpu(vector_irq, 0)[IRQ0_VECTOR + i] = i;
+	for (i = 0; i < nr_legacy_irqs(); i++)
+		per_cpu(vector_irq, 0)[ISA_IRQ_VECTOR(i)] = irq_to_desc(i);
 
 	x86_init.irqs.intr_init();
 }
 
-1.1 x86_init.irqs.intr_init() = native_init_IRQ
+1.1 x86_init.irqs.intr_init() --> native_init_IRQ
 ================================================================================
-; for those empty external IDT entry, set them to interrupt[i]
 void __init native_init_IRQ(void)
 {
 	int i;
 
-	printk(KERN_ERR "%s: init the IRQ on x86\n", __func__);
-	printk(KERN_ERR "%s: the external interrupt table is at %p\n",
-			__func__, interrupt);
 	/* Execute any quirks before the call gates are initialised: */
 	x86_init.irqs.pre_vector_init();
 
@@ -45,12 +35,20 @@ void __init native_init_IRQ(void)
 	 * 'special' SMP interrupts)
 	 */
 	i = FIRST_EXTERNAL_VECTOR;
-	for_each_clear_bit_from(i, used_vectors, NR_VECTORS) {
+#ifndef CONFIG_X86_LOCAL_APIC
+#define first_system_vector NR_VECTORS
+#endif
+	for_each_clear_bit_from(i, used_vectors, first_system_vector) {
 		/* IA32_SYSCALL_VECTOR could be used in trap_init already. */
-		set_intr_gate(i, interrupt[i - FIRST_EXTERNAL_VECTOR]);
+		set_intr_gate(i, irq_entries_start +
+				8 * (i - FIRST_EXTERNAL_VECTOR));
 	}
+#ifdef CONFIG_X86_LOCAL_APIC
+	for_each_clear_bit_from(i, used_vectors, NR_VECTORS)
+		set_intr_gate(i, spurious_interrupt);
+#endif
 
-	if (!acpi_ioapic && !of_ioapic)
+	if (!acpi_ioapic && !of_ioapic && nr_legacy_irqs())
 		setup_irq(2, &irq2);
 
 #ifdef CONFIG_X86_32
@@ -58,103 +56,34 @@ void __init native_init_IRQ(void)
 #endif
 }
 
-2. interrupt in entry_32.S
+1.1.1 x86_init.irqs.pre_vector_init() --> init_ISA_irqs
 ================================================================================
-; I hope it is in arch/x86/kernel/entry_32.S
-
-ENTRY(interrupt)
-.section .entry.text, "ax"
-	.p2align 5
-	.p2align CONFIG_X86_L1_CACHE_SHIFT
-ENTRY(irq_entries_start)
-	RING0_INT_FRAME
-vector=FIRST_EXTERNAL_VECTOR
-.rept (NR_VECTORS-FIRST_EXTERNAL_VECTOR+6)/7
-	.balign 32
-  .rept	7
-    .if vector < NR_VECTORS
-      .if vector <> FIRST_EXTERNAL_VECTOR
-	CFI_ADJUST_CFA_OFFSET -4
-      .endif
-1:	pushl_cfi $(~vector+0x80)	/* Note: always in signed byte range */
-      .if ((vector-FIRST_EXTERNAL_VECTOR)%7) <> 6
-	jmp 2f
-      .endif
-      .previous
-	.long 1b
-      .section .entry.text, "ax"
-vector=vector+1
-    .endif
-  .endr
-2:	jmp common_interrupt
-.endr
-END(irq_entries_start)
-
-.previous
-END(interrupt)
-.previous
-
-2.1 common_interrupt
-================================================================================
-	.p2align CONFIG_X86_L1_CACHE_SHIFT
-common_interrupt:
-	ASM_CLAC
-	addl $-0x80,(%esp)	/* Adjust vector into the [-256,-1] range */
-	SAVE_ALL
-	TRACE_IRQS_OFF
-	movl %esp,%eax
-	call do_IRQ
-	jmp ret_from_intr
-ENDPROC(common_interrupt)
-	CFI_ENDPROC
-
-2.1.1 do_IRQ
-================================================================================
-unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
+void __init init_ISA_irqs(void)
 {
-	struct pt_regs *old_regs = set_irq_regs(regs);
+	struct irq_chip *chip = legacy_pic->chip;
+	int i;
 
-	/* high bit used in ret_from_ code  */
-	unsigned vector = ~regs->orig_ax;
-	unsigned irq;
+#if defined(CONFIG_X86_64) || defined(CONFIG_X86_LOCAL_APIC)
+	init_bsp_APIC();
+#endif
+	legacy_pic->init(0);
 
-	irq_enter();
-	exit_idle();
-
-	irq = __this_cpu_read(vector_irq[vector]);
-
-	if (!handle_irq(irq, regs)) {
-		ack_APIC_irq();
-
-		if (printk_ratelimit())
-			pr_emerg("%s: %d.%d No irq handler for vector (irq %d)\n",
-				__func__, smp_processor_id(), vector, irq);
-	}
-
-	irq_exit();
-
-	set_irq_regs(old_regs);
-	return 1;
+	for (i = 0; i < nr_legacy_irqs(); i++)
+		irq_set_chip_and_handler(i, chip, handle_level_irq);
 }
 
-2.1.1.1 handle_irq(), convert irq to desc and call desc->handle_irq()
+1.1.1.1 legacy_pic->init(0) --> init_8259A
 ================================================================================
-bool handle_irq(unsigned irq, struct pt_regs *regs)
-{
-	struct irq_desc *desc;
-	int overflow;
 
-	overflow = check_stack_overflow();
+1.1.1.2 irq_set_chip_and_handler(), i8259A_chip and handle_level_irq
+================================================================================
 
-	desc = irq_to_desc(irq);
-	if (unlikely(!desc))
-		return false;
+1.1.2 apic_intr_init(), alloc various IDT gates
+================================================================================
 
-	if (user_mode_vm(regs) || !execute_on_irq_stack(overflow, desc, irq)) {
-		if (unlikely(overflow))
-			print_stack_overflow();
-		desc->handle_irq(irq, desc);
-	}
+1.1.3 setup other IRQ gates, irq_entries_start
+================================================================================
 
-	return true;
-}
+1.1.3.1 do_IRQ(), desc->handle_irq()
+================================================================================
+
