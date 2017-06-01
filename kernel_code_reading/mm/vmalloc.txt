@@ -1,0 +1,176 @@
+1. vmalloc
+================================================================================
+void *vmalloc(unsigned long size)
+{
+	return __vmalloc_node_flags(size, NUMA_NO_NODE,
+				    GFP_KERNEL | __GFP_HIGHMEM);
+}
+
+static inline void *__vmalloc_node_flags(unsigned long size,
+					int node, gfp_t flags)
+{
+	return __vmalloc_node(size, 1, flags, PAGE_KERNEL,
+					node, __builtin_return_address(0));
+}
+
+static void *__vmalloc_node(unsigned long size, unsigned long align,
+			    gfp_t gfp_mask, pgprot_t prot,
+			    int node, const void *caller)
+{
+	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
+				gfp_mask, prot, 0, node, caller);
+}
+
+1.1 __vmalloc_node_range()
+================================================================================
+void *__vmalloc_node_range(unsigned long size, unsigned long align,
+			unsigned long start, unsigned long end, gfp_t gfp_mask,
+			pgprot_t prot, unsigned long vm_flags, int node,
+			const void *caller)
+{
+	struct vm_struct *area;
+	void *addr;
+	unsigned long real_size = size;
+
+	size = PAGE_ALIGN(size);
+	if (!size || (size >> PAGE_SHIFT) > totalram_pages)
+		goto fail;
+
+	area = __get_vm_area_node(size, align, VM_ALLOC | VM_UNINITIALIZED |
+				vm_flags, start, end, node, gfp_mask, caller);
+	if (!area)
+		goto fail;
+
+	addr = __vmalloc_area_node(area, gfp_mask, prot, node);
+	if (!addr)
+		return NULL;
+
+	/*
+	 * In this function, newly allocated vm_struct has VM_UNINITIALIZED
+	 * flag. It means that vm_struct is not fully initialized.
+	 * Now, it is fully initialized, so remove this flag here.
+	 */
+	clear_vm_uninitialized_flag(area);
+
+	/*
+	 * A ref_count = 2 is needed because vm_struct allocated in
+	 * __get_vm_area_node() contains a reference to the virtual address of
+	 * the vmalloc'ed block.
+	 */
+	kmemleak_alloc(addr, real_size, 2, gfp_mask);
+
+	return addr;
+
+fail:
+	warn_alloc(gfp_mask, NULL,
+			  "vmalloc: allocation failure: %lu bytes", real_size);
+	return NULL;
+}
+
+1.1.1 __get_vm_area_node()
+================================================================================
+static struct vm_struct *__get_vm_area_node(unsigned long size,
+		unsigned long align, unsigned long flags, unsigned long start,
+		unsigned long end, int node, gfp_t gfp_mask, const void *caller)
+{
+	struct vmap_area *va;
+	struct vm_struct *area;
+
+	BUG_ON(in_interrupt());
+	size = PAGE_ALIGN(size);
+	if (unlikely(!size))
+		return NULL;
+
+	if (flags & VM_IOREMAP)
+		align = 1ul << clamp_t(int, get_count_order_long(size),
+				       PAGE_SHIFT, IOREMAP_MAX_ORDER);
+
+	area = kzalloc_node(sizeof(*area), gfp_mask & GFP_RECLAIM_MASK, node);
+	if (unlikely(!area))
+		return NULL;
+
+	if (!(flags & VM_NO_GUARD))
+		size += PAGE_SIZE;
+
+	va = alloc_vmap_area(size, align, start, end, node, gfp_mask);
+	if (IS_ERR(va)) {
+		kfree(area);
+		return NULL;
+	}
+
+	setup_vmalloc_vm(area, va, flags, caller);
+
+	return area;
+}
+
+1.1.1.1 alloc_vmap_area()
+================================================================================
+
+1.1.1.2 setup_valloc_vm()
+================================================================================
+
+1.1.2 __vmalloc_area_node()
+================================================================================
+
+1.1.2.1 alloc_page()
+================================================================================
+
+1.1.2.2 map_vm_area()
+================================================================================
+
+
+
+
+0. data struct
+================================================================================
+
+0.1 vmap_area 
+================================================================================
+
+
+
+
+                               vmap_area
+                               +--------------+
+                               |rb_node       |
+                               +--------------+
+                               |va_start      |
+                               |va_end        |
+                               +--------------+
+
+
+
+            vmap_area                              vmap_area
+            +--------------+                       +--------------+
+            |rb_node       |                       |rb_node       |
+            +--------------+                       +--------------+
+            |va_start      |                       |va_start      |
+            |va_end        |                       |va_end        |
+            +--------------+                       +--------------+
+
+
+
+
+0.2 vm_struct 
+================================================================================
+
+
+    vm_struct
+    +-------------------------+
+    |next                     |
+    |    (struct vm_struct *) |
+    +-------------------------+
+    |addr                     |
+    |size                     |
+    |                         |
+    +-------------------------+
+    |pages                    |
+    |nr_pages                 |
+    |                         |
+    +-------------------------+
+    |                         |
+    |                         |
+    +-------------------------+
+
+
+
