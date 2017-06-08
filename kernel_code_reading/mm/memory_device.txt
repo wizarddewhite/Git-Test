@@ -1,8 +1,37 @@
-1. memory_dev_init()
+1. memory_dev_init(), called kernel_init->do_basic_setup->driver_init()
 ================================================================================
 
 1.1 subsys_system_register(&memory_subsys), /sys/devices/system/memory
 ================================================================================
+
+1.1.1 memory_subsys
+================================================================================
+
+1.1.2 memory_root_attr_group
+================================================================================
+static struct attribute *memory_root_attrs[] = {
+#ifdef CONFIG_ARCH_MEMORY_PROBE
+	&dev_attr_probe.attr,
+#endif
+
+#ifdef CONFIG_MEMORY_FAILURE
+	&dev_attr_soft_offline_page.attr,
+	&dev_attr_hard_offline_page.attr,
+#endif
+
+	&dev_attr_block_size_bytes.attr,
+	&dev_attr_auto_online_blocks.attr,
+	NULL
+};
+
+static struct attribute_group memory_root_attr_group = {
+	.attrs = memory_root_attrs,
+};
+
+static const struct attribute_group *memory_root_attr_groups[] = {
+	&memory_root_attr_group,
+	NULL,
+};
 
 1.2 add_memory_block(), iterate on each block
 ================================================================================
@@ -12,3 +41,7 @@
 
 1.2.1.1 register_memory(), /sys/devices/system/memory/memory0
 ================================================================================
+phys_index
+state
+phys_device
+removable
