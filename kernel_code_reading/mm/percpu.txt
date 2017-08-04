@@ -4,6 +4,15 @@
 1.1 pcpu_embed_first_chunk()
 ================================================================================
 
+1.1.1 pcpu_build_alloc_info()
+================================================================================
+
+1.1.1.1 pcpu_alloc_alloc_info()
+================================================================================
+
+1.1.2 pcpu_setup_first_chunk()
+================================================================================
+
 1.1 pcpu_page_first_chunk()
 ================================================================================
 
@@ -59,10 +68,10 @@ void __percpu *__alloc_percpu(size_t size, size_t align)
 5.1 pcpu_alloc()
 ================================================================================
 
-5.1.1 pcpu_need_to_extend()
+5.1.1 pcpu_need_to_extend(), return the size of new alloc
 ================================================================================
 
-5.1.2 pcpu_extend_area_map()
+5.1.2 pcpu_extend_area_map(), copy map and switch to the new one
 ================================================================================
 
 5.1.3 pcpu_alloc_area()
@@ -80,8 +89,18 @@ void __percpu *__alloc_percpu(size_t size, size_t align)
 5.1.7 pcpu_chunk_addr()
 ================================================================================
 
-5.1.8 __addr_to_pcpu_ptr()
+5.1.8 __addr_to_pcpu_ptr(chunk->base_addr + off), transform to a pcpu_ptr
 ================================================================================
+#define __addr_to_pcpu_ptr(addr)					\
+	(void __percpu *)((unsigned long)(addr) -			\
+			  (unsigned long)pcpu_base_addr	+		\
+			  (unsigned long)__per_cpu_start)
+
+= (chunk->base_addr + off) - pcpu_base_addr + __per_cpu_start
+= pcpu_base_addr + off - pcpu_base_addr + __per_cpu_start
+= __per_cpu_start + off
+
+Looks just like the static pcpu variable.
 
 6. free_percpu()
 ================================================================================
@@ -116,16 +135,24 @@ void __percpu *__alloc_percpu(size_t size, size_t align)
     +-------------------------+
     |nr_groups                |
     |  (int)                  |
-    |groups[]                 |
+    |groups[nr_groups]        |
     | (struct pcpu_group_info)|
     |  +----------------------+
     |  |nr_units              |     roundup(group_cnt[group], upa)
-    |  |base_offset           |
+    |  |base_offset           |     ptr - base
     |  |cpu_map[0]            |     cpu index this group maps to
-    |  |cpu_map[1]            |
-    |  |cpu_map[2]            |
+    |  |cpu_map[1]            |     1
+    |  |cpu_map[2]            |     3
+    |  |   (int *)            |
+    |  +----------------------+
+    |  |nr_units              |     roundup(group_cnt[group], upa)
+    |  |base_offset           |     ptr - base
+    |  |cpu_map[0]            |     cpu index this group maps to
+    |  |cpu_map[1]            |     2
+    |  |cpu_map[2]            |     4
     |  |   (int *)            |
     +--+----------------------+
+
 
 
 0.2 global variables
@@ -147,6 +174,51 @@ pcpu_unit_offsets[]     = [gi->base_offset + i * ai->unit_size]
 pcpu_first_chunk        = dchunk / schunk
 pcpu_nr_slots
 pcpu_slot[]
+
+0.1.1 variables in pcpu_setup_first_chunk()
+================================================================================
+
+ __per_cpu_start +-------------------+ -+-                   
+                 |                   |  |                   
+                 |                   |  |                   
+                 |                   |                      
+ __per_cpu_end   +-------------------+                      
+                                        delta               
+                                                            
+                                                            
+                                        |                   
+                 Group0                 |                   
+   --------------+-------------------+ -+- -+-   base
+        ^     ^  |cpu0               |  |   |                   
+       unit_size |                   |  |   |                   
+        |     v  |                   |      |               
+        |   -----+-------------------+  unit_off[2]                        
+        |        |cpu1               |      |               
+                 |                   |  |   |               
+    group_size[0]|                   |  |   |                                                       
+                 +-------------------+ -+-  |                                       
+        |        |cpu2               |      |               
+        |        |                   |      |               
+        v        |                   |            
+      -----      +-------------------+      group_offset[1]
+                                                            
+                                            |               
+                                            |               
+                                            |               
+                 Group1                     |               
+                 +-------------------+     -+-               
+                 |cpu3               |
+                 |                   |
+                 |                   |
+                 +-------------------+
+                 |cpu4               |
+                 |                   |
+                 |                   |
+                 +-------------------+ -+-
+                 |cpu5               |  |
+                 |                   |  unit_size
+                 |                   |  |
+                 +-------------------+ -+-
 
 
 0.3 pcpu_chunk
@@ -224,24 +296,29 @@ pcpu_slot[]
 0.3 pcpu_chunk
 ================================================================================
 
-    pcpu_slot[]
-    +-------------------+
-    |                   |
-    +-------------------+
-     |                   
-     |                   
-     |    pcpu_first_chunk              
-     |    +---------------------+      +---------------------+
-     +--->|                     |----->|                     |
-          +---------------------+      +---------------------+
-
+    pcpu_slot[pcpu_nr_slots], ordered by chunk->free_size
+    +-------------+-------------+-------------+-------------+
+    |0            |1            |2            |3            |
+    +-------------+-------------+-------------+-------------+
+           |             |             |             |
+           |             |             |             |
+           v             v             v             v
+    +-------------+-------------+-------------+-------------+
+    |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |
+    +-------------+-------------+-------------+-------------+
+    |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |
+    +-------------+-------------+-------------+-------------+
+    |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |
+    +-------------+-------------+-------------+-------------+
+    |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |pcpu_chunk   |
+    +-------------+-------------+-------------+-------------+
 
 
 
 0.2 __per_cpu_start, __per_cpu_end
 ================================================================================
 
-0.5 
+0.5 static pcpu area
 ================================================================================
 
 
