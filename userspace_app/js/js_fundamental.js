@@ -33,7 +33,7 @@ myLikeColorsList.splice(0,1);
 for (color in myLikeColorsList)
   console.log("I like %s", myLikeColorsList[color]);
 
-/* define object */
+/* 1.5 define object */
 var JsLessonInfo = {
   teacher: name,
   title: 'JavaScript编程入门',
@@ -46,6 +46,13 @@ var JsLessonInfo = {
 console.log(JsLessonInfo);
 JsLessonInfo.teacher = name + ' zhang';
 console.log("Teacher name: %s", JsLessonInfo.teacher);
+
+// syntax suguar
+var xiaoming = {
+  name,
+  age
+}
+console.log("%s is %d year's old", xiaoming.name, xiaoming.age);
 
 /* 2. control flow */
 
