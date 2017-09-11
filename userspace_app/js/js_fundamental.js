@@ -8,6 +8,7 @@ console.log('age is %d', age);
 console.log('age is %d', age + 2);
 
 /* 1.2 string */
+// https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/String
 var name = 'xiaoming';
 console.log('name is %s', name);
 console.log('name is %s', name + ' zhang');
@@ -23,6 +24,7 @@ else
 console.log('%s %s', name, isAdult?'is Adult':'isn\'t Adult');
 
 /* 1.4 list */
+// https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Array
 var myLikeColorsList = ['blue', 'green', 'black', 'white'];
 console.log("myLikeColorsList has %d colors", myLikeColorsList.length);
 console.log("\tFirst color is %s", myLikeColorsList[0]);
