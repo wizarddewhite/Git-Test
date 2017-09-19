@@ -93,3 +93,17 @@ while (i < myLikeColorsList.length) {
   console.log(myLikeColorsList[i]);
   i++;
 }
+
+/* 3. function */
+
+function sum_to(n)
+{
+  var sum = 0;
+  var i = 0;
+  for (i = 0; i <= n; i++) {
+    sum += i;
+  }
+  return sum;
+}
+
+console.log(sum(10));
