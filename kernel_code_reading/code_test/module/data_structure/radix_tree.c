@@ -16,6 +16,16 @@
  * =====================================================================================
  */
 
+/*
+ * Some interesting reference:
+ *
+ * Animation of radix tree:
+ * https://www.cs.usfca.edu/~galles/visualization/RadixTree.html
+ *
+ * LWN articles
+ * https://lwn.net/Articles/175432/
+ */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/radix-tree.h>
