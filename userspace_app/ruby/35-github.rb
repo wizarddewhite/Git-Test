@@ -28,14 +28,14 @@ require 'time'
 #puts response[0]["commit"]["committer"]["date"]
 
 # get my commit static
-response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/stats/participation',
-                {
-                  :params => {
-                    :access_token => 'Token',
-                  }
-                }
-              ))
-puts response['all'][0]
+#response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/stats/participation',
+#                {
+#                  :params => {
+#                    :access_token => 'Token',
+#                  }
+#                }
+#              ))
+#puts response['all'][0]
 
 # get my contributor info
 #page = 1
@@ -57,5 +57,17 @@ puts response['all'][0]
 #  end
 #  page += 1
 #end
-
 #puts contributors
+
+
+# get my watch/star/fork info
+response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin',
+                {
+                  :params => {
+                    :access_token => 'Token',
+                  }
+                }
+              ))
+puts response['stargazers_count']
+puts response['subscribers_count']
+puts response['forks_count']
