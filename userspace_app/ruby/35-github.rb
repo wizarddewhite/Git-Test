@@ -25,28 +25,37 @@ require 'time'
 #                  }
 #                }
 #              ))
-
 #puts response[0]["commit"]["committer"]["date"]
 
-# get my contributor info
-page = 1
-contributors = 0
-while true do
-  raw_response = RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/contributors',
-                  {
-                    :params => {
-                      :access_token => 'token',
-                      :page => page
-                    }
+# get my commit static
+response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/stats/participation',
+                {
+                  :params => {
+                    :access_token => 'Token',
                   }
-                )
-  response = JSON.parse(raw_response)
-  puts "Page " + page.to_s() + " Number " + response.length.to_s()
-  contributors += response.length
-  if response.length == 0
-    break
-  end
-  page += 1
-end
+                }
+              ))
+puts response['all'][0]
 
-puts contributors
+# get my contributor info
+#page = 1
+#contributors = 0
+#while true do
+#  raw_response = RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/contributors',
+#                  {
+#                    :params => {
+#                      :access_token => 'token',
+#                      :page => page
+#                    }
+#                  }
+#                )
+#  response = JSON.parse(raw_response)
+#  puts "Page " + page.to_s() + " Number " + response.length.to_s()
+#  contributors += response.length
+#  if response.length == 0
+#    break
+#  end
+#  page += 1
+#end
+
+#puts contributors
