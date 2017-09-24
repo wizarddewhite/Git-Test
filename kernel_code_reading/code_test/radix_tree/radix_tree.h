@@ -55,7 +55,7 @@ static inline bool radix_tree_is_internal_node(void *ptr)
 
 #define RADIX_TREE_MAX_TAGS 3
 
-#define RADIX_TREE_MAP_SHIFT	4 
+#define RADIX_TREE_MAP_SHIFT	2 
 
 #define RADIX_TREE_MAP_SIZE	(1UL << RADIX_TREE_MAP_SHIFT)
 #define RADIX_TREE_MAP_MASK	(RADIX_TREE_MAP_SIZE-1)
@@ -112,4 +112,15 @@ static inline int radix_tree_insert(struct radix_tree_root *root,
 {
 	return __radix_tree_insert(root, index, 0, entry);
 }
+
+static inline struct radix_tree_node *entry_to_node(void *ptr)
+{
+	return (void *)((unsigned long)ptr & ~RADIX_TREE_INTERNAL_NODE);
+}
+
+static inline void *node_to_entry(void *ptr)
+{
+	return (void *)((unsigned long)ptr | RADIX_TREE_INTERNAL_NODE);
+}
+
 #endif

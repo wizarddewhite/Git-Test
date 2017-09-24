@@ -49,16 +49,6 @@ static inline void all_tag_set(struct radix_tree_node *node, unsigned int tag)
 	memset(&node->tags[tag], 0xff, RADIX_TREE_MAP_SIZE);
 }
 
-static inline struct radix_tree_node *entry_to_node(void *ptr)
-{
-	return (void *)((unsigned long)ptr & ~RADIX_TREE_INTERNAL_NODE);
-}
-
-static inline void *node_to_entry(void *ptr)
-{
-	return (void *)((unsigned long)ptr | RADIX_TREE_INTERNAL_NODE);
-}
-
 static inline int radix_tree_exceptional_entry(void *arg)
 {
 	/* Not unlikely because radix_tree_exception often tested first */
@@ -149,6 +139,7 @@ out:
 #endif
 	ret = malloc(sizeof(struct radix_tree_node));
 	BUG_ON(radix_tree_is_internal_node(ret));
+	memset(ret, 0, sizeof(struct radix_tree_node));
 	if (ret) {
 		ret->shift = shift;
 		ret->offset = offset;
@@ -364,3 +355,4 @@ int __radix_tree_insert(struct radix_tree_root *root, unsigned long index,
 
 	return 0;
 }
+
