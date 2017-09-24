@@ -1,0 +1,142 @@
+1. RADIX_TREE(), define a root
+================================================================================
+#define RADIX_TREE(name, mask) \
+	struct radix_tree_root name = RADIX_TREE_INIT(mask)
+
+2. radix_tree_insert()
+================================================================================
+static inline int radix_tree_insert(struct radix_tree_root *root,
+			unsigned long index, void *entry)
+{
+	return __radix_tree_insert(root, index, 0, entry);
+}
+
+int __radix_tree_insert(struct radix_tree_root *root, unsigned long index,
+			unsigned order, void *item)
+{
+	struct radix_tree_node *node;
+	void __rcu **slot;
+	int error;
+
+	BUG_ON(radix_tree_is_internal_node(item));
+
+	error = __radix_tree_create(root, index, order, &node, &slot);
+	if (error)
+		return error;
+
+	error = insert_entries(node, slot, item, order, false);
+	if (error < 0)
+		return error;
+
+	if (node) {
+		unsigned offset = get_slot_offset(node, slot);
+		BUG_ON(tag_get(node, 0, offset));
+		BUG_ON(tag_get(node, 1, offset));
+		BUG_ON(tag_get(node, 2, offset));
+	} else {
+		BUG_ON(root_tags_get(root));
+	}
+
+	return 0;
+}
+
+2.1 __radix_tree_create(), find a proper @node and @slot, create it if need
+================================================================================
+int __radix_tree_create(struct radix_tree_root *root, unsigned long index,
+			unsigned order, struct radix_tree_node **nodep,
+			void __rcu ***slotp)
+{
+	struct radix_tree_node *node = NULL, *child;
+	void __rcu **slot = (void __rcu **)&root->rnode;
+	unsigned long maxindex;
+	unsigned int shift, offset = 0;
+	unsigned long max = index | ((1UL << order) - 1);
+	gfp_t gfp = root_gfp_mask(root);
+
+	shift = radix_tree_load_root(root, &child, &maxindex);
+
+	/* Make sure the tree is high enough.  */
+	if (order > 0 && max == ((1UL << order) - 1))
+		max++;
+	if (max > maxindex) {
+		int error = radix_tree_extend(root, gfp, max, shift);
+		if (error < 0)
+			return error;
+		shift = error;
+		child = rcu_dereference_raw(root->rnode);
+	}
+
+	while (shift > order) {
+		shift -= RADIX_TREE_MAP_SHIFT;
+		if (child == NULL) {
+			/* Have to add a child node.  */
+			child = radix_tree_node_alloc(gfp, node, root, shift,
+							offset, 0, 0);
+			if (!child)
+				return -ENOMEM;
+			rcu_assign_pointer(*slot, node_to_entry(child));
+			if (node)
+				node->count++;
+		} else if (!radix_tree_is_internal_node(child))
+			break;
+
+		/* Go a level down */
+		node = entry_to_node(child);
+		offset = radix_tree_descend(node, &child, index);
+		slot = &node->slots[offset];
+	}
+
+	if (nodep)
+		*nodep = node;
+	if (slotp)
+		*slotp = slot;
+	return 0;
+}
+
+2.1.1 radix_tree_load_root()
+================================================================================
+
+2.1.2 radix_tree_extend()
+================================================================================
+
+2.1.3 radix_tree_node_alloc()
+================================================================================
+
+2.1.4 radix_tree_descend()
+================================================================================
+static unsigned int radix_tree_descend(const struct radix_tree_node *parent,
+			struct radix_tree_node **nodep, unsigned long index)
+{
+	unsigned int offset = (index >> parent->shift) & RADIX_TREE_MAP_MASK;
+	void __rcu **entry = rcu_dereference_raw(parent->slots[offset]);
+
+#ifdef CONFIG_RADIX_TREE_MULTIORDER
+	if (radix_tree_is_internal_node(entry)) {
+		if (is_sibling_entry(parent, entry)) {
+			void __rcu **sibentry;
+			sibentry = (void __rcu **) entry_to_node(entry);
+			offset = get_slot_offset(parent, sibentry);
+			entry = rcu_dereference_raw(*sibentry);
+		}
+	}
+#endif
+
+	*nodep = (void *)entry;
+	return offset;
+}
+
+2.2 insert_entries(), put @item in the @slot which belongs to @node
+================================================================================
+static inline int insert_entries(struct radix_tree_node *node,
+		void __rcu **slot, void *item, unsigned order, bool replace)
+{
+	if (*slot)
+		return -EEXIST;
+	rcu_assign_pointer(*slot, item);
+	if (node) {
+		node->count++;
+		if (radix_tree_exceptional_entry(item))
+			node->exceptional++;
+	}
+	return 1;
+}
