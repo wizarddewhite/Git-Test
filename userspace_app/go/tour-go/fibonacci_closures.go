@@ -3,20 +3,20 @@ package main
 import "fmt"
 
 func fibonacci() func() int {
-	g_p, p, fib := 0, 0, 0
-	idx := 0
+	/* use -1 to indicate the value is uninitialized */
+	gp, p, fib := -1, -1, 0
 	return func() int {
-		if idx == 0 {
-			idx++
+		if p == -1 {
+			p = 0
 			return 0
-		} else if idx == 1 {
+		} else if gp == -1 {
 			p = 1
-			idx++
+			gp = 0
 			return 1
 		}
 
-		fib = g_p + p
-		g_p = p
+		fib = gp + p
+		gp = p
 		p = fib
 		return fib
 	}
