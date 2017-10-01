@@ -10,6 +10,12 @@ func sum(a []int, c chan int) {
 	c <- sum
 }
 
+func non() {
+	a := make(chan int, 1)
+	a <- 4
+	fmt.Println(<-a)
+}
+
 func main() {
 	a := []int{7, 2, 8, -9, 4, 0}
 
@@ -19,4 +25,5 @@ func main() {
 	x, y := <-c, <-c
 
 	fmt.Println(x, y, x+y)
+	non()
 }
