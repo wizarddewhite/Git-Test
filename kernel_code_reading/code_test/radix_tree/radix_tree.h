@@ -123,4 +123,6 @@ static inline void *node_to_entry(void *ptr)
 	return (void *)((unsigned long)ptr | RADIX_TREE_INTERNAL_NODE);
 }
 
+void *radix_tree_lookup(const struct radix_tree_root *root, unsigned long index);
+void *radix_tree_delete(struct radix_tree_root *root, unsigned long index);
 #endif

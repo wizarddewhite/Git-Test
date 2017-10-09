@@ -46,16 +46,25 @@ void dump_radix_tree(struct radix_tree_node *node, int level)
 int main()
 {
 	int i;
+	struct item *item;
 
 	items = malloc(sizeof(struct item) * num);
 	if (!items)
 		return 0;
 
-	for (i = 0; i < num; i++) {
+	for (i = 0; i < 1; i++) {
 		items[i].index = i;
 		if (i == 2)
 			continue;
 		radix_tree_insert(&rx_tree, i, &items[i]);
 	}
 	dump_radix_tree(rx_tree.rnode, 0);
+
+	item = radix_tree_lookup(&rx_tree, 2);
+	if (item)
+		printf("Found\n");
+	else
+		printf("Not Found\n");
+
+	radix_tree_delete(&rx_tree, 0);
 }
