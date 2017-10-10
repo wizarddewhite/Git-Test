@@ -9,6 +9,22 @@ static struct item *items;
 static RADIX_TREE(rx_tree, 0/* GFP_KERNEL */);
 int num = 17;
 
+static unsigned long get_offset(struct radix_tree_node *node)
+{
+	struct radix_tree_node *parent;
+	unsigned long offset = 0;
+
+	parent = node->parent;
+
+	while (parent) {
+		offset += ((unsigned long)(node->offset) << (unsigned long)parent->shift);
+		node = parent;
+		parent = node->parent;
+	}
+
+	return offset;
+}
+
 void dump_radix_tree(struct radix_tree_node *node, int level, bool supress)
 {
 	int  i;
@@ -23,37 +39,73 @@ void dump_radix_tree(struct radix_tree_node *node, int level, bool supress)
 		return;
 	}
 
+	node = entry_to_node(node);
+
 	/* Neither a leaf nor the root */
-	if (entry_to_node(node)->parent)
-		printf("+(s:%d, b:%d)\n",
-			entry_to_node(node)->parent->shift,
-			(1 << entry_to_node(node)->parent->shift) *
-			entry_to_node(node)->offset
+	if (node->parent)
+		printf("+(s:%d, o:%016lx)\n",
+			node->parent->shift,
+			get_offset(node)
 			);
 
 	for (i = 0; i < RADIX_TREE_MAP_SIZE; i++) {
-		if (supress && !entry_to_node(node)->slots[i])
+		if (supress && !node->slots[i])
 			continue;
 
 		if (!level)
 			printf("|[%d]", i);
 		else
 			printf("%*s|[%d]", level*4, " ", i);
-		if (entry_to_node(node)->slots[i])
-			dump_radix_tree(entry_to_node(node)->slots[i], level+1, supress);
+		if (node->slots[i])
+			dump_radix_tree(node->slots[i], level+1, supress);
 		else
 			printf("\n");
 	}
 }
 
-int main()
+void small_test()
+{
+	int i;
+
+	items = malloc(sizeof(struct item) * num);
+	if (!items)
+		return;
+
+	for (i = 0; i < num; i++) {
+		items[i].index = i;
+		if (i == 2)
+			continue;
+		radix_tree_insert(&rx_tree, i, &items[i]);
+	}
+	radix_tree_insert(&rx_tree, 0xff, &items[2]);
+	dump_radix_tree(rx_tree.rnode, 0, false);
+}
+
+void large_test()
+{
+	int i;
+
+	items = malloc(sizeof(struct item) * num);
+	if (!items)
+		return;
+
+	for (i = 0; i < num; i++) {
+		items[i].index = i;
+	}
+	//radix_tree_insert(&rx_tree, 0xffffffff, &items[i]);
+	radix_tree_insert(&rx_tree, 0xf000000000000000, &items[i]);
+	radix_tree_insert(&rx_tree, 0xffffffffffffffff, &items[i]);
+	dump_radix_tree(rx_tree.rnode, 0, true);
+}
+
+void lookup_delete_test()
 {
 	int i;
 	struct item *item;
 
 	items = malloc(sizeof(struct item) * num);
 	if (!items)
-		return 0;
+		return;
 
 	for (i = 0; i < 1; i++) {
 		items[i].index = i;
@@ -70,4 +122,10 @@ int main()
 		printf("Not Found\n");
 
 	radix_tree_delete(&rx_tree, 0);
+}
+
+int main()
+{
+	//small_test();
+	large_test();
 }
