@@ -9,7 +9,7 @@ static struct item *items;
 static RADIX_TREE(rx_tree, 0/* GFP_KERNEL */);
 int num = 17;
 
-void dump_radix_tree(struct radix_tree_node *node, int level)
+void dump_radix_tree(struct radix_tree_node *node, int level, bool supress)
 {
 	int  i;
 
@@ -32,12 +32,15 @@ void dump_radix_tree(struct radix_tree_node *node, int level)
 			);
 
 	for (i = 0; i < RADIX_TREE_MAP_SIZE; i++) {
+		if (supress && !entry_to_node(node)->slots[i])
+			continue;
+
 		if (!level)
 			printf("|[%d]", i);
 		else
 			printf("%*s|[%d]", level*4, " ", i);
 		if (entry_to_node(node)->slots[i])
-			dump_radix_tree(entry_to_node(node)->slots[i], level+1);
+			dump_radix_tree(entry_to_node(node)->slots[i], level+1, supress);
 		else
 			printf("\n");
 	}
@@ -58,7 +61,7 @@ int main()
 			continue;
 		radix_tree_insert(&rx_tree, i, &items[i]);
 	}
-	dump_radix_tree(rx_tree.rnode, 0);
+	dump_radix_tree(rx_tree.rnode, 0, false);
 
 	item = radix_tree_lookup(&rx_tree, 2);
 	if (item)
