@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "radix_tree.h"
+#include "idr.h"
 
 struct item {
 	int index;
@@ -124,8 +125,23 @@ void lookup_delete_test()
 	radix_tree_delete(&rx_tree, 0);
 }
 
+void idr_test()
+{
+	struct idr idr_index;
+	int index;
+
+	items = malloc(sizeof(struct item) * num);
+
+	idr_init(&idr_index);
+
+	index = idr_alloc(&idr_index, &items[1], 0, 10, (gfp_t)1);
+	printf("index is %d\n", index);
+
+}
+
 int main()
 {
 	//small_test();
-	large_test();
+	//large_test();
+	idr_test();
 }

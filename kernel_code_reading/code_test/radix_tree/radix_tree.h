@@ -8,6 +8,42 @@
 #define BITS_PER_LONG 64
 typedef unsigned gfp_t;
 
+#define INT_MAX		((int)(~0U>>1))
+
+#define max(a,b) ((a) > (b) ? a : b)
+#define min(a,b) ((a) < (b) ? a : b)
+
+static inline unsigned long __ffs(unsigned long word)
+{
+	int num = 0;
+
+#if BITS_PER_LONG == 64
+	if ((word & 0xffffffff) == 0) {
+		num += 32;
+		word >>= 32;
+	}
+#endif
+	if ((word & 0xffff) == 0) {
+		num += 16;
+		word >>= 16;
+	}
+	if ((word & 0xff) == 0) {
+		num += 8;
+		word >>= 8;
+	}
+	if ((word & 0xf) == 0) {
+		num += 4;
+		word >>= 4;
+	}
+	if ((word & 0x3) == 0) {
+		num += 2;
+		word >>= 2;
+	}
+	if ((word & 0x1) == 0)
+		num += 1;
+	return num;
+}
+
 #define __GFP_BITS_SHIFT (25)
 #define IDR_FREE	0
 
@@ -105,6 +141,12 @@ struct radix_tree_root {
 #define RADIX_TREE(name, mask) \
 	struct radix_tree_root name = RADIX_TREE_INIT(mask)
 
+#define INIT_RADIX_TREE(root, mask)					\
+do {									\
+	(root)->gfp_mask = (mask);					\
+	(root)->rnode = NULL;						\
+} while (0)
+
 int __radix_tree_insert(struct radix_tree_root *, unsigned long index,
 			unsigned order, void *);
 static inline int radix_tree_insert(struct radix_tree_root *root,
@@ -123,6 +165,56 @@ static inline void *node_to_entry(void *ptr)
 	return (void *)((unsigned long)ptr | RADIX_TREE_INTERNAL_NODE);
 }
 
+struct radix_tree_iter {
+	unsigned long	index;
+	unsigned long	next_index;
+	unsigned long	tags;
+	struct radix_tree_node *node;
+#ifdef CONFIG_RADIX_TREE_MULTIORDER
+	unsigned int	shift;
+#endif
+};
+
+static inline void **
+radix_tree_iter_init(struct radix_tree_iter *iter, unsigned long start)
+{
+	/*
+	 * Leave iter->tags uninitialized. radix_tree_next_chunk() will fill it
+	 * in the case of a successful tagged chunk lookup.  If the lookup was
+	 * unsuccessful or non-tagged then nobody cares about ->tags.
+	 *
+	 * Set index to zero to bypass next_index overflow protection.
+	 * See the comment in radix_tree_next_chunk() for details.
+	 */
+	iter->index = 0;
+	iter->next_index = start;
+	return NULL;
+}
+
 void *radix_tree_lookup(const struct radix_tree_root *root, unsigned long index);
 void *radix_tree_delete(struct radix_tree_root *root, unsigned long index);
+typedef void (*radix_tree_update_node_t)(struct radix_tree_node *, void *);
+
+static inline unsigned int iter_shift(const struct radix_tree_iter *iter)
+{
+#ifdef CONFIG_RADIX_TREE_MULTIORDER
+	return iter->shift;
+#else
+	return 0;
+#endif
+}
+
+static inline unsigned long
+__radix_tree_iter_add(struct radix_tree_iter *iter, unsigned long slots)
+{
+	return iter->index + (slots << iter_shift(iter));
+}
+
+void **idr_get_free(struct radix_tree_root *root,
+			struct radix_tree_iter *iter, gfp_t gfp, int end);
+void radix_tree_iter_replace(struct radix_tree_root *root,
+				const struct radix_tree_iter *iter,
+				void **slot, void *item);
+void radix_tree_iter_tag_clear(struct radix_tree_root *root,
+			const struct radix_tree_iter *iter, unsigned int tag);
 #endif
