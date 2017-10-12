@@ -117,7 +117,7 @@ static inline bool is_idr(const struct radix_tree_root *root)
 static inline void all_tag_set(struct radix_tree_node *node, unsigned int tag)
 {
 	//bitmap_fill(node->tags[tag], RADIX_TREE_MAP_SIZE);
-	memset(&node->tags[tag], 0xff, RADIX_TREE_MAP_SIZE);
+	memset(&node->tags[tag], 0xff, RADIX_TREE_TAG_LONGS * sizeof(unsigned long));
 }
 
 static inline int radix_tree_exceptional_entry(void *arg)
