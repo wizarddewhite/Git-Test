@@ -168,3 +168,24 @@ static inline int insert_entries(struct radix_tree_node *node,
 4.2.2.1 radix_tree_shrink()
 ================================================================================
 
+5. radix_tree_iter_init()
+================================================================================
+static __always_inline void __rcu **
+radix_tree_iter_init(struct radix_tree_iter *iter, unsigned long start)
+{
+	/*
+	 * Leave iter->tags uninitialized. radix_tree_next_chunk() will fill it
+	 * in the case of a successful tagged chunk lookup.  If the lookup was
+	 * unsuccessful or non-tagged then nobody cares about ->tags.
+	 *
+	 * Set index to zero to bypass next_index overflow protection.
+	 * See the comment in radix_tree_next_chunk() for details.
+	 */
+	iter->index = 0;
+	iter->next_index = start;
+	return NULL;
+}
+
+6. radix_tree_iter_replace()
+================================================================================
+
