@@ -28,14 +28,16 @@ require 'time'
 #puts response[0]["commit"]["committer"]["date"]
 
 # get my commit static
-#response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/stats/participation',
-#                {
-#                  :params => {
-#                    :access_token => 'Token',
-#                  }
-#                }
-#              ))
-#puts response['all'][0]
+response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin' + '/stats/participation',
+                {
+                  :params => {
+                    #:access_token => 'Token',
+                  }
+                }
+              ))
+weekly_commits = response['all'].join(",")
+puts weekly_commits
+puts weekly_commits.split(",")[51]
 
 # get my contributor info
 #page = 1
@@ -61,13 +63,13 @@ require 'time'
 
 
 # get my watch/star/fork info
-response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin',
-                {
-                  :params => {
-                    :access_token => 'Token',
-                  }
-                }
-              ))
-puts response['stargazers_count']
-puts response['subscribers_count']
-puts response['forks_count']
+#response = JSON.parse(RestClient.get('https://api.github.com/repos/'+ 'bitcoin/bitcoin',
+#                {
+#                  :params => {
+#                    :access_token => 'Token',
+#                  }
+#                }
+#              ))
+#puts response['stargazers_count']
+#puts response['subscribers_count']
+#puts response['forks_count']
