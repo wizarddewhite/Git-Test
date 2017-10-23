@@ -9,17 +9,16 @@ conf=$HOME/.freeland.conf
 keyfile=$HOME/.ssh/id_rsa
 pub_keyfile=$HOME/.ssh/id_rsa.pub
 proxy=""
+port=1080
 
 function usage() 
 {
-    echo "Usage: $0 [setup|up|down|stat|on|off]"
+    echo "Usage: $0 [setup|up|down|stat]"
     echo "Before using, run \"$0 setup\" first to prepare the environment."
     echo " "
     echo "setup: upload key and setup your account"
     echo "up:    create connection"
     echo "down:  destroy connection"
-    echo "on:    SOCKS proxy enabled"
-    echo "off:   SOCKS proxy disabled"
     echo "stat:  show connection state"
     exit 0
 }
@@ -51,13 +50,6 @@ elif [ "$1" == "down" ]; then
 	DOWN=true
 elif [ "$1" == "stat" ]; then
 	STAT=true
-elif [ "$1" == "on" ]; then
-	networksetup -setsocksfirewallproxy Wi-Fi localhost 1080
-	sudo networksetup -setsocksfirewallproxystate Wi-Fi on
-	exit
-elif [ "$1" == "off" ]; then
-	sudo networksetup -setsocksfirewallproxystate Wi-Fi off
-	exit
 else
 	usage
 fi
@@ -65,13 +57,18 @@ fi
 if [ "$UP" = true ]; then
 	read_conf
     	echo making connection to $proxy
-	ssh -M -S .freeland-control -fND 1080 $proxy
+	ssh -M -S .freeland-control -fND $port $proxy
+	sleep 1
+	networksetup -setsocksfirewallproxy Wi-Fi localhost $port
+	sudo networksetup -setsocksfirewallproxystate Wi-Fi on
 	echo UP!!!
 	exit
 fi
 
 if [ "$DOWN" = true ]; then
 	read_conf
+	sudo networksetup -setsocksfirewallproxystate Wi-Fi off
+	sleep 1
 	ssh -S .freeland-control -O exit $proxy
 	echo $proxy connection down!!!
 	exit
