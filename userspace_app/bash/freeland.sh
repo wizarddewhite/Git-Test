@@ -57,7 +57,7 @@ fi
 if [ "$UP" = true ]; then
 	read_conf
     	echo making connection to $proxy
-	ssh -M -S .freeland-control -fND $port $proxy
+	ssh -M -S .freeland-control -fND $port $proxy &> /dev/null
 	sleep 1
 	networksetup -setsocksfirewallproxy Wi-Fi localhost $port
 	sudo networksetup -setsocksfirewallproxystate Wi-Fi on
