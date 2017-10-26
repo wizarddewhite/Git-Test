@@ -59,7 +59,8 @@ if [ "$UP" = true ]; then
     	echo making connection to $proxy
 	ssh -M -S .freeland-control -fND $port $proxy &> /dev/null
 	sleep 1
-	networksetup -setsocksfirewallproxy Wi-Fi localhost $port
+	echo -n "Your MAC "
+	sudo networksetup -setsocksfirewallproxy Wi-Fi localhost $port
 	sudo networksetup -setsocksfirewallproxystate Wi-Fi on
 	echo UP!!!
 	exit
@@ -67,6 +68,7 @@ fi
 
 if [ "$DOWN" = true ]; then
 	read_conf
+	echo -n "Your MAC "
 	sudo networksetup -setsocksfirewallproxystate Wi-Fi off
 	sleep 1
 	ssh -S .freeland-control -O exit $proxy
