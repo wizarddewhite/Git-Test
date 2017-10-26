@@ -57,7 +57,7 @@ fi
 if [ "$UP" = true ]; then
 	read_conf
     	echo making connection to $proxy
-	ssh -M -S .freeland-control -fND $port $proxy &> /dev/null
+	ssh -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
 	sleep 1
 	echo -n "Your MAC "
 	sudo networksetup -setsocksfirewallproxy Wi-Fi localhost $port
@@ -94,8 +94,8 @@ if [ "$SETUP" = true ]; then
 	read username
 	echo -n "host ip:"
 	read host
-	ssh $username@$host mkdir -p .ssh
-	cat $pub_keyfile | ssh $username@$host 'cat >> .ssh/authorized_keys'
+	ssh $username@$host -p 26 mkdir -p .ssh
+	cat $pub_keyfile | ssh $username@$host -p 26 'cat >> .ssh/authorized_keys'
 	val=$?
 	if [ $val -ne 0 ]; then
 		echo 
