@@ -4,12 +4,54 @@ SETUP=false
 UP=false
 DOWN=false
 STAT=false
+OS=`uname`
 
 conf=$HOME/.freeland.conf
 keyfile=$HOME/.ssh/id_rsa
 pub_keyfile=$HOME/.ssh/id_rsa.pub
+firefox_config=`find ~ -name "prefs.js"`
+firefox_process=`ps -e | grep firefox`
 proxy=""
 port=1080
+
+function firefox_config_check()
+{
+    if [ -z "$firefox_config" ]; then
+        echo ""
+        echo "You don't have firefox configuration file."
+        echo "Install or Check your firefox first"
+	exit
+    fi
+}
+
+function firefox_process_check()
+{
+    if [ ! -z "$firefox_process" ]; then
+        echo ""
+	echo "Shutdown your firefox first"
+	exit
+    fi
+}
+
+function firefox_enable()
+{
+    firefox_config_check
+    firefox_process_check
+    echo "
+        user_pref(\"network.proxy.socks\", \"localhost\");
+        user_pref(\"network.proxy.socks_port\", 1080);
+        user_pref(\"network.proxy.socks_remote_dns\", true);
+        user_pref(\"network.proxy.type\", 1);
+        " >> ${firefox_config[0]}
+}
+
+function firefox_disable()
+{
+    firefox_config_check
+    firefox_process_check
+    awk '!/proxy/' ${firefox_config[0]} > .mozilla_firefox_config.tmp
+    mv .mozilla_firefox_config.tmp ${firefox_config[0]}
+}
 
 function usage() 
 {
@@ -56,23 +98,37 @@ fi
 
 if [ "$UP" = true ]; then
 	read_conf
-    	echo making connection to $proxy
-	ssh -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
+	if [ $OS == "Darwin" ]; then
+	    echo -n "Your MAC "
+	    sudo networksetup -setsocksfirewallproxy Wi-Fi localhost $port
+	    sudo networksetup -setsocksfirewallproxystate Wi-Fi on
+	elif [ $OS == "Linux" ]; then
+	    firefox_enable
+	    echo "Only firefox on Linux is supported now."
+	else
+	    echo "Your " $OS " is not fully supported."
+	    echo "Setup your proxy to localhost:$port manually"
+	fi
 	sleep 1
-	echo -n "Your MAC "
-	sudo networksetup -setsocksfirewallproxy Wi-Fi localhost $port
-	sudo networksetup -setsocksfirewallproxystate Wi-Fi on
+	ssh -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
 	echo UP!!!
 	exit
 fi
 
 if [ "$DOWN" = true ]; then
 	read_conf
-	echo -n "Your MAC "
-	sudo networksetup -setsocksfirewallproxystate Wi-Fi off
+	if [ $OS == "Darwin" ]; then
+	    echo -n "Your MAC "
+	    sudo networksetup -setsocksfirewallproxystate Wi-Fi off
+	elif [ $OS == "Linux" ]; then
+	    firefox_disable
+	else
+	    echo "Your " $OS " is not fully supported."
+	    echo "Disable your proxy manually"
+	fi
 	sleep 1
 	ssh -S .freeland-control -O exit $proxy
-	echo $proxy connection down!!!
+	echo down!!!
 	exit
 fi
 
@@ -80,8 +136,21 @@ if [ "$STAT" = true ]; then
 	read_conf
     	echo === stat of connection to $proxy
 	ssh -S .freeland-control -O check $proxy
-    	echo === stat of SOCKS proxy
-	networksetup -getsocksfirewallproxy Wi-Fi
+	echo === stat of SOCKS proxy
+	if [ $OS == "Darwin" ]; then
+	    networksetup -getsocksfirewallproxy Wi-Fi
+	elif [ $OS == "Linux" ]; then
+	    firefox_config_check
+	    manual_proxy=`grep "proxy.type\", 1" ${firefox_config[0]}`
+	    if [ ! -z "$manual_proxy" ]; then
+		    echo "Enabled: Yes"
+	    else
+		    echo "Enabled: No"
+	    fi
+	else
+	    echo "Your " $OS " is not fully supported."
+	    echo "Check your proxy manually"
+	fi
 	exit
 fi
 
