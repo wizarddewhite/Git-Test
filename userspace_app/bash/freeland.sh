@@ -113,7 +113,12 @@ if [ "$UP" = true ]; then
 	fi
 	sleep 1
 	ssh -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
-	echo UP!!!
+	val=$?
+	if [ $val -ne 0 ]; then
+	    echo Failed!!!
+	else
+	    echo UP!!!
+	fi
 	exit
 fi
 
