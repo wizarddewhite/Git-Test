@@ -10,8 +10,12 @@ conf=$HOME/.freeland.conf
 keyfile=$HOME/.ssh/id_rsa
 pub_keyfile=$HOME/.ssh/id_rsa.pub
 if [ $OS == "Linux" ]; then
-firefox_config=`find ~ -name "prefs.js"`
-firefox_process=`ps -e | grep firefox`
+    if [ ! -e ~/.mozilla/firefox ]; then
+        echo Please install firefox first
+        exit
+    fi
+    firefox_config=`find ~/.mozilla/firefox -name "prefs.js"`
+    firefox_process=`ps -e | grep firefox`
 fi
 proxy=""
 port=1080
