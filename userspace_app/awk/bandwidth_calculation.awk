@@ -1,8 +1,9 @@
 # awk  -f bandwidth_calculation.awk user=weiyang bandwidth
-BEGIN {bandwidth = 0}
+BEGIN {inbound=0; outbound=0}
 
 $0 ~ user {
-	bandwidth += ($3 + $4) * 5
+	inbound += $3
+	outbound += $4
 }
 
-END {print bandwidth}
+END {print inbound "  " outbound}

@@ -3,13 +3,16 @@
 raw_bandwidth=`date +%Y%m%d%M`
 
 # 10 minutes
-nethogs -t -d 1 -c 600 | grep sshd > $raw_bandwidth
+nethogs -d 60 -c 10 -t -v 3 > /root/$raw_bandwidth
+tail -n +`grep -n Refreshing: /root/$raw_bandwidth | tail -1 | cut -d ":" -f 1` /root/$raw_bandwidth > /root/$raw_bandwidth.tmp
 
-users=`awk '{print $2}' $raw_bandwidth | sort | uniq | awk -F"/" '{print $1}'`
+users=`awk '{print $2}' $raw_bandwidth.tmp | sort | uniq | awk -F"/" '{print $1}'`
 
-for u in ${users[@]}
+for u in $users
 do
-	awk -f bandwidth_calculation.awk user=$u $raw_bandwidth >> /home/$u/used
+	if [ -e /home/$u ]; then
+	    awk -f bandwidth_calculation.awk user=$u /root/$raw_bandwidth.tmp >> /home/$u/used
+	fi
 done
 
-rm $raw_bandwidth
+rm $raw_bandwidth.tmp $raw_bandwidth
