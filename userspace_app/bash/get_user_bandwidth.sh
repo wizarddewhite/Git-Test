@@ -12,6 +12,8 @@ for u in $users
 do
 	if [ -e /home/$u ]; then
 	    awk -f bandwidth_calculation.awk user=$u /root/$raw_bandwidth.tmp >> /home/$u/used
+	    awk -f bandwidth_sum.awk /home/$u/used >> /home/$u/used.tmp
+	    mv /home/$u/used.tmp /home/$u/used
 	fi
 done
 
