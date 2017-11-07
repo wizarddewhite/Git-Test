@@ -6,4 +6,4 @@ $0 ~ user {
 	outbound += $4
 }
 
-END {print inbound "  " outbound}
+END {print user " " inbound "  " outbound}
