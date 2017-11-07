@@ -1,17 +1,21 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 )
 
 type Stat struct {
-	Name string
-	Used string
+	Name     string
+	Inbound  string
+	Outbound string
 }
 
 type StatSlice struct {
@@ -19,11 +23,7 @@ type StatSlice struct {
 	Stats []Stat
 }
 
-func main() {
-	var s StatSlice
-	s.Token = "123456"
-	s.Stats = append(s.Stats, Stat{Name: "weiyang", Used: "123"})
-	s.Stats = append(s.Stats, Stat{Name: "liyang", Used: "323"})
+func send_total_used(s *StatSlice) {
 	b, err := json.Marshal(s)
 	if err != nil {
 		fmt.Println("json err:", err)
@@ -31,7 +31,36 @@ func main() {
 
 	res, _ := http.Post("http://localhost:8080/statistic/update", "application/json; charset=utf-8", bytes.NewReader(b))
 	io.Copy(os.Stdout, res.Body)
-	//var result Res
-	//json.NewDecoder(res.Body).Decode(&result)
-	//fmt.Println(result.status)
+}
+
+func parse_total_used(s *StatSlice) {
+	file, err := os.Open("total_used")
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var inbound, outbound, val float64
+	inbound = 0
+	outbound = 0
+	for scanner.Scan() {
+		words := strings.Fields(scanner.Text())
+		s.Stats = append(s.Stats, Stat{Name: words[0],
+			Inbound: words[1], Outbound: words[2]})
+		val, err = strconv.ParseFloat(words[1], 64)
+		inbound += val
+		val, err = strconv.ParseFloat(words[2], 64)
+		outbound += val
+	}
+	s.Stats = append(s.Stats, Stat{Name: "total",
+		Inbound:  strconv.FormatFloat(inbound, 'f', 6, 64),
+		Outbound: strconv.FormatFloat(outbound, 'f', 6, 64)})
+}
+
+func main() {
+	var s StatSlice
+	s.Token = "123456"
+	parse_total_used(&s)
+	send_total_used(&s)
 }
