@@ -29,12 +29,12 @@ func send_total_used(s *StatSlice) {
 		fmt.Println("json err:", err)
 	}
 
-	res, _ := http.Post("http://localhost:8080/statistic/update", "application/json; charset=utf-8", bytes.NewReader(b))
+	res, _ := http.Post("http://localhost:80/statistic/update", "application/json; charset=utf-8", bytes.NewReader(b))
 	io.Copy(os.Stdout, res.Body)
 }
 
 func parse_total_used(s *StatSlice) {
-	file, err := os.Open("total_used")
+	file, err := os.Open("/root/total_used")
 	if err != nil {
 		return
 	}
