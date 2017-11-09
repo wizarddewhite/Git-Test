@@ -1,6 +1,6 @@
 #/bin/bash
 
-raw_bandwidth=`date +%Y%m%d%M`
+raw_bandwidth=`date +%Y%m%d%H%M`
 
 # 10 minutes
 nethogs -d 60 -c 10 -t -v 3 > /root/$raw_bandwidth
