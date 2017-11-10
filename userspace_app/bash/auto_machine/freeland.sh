@@ -9,6 +9,7 @@ OS=`uname`
 conf=$HOME/.freeland.conf
 keyfile=$HOME/.ssh/id_rsa
 pub_keyfile=$HOME/.ssh/id_rsa.pub
+sess_con=$HOME/.freeland-control
 proxy=""
 port=1080
 
@@ -105,7 +106,10 @@ if [ "$UP" = true ]; then
 	    echo "Setup your proxy to localhost:$port manually"
 	fi
 	sleep 1
-	ssh -o "StrictHostKeyChecking no" -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
+	if [ -e "$sess_con" ]; then
+	    ssh -S $sess_con -O exit $proxy
+	fi
+	ssh -o "StrictHostKeyChecking no" -M -S $sess_con -fND $port $proxy -p 26 &> /dev/null
 	val=$?
 	if [ $val -ne 0 ]; then
 	    echo Failed!!!
@@ -122,7 +126,7 @@ if [ "$DOWN" = true ]; then
 	    sudo networksetup -setsocksfirewallproxystate Wi-Fi off
 	fi
 	sleep 1
-	ssh -S .freeland-control -O exit $proxy
+	ssh -S $sess_con -O exit $proxy
 	echo down!!!
 	exit
 fi
@@ -130,7 +134,7 @@ fi
 if [ "$STAT" = true ]; then
 	read_conf
     	echo === stat of connection to $proxy
-	ssh -S .freeland-control -O check $proxy
+	ssh -S $sess_con -O check $proxy
 	echo === stat of SOCKS proxy
 	if [ $OS == "Darwin" ]; then
 	    networksetup -getsocksfirewallproxy Wi-Fi
