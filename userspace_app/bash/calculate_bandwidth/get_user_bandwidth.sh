@@ -1,9 +1,9 @@
-#/bin/bash
+#!/bin/bash
 
 raw_bandwidth=`date +%Y%m%d%H%M`
 
 # 10 minutes
-nethogs -d 6 -c 10 -t -v 3 > $PWD/$raw_bandwidth
+nethogs -d 60 -c 10 -t -v 3 > $PWD/$raw_bandwidth
 tail -n +`grep -n Refreshing: $PWD/$raw_bandwidth | tail -1 | cut -d ":" -f 1` $PWD/$raw_bandwidth > $PWD/$raw_bandwidth.tmp
 
 users=`awk '{print $2}' $PWD/$raw_bandwidth.tmp | sort | uniq | awk -F"/" '{print $1}'`
