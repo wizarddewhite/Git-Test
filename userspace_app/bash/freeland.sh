@@ -105,7 +105,7 @@ if [ "$UP" = true ]; then
 	    echo "Setup your proxy to localhost:$port manually"
 	fi
 	sleep 1
-	ssh -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
+	ssh -o "StrictHostKeyChecking no" -M -S .freeland-control -fND $port $proxy -p 26 &> /dev/null
 	val=$?
 	if [ $val -ne 0 ]; then
 	    echo Failed!!!
