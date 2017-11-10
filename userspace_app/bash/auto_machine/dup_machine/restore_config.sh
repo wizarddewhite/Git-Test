@@ -4,6 +4,9 @@
 #echo "Port 26" >> /etc/ssh/sshd_config
 echo "AllowGroups ssh" >> /etc/ssh/sshd_config
 
+# install nethogs
+apt-get -y install nethogs
+
 # enable tcp brr
 echo 'net.core.default_qdisc=fq' | tee -a /etc/sysctl.conf
 echo 'net.ipv4.tcp_congestion_control=bbr' | tee -a /etc/sysctl.conf

@@ -29,7 +29,7 @@ func send_total_used(s *StatSlice) {
 		fmt.Println("json err:", err)
 	}
 
-	res, _ := http.Post("http://localhost:80/statistic/update", "application/json; charset=utf-8", bytes.NewReader(b))
+	res, _ := http.Post("http://185.92.221.13/statistic/update", "application/json; charset=utf-8", bytes.NewReader(b))
 	io.Copy(os.Stdout, res.Body)
 }
 
