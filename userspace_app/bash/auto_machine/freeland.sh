@@ -110,8 +110,8 @@ if [ "$SETUP" = true ]; then
 	read username
 	echo -n "host ip:"
 	read host
-	ssh $username@$host -p 26 mkdir -p .ssh
-	cat $pub_keyfile | ssh $username@$host -p 26 'cat >> .ssh/authorized_keys'
+	ssh -o "StrictHostKeyChecking no" $username@$host -p 26 mkdir -p .ssh
+	cat $pub_keyfile | ssh $username@$host -p 26 'cat > .ssh/authorized_keys'
 	val=$?
 	if [ $val -ne 0 ]; then
 		echo 
