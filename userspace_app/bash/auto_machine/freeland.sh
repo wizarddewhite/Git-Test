@@ -98,7 +98,6 @@ fi
 if [ "$UP" = true ]; then
 	read_conf
 	if [ $OS == "Darwin" ]; then
-	    echo -n "Your MAC "
 	    sudo networksetup -setsocksfirewallproxy Wi-Fi localhost $port
 	    sudo networksetup -setsocksfirewallproxystate Wi-Fi on
 	else
@@ -122,7 +121,6 @@ fi
 if [ "$DOWN" = true ]; then
 	read_conf
 	if [ $OS == "Darwin" ]; then
-	    echo -n "Your MAC "
 	    sudo networksetup -setsocksfirewallproxystate Wi-Fi off
 	fi
 	sleep 1
@@ -162,5 +160,9 @@ if [ "$SETUP" = true ]; then
 	fi
 
 	echo $username@$host > $conf
+	if [ $OS == "Darwin" ]; then
+		echo "Your MAC "
+		sudo sh -c "echo '$USER ALL=(root) NOPASSWD:/usr/sbin/networksetup' >> /etc/sudoers"
+	fi
 	echo done
 fi
