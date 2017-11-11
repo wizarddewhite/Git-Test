@@ -13,45 +13,6 @@ sess_con=$HOME/.freeland-control
 proxy=""
 port=1080
 
-function firefox_config_check()
-{
-    if [ -z "$firefox_config" ]; then
-        echo ""
-        echo "You don't have firefox configuration file."
-        echo "Install or Check your firefox first"
-	exit
-    fi
-}
-
-function firefox_process_check()
-{
-    if [ ! -z "$firefox_process" ]; then
-        echo ""
-	echo "Shutdown your firefox first"
-	exit
-    fi
-}
-
-function firefox_enable()
-{
-    firefox_config_check
-    firefox_process_check
-    echo "
-        user_pref(\"network.proxy.socks\", \"localhost\");
-        user_pref(\"network.proxy.socks_port\", 1080);
-        user_pref(\"network.proxy.socks_remote_dns\", true);
-        user_pref(\"network.proxy.type\", 1);
-        " >> ${firefox_config[0]}
-}
-
-function firefox_disable()
-{
-    firefox_config_check
-    firefox_process_check
-    awk '!/proxy/' ${firefox_config[0]} > .mozilla_firefox_config.tmp
-    mv .mozilla_firefox_config.tmp ${firefox_config[0]}
-}
-
 function usage() 
 {
     echo "Usage: $0 [setup|up|down|stat]"
