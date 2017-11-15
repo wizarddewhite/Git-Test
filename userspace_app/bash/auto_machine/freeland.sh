@@ -110,20 +110,16 @@ if [ "$SETUP" = true ]; then
 	read username
 	echo -n "host ip:"
 	read host
-	ssh -o "StrictHostKeyChecking no" $username@$host -p 26 mkdir -p .ssh &> /dev/null
-	cat $pub_keyfile | ssh $username@$host -p 26 'cat > .ssh/authorized_keys'
-	val=$?
-	if [ $val -ne 0 ]; then
-		echo 
-		echo Error!!! setup failed
-		echo Please check your username/host ip/password
-		exit
-	fi
 
 	echo $username@$host > $conf
 	if [ $OS == "Darwin" ]; then
-		echo "Your MAC "
+		echo -n "Your MAC "
 		sudo sh -c "echo '$USER ALL=(root) NOPASSWD:/usr/sbin/networksetup' >> /etc/sudoers"
 	fi
+	echo ""
+	echo copy following characters between lines to your account:
+	echo ----------------------------------
+	cat $pub_keyfile
+	echo ----------------------------------
 	echo done
 fi
