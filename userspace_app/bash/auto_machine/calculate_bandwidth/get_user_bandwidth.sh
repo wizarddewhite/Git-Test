@@ -6,7 +6,7 @@ raw_bandwidth=`date +%Y%m%d%H%M`
 nethogs -d 60 -c 10 -t -v 3 > $PWD/$raw_bandwidth
 tail -n +`grep -n Refreshing: $PWD/$raw_bandwidth | tail -1 | cut -d ":" -f 1` $PWD/$raw_bandwidth > $PWD/$raw_bandwidth.tmp
 
-users=`awk '{print $2}' $PWD/$raw_bandwidth.tmp | sort | uniq | awk -F"/" '{print $1}'`
+users=`awk '{print $2}' $PWD/$raw_bandwidth.tmp | awk -F"/" '{print $1}' | sort | uniq`
 
 for u in $users
 do
