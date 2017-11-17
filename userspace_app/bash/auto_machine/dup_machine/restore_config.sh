@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # setup ssh config
-#echo "Port 26" >> /etc/ssh/sshd_config
+echo "Port 26" >> /etc/ssh/sshd_config
 echo "AllowGroups ssh" >> /etc/ssh/sshd_config
 service sshd restart
 

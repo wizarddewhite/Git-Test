@@ -39,7 +39,10 @@ ssh root@$1 "cd $PWD; ./restore_config.sh"
 keys=`find /home -name authorized_keys`
 for k in $keys
 do
-	scp $k root@$1:$k
+	scp -P 26 $k root@$1:$k
 done
 #scp -r /home/ root@$1:/home/
+
+# mark done
+ssh root@$1 -p 26 touch /root/done
 
