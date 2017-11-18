@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -19,7 +20,7 @@ type Stat struct {
 }
 
 type StatSlice struct {
-	Token string
+	Users string
 	Stats []Stat
 }
 
@@ -58,9 +59,18 @@ func parse_total_used(s *StatSlice) {
 		Outbound: strconv.FormatFloat(outbound, 'f', 6, 64)})
 }
 
+func parse_user_sessions(s *StatSlice) {
+	b, err := ioutil.ReadFile("/root/sessions") // just pass the file name
+	if err != nil {
+		fmt.Print(err)
+		return
+	}
+
+	s.Users = string(b)
+}
 func main() {
 	var s StatSlice
-	s.Token = "123456"
 	parse_total_used(&s)
+	parse_user_sessions(&s)
 	send_total_used(&s)
 }

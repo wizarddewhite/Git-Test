@@ -15,8 +15,10 @@ do
 	fi
 done
 
+ps auxwww | grep sshd: | awk '{print $1}' | sort | uniq | grep -v root | wc -l > /root/sessions
+
 $PWD/json_post > /dev/null
 
-rm $PWD/$raw_bandwidth $PWD/$raw_bandwidth.tmp /root/total_used
+rm $PWD/$raw_bandwidth $PWD/$raw_bandwidth.tmp /root/total_used /root/sessions
 
 
