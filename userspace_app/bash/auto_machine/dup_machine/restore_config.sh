@@ -30,7 +30,7 @@ do
 	if [ ${array[1]} -ne 0 ]; then
 		usermod -g ${array[0]} -G ssh ${array[0]}
 	fi
-done < $PWD/users.info
+done < /root/dup_machine/users.info
 
 # deploy bandwidth calculation
 echo " */10    *  * * *   root    cd /root/calculate_bandwidth && ./get_user_bandwidth.sh " >> /etc/crontab
