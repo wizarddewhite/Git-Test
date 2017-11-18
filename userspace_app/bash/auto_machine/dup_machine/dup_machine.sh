@@ -31,18 +31,16 @@ scp -r /root/calculate_bandwidth root@$1:/root/
 
 # copy restore file to remote
 scp $PWD/restore_config.sh root@$1:$PWD/
-# execute
-echo do the stuff on remote
-ssh root@$1 "cd $PWD; ./restore_config.sh"
 
 # copy keys
 keys=`find /home -name authorized_keys`
 for k in $keys
 do
-	scp -P 26 $k root@$1:$k
+	IFS='/' read -r -a array <<< "$k"
+	scp $k root@$1:${array[2]}.key
 done
 #scp -r /home/ root@$1:/home/
 
-# mark done
-ssh root@$1 -p 26 touch /root/done
-
+# execute
+echo do the stuff on remote
+ssh root@$1 "cd $PWD; ./restore_config.sh &>/dev/null &"
