@@ -7,6 +7,7 @@ STAT=false
 OS=`uname`
 
 conf=$HOME/.freeland.conf
+log=$HOME/.freeland.log
 keyfile=$HOME/.ssh/id_rsa
 pub_keyfile=$HOME/.ssh/id_rsa.pub
 sess_con=$HOME/.freeland-control
@@ -69,7 +70,7 @@ if [ "$UP" = true ]; then
 	if [ -e "$sess_con" ]; then
 	    ssh -S $sess_con -O exit $proxy
 	fi
-	ssh -o "StrictHostKeyChecking no" -M -S $sess_con -fND $port $proxy -p 26 &> /dev/null
+	ssh -o "StrictHostKeyChecking no" -M -S $sess_con -fND $port $proxy -p 26 &> $log
 	val=$?
 	if [ $val -ne 0 ]; then
 	    echo Failed!!!
