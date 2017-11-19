@@ -66,8 +66,9 @@ func parse_user_sessions(s *StatSlice) {
 		return
 	}
 
-	s.Users = string(b)
+	s.Users = strings.TrimSuffix(string(b), "\n")
 }
+
 func main() {
 	var s StatSlice
 	parse_total_used(&s)
