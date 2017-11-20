@@ -13,12 +13,8 @@ if [ ! -e /root/.ssh/id_rsa ]; then
 	ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -N ""
 fi
 
-/root/dup_machine/setup_key.exp $1 $2
-val=$?
-if [ $val -ne 0 ]; then
-	echo failed to setup key
-	exit -1
-fi
+sshpass -p $2 ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p .ssh
+sshpass -p $2 scp /root/.ssh/id_rsa.pub root@$1:/root/.ssh/authorized_keys
 
 # create dir
 ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p /root/dup_machine
