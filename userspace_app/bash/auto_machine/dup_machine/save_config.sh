@@ -1,5 +1,5 @@
 #/bin/bash
-info=$PWD/users.info
+info=/root/dup_machine/users.info
 
 rm -f $info
 cd /home && USERS=`ls`
