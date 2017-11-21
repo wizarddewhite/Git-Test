@@ -29,13 +29,14 @@ scp -r /root/calculate_bandwidth root@$1:/root/
 scp /root/dup_machine/restore_config.sh root@$1:/root/dup_machine/
 
 # copy keys
-keys=`find /home -name authorized_keys`
-for k in $keys
+users=`ls /home/`
+for u in $users
 do
-	IFS='/' read -r -a array <<< "$k"
-	scp $k root@$1:${array[2]}.key
+	cp /home/$u/.ssh/authorized_keys /root/keys/$u.key
 done
-#scp -r /home/ root@$1:/home/
+tar -zcvf /root/keys.tar.gz /root/keys/
+scp /root/keys.tar.gz root@$1:
+rm -f /root/keys.tar.gz /root/keys/*
 
 # execute
 echo do the stuff on remote

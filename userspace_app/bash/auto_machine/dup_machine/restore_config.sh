@@ -15,6 +15,8 @@ echo 'net.ipv4.tcp_congestion_control=bbr' | tee -a /etc/sysctl.conf
 sysctl -p
 
 # restore users
+# unpack key file
+tar -xzvf keys.tar.gz -C /
 while read user
 do
 	IFS=' ' read -r -a array <<< "$user"
@@ -23,7 +25,7 @@ do
 	# create .ssh dir
 	mkdir -p /home/${array[0]}/.ssh
 	# get key file
-	mv /root/${array[0]}.key /home/${array[0]}/.ssh/authorized_keys
+	mv /root/keys/${array[0]}.key /home/${array[0]}/.ssh/authorized_keys
 	# chown
 	chown -R ${array[0]}:${array[0]} /home/${array[0]}/.ssh
 	# add to ssh if enabled
