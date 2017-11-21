@@ -36,8 +36,10 @@ function read_conf()
     
     while read line
     do
-        proxy=$line
+        uname=$line
     done < $conf
+
+    proxy=`curl http://185.92.221.13/node?uname=$uname 2> /dev/null`
 }
 
 if [ $# != 1 ]; then
@@ -109,10 +111,8 @@ fi
 if [ "$SETUP" = true ]; then
 	echo -n "username:"
 	read username
-	echo -n "host ip:"
-	read host
 
-	echo $username@$host > $conf
+	echo $username > $conf
 	if [ $OS == "Darwin" ]; then
 		echo -n "Your MAC "
 		sudo sh -c "echo '$USER ALL=(root) NOPASSWD:/usr/sbin/networksetup' >> /etc/sudoers"
