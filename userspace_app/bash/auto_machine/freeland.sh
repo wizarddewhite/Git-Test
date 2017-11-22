@@ -39,7 +39,17 @@ function read_conf()
         uname=$line
     done < $conf
 
-    proxy=`curl http://185.92.221.13/node?uname=$uname 2> /dev/null`
+    output=`curl http://185.92.221.13/node?uname=$uname 2> /dev/null`
+    ITER=0
+    while read -r line;
+    do
+        if [ $ITER -eq "0" ]; then
+	    proxy=$line
+        else
+            echo $line
+        fi
+	ITER=`expr $ITER + 1`
+    done <<< "$output"
 }
 
 if [ $# != 1 ]; then
