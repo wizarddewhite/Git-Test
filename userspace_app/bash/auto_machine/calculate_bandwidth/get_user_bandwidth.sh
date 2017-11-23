@@ -8,6 +8,7 @@ tail -n +`grep -n Refreshing: $PWD/$raw_bandwidth | tail -1 | cut -d ":" -f 1` $
 
 users=`awk '{print $2}' $PWD/$raw_bandwidth.tmp | awk -F"/" '{print $1}' | sort | uniq`
 
+touch /root/total_used
 for u in $users
 do
 	if [ -e /home/$u ]; then
