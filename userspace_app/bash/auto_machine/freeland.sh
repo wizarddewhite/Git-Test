@@ -115,7 +115,7 @@ if [ "$STAT" = true ]; then
 fi
 
 if [ ! -e "$pub_keyfile" ]; then
-	ssh-keygen -t rsa -f $keyfile -q -N ""
+	ssh-keygen -t rsa -b 4096 -f $keyfile -q -N ""
 fi
 
 if [ "$SETUP" = true ]; then
