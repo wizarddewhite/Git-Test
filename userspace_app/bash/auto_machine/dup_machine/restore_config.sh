@@ -4,6 +4,8 @@
 echo "Port 26" >> /etc/ssh/sshd_config
 echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
 echo "AllowUsers root" >> /etc/ssh/sshd_config
+echo "ObfuscateKeyword $1" >> /usr/local/obfus/etc/sshd_config
+echo "ObfuscatedPort $2" >> /usr/local/obfus/etc/sshd_config
 service sshd restart
 mkdir /var/empty
 /usr/local/obfus/sbin/sshd -f /usr/local/obfus/etc/sshd_config &
@@ -42,4 +44,4 @@ done < /root/dup_machine/users.info
 echo " */10    *  * * *   root    cd /root/calculate_bandwidth && ./get_user_bandwidth.sh " >> /etc/crontab
 
 # mark done
-touch /root/done
+echo $1 $2 > /root/done

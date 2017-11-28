@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ $# != 2 ]; then
-	echo $0 ip password
+if [ $# != 4 ]; then
+	echo $0 ip password word port
 	exit -1
 fi
 
@@ -13,8 +13,8 @@ if [ ! -e /root/.ssh/id_rsa ]; then
 	ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -N ""
 fi
 
-sshpass -p $2 ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p .ssh
-sshpass -p $2 scp /root/.ssh/id_rsa.pub root@$1:/root/.ssh/authorized_keys
+sshpass -p "$2" ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p .ssh
+sshpass -p "$2" scp /root/.ssh/id_rsa.pub root@$1:/root/.ssh/authorized_keys
 
 # create dir
 ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p /root/dup_machine
@@ -46,4 +46,4 @@ rm -f /root/keys.tar.gz /root/keys/*
 
 # execute
 echo do the stuff on remote
-ssh root@$1 "/root/dup_machine/restore_config.sh &>/dev/null &"
+ssh root@$1 "/root/dup_machine/restore_config.sh $3 $4 &>/dev/null &"
