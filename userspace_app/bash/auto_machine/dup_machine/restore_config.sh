@@ -2,7 +2,8 @@
 
 # setup ssh config
 echo "Port 26" >> /etc/ssh/sshd_config
-echo "AllowGroups ssh" >> /etc/ssh/sshd_config
+echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
+echo "AllowUsers root" >> /etc/ssh/sshd_config
 service sshd restart
 mkdir /var/empty
 /usr/local/obfus/sbin/sshd -f /usr/local/obfus/etc/sshd_config &
