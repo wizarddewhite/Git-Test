@@ -4,6 +4,8 @@
 echo "Port 26" >> /etc/ssh/sshd_config
 echo "AllowGroups ssh" >> /etc/ssh/sshd_config
 service sshd restart
+mkdir /var/empty
+/usr/local/obfus/sbin/sshd -f /usr/local/obfus/etc/sshd_config &
 usermod -g root -G ssh root
 
 # install nethogs
@@ -22,6 +24,7 @@ do
 	IFS=' ' read -r -a array <<< "$user"
 	# create user
 	useradd -s /bin/true -d /home/${array[0]} -m ${array[0]} &> /dev/null
+	usermod -p '*' ${array[0]}
 	# create .ssh dir
 	mkdir -p /home/${array[0]}/.ssh
 	# get key file

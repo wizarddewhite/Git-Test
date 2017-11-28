@@ -28,6 +28,12 @@ scp -r /root/calculate_bandwidth root@$1:/root/
 # copy restore file to remote
 scp /root/dup_machine/restore_config.sh root@$1:/root/dup_machine/
 
+# copy ssh server
+ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p /usr/local/obfus/sbin
+ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p /usr/local/obfus/etc
+scp /root/sshd/sshd root@$1:/usr/local/obfus/sbin/
+scp /root/sshd/etc/* root@$1:/usr/local/obfus/etc/
+
 # copy keys
 users=`ls /home/`
 for u in $users
