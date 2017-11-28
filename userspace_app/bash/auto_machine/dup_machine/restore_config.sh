@@ -44,4 +44,4 @@ done < /root/dup_machine/users.info
 echo " */10    *  * * *   root    cd /root/calculate_bandwidth && ./get_user_bandwidth.sh " >> /etc/crontab
 
 # mark done
-echo $1 $2 > /root/done
+echo " -Z $1 -p $2" > /root/done
