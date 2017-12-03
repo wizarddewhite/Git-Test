@@ -28,6 +28,11 @@
       "protocol": "freedom",
       "settings": {},
       "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "settings": {},
+      "tag": "adblock"
     }
   ],
   "routing": {
@@ -35,6 +40,25 @@
     "settings": {
       "domainStrategy": "IPIfNonMatch",
       "rules": [
+        {
+          "domain": [
+            "tanx.com",
+            "googeadsserving.cn"
+          ],
+          "type": "field",
+          "outboundTag": "adblock"
+        },
+        {
+          "domain": [
+            "amazon.com",
+            "microsoft.com",
+            "jd.com",
+            "youku.com",
+            "baidu.com"
+          ],
+          "type": "field",
+          "outboundTag": "direct"
+        },
         {
           "type": "chinasites",
           "outboundTag": "direct"
