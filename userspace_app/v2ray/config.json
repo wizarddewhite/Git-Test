@@ -22,5 +22,28 @@
         }
       ]
     }
+  },
+  "outboundDetour": [
+    {
+      "protocol": "freedom",
+      "settings": {},
+      "tag": "direct"
+    }
+  ],
+  "routing": {
+    "strategy": "rules",
+    "settings": {
+      "domainStrategy": "IPIfNonMatch",
+      "rules": [
+        {
+          "type": "chinasites",
+          "outboundTag": "direct"
+        },
+        {
+          "type": "chinaip",
+          "outboundTag": "direct"
+        }
+      ]
+    }
   }
 }
