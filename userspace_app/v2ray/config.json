@@ -1,0 +1,26 @@
+{
+  "inbound": {
+    "port": 1080,
+    "protocol": "socks",
+    "settings": {
+      "auth": "noauth"
+    }
+  },
+  "outbound": {
+    "protocol": "vmess",
+    "settings": {
+      "vnext": [
+        {
+          "address": "185.92.222.29",
+          "port": 16823,
+          "users": [
+            {
+              "id": "b831381d-6324-4d53-ad4f-8cda48b30811",
+              "alterId": 64
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
