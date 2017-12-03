@@ -1,3 +1,3 @@
 #!/bin/bash
-ssh root@$1 -p 26 "useradd -s /bin/true -d /home/$2 -m $2 && mkdir -p /home/$2/.ssh"
+ssh root@$1 -p 26 "useradd -s /bin/true -d /home/$2 -m $2 && usermod -p '*' $2 && mkdir -p /home/$2/.ssh"
 
