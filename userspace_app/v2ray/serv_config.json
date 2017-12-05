@@ -1,6 +1,6 @@
 {
   "inbound": {
-    "port": 16823,
+    "port": 443,
     "protocol": "vmess",
     "settings": {
       "clients": [
@@ -9,6 +9,18 @@
           "alterId": 64
         }
       ]
+    },
+    "streamSettings": {
+      "network": "tcp",
+      "security": "tls",
+      "tlsSettings": {
+        "certificates": [
+          {
+            "certificateFile": "/etc/v2ray/v2ray.crt",
+            "keyFile": "/etc/v2ray/v2ray.key"
+          }
+        ]
+      }
     }
   },
   "outbound": {

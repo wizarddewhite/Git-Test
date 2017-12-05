@@ -11,8 +11,8 @@
     "settings": {
       "vnext": [
         {
-          "address": "185.92.222.29",
-          "port": 16823,
+          "address": "weiyang.ga",
+          "port": 443,
           "users": [
             {
               "id": "b831381d-6324-4d53-ad4f-8cda48b30811",
@@ -21,6 +21,10 @@
           ]
         }
       ]
+    },
+    "streamSettings": {
+      "network": "tcp",
+      "security": "tls"
     }
   },
   "outboundDetour": [
