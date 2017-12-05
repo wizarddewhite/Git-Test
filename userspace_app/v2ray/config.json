@@ -3,7 +3,8 @@
     "port": 1080,
     "protocol": "socks",
     "settings": {
-      "auth": "noauth"
+      "auth": "noauth",
+      "udp": false
     }
   },
   "outbound": {
@@ -23,8 +24,14 @@
       ]
     },
     "streamSettings": {
-      "network": "tcp",
-      "security": "tls"
+      "network": "ws",
+      "security": "tls",
+      "tlsSettings": {
+          "serverName": "weiyang.ga"
+      },
+      "wsSettings":{
+          "path":"/ray"
+      }
     }
   },
   "outboundDetour": [
