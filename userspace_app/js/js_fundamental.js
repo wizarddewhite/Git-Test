@@ -106,4 +106,4 @@ function sum_to(n)
   return sum;
 }
 
-console.log(sum(10));
+console.log(sum_to(10));
