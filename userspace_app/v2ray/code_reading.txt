@@ -1,0 +1,309 @@
+1. Process
+
+startV2Ray()
+    core.New()
+        server = new(simpleServer)
+        server.space.Initialize()
+            s.Fire()
+server.Start() simpleServer::Start()
+    s.space.Start() spaceImpl::Start()
+        s.cache.app.Start()  Manager::Start()
+
+2. Manager::Start()
+func (m *Manager) Start() error {
+	for _, handler := range m.handlers {
+		if err := handler.Start(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+AlwaysOnInboundHandler::Start()
+    worker.Start()  tcpWorker::Start()
+
+3. tcpWorker::Start()
+
+3.1 internet.ContextWithStreamSettings()
+func ContextWithStreamSettings(ctx context.Context, streamSettings *StreamConfig) context.Context {
+	return context.WithValue(ctx, streamSettingsKey, streamSettings)
+}
+
+3.2 internet.ListenTCP(), return a listener based on protocol(TCP, websocket..)
+; generally process "streamSettings" config
+
+func ListenTCP(ctx context.Context, address net.Address, port net.Port, conns chan<- Connection) (Listener, error) {
+	settings := StreamSettingsFromContext(ctx)
+	protocol := settings.GetEffectiveProtocol()
+	transportSettings, err := settings.GetEffectiveTransportSettings()
+	if err != nil {
+		return nil, err
+	}
+	ctx = ContextWithTransportSettings(ctx, transportSettings)
+	if settings != nil && settings.HasSecuritySettings() {
+		securitySettings, err := settings.GetEffectiveSecuritySettings()
+		if err != nil {
+			return nil, err
+		}
+		ctx = ContextWithSecuritySettings(ctx, securitySettings)
+	}
+	listenFunc := transportListenerCache[protocol]
+	if listenFunc == nil {
+		return nil, newError(protocol, " listener not registered.").AtError()
+	}
+	listener, err := listenFunc(ctx, address, port, func(ctx context.Context, conn Connection) bool {
+		select {
+		case <-ctx.Done():
+			conn.Close()
+			return false
+		case conns <- conn:
+			return true
+		default:
+			select {
+			case <-ctx.Done():
+				conn.Close()
+				return false
+			case conns <- conn:
+				return true
+			case <-time.After(time.Second * 5):
+				conn.Close()
+				return false
+			}
+		}
+	})
+	if err != nil {
+		return nil, newError("failed to listen on address: ", address, ":", port).Base(err)
+	}
+	return listener, nil
+}
+
+3.3 tcpWorker::handleConnections()
+func (w *tcpWorker) handleConnections(conns <-chan internet.Connection) {
+	for {
+		select {
+		case <-w.ctx.Done():
+			w.hub.Close()
+		L:
+			for {
+				select {
+				case conn := <-conns:
+					conn.Close()
+				default:
+					break L
+				}
+			}
+			return
+		case conn := <-conns:
+			go w.callback(conn)
+		}
+	}
+}
+
+3.3.1 tcpWorker::callback
+func (w *tcpWorker) callback(conn internet.Connection) {
+	ctx, cancel := context.WithCancel(w.ctx)
+	if w.recvOrigDest {
+		dest, err := tcp.GetOriginalDestination(conn)
+		if err != nil {
+			log.Trace(newError("failed to get original destination").Base(err))
+		}
+		if dest.IsValid() {
+			ctx = proxy.ContextWithOriginalTarget(ctx, dest)
+		}
+	}
+	if len(w.tag) > 0 {
+		ctx = proxy.ContextWithInboundTag(ctx, w.tag)
+	}
+	ctx = proxy.ContextWithInboundEntryPoint(ctx, net.TCPDestination(w.address, w.port))
+	ctx = proxy.ContextWithSource(ctx, net.DestinationFromAddr(conn.RemoteAddr()))
+	if len(w.sniffers) > 0 {
+		ctx = proxyman.ContextWithProtocolSniffers(ctx, w.sniffers)
+	}
+	if err := w.proxy.Process(ctx, net.Network_TCP, conn, w.dispatcher); err != nil {
+		log.Trace(newError("connection ends").Base(err))
+	}
+	cancel()
+	conn.Close()
+}
+
+
+3.3.1.1 socks::Server::Process() -> socks::Server::processTCP, socks
+
+3.3.1.1 socks::Server::Process() -> socks::Server::processTCP, socks
+
+3.3.1.1.1 ServerSession::Handshake()
+
+0. Data structure
+
+0.1 Server
+type Server interface {
+	Start()
+	Close()
+}
+
+//implementation of Server
+
+type simpleServer struct {
+	space app.Space
+}
+
+0.1.1 Space
+
+type Registry interface {
+	On(Event, Handler)
+}
+
+type Space interface {
+	event.Registry
+	Start()
+	Close()
+	Initialize()
+	AddApplication()
+	GetApplication()
+}
+
+type Listener struct {
+	sync.RWMutex
+	events map[Event][]Handler
+}
+
+//implementation of Space
+
+type spaceImpl struct {
+	event.Listener
+	cache       map[reflect.Type]Application
+	initialized bool
+}
+
+0.2 Applicatioin, which is stored in spaceImpl::cache
+
+type Application interface {
+	Interface() interface{}
+	Start() error
+	Close()
+}
+
+0.2.1 Manager, implementation of Application
+
+type Manager struct {
+	handlers       []proxyman.InboundHandler
+	taggedHandlers map[string]proxyman.InboundHandler
+}
+
+func (m *Manager) Interface() interface{} {
+	return (*proxyman.InboundHandlerManager)(nil)
+}
+
+func (m *Manager) Start() error {
+	for _, handler := range m.handlers {
+		if err := handler.Start(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) Close() {
+	for _, handler := range m.handlers {
+		handler.Close()
+	}
+}
+
+0.2.2 InboundHandler, Manager's handlers
+
+type InboundHandler interface {
+	Start() error
+	Close()
+
+	// For migration
+	GetRandomInboundProxy() (proxy.Inbound, net.Port, int)
+}
+
+0.2.2.1 AlwaysOnInboundHandler, implementation of InboundHandler
+
+type AlwaysOnInboundHandler struct {
+	proxy   proxy.Inbound
+	workers []worker
+	mux     *mux.Server
+}
+
+func (h *AlwaysOnInboundHandler) Start() error {
+	for _, worker := range h.workers {
+		if err := worker.Start(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *AlwaysOnInboundHandler) Close() {
+	for _, worker := range h.workers {
+		worker.Close()
+	}
+}
+
+0.2.2.2 ReceiverConfig
+
+"streamSettings"
+type StreamConfig struct {
+	// Effective network.
+	Protocol          TransportProtocol  `protobuf:"varint,1,opt,name=protocol,enum=v2ray.core.transport.internet.TransportProtocol" json:"protocol,omitempty"`
+	TransportSettings []*TransportConfig `protobuf:"bytes,2,rep,name=transport_settings,json=transportSettings" json:"transport_settings,omitempty"`
+	// Type of security. Must be a message name of the settings proto.
+	SecurityType     string                                   `protobuf:"bytes,3,opt,name=security_type,json=securityType" json:"security_type,omitempty"`
+	SecuritySettings []*v2ray_core_common_serial.TypedMessage `protobuf:"bytes,4,rep,name=security_settings,json=securitySettings" json:"security_settings,omitempty"`
+}
+
+type ReceiverConfig struct {
+	PortRange                  *v2ray_core_common_net1.PortRange           `protobuf:"bytes,1,opt,name=port_range,json=portRange" json:"port_range,omitempty"`
+	Listen                     *v2ray_core_common_net.IPOrDomain           `protobuf:"bytes,2,opt,name=listen" json:"listen,omitempty"`
+	AllocationStrategy         *AllocationStrategy                         `protobuf:"bytes,3,opt,name=allocation_strategy,json=allocationStrategy" json:"allocation_strategy,omitempty"`
+	// websocket
+	StreamSettings             *v2ray_core_transport_internet.StreamConfig `protobuf:"bytes,4,opt,name=stream_settings,json=streamSettings" json:"stream_settings,omitempty"`
+	ReceiveOriginalDestination bool                                        `protobuf:"varint,5,opt,name=receive_original_destination,json=receiveOriginalDestination" json:"receive_original_destination,omitempty"`
+	DomainOverride             []KnownProtocols                            `protobuf:"varint,7,rep,packed,name=domain_override,json=domainOverride,enum=v2ray.core.app.proxyman.KnownProtocols" json:"domain_override,omitempty"`
+}
+
+0.2.2.3 ServerConfig, the proxy in tcpWorker
+
+vmess.inbound.Config
+type Config struct {
+	User    []*v2ray_core_common_protocol.User `protobuf:"bytes,1,rep,name=user" json:"user,omitempty"`
+	Default *DefaultConfig                     `protobuf:"bytes,2,opt,name=default" json:"default,omitempty"`
+	Detour  *DetourConfig                      `protobuf:"bytes,3,opt,name=detour" json:"detour,omitempty"`
+}
+
+socks.Config
+type ServerConfig struct {
+	AuthType   AuthType                          `protobuf:"varint,1,opt,name=auth_type,json=authType,enum=v2ray.core.proxy.socks.AuthType" json:"auth_type,omitempty"`
+	Accounts   map[string]string                 `protobuf:"bytes,2,rep,name=accounts" json:"accounts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Address    *v2ray_core_common_net.IPOrDomain `protobuf:"bytes,3,opt,name=address" json:"address,omitempty"`
+	UdpEnabled bool                              `protobuf:"varint,4,opt,name=udp_enabled,json=udpEnabled" json:"udp_enabled,omitempty"`
+	Timeout    uint32                            `protobuf:"varint,5,opt,name=timeout" json:"timeout,omitempty"`
+	UserLevel  uint32                            `protobuf:"varint,6,opt,name=user_level,json=userLevel" json:"user_level,omitempty"`
+}
+
+0.2.2.1.1 tcpWorker, a worker for inboundHandler
+
+type tcpWorker struct {
+	address      net.Address
+	port         net.Port
+	proxy        proxy.Inbound
+	stream       *internet.StreamConfig
+	recvOrigDest bool
+	tag          string
+	dispatcher   dispatcher.Interface
+	sniffers     []proxyman.KnownProtocols
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	hub    internet.Listener
+}
+
+0.2.2.1.2 Sever, implementation of proxy.Inboud in tcpWorker
+
+type Server struct {
+	config *ServerConfig
+	policy policy.Policy
+}
+
