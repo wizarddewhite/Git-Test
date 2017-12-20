@@ -2,12 +2,13 @@ package main
 
 import (
 	"strings"
+	"sync"
 	"strconv"
 	    "fmt"
 	    "encoding/json"
             "net/http"
 
-	"github.com/coreos/go-iptables/iptables"
+	"github.com/RichardWeiYang/go-iptables/iptables"
 	)
 
 type Conn struct {
@@ -22,6 +23,7 @@ type Bandwidth struct {
 }
 
 var user map[string]Bandwidth
+var clear_mux sync.Mutex
 
 func add_rule(conn Conn) {
 	ipt, _ := iptables.New()
@@ -63,11 +65,12 @@ func add_handler(w http.ResponseWriter, r *http.Request) {
 func del_rule(conn Conn) {
 	ipt, _ := iptables.New()
 	// get the statistic of the rule before del
+	clear_mux.Lock()
 	stat, _ := ipt.Stats("filter", "shyw13")
-
 	// delete the rule
 	err := ipt.Delete("filter", conn.User_id, "-p", "tcp", "--dport", conn.Remote_port)
 	err = ipt.Delete("filter", conn.User_id, "-p", "tcp", "--sport", conn.Remote_port)
+	clear_mux.Unlock()
 	if err != nil {
 		return
 	}
@@ -98,6 +101,7 @@ func del_rule(conn Conn) {
 			u.input += val
 		}
 	}
+	user[conn.User_id] := u
 	fmt.Println(conn.User_id, u.input, u.output)
 }
 
@@ -118,8 +122,68 @@ func del_handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type RawStat struct {
+	user string
+	stat [][]string
+}
+
+func notify() {
+	return
+}
+
 // calculate user bandwidth and sent to master
 func cal_handler(w http.ResponseWriter, r *http.Request) {
+	// get user chains
+	ipt, _ := iptables.New()
+
+	chains, _ := ipt.ListChains("filter")
+	if len(chains) == 3 {
+		go notify()
+		return
+	}
+
+	// get statistic for each user chain
+	var stats []RawStat
+	for _, c := range chains[3:] {
+		clear_mux.Lock()
+		s, err := ipt.Stats("filter", c)
+		// clear chains
+		ipt.ZeroChain("filter", c)
+		clear_mux.Unlock()
+		if err == nil {
+			stats = append(stats, RawStat{c, s})
+		}
+	}
+
+	// calculate bandwidth for each user
+	for _, s := range stats {
+	fmt.Println("cal handler", s.user)
+	if _, ok := user[s.user]; !ok {
+		user[s.user] = Bandwidth{0, 0}
+	}
+
+	u := user[s.user]
+
+	for _, r := range(s.stat) {
+	fmt.Println("    ", r)
+		val, _ := strconv.ParseFloat(r[1], 64)
+		fmt.Println(u.output, u.input, val)
+		if strings.HasPrefix(r[9], "d") {
+			u.output += val
+		} else {
+			u.input += val
+		}
+		fmt.Println(u.output, u.input, val)
+	}
+	user[s.user] = u
+	}
+
+	for k, v := range user {
+		fmt.Println(k, v.input, v.output)
+	}
+
+	// notify master
+	go notify()
 }
 
 func main() {
