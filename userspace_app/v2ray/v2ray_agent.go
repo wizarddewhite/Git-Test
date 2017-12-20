@@ -9,6 +9,7 @@ import (
             "net/http"
 
 	"github.com/RichardWeiYang/go-iptables/iptables"
+	"github.com/robfig/cron"
 	)
 
 type Conn struct {
@@ -101,7 +102,7 @@ func del_rule(conn Conn) {
 			u.input += val
 		}
 	}
-	user[conn.User_id] := u
+	user[conn.User_id] = u
 	fmt.Println(conn.User_id, u.input, u.output)
 }
 
@@ -132,7 +133,7 @@ func notify() {
 }
 
 // calculate user bandwidth and sent to master
-func cal_handler(w http.ResponseWriter, r *http.Request) {
+func cal_handler() {
 	// get user chains
 	ipt, _ := iptables.New()
 
@@ -190,6 +191,11 @@ func main() {
 	user = make(map[string]Bandwidth)
     http.HandleFunc("/add_connection", add_handler)
     http.HandleFunc("/del_connection", del_handler)
-    http.HandleFunc("/cal_bandwidth", cal_handler)
+
+    c := cron.New()
+    spec := "0 */1 * * * *"
+    c.AddFunc(spec, cal_handler)
+    c.Start()
     http.ListenAndServe(":8888", nil)
+
 }
