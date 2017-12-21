@@ -217,7 +217,7 @@ func main() {
 	http.HandleFunc("/del_connection", del_handler)
 
 	c := cron.New()
-	spec := "0 */1 * * * *"
+	spec := "0 */10 * * * *"
 	c.AddFunc(spec, cal_handler)
 	c.Start()
 	http.ListenAndServe(":8888", nil)
