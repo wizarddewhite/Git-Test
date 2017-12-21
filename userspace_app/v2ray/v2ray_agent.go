@@ -1,26 +1,26 @@
 package main
 
 import (
-	"strings"
 	"bytes"
-	"sync"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"strconv"
-	    "fmt"
-	    "encoding/json"
-            "net/http"
+	"strings"
+	"sync"
 
 	"github.com/RichardWeiYang/go-iptables/iptables"
 	"github.com/robfig/cron"
-	)
+)
 
 type Conn struct {
-Remote_ip  string
-Remote_port string
-User_id  string
+	Remote_ip   string
+	Remote_port string
+	User_id     string
 }
 
 type Bandwidth struct {
-	input float64
+	input  float64
 	output float64
 }
 
@@ -28,8 +28,8 @@ var user map[string]Bandwidth
 var clear_mux sync.Mutex
 
 type Stat struct {
-	Name string
-	Inbound string
+	Name     string
+	Inbound  string
 	Outbound string
 }
 
@@ -61,15 +61,15 @@ func add_handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.Path[1:])
 	switch r.Method {
 	case "POST":
-	fmt.Println("POST")
-	var conn Conn
-	err := json.NewDecoder(r.Body).Decode(&conn)
-	if err != nil {
-		fmt.Println("body error")
-		return
-	}
-	go add_rule(conn)
-	fmt.Println(conn)
+		fmt.Println("POST")
+		var conn Conn
+		err := json.NewDecoder(r.Body).Decode(&conn)
+		if err != nil {
+			fmt.Println("body error")
+			return
+		}
+		go add_rule(conn)
+		fmt.Println(conn)
 	default:
 	}
 }
@@ -102,7 +102,7 @@ func del_rule(conn Conn) {
 
 	u := user[conn.User_id]
 
-	for _, s := range(stat) {
+	for _, s := range stat {
 		if !strings.Contains(s[9], conn.Remote_port) {
 			continue
 		}
@@ -122,14 +122,14 @@ func del_handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.Path[1:])
 	switch r.Method {
 	case "POST":
-	var conn Conn
-	err := json.NewDecoder(r.Body).Decode(&conn)
-	if err != nil {
-		fmt.Println("body error")
-		return
-	}
-	go del_rule(conn)
-	fmt.Println("POST")
+		var conn Conn
+		err := json.NewDecoder(r.Body).Decode(&conn)
+		if err != nil {
+			fmt.Println("body error")
+			return
+		}
+		go del_rule(conn)
+		fmt.Println("POST")
 	default:
 	}
 }
@@ -173,21 +173,21 @@ func cal_handler() {
 
 	// calculate bandwidth for each user
 	for _, s := range stats {
-	if _, ok := user[s.user]; !ok {
-		user[s.user] = Bandwidth{0, 0}
-	}
-
-	u := user[s.user]
-
-	for _, r := range(s.stat) {
-		val, _ := strconv.ParseFloat(r[1], 64)
-		if strings.HasPrefix(r[9], "d") {
-			u.output += val
-		} else {
-			u.input += val
+		if _, ok := user[s.user]; !ok {
+			user[s.user] = Bandwidth{0, 0}
 		}
-	}
-	user[s.user] = u
+
+		u := user[s.user]
+
+		for _, r := range s.stat {
+			val, _ := strconv.ParseFloat(r[1], 64)
+			if strings.HasPrefix(r[9], "d") {
+				u.output += val
+			} else {
+				u.input += val
+			}
+		}
+		user[s.user] = u
 	}
 
 NOTIFY:
@@ -197,8 +197,8 @@ NOTIFY:
 	outbound = 0
 	for k, v := range user {
 		s.Stats = append(s.Stats, Stat{k,
-		strconv.FormatFloat(v.input / (1024 * 1024), 'f', 6, 64),
-		strconv.FormatFloat(v.output / (1024 * 1024), 'f', 6, 64)})
+			strconv.FormatFloat(v.input/(1024*1024), 'f', 6, 64),
+			strconv.FormatFloat(v.output/(1024*1024), 'f', 6, 64)})
 		delete(user, k)
 		inbound += v.input / (1024 * 1024)
 		outbound += v.output / (1024 * 1024)
@@ -213,13 +213,13 @@ NOTIFY:
 
 func main() {
 	user = make(map[string]Bandwidth)
-    http.HandleFunc("/add_connection", add_handler)
-    http.HandleFunc("/del_connection", del_handler)
+	http.HandleFunc("/add_connection", add_handler)
+	http.HandleFunc("/del_connection", del_handler)
 
-    c := cron.New()
-    spec := "0 */1 * * * *"
-    c.AddFunc(spec, cal_handler)
-    c.Start()
-    http.ListenAndServe(":8888", nil)
+	c := cron.New()
+	spec := "0 */1 * * * *"
+	c.AddFunc(spec, cal_handler)
+	c.Start()
+	http.ListenAndServe(":8888", nil)
 
 }
