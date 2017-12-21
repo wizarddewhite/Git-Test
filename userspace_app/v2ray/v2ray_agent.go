@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"bytes"
 	"sync"
 	"strconv"
 	    "fmt"
@@ -25,6 +26,16 @@ type Bandwidth struct {
 
 var user map[string]Bandwidth
 var clear_mux sync.Mutex
+
+type Stat struct {
+	Name string
+	Inbound string
+	Outbound string
+}
+
+type StatSlice struct {
+	Stats []Stat
+}
 
 func add_rule(conn Conn) {
 	ipt, _ := iptables.New()
@@ -128,23 +139,27 @@ type RawStat struct {
 	stat [][]string
 }
 
-func notify() {
-	return
+func notify(s *StatSlice) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		fmt.Println("json err:", err)
+	}
+
+	http.Post("http://185.92.221.13:80/statistic/update", "application/json; charset=utf-8", bytes.NewReader(b))
 }
 
 // calculate user bandwidth and sent to master
 func cal_handler() {
+	var stats []RawStat
 	// get user chains
 	ipt, _ := iptables.New()
 
 	chains, _ := ipt.ListChains("filter")
 	if len(chains) == 3 {
-		go notify()
-		return
+		goto NOTIFY
 	}
 
 	// get statistic for each user chain
-	var stats []RawStat
 	for _, c := range chains[3:] {
 		clear_mux.Lock()
 		s, err := ipt.Stats("filter", c)
@@ -158,7 +173,6 @@ func cal_handler() {
 
 	// calculate bandwidth for each user
 	for _, s := range stats {
-	fmt.Println("cal handler", s.user)
 	if _, ok := user[s.user]; !ok {
 		user[s.user] = Bandwidth{0, 0}
 	}
@@ -166,25 +180,35 @@ func cal_handler() {
 	u := user[s.user]
 
 	for _, r := range(s.stat) {
-	fmt.Println("    ", r)
 		val, _ := strconv.ParseFloat(r[1], 64)
-		fmt.Println(u.output, u.input, val)
 		if strings.HasPrefix(r[9], "d") {
 			u.output += val
 		} else {
 			u.input += val
 		}
-		fmt.Println(u.output, u.input, val)
 	}
 	user[s.user] = u
 	}
 
+NOTIFY:
+	var s StatSlice
+	var inbound, outbound float64
+	inbound = 0
+	outbound = 0
 	for k, v := range user {
-		fmt.Println(k, v.input, v.output)
+		s.Stats = append(s.Stats, Stat{k,
+		strconv.FormatFloat(v.input / (1024 * 1024), 'f', 6, 64),
+		strconv.FormatFloat(v.output / (1024 * 1024), 'f', 6, 64)})
+		delete(user, k)
+		inbound += v.input / (1024 * 1024)
+		outbound += v.output / (1024 * 1024)
 	}
+	s.Stats = append(s.Stats, Stat{Name: "total",
+		Inbound:  strconv.FormatFloat(inbound, 'f', 6, 64),
+		Outbound: strconv.FormatFloat(outbound, 'f', 6, 64)})
 
 	// notify master
-	go notify()
+	go notify(&s)
 }
 
 func main() {
