@@ -1,0 +1,13 @@
+[Unit]
+Description=V2Ray Bandwidth Monitor Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+PIDFile=/var/run/v2ray_bandwidth.pid
+ExecStart=/root/calculate_bandwidth/bandwidth_agent
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
