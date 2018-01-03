@@ -24,6 +24,7 @@ ssh -o "StrictHostKeyChecking no" root@$1 mkdir -p /root/dup_machine
 
 # copy bandwith monitor to remote
 scp -r /root/calculate_bandwidth root@$1:/root/
+scp -r /root/tasks root@$1:/root/
 
 # copy other server config
 mkdir -p /root/server
