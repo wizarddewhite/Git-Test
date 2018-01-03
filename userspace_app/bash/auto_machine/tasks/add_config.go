@@ -23,7 +23,7 @@ func main() {
 	name := os.Args[1]
 	uuid := os.Args[2]
 
-	data, err := ioutil.ReadFile("serv_config.json")
+	data, err := ioutil.ReadFile("/etc/v2ray/config.json")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -42,7 +42,7 @@ func main() {
 	clients = append(clients, c)
 	settings["clients"] = clients
 	config, _ := json.Marshal(&conf)
-	err = ioutil.WriteFile("serv_config.json", config, 0644)
+	err = ioutil.WriteFile("/etc/v2ray/config.json", config, 0644)
 	if err != nil {
 		fmt.Println(err)
 	}
