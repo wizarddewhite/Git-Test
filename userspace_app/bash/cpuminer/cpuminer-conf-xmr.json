@@ -1,0 +1,21 @@
+{
+	"_comment1" : "Any long-format command line argument ",
+	"_comment2" : "may be used in this JSON configuration file",
+
+	"api-bind" : "127.0.0.1:4048",
+
+	"url" : "stratum+tcp://xmrpool.eu:3333",
+	"user" : "47uuhWdAQ9qesVf3sobU6p5YQNfAyuLsFKpvHtzrRReda2Ly6m7HqBYKEs3C75XtDbXBRTCAd3jDWd3Rsdkbybm2LJ97EZW",
+	"pass" : "x",
+
+	"algo" : "cryptonight",
+	"threads" : 1,
+	"cpu-priority" : 1,
+	"cpu-affinity" : -1,
+
+	"benchmark" : false,
+	"debug" : false,
+	"protocol": false,
+	"show-diff": true,
+	"quiet" : false
+}
