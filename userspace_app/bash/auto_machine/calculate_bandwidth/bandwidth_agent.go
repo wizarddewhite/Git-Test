@@ -78,7 +78,7 @@ func del_rule(conn Conn) {
 	ipt, _ := iptables.New()
 	// get the statistic of the rule before del
 	clear_mux.Lock()
-	stat, _ := ipt.Stats("filter", "shyw13")
+	stat, _ := ipt.Stats("filter", conn.User_id)
 	// delete the rule
 	err := ipt.Delete("filter", conn.User_id, "-p", "tcp", "--dport", conn.Remote_port)
 	err = ipt.Delete("filter", conn.User_id, "-p", "tcp", "--sport", conn.Remote_port)
@@ -181,12 +181,29 @@ func cal_handler() {
 
 		for _, r := range s.stat {
 			val, _ := strconv.ParseFloat(r[1], 64)
-			if strings.HasPrefix(r[9], "d") {
-				u.output += val
+			rule := strings.Split(r[9], ":")
+
+			if val == 0 {
+				if rule[0] == "dpt" {
+					ipt.Delete("filter", s.user, "-p", "tcp", "--dport", rule[1])
+				} else {
+					ipt.Delete("filter", s.user, "-p", "tcp", "--sport", rule[1])
+				}
 			} else {
-				u.input += val
+				if strings.HasPrefix(r[9], "d") {
+					u.output += val
+				} else {
+					u.input += val
+				}
 			}
 		}
+
+		rules, _ := ipt.List("filter", s.user)
+		if len(rules) == 1 {
+			ipt.Delete("filter", "INPUT", "-j", s.user)
+			ipt.DeleteChain("filter", s.user)
+		}
+
 		user[s.user] = u
 	}
 
@@ -221,5 +238,4 @@ func main() {
 	c.AddFunc(spec, cal_handler)
 	c.Start()
 	http.ListenAndServe(":8888", nil)
-
 }
