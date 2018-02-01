@@ -61,7 +61,6 @@ func add_handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.Path[1:])
 	switch r.Method {
 	case "POST":
-		fmt.Println("POST")
 		var conn Conn
 		err := json.NewDecoder(r.Body).Decode(&conn)
 		if err != nil {
@@ -69,7 +68,6 @@ func add_handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go add_rule(conn)
-		fmt.Println(conn)
 	default:
 	}
 }
@@ -114,12 +112,10 @@ func del_rule(conn Conn) {
 		}
 	}
 	user[conn.User_id] = u
-	fmt.Println(conn.User_id, u.input, u.output)
 }
 
 // del iptable rul and calculate the bandwidth
 func del_handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Path[1:])
 	switch r.Method {
 	case "POST":
 		var conn Conn
@@ -129,7 +125,6 @@ func del_handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go del_rule(conn)
-		fmt.Println("POST")
 	default:
 	}
 }
@@ -198,8 +193,8 @@ func cal_handler() {
 			}
 		}
 
-		rules, _ := ipt.List("filter", s.user)
-		if len(rules) == 1 {
+		//rules, _ := ipt.List("filter", s.user)
+		if len(s.stat) == 0 {
 			ipt.Delete("filter", "INPUT", "-j", s.user)
 			ipt.DeleteChain("filter", s.user)
 		}
