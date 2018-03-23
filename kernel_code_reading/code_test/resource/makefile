@@ -6,7 +6,7 @@ CFLAGS = -g -I../ -I../list/
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource pci_resource_test
+all: resource 
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure

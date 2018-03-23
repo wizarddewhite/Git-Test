@@ -19,6 +19,7 @@
 #define __RESOURCE_H__
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #define __re_request_resource __re_request_resource2
 
@@ -42,6 +43,8 @@ struct resource {
     unsigned long flags;
     struct resource *parent, *sibling, *child;
 };
+
+extern struct resource iomem_resource;
 
 /* constraints to be met while allocating resources */
 struct resource_constraint {
@@ -132,7 +135,7 @@ int  __re_request_resource1(struct resource *root,
                        struct resource *new, struct resource *old);
 int  __re_request_resource2(struct resource *root,
                        struct resource *new, struct resource *old);
-int  remove_old(struct resource *root, struct resource *old);
+void  remove_old(struct resource *root, struct resource *old);
 struct resource *insert_resource_conflict(struct resource *parent, struct resource *new);
 void release_child_resources(struct resource *r);
 int release_resource(struct resource *old);
@@ -163,4 +166,16 @@ int extend_res(struct resource *res, resource_size_t size);
 struct resource * __request_region(struct resource *parent,
 				   resource_size_t start, resource_size_t n,
 				   const char *name, int flags);
+int reallocate_resource(struct resource *root, struct resource *old,
+			resource_size_t newsize,
+			struct resource_constraint  *constraint);
+void reserve_region_with_split(struct resource *root,
+		resource_size_t start, resource_size_t end,
+		const char *name);
+void reserve_region_with_split1(struct resource *root,
+		resource_size_t start, resource_size_t end,
+		const char *name);
+int walk_iomem_res_desc(unsigned long desc, unsigned long flags, resource_size_t start,
+		resource_size_t end, void *arg, int (*func)(struct resource *, void *));
+struct resource *prev_resource(struct resource *p, bool sibling_only);
 #endif //__RESOURCE_H__

@@ -23,6 +23,13 @@
 #include "resource.h"
 #include "resource_case.h"
 
+struct resource iomem_resource = {
+	.name	= "PCI mem",
+	.start	= 0,
+	.end	= -1,
+	.flags	= IORESOURCE_MEM,
+};
+
 void dump(struct resource *root, int level)
 {
 	if (!root)
@@ -206,7 +213,7 @@ int  __re_request_resource2(struct resource *root,
         iter   = *p_iter;
     }
     
-    if ( (p_old == p_new) ) {
+    if (p_old == p_new) {
         old->start = start;
         old->end   = end;
         return 0;
@@ -228,9 +235,7 @@ int  __re_request_resource2(struct resource *root,
     return 0;
 }
 
-
-
-int  remove_old(struct resource *root, struct resource *old)
+void remove_old(struct resource *root, struct resource *old)
 {
        struct resource *iter, **p_iter = NULL;
        struct resource **p_old   = NULL;
@@ -402,7 +407,7 @@ static struct resource * __insert_resource(struct resource *parent, struct resou
 
 		if (first == parent)
 			return first;
-		if ((first == new))	/* duplicated insertion */
+		if (first == new)	/* duplicated insertion */
 			return first;
 
 		/* first doesn't contains new */
@@ -1002,5 +1007,221 @@ void reserve_region_with_split(struct resource *root,
 	if (!abort)
 		__reserve_region_with_split(root, start, end, name);
 	//write_unlock(&resource_lock);
+}
+
+static struct resource *next_resource(struct resource *p, bool sibling_only)
+{
+	/* Caller wants to traverse through siblings only */
+	if (sibling_only)
+		return p->sibling;
+
+	if (p->child)
+		return p->child;
+	while (!p->sibling && p->parent)
+		p = p->parent;
+	return p->sibling;
+}
+
+static int find_next_iomem_res(struct resource *res, //unsigned long desc,
+			       bool first_level_children_only)
+{
+	struct resource *p;
+
+	//BUG_ON(!res);
+	//BUG_ON(res->start >= res->end);
+
+	//read_lock(&resource_lock);
+	//printf("%s:%lu-%lu  \n", __func__, res->start, res->end);
+
+	for (p = iomem_resource.child; p;
+		p = next_resource(p, first_level_children_only)) {
+		//if ((p->flags & res->flags) != res->flags)
+		//	continue;
+		//if ((desc != IORES_DESC_NONE) && (desc != p->desc))
+		//	continue;
+		if (p->start > res->end) {
+			p = NULL;
+			break;
+		}
+		if ((p->end >= res->start) && (p->start < res->end))
+			break;
+	}
+
+	//read_unlock(&resource_lock);
+	if (!p)
+		return -1;
+	/* copy data */
+	resource_clip(res, p->start, p->end);
+	res->flags = p->flags;
+	//res->desc = p->desc;
+	return 0;
+}
+
+static int __walk_iomem_res_desc(struct resource *res, //unsigned long desc,
+				 bool first_level_children_only,
+				 void *arg,
+				 int (*func)(struct resource *, void *))
+{
+	resource_size_t orig_end = res->end;
+	int ret = -1;
+
+	while ((res->start < res->end) &&
+	       !find_next_iomem_res(res, /* desc, */ first_level_children_only)) {
+		ret = (*func)(res, arg);
+		if (ret)
+			break;
+
+		res->start = res->end + 1;
+		res->end = orig_end;
+	}
+
+	return ret;
+}
+
+int walk_iomem_res_desc(unsigned long desc, unsigned long flags, resource_size_t start,
+		resource_size_t end, void *arg, int (*func)(struct resource *, void *))
+{
+	struct resource res;
+
+	res.start = start;
+	res.end = end;
+	res.flags = flags;
+
+	return __walk_iomem_res_desc(&res, /* desc, */ false, arg, func);
+}
+
+static int __walk_iomem_res_desc_rev2(struct resource *self, struct resource *res, //unsigned long desc,
+				 bool first_level_children_only, void *arg,
+				 int (*func)(struct resource *, void *))
+{
+	resource_size_t orig_start = res->start;
+	int ret = -1;
+
+	if (!self || (res->start >= res->end)) {
+		return 0;
+	}
+
+	ret = __walk_iomem_res_desc_rev2(self->sibling, res,
+			first_level_children_only, arg, func);
+
+	if ((self->end >= res->start) && (self->start < res->end)) {
+		ret = (*func)(self, arg);
+		res->end = self->start;
+		res->start = orig_start;
+	}
+
+	if (first_level_children_only) {
+		return ret;
+	}
+
+	ret = __walk_iomem_res_desc_rev2(self->child, res,
+			first_level_children_only, arg, func);
+
+	return ret;
+}
+
+struct resource *prev_resource(struct resource *p, bool sibling_only)
+{
+	struct resource *prev;
+	if (p == NULL) {
+		prev = iomem_resource.child;
+		while (prev->sibling)
+			prev = prev->sibling;
+	} else {
+		if (p->parent->child != p) {
+			// p is not the first child
+			for (prev = p->parent->child;
+				prev->sibling!=p;
+				prev=prev->sibling) {
+				;
+			}
+		} else {
+			// p is the first child, return parent
+			return p->parent;
+		}
+	}
+
+	for (;;) {
+		/* Caller wants to traverse through siblings only */
+		if (sibling_only)
+			break;
+
+		if (!prev->child)
+			break;
+
+		prev = prev->child;
+		while (prev->sibling)
+			prev = prev->sibling;
+	}
+	return prev;
+}
+
+static int find_prev_iomem_res(struct resource *res, //unsigned long desc,
+			       bool first_level_children_only)
+{
+	struct resource *p;
+
+	//BUG_ON(!res);
+	//BUG_ON(res->start >= res->end);
+
+	//read_lock(&resource_lock);
+	//printf("%s:%lu-%lu  \n", __func__, res->start, res->end);
+
+	for (p = iomem_resource.child; p;
+		p = next_resource(p, first_level_children_only)) {
+		//if ((p->flags & res->flags) != res->flags)
+		//	continue;
+		//if ((desc != IORES_DESC_NONE) && (desc != p->desc))
+		//	continue;
+		if (p->start > res->end) {
+			p = NULL;
+			break;
+		}
+		if ((p->end >= res->start) && (p->start < res->end))
+			break;
+	}
+
+	//read_unlock(&resource_lock);
+	if (!p)
+		return -1;
+	/* copy data */
+	resource_clip(res, p->start, p->end);
+	res->flags = p->flags;
+	//res->desc = p->desc;
+	return 0;
+}
+
+static int __walk_iomem_res_desc_rev(struct resource *prev, struct resource *res, //unsigned long desc,
+				 bool first_level_children_only, void *arg,
+				 int (*func)(struct resource *, void *))
+{
+	resource_size_t orig_start = res->start;
+	resource_size_t orig_end = res->end;
+	int ret = -1;
+
+	while ((res->start < res->end) &&
+	       !find_prev_iomem_res(res, /* desc, */ first_level_children_only)) {
+		ret = (*func)(res, arg);
+		if (ret)
+			break;
+
+		res->start = res->end + 1;
+		res->end = orig_end;
+	}
+
+	return ret;
+}
+
+int walk_iomem_res_desc_rev(unsigned long desc, unsigned long flags, resource_size_t start,
+		resource_size_t end, void *arg, int (*func)(struct resource *, void *))
+{
+	struct resource res;
+
+	res.start = start;
+	res.end = end;
+	res.flags = flags;
+
+	return __walk_iomem_res_desc_rev2(iomem_resource.child, &res, /* desc, */ false, arg, func);
+	//return __walk_iomem_res_desc_rev(iomem_resource.child, &res, /* desc, */ false, arg, func);
 }
 

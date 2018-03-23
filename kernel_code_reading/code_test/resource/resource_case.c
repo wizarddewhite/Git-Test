@@ -95,6 +95,37 @@ void init2()
     
 }
 
+void init3()
+{
+    int i;
+
+    root.start = 0;
+    root.end   = 1000;
+
+    res[0].start = 10;
+    res[0].end   = 50;
+    
+    res[1].start = 90;
+    res[1].end   = 150;
+    
+    res[2].start = 210;
+    res[2].end   = 250;
+
+    res[3].start = 310;
+    res[3].end   = 450;
+
+    res[4].start = 105;
+    res[4].end = 140;
+
+    for(i = 0; i< 5; i++)
+    {
+	    insert_resource_conflict(&iomem_resource, &res[i]);
+    }
+    printf("initial version of resource list\n");
+    dump(&iomem_resource, 0);
+
+    
+}
 void insert_resource_test()
 {
 	init2();
@@ -535,9 +566,31 @@ void reserve_region_with_split_test1()
 	dump(&root, 0);
 }
 
+int p_res(struct resource *res, void *arg)
+{
+	printf("%lu-%lu  \n", res->start, res->end);
+	return 0;
+}
+
+void iomem_resource_test()
+{
+	init3();
+	walk_iomem_res_desc(0, 0, 0, 1000, NULL, p_res);
+	//walk_iomem_res_desc_rev(0, 0, 0, 1000, NULL, p_res);
+}
+
 int main()
 {
-	allocate_resource_test();
+	struct resource *p;
+	iomem_resource_test();
+	//allocate_resource_test();
+	
+	for(p=prev_resource(NULL, false); ; p=prev_resource(p, false)) {
+		printf("%lu-%lu  \n", p->start, p->end);
+		if (p == iomem_resource.child) {
+			break;
+		}
+	}
 
 	return 0;
 }
