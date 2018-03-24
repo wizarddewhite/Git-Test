@@ -1145,11 +1145,9 @@ struct resource *prev_resource(struct resource *p, bool sibling_only)
 	if (sibling_only)
 		return prev;
 
-	for (;;) {
-		if (!prev->child)
-			break;
-
+	for (;prev->child;) {
 		prev = prev->child;
+
 		while (prev->sibling)
 			prev = prev->sibling;
 	}
