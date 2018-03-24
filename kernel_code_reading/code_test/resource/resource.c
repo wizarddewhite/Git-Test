@@ -1128,16 +1128,16 @@ struct resource *prev_resource(struct resource *p, bool sibling_only)
 		while (prev->sibling)
 			prev = prev->sibling;
 	} else {
-		if (p->parent->child != p) {
-			// p is not the first child
-			for (prev = p->parent->child;
-				prev->sibling!=p;
-				prev=prev->sibling) {
-				;
-			}
-		} else {
-			// p is the first child, return parent
+		// p is the first child, return parent
+		if (p->parent->child == p) {
 			return p->parent;
+		}
+
+		// p is not the first child, get elder brother
+		for (prev = p->parent->child;
+			prev->sibling != p;
+			prev=prev->sibling) {
+			;
 		}
 	}
 
