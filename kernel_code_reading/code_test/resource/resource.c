@@ -1123,22 +1123,22 @@ static int __walk_iomem_res_desc_rev2(struct resource *self, struct resource *re
 struct resource *prev_resource(struct resource *p, bool sibling_only)
 {
 	struct resource *prev;
+	if (NULL == iomem_resource.child)
+		return NULL;
+
 	if (p == NULL) {
 		prev = iomem_resource.child;
 		while (prev->sibling)
 			prev = prev->sibling;
 	} else {
-		// p is the first child, return parent
+		/* p is the first child, return parent */
 		if (p->parent->child == p) {
 			return p->parent;
 		}
 
-		// p is not the first child, get elder brother
-		for (prev = p->parent->child;
-			prev->sibling != p;
-			prev = prev->sibling) {
-			;
-		}
+		/* p is not the first child, get elder brother */
+		for (prev = p->parent->child; prev->sibling != p;
+			prev = prev->sibling) {}
 	}
 
 	/* Caller wants to traverse through siblings only */
