@@ -1165,13 +1165,13 @@ static int find_prev_iomem_res(struct resource *res, //unsigned long desc,
 	//read_lock(&resource_lock);
 	//printf("%s:%lu-%lu  \n", __func__, res->start, res->end);
 
-	for (p = iomem_resource.child; p;
-		p = next_resource(p, first_level_children_only)) {
+	for (p = prev_resource(NULL, first_level_children_only); p;
+		p = prev_resource(p, first_level_children_only)) {
 		//if ((p->flags & res->flags) != res->flags)
 		//	continue;
 		//if ((desc != IORES_DESC_NONE) && (desc != p->desc))
 		//	continue;
-		if (p->start > res->end) {
+		if (p->end < res->start) {
 			p = NULL;
 			break;
 		}
@@ -1189,12 +1189,11 @@ static int find_prev_iomem_res(struct resource *res, //unsigned long desc,
 	return 0;
 }
 
-static int __walk_iomem_res_desc_rev(struct resource *prev, struct resource *res, //unsigned long desc,
+static int __walk_iomem_res_desc_rev(struct resource *res, //unsigned long desc,
 				 bool first_level_children_only, void *arg,
 				 int (*func)(struct resource *, void *))
 {
 	resource_size_t orig_start = res->start;
-	resource_size_t orig_end = res->end;
 	int ret = -1;
 
 	while ((res->start < res->end) &&
@@ -1203,8 +1202,8 @@ static int __walk_iomem_res_desc_rev(struct resource *prev, struct resource *res
 		if (ret)
 			break;
 
-		res->start = res->end + 1;
-		res->end = orig_end;
+		res->end = res->start - 1;
+		res->start = orig_start;
 	}
 
 	return ret;
@@ -1219,7 +1218,7 @@ int walk_iomem_res_desc_rev(unsigned long desc, unsigned long flags, resource_si
 	res.end = end;
 	res.flags = flags;
 
-	return __walk_iomem_res_desc_rev2(iomem_resource.child, &res, /* desc, */ false, arg, func);
-	//return __walk_iomem_res_desc_rev(iomem_resource.child, &res, /* desc, */ false, arg, func);
+	//return __walk_iomem_res_desc_rev2(iomem_resource.child, &res, /* desc, */ false, arg, func);
+	return __walk_iomem_res_desc_rev(&res, /* desc, */ false, arg, func);
 }
 

@@ -576,7 +576,7 @@ void iomem_resource_test()
 {
 	init3();
 	walk_iomem_res_desc(0, 0, 0, 1000, NULL, p_res);
-	//walk_iomem_res_desc_rev(0, 0, 0, 1000, NULL, p_res);
+	walk_iomem_res_desc_rev(0, 0, 10, 1000, NULL, p_res);
 }
 
 int main()
@@ -585,12 +585,17 @@ int main()
 	iomem_resource_test();
 	//allocate_resource_test();
 	
-	for(p=prev_resource(NULL, false); ; p=prev_resource(p, false)) {
-		printf("%lu-%lu  \n", p->start, p->end);
-		if (p == iomem_resource.child) {
-			break;
-		}
-	}
+	//for (p = iomem_resource.child; p;
+	//	p = next_resource(p, false)) {
+	//	printf("%lu-%lu  \n", p->start, p->end);
+	//}
+	//
+	//for(p=prev_resource(NULL, false); p; p=prev_resource(p, false)) {
+	//	printf("%lu-%lu  \n", p->start, p->end);
+	//	if (p == iomem_resource.child) {
+	//		break;
+	//	}
+	//}
 
 	return 0;
 }
