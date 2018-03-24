@@ -1009,7 +1009,7 @@ void reserve_region_with_split(struct resource *root,
 	//write_unlock(&resource_lock);
 }
 
-static struct resource *next_resource(struct resource *p, bool sibling_only)
+struct resource *next_resource(struct resource *p, bool sibling_only)
 {
 	/* Caller wants to traverse through siblings only */
 	if (sibling_only)
@@ -1136,16 +1136,16 @@ struct resource *prev_resource(struct resource *p, bool sibling_only)
 		// p is not the first child, get elder brother
 		for (prev = p->parent->child;
 			prev->sibling != p;
-			prev=prev->sibling) {
+			prev = prev->sibling) {
 			;
 		}
 	}
 
-	for (;;) {
-		/* Caller wants to traverse through siblings only */
-		if (sibling_only)
-			break;
+	/* Caller wants to traverse through siblings only */
+	if (sibling_only)
+		return prev;
 
+	for (;;) {
 		if (!prev->child)
 			break;
 

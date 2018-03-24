@@ -177,5 +177,6 @@ void reserve_region_with_split1(struct resource *root,
 		const char *name);
 int walk_iomem_res_desc(unsigned long desc, unsigned long flags, resource_size_t start,
 		resource_size_t end, void *arg, int (*func)(struct resource *, void *));
+struct resource *next_resource(struct resource *p, bool sibling_only);
 struct resource *prev_resource(struct resource *p, bool sibling_only);
 #endif //__RESOURCE_H__
