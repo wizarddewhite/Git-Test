@@ -1171,7 +1171,7 @@ static int find_prev_iomem_res(struct resource *res, //unsigned long desc,
 		//	continue;
 		//if ((desc != IORES_DESC_NONE) && (desc != p->desc))
 		//	continue;
-		if (p->end < res->start) {
+		if (p->end < res->start || p->child == iomem_resource.child) {
 			p = NULL;
 			break;
 		}
@@ -1202,7 +1202,7 @@ static int __walk_iomem_res_desc_rev(struct resource *res, //unsigned long desc,
 		if (ret)
 			break;
 
-		res->end = res->start - 1;
+		res->end = res->start?(res->start - 1):0;
 		res->start = orig_start;
 	}
 

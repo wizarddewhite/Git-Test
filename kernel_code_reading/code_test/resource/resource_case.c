@@ -576,7 +576,7 @@ void iomem_resource_test()
 {
 	init3();
 	walk_iomem_res_desc(0, 0, 0, 1000, NULL, p_res);
-	walk_iomem_res_desc_rev(0, 0, 10, 1000, NULL, p_res);
+	walk_iomem_res_desc_rev(0, 0, 0, 1000, NULL, p_res);
 }
 
 int main()
