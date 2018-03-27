@@ -943,6 +943,7 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
 
 0.4 representation
 ================================================================================
+; node_data[] allocated in alloc_node_data()
 
    node_data[0]                                                node_data[1]
    +-----------------------------+                             +-----------------------------+        

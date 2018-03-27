@@ -854,6 +854,7 @@ static inline void memblock_dump_all(void)
 ================================================================================
 ; retrieve numa info
 ; and set it to memblock and global nodemask
+; allocate node_data[] (pg_data_t)
 
 void __init initmem_init(void)
 {
