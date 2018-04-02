@@ -96,8 +96,28 @@ void isolate_test()
 
 }
 
+void next_valid_test()
+{
+	unsigned long pfn;
+
+	// page aligned memory region
+	memblock_add_range(&memblock.memory, 0x1000, 0x1000, 0, 0);
+	memblock_add_range(&memblock.memory, 0x5000, 0x1000, 0, 0);
+	// none page aligned memory region
+	memblock_add_range(&memblock.memory, 0x5000, 0x1100, 0, 0);
+	memblock_add_range(&memblock.memory, 0x6101, 0x1000, 0, 0);
+
+	printf("%s: dumping memory\n", __func__);
+	memblock_dump(&memblock.memory, "test");
+
+	for (pfn = 1; pfn < 10; pfn++) {
+		printf("pfn: %lx\n", pfn);
+		pfn = memblock_next_valid_pfn(pfn, 10) - 1;
+	}
+}
+
 int main()
 {
-	isolate_test();
+	next_valid_test();
 	return 0;
 }

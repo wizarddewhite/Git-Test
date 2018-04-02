@@ -208,8 +208,10 @@ void memblock_dump(struct memblock_type *type, char *name)
 		if (memblock_get_region_node(rgn) != MAX_NUMNODES)
 			snprintf(nid_buf, sizeof(nid_buf), " on node %d",
 				 memblock_get_region_node(rgn));
-		printf(" %s[%#x]\t[%#016llx-%#016llx], %#llx bytes%s flags: %#lx\n",
-			name, idx, base, base + size - 1, size, nid_buf, flags);
+		printf(" %s[%#x]\t[%#016llx-%#016llx], [%llx-%llx], %#llx bytes%s flags: %#lx\n",
+			name, idx, base, base + size - 1,
+			PFN_UP(base), PFN_DOWN(base + size),
+			size, nid_buf, flags);
 	}
 }
 
@@ -678,4 +680,31 @@ int memblock_is_region_memory(phys_addr_t base, phys_addr_t size)
 	return /* memblock.memory.regions[idx].base <= base && */
 		(memblock.memory.regions[idx].base +
 		 memblock.memory.regions[idx].size) >= end;
+}
+
+unsigned long memblock_next_valid_pfn(unsigned long pfn, unsigned long max_pfn)
+{
+	struct memblock_type *type = &memblock.memory;
+	unsigned int right = type->cnt;
+	unsigned int mid, left = 0;
+	phys_addr_t addr = PFN_PHYS(++pfn);
+
+	do {
+		mid = (right + left) / 2;
+
+		if (addr < type->regions[mid].base)
+			right = mid;
+		else if (addr >= (type->regions[mid].base +
+				  type->regions[mid].size))
+			left = mid + 1;
+		else {
+			/* addr is within the region, so pfn is valid */
+			return pfn;
+		}
+	} while (left < right);
+
+	if (right == type->cnt)
+		return -1UL;
+	else
+		return PHYS_PFN(type->regions[right].base);
 }

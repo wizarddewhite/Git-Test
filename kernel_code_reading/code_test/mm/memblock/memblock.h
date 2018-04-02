@@ -32,6 +32,13 @@ typedef unsigned long phys_addr_t ;
 typedef unsigned long long u64 ;
 typedef unsigned int u32 ;
 
+#define PAGE_SHIFT		12
+#define PAGE_SIZE		(1 << PAGE_SHIFT)
+#define PFN_UP(x)	(((x) + PAGE_SIZE-1) >> PAGE_SHIFT)
+#define PFN_DOWN(x)	((x) >> PAGE_SHIFT)
+#define PFN_PHYS(x)	((phys_addr_t)(x) << PAGE_SHIFT)
+#define PHYS_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
+
 /* Definition of memblock flags. */
 enum {
 	MEMBLOCK_NONE		= 0x0,	/* No special request */
@@ -136,6 +143,7 @@ static inline void memblock_dump_all(void)
 phys_addr_t memblock_alloc(phys_addr_t size, phys_addr_t align);
 int memblock_free(phys_addr_t base, phys_addr_t size);
 int memblock_is_region_memory(phys_addr_t base, phys_addr_t size);
+unsigned long memblock_next_valid_pfn(unsigned long pfn, unsigned long max_pfn);
 
 /**
  * for_each_mem_range_rev - reverse iterate through memblock areas from
