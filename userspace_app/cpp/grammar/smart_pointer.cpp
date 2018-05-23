@@ -46,6 +46,8 @@ void func_param_shared_ptr(const std::shared_ptr<Base>& b)
 void shared_pointer()
 {
 	shared_ptr<Base> sd(new Base("shared pointer1"));
+	// same as
+	// std::shared_ptr<Base> sd = std::make_shared<Base> ("shared pointer1");
 	// automatically released
 
 	shared_ptr<Base> csd;
