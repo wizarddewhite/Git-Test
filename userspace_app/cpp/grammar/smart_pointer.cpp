@@ -37,6 +37,12 @@ void auto_pointer()
 	cout << "csd addr:" << csd.get() << endl;
 }
 
+void func_param_shared_ptr(const std::shared_ptr<Base>& b)
+{
+	cout << "  b count" << b.use_count() << endl;
+	cout << "  b addr:" << b.get() << endl;
+}
+
 void shared_pointer()
 {
 	shared_ptr<Base> sd(new Base("shared pointer1"));
@@ -44,6 +50,8 @@ void shared_pointer()
 
 	shared_ptr<Base> csd;
 	cout << " sd count" << sd.use_count() << endl;
+	func_param_shared_ptr(sd);
+
 	csd = sd;
 	cout << " sd count" << sd.use_count() << endl;
 	cout << "csd count" << sd.use_count() << endl;
