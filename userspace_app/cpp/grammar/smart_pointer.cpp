@@ -43,7 +43,10 @@ void shared_pointer()
 	// automatically released
 
 	shared_ptr<Base> csd;
+	cout << " sd count" << sd.use_count() << endl;
 	csd = sd;
+	cout << " sd count" << sd.use_count() << endl;
+	cout << "csd count" << sd.use_count() << endl;
 	sd->print();
 	csd->print();
 	cout << " sd addr:" << sd.get() << endl;
