@@ -469,14 +469,6 @@ start_kernel()
             |reserved                      |
             |                              |
             +------------------------------+
-            |cpu_partial                   |  determine max #objects kept in the per cpu partial lists of a processor
-            |    (int)                     |
-            +------------------------------+
-            |flags                         |
-            |    (unsigned long)           |
-            |allocflags                    |
-            |    (gfp_t)                   |
-            +------------------------------+
             |oo                            |
             |min                           |
             |max                           |
@@ -485,6 +477,14 @@ start_kernel()
             |   |order                     |
             |   |order_objects             |
             +---+--------------------------+
+            |cpu_partial                   |  determine max #objects kept in the per cpu partial lists of a processor
+            |    (int)                     |
+            +------------------------------+
+            |flags                         |
+            |    (unsigned long)           |
+            |allocflags                    |
+            |    (gfp_t)                   |
+            +------------------------------+
             |cpu_slab                      |  * per cpu variable pointer
             |   (struct kmem_cache_cpu*)   |          kmem_cache_cpu
             |   +--------------------------+
