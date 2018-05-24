@@ -3,12 +3,17 @@
 
 using namespace std;
 
-struct Base
+struct Base : public enable_shared_from_this<Base>
 {
     Base() { cout << "Base::Base()" << endl; }
     Base(string n):name(n) { cout << "Base::Base(" << name << ")" << endl; }
     ~Base() { cout << "Base::~Base(" << name << ")" << endl; }
     virtual void print() {cout << "  Base::print(" << name << ")" << endl;}
+
+    shared_ptr<Base> get_self()
+    {
+	    return shared_from_this();
+    }
 
     string name;
 };
@@ -74,9 +79,14 @@ void shared_pointer_from_ptr()
 	cout << "count of p1:" << p1.use_count() << endl;
 
 	// fail, since p2 not aware p1, then Base will be released twice
-	shared_ptr<Base> p2(pb);
-	cout << "addr  of p2:" << p2.get() << endl;
-	cout << "count of p2:" << p2.use_count() << endl;
+	// shared_ptr<Base> p2(pb);
+	// cout << "addr  of p2:" << p2.get() << endl;
+	// cout << "count of p2:" << p2.use_count() << endl;
+
+	// success by enable_shared_from_this
+	shared_ptr<Base> p3 (pb->get_self());
+	cout << "addr  of p3:" << p3.get() << endl;
+	cout << "count of p3:" << p3.use_count() << endl;
 }
 
 void unique_pointer()
