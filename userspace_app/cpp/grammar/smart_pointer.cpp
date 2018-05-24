@@ -63,6 +63,22 @@ void shared_pointer()
 	cout << "csd addr:" << csd.get() << endl;
 }
 
+void shared_pointer_from_ptr()
+{
+	Base *pb = new Base("shared ptr from pointer");
+	cout << "addr  of pb:" << pb << endl;
+
+	// works fine, the Base will be released after function return
+	shared_ptr<Base> p1(pb);
+	cout << "addr  of p1:" << p1.get() << endl;
+	cout << "count of p1:" << p1.use_count() << endl;
+
+	// fail, since p2 not aware p1, then Base will be released twice
+	shared_ptr<Base> p2(pb);
+	cout << "addr  of p2:" << p2.get() << endl;
+	cout << "count of p2:" << p2.use_count() << endl;
+}
+
 void unique_pointer()
 {
 	unique_ptr<Base> sd(new Base("unique pointer"));
@@ -83,8 +99,9 @@ void unique_pointer()
 int main()
 {
 	//raw_pointer();
-	auto_pointer();
+	//auto_pointer();
 	//shared_pointer();
 	//unique_pointer();
+	shared_pointer_from_ptr();
 	return 0;
 }
