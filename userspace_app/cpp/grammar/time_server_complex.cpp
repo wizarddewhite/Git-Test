@@ -6,6 +6,10 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
 
+// g++ time_server_complex.cpp -std=c++11 -Iopt/boost_1_57_0/include/ -L opt/boost_1_57_0/lib/ -lboost_system -lboost_wave -lboost_iostreams
+// LD_LIBRARY_PATH="opt/boost_1_57_0/lib/" ./a.out
+// curl localhost:13
+
 using boost::asio::ip::tcp;
 
 std::string make_daytime_string()
@@ -65,6 +69,10 @@ public:
           boost::asio::placeholders::bytes_transferred));
   }
 
+  ~tcp_connection()
+  {
+      std::cout << "tcp_connection:" << this << " released" << std::endl;
+  }
 private:
   tcp_connection(boost::asio::io_service& io_service)
     : socket_(io_service)
