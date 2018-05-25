@@ -1,0 +1,117 @@
+1. tcp_server()
+================================================================================
+tcp_server::tcp_server()
+:my(nullptr) {
+}
+
+2. tcp_server::accept()
+================================================================================
+void tcp_server::accept( tcp_socket& s ) 
+{
+  try
+  {
+    FC_ASSERT( my != nullptr );
+    fc::asio::tcp::accept( my->_accept, s.my->_sock  ); 
+  } FC_RETHROW_EXCEPTIONS( warn, "Unable to accept connection on socket." );
+}
+
+2.1 accept()
+================================================================================
+template<typename SocketType, typename AcceptorType>
+void accept( AcceptorType& acc, SocketType& sock ) {
+    //promise<boost::system::error_code>::ptr p( new promise<boost::system::error_code>("fc::asio::tcp::accept") );
+    promise<void>::ptr p( new promise<void>("fc::asio::tcp::accept") );
+    acc.async_accept( sock, boost::bind( fc::asio::detail::error_handler, p, _1 ) );
+    p->wait();
+    //if( ec ) BOOST_THROW_EXCEPTION( boost::system::system_error(ec) );
+}
+
+2.1.1 detail::error_handler()
+================================================================================
+void error_handler( const promise<void>::ptr& p,
+                      const boost::system::error_code& ec ) {
+    if( !ec )
+      p->set_value();
+    else
+    {
+        if( ec == boost::asio::error::eof  )
+        {
+          p->set_exception( fc::exception_ptr( new fc::eof_exception(
+                  FC_LOG_MESSAGE( error, "${message} ", ("message", boost::system::system_error(ec).what())) ) ) );
+        }
+        else
+        {
+          //elog( "${message} ", ("message", boost::system::system_error(ec).what()));
+          p->set_exception( fc::exception_ptr( new fc::exception(
+                  FC_LOG_MESSAGE( error, "${message} ", ("message", boost::system::system_error(ec).what())) ) ) );
+        }
+    }
+}
+
+2.1.1.1 promise_bas::_set_value()
+================================================================================
+void promise_base::_set_value(const void* s){
+//   slog( "%p == %d", &_ready, int(_ready));
+//    BOOST_ASSERT( !_ready );
+    { synchronized(_spin_yield) 
+      if (_ready) //don't allow promise to be set more than once
+        return;
+      _ready = true;
+    }
+    _notify();
+    if( nullptr != _compl ) {
+      _compl->on_complete(s,_exceptp);
+    }
+}
+
+2.1.1.1.1 promise_bas::_notify(), notify the blocked_thread
+================================================================================
+void promise_base::_notify(){
+  // copy _blocked_thread into a local so that if the thread unblocks (e.g., 
+  // because of a timeout) before we get a chance to notify it, we won't be
+  // calling notify on a null pointer
+  thread* blocked_thread;
+  { synchronized(_spin_yield)
+    blocked_thread = _blocked_thread;
+  }
+  if( blocked_thread ) 
+    blocked_thread->notify(ptr(this,true));
+}
+
+3. tcp_server::listen()
+================================================================================
+void tcp_server::listen( uint16_t port ) 
+{
+  if( !my ) 
+    my = new impl;
+  try
+  {
+    my->_accept.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), port));
+    my->_accept.listen(256);
+  } 
+  FC_RETHROW_EXCEPTIONS(warn, "error listening on socket");
+}
+
+0. data structure
+================================================================================
+
+    tcp_server
+    +-------------------------------+
+    |my                             |
+    |     (class impl*)             |
+    +-------------------------------+
+    |accept()                       |
+    |close()                        |
+    |listen()                       |
+    |                               |
+    |                               |
+    +-------------------------------+
+
+0.1 tcp_server::impl
+================================================================================
+
+    tcp_server::impl
+    +-----------------------------------+
+    |_accept                            |
+    |(boost::asio::ip::tcp::acceptor)   |
+    +-----------------------------------+
