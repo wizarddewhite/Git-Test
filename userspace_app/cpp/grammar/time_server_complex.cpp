@@ -45,6 +45,10 @@ public:
     // until the asynchronous operation is complete.
     m_message = make_daytime_string();
 
+    std::cout << "start:" << this << std::endl;
+    std::cout << "     :" << socket_.native_handle() << std::endl;
+    std::cout << "     :" << socket_.local_endpoint() << std::endl;
+
     // When initiating the asynchronous operation, 
     // and if using boost::bind(), 
     // we must specify only the arguments 
@@ -98,6 +102,9 @@ private:
     // creates a socket
     tcp_connection::pointer new_connection =
       tcp_connection::create(acceptor_.get_io_service());
+
+    std::cout << "start_accept:" << new_connection.get() << std::endl;
+    std::cout << "            :" << new_connection->socket().native_handle() << std::endl;
 
     // initiates an asynchronous accept operation 
     // to wait for a new connection. 
