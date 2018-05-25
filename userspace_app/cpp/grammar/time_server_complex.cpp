@@ -68,9 +68,11 @@ private:
   }
   // handle_write() is responsible for any further actions 
   // for this client connection.
-  void handle_write(const boost::system::error_code& /*error*/,
-      size_t /*bytes_transferred*/)
+  void handle_write(const boost::system::error_code& err,
+      size_t bytes_transferred)
   {
+      if (!err)
+        socket_.shutdown(tcp::socket::shutdown_send);
   }
 
   tcp::socket socket_;
