@@ -1,0 +1,35 @@
+1. 
+
+0. data structure
+================================================================================
+
+    statistics_gathering_node_delegate_wrapper:node_delegate
+    +------------------------------------------------------+
+    |_thread                                               |
+    |                                                      |
+    +------------------------------------------------------+
+    |has_item                                              |
+    |handle_message                                        |
+    |handle_block                                          |
+    |handle_transaction                                    |
+    |get_block_ids                                         |
+    |get_item                                              |
+    |get_chain_id                                          |
+    |get_blockchain_synopsis                               |
+    |sync_status                                           |
+    |connection_count_changed                              |
+    |get_block_number                                      |
+    |get_block_time                                        |
+    |get_head_block_id                                     |
+    |estimate_last_known_fork_from_git_revision_timestamp  |
+    |error_encountered                                     |
+    |get_current_block_interval_in_seconds                 |
+    |                                                      |
+    +------------------------------------------------------+
+    |                                                      |
+    |                                                      |
+    |                                                      |
+    |                                                      |
+    |                                                      |
+    |                                                      |
+    +------------------------------------------------------+

@@ -116,14 +116,180 @@ void node_impl::accept_loop()
   }
 } // accept_loop()
 
+1.6.1.1 peer_connection::make_shared()
+================================================================================
+
+1.6.1.2 tcp_server::accept()
+================================================================================
+
+1.6.1.3 node_impl::accept_connection_task(), send_hello_message()
+================================================================================
+void node_impl::accept_connection_task( peer_connection_ptr new_peer )
+{
+  VERIFY_CORRECT_THREAD();
+  new_peer->accept_connection(); // this blocks until the secure connection is fully negotiated
+  send_hello_message(new_peer);
+}
+
 1.6.2 node_impl::p2p_network_connect_loop()
 ================================================================================
+
+1.6.2.1 node_impl::connect_to_endpoint() -> connect_to_task() -> send_hello_message()
+================================================================================
+void node_impl::connect_to_endpoint(const fc::ip::endpoint& remote_endpoint)
+{
+  VERIFY_CORRECT_THREAD();
+  if (is_connection_to_endpoint_in_progress(remote_endpoint))
+    FC_THROW_EXCEPTION(already_connected_to_requested_peer, "already connected to requested endpoint ${endpoint}",
+                       ("endpoint", remote_endpoint));
+
+  dlog("node_impl::connect_to_endpoint(${endpoint})", ("endpoint", remote_endpoint));
+  peer_connection_ptr new_peer(peer_connection::make_shared(this));
+  new_peer->set_remote_endpoint(remote_endpoint);
+  initiate_connect_to(new_peer);
+}
 
 1.6.3 node_impl::fetch_sync_items_loop()
 ================================================================================
 
+sync items in peer->ids_of_items_to_get
+
+1.6.3.1 node_impl::request_sync_items_from_peer(), sync blockchain
+================================================================================
+void node_impl::request_sync_items_from_peer( const peer_connection_ptr& peer, const std::vector<item_hash_t>& items_to_request )
+{
+  VERIFY_CORRECT_THREAD();
+  dlog( "requesting ${item_count} item(s) ${items_to_request} from peer ${endpoint}",
+        ("item_count", items_to_request.size())("items_to_request", items_to_request)("endpoint", peer->get_remote_endpoint()) );
+  for (const item_hash_t& item_to_request : items_to_request)
+  {
+    _active_sync_requests.insert( active_sync_requests_map::value_type(item_to_request, fc::time_point::now() ) );
+    peer->last_sync_item_received_time = fc::time_point::now();
+    peer->sync_items_requested_from_peer.insert(item_to_request);
+  }
+  peer->send_message(fetch_items_message(graphene::net::block_message_type, items_to_request));
+}
+
 1.6.4 node_impl::fetch_items_loop()
 ================================================================================
+void node_impl::fetch_items_loop()
+{
+  VERIFY_CORRECT_THREAD();
+  while (!_fetch_item_loop_done.canceled())
+  {
+    _items_to_fetch_updated = false;
+    dlog("beginning an iteration of fetch items (${count} items to fetch)",
+         ("count", _items_to_fetch.size()));
+
+    fc::time_point oldest_timestamp_to_fetch = fc::time_point::now() - fc::seconds(_recent_block_interval_in_seconds * GRAPHENE_NET_MESSAGE_CACHE_DURATION_IN_BLOCKS);
+    fc::time_point next_peer_unblocked_time = fc::time_point::maximum();
+
+    // we need to construct a list of items to request from each peer first,
+    // then send the messages (in two steps, to avoid yielding while iterating)
+    // we want to evenly distribute our requests among our peers.
+    struct requested_item_count_index {};
+    struct peer_and_items_to_fetch
+    {
+      peer_connection_ptr peer;
+      std::vector<item_id> item_ids;
+      peer_and_items_to_fetch(const peer_connection_ptr& peer) : peer(peer) {}
+      bool operator<(const peer_and_items_to_fetch& rhs) const { return peer < rhs.peer; }
+      size_t number_of_items() const { return item_ids.size(); }
+    };
+    typedef boost::multi_index_container<peer_and_items_to_fetch,
+                                         boost::multi_index::indexed_by<boost::multi_index::ordered_unique<boost::multi_index::member<peer_and_items_to_fetch, peer_connection_ptr, &peer_and_items_to_fetch::peer> >,
+                                                                        boost::multi_index::ordered_non_unique<boost::multi_index::tag<requested_item_count_index>,
+                                                                                                               boost::multi_index::const_mem_fun<peer_and_items_to_fetch, size_t, &peer_and_items_to_fetch::number_of_items> > > > fetch_messages_to_send_set;
+    fetch_messages_to_send_set items_by_peer;
+
+    // initialize the fetch_messages_to_send with an empty set of items for all idle peers
+    for (const peer_connection_ptr& peer : _active_connections)
+      if (peer->idle())
+        items_by_peer.insert(peer_and_items_to_fetch(peer));
+
+    // now loop over all items we want to fetch
+    for (auto item_iter = _items_to_fetch.begin(); item_iter != _items_to_fetch.end();)
+    {
+      if (item_iter->timestamp < oldest_timestamp_to_fetch)
+      {
+        // this item has probably already fallen out of our peers' caches, we'll just ignore it.
+        // this can happen during flooding, and the _items_to_fetch could otherwise get clogged
+        // with a bunch of items that we'll never be able to request from any peer
+        wlog("Unable to fetch item ${item} before its likely expiration time, removing it from our list of items to fetch", ("item", item_iter->item));
+        item_iter = _items_to_fetch.erase(item_iter);
+      }
+      else
+      {
+        // find a peer that has it, we'll use the one who has the least requests going to it to load balance
+        bool item_fetched = false;
+        for (auto peer_iter = items_by_peer.get<requested_item_count_index>().begin(); peer_iter != items_by_peer.get<requested_item_count_index>().end(); ++peer_iter)
+        {
+          const peer_connection_ptr& peer = peer_iter->peer;
+          // if they have the item and we haven't already decided to ask them for too many other items
+          if (peer_iter->item_ids.size() < GRAPHENE_NET_MAX_ITEMS_PER_PEER_DURING_NORMAL_OPERATION &&
+              peer->inventory_peer_advertised_to_us.find(item_iter->item) != peer->inventory_peer_advertised_to_us.end())
+          {
+            if (item_iter->item.item_type == graphene::net::trx_message_type && peer->is_transaction_fetching_inhibited())
+              next_peer_unblocked_time = std::min(peer->transaction_fetching_inhibited_until, next_peer_unblocked_time);
+            else
+            {
+              //dlog("requesting item ${hash} from peer ${endpoint}",
+              //     ("hash", iter->item.item_hash)("endpoint", peer->get_remote_endpoint()));
+              item_id item_id_to_fetch = item_iter->item;
+              peer->items_requested_from_peer.insert(peer_connection::item_to_time_map_type::value_type(item_id_to_fetch, fc::time_point::now()));
+              item_iter = _items_to_fetch.erase(item_iter);
+              item_fetched = true;
+              items_by_peer.get<requested_item_count_index>().modify(peer_iter, [&item_id_to_fetch](peer_and_items_to_fetch& peer_and_items) {
+                peer_and_items.item_ids.push_back(item_id_to_fetch);
+              });
+              break;
+            }
+          }  
+        }
+        if (!item_fetched)
+          ++item_iter;
+      }
+    }
+
+    // we've figured out which peer will be providing each item, now send the messages.
+    for (const peer_and_items_to_fetch& peer_and_items : items_by_peer)
+    {
+      // the item lists are heterogenous and
+      // the fetch_items_message can only deal with one item type at a time.  
+      std::map<uint32_t, std::vector<item_hash_t> > items_to_fetch_by_type;
+      for (const item_id& item : peer_and_items.item_ids)
+        items_to_fetch_by_type[item.item_type].push_back(item.item_hash);
+      for (auto& items_by_type : items_to_fetch_by_type)
+      {
+        dlog("requesting ${count} items of type ${type} from peer ${endpoint}: ${hashes}",
+             ("count", items_by_type.second.size())("type", (uint32_t)items_by_type.first)
+             ("endpoint", peer_and_items.peer->get_remote_endpoint())
+             ("hashes", items_by_type.second));
+        peer_and_items.peer->send_message(fetch_items_message(items_by_type.first,
+                                                              items_by_type.second));
+      }
+    }
+    items_by_peer.clear();
+
+    if (!_items_to_fetch_updated)
+    {
+      _retrigger_fetch_item_loop_promise = fc::promise<void>::ptr(new fc::promise<void>("graphene::net::retrigger_fetch_item_loop"));
+      fc::microseconds time_until_retrigger = fc::microseconds::maximum();
+      if (next_peer_unblocked_time != fc::time_point::maximum())
+        time_until_retrigger = next_peer_unblocked_time - fc::time_point::now();
+      try
+      {
+        if (time_until_retrigger > fc::microseconds(0))
+          _retrigger_fetch_item_loop_promise->wait(time_until_retrigger);
+      }
+      catch (const fc::timeout_exception&)
+      {
+        dlog("Resuming fetch_items_loop due to timeout -- one of our peers should no longer be throttled");
+      }
+      _retrigger_fetch_item_loop_promise.reset();
+    }
+  } // while (!canceled)
+}
 
 1.6.5 node_impl::advertise_inventory_loop()
 ================================================================================
@@ -131,8 +297,42 @@ void node_impl::accept_loop()
 1.6.6 node_impl::terminate_inactive_connections_loop()
 ================================================================================
 
-1.6.7 node_impl::fetch_updated_peer_lists_loop()
+1.6.7 node_impl::fetch_updated_peer_lists_loop(), send address_request_message
 ================================================================================
+void node_impl::fetch_updated_peer_lists_loop()
+{
+  VERIFY_CORRECT_THREAD();
+
+  std::list<peer_connection_ptr> original_active_peers(_active_connections.begin(), _active_connections.end());
+  for( const peer_connection_ptr& active_peer : original_active_peers )
+  {
+    try
+    {
+      active_peer->send_message(address_request_message());
+    }
+    catch ( const fc::canceled_exception& )
+    {
+      throw;
+    }
+    catch (const fc::exception& e)
+    {
+      dlog("Caught exception while sending address request message to peer ${peer} : ${e}",
+           ("peer", active_peer->get_remote_endpoint())("e", e));
+    }
+  }
+
+  // this has nothing to do with updating the peer list, but we need to prune this list 
+  // at regular intervals, this is a fine place to do it.
+  fc::time_point_sec oldest_failed_ids_to_keep(fc::time_point::now() - fc::minutes(15));
+  auto oldest_failed_ids_to_keep_iter = _recently_failed_items.get<peer_connection::timestamp_index>().lower_bound(oldest_failed_ids_to_keep);
+  auto begin_iter = _recently_failed_items.get<peer_connection::timestamp_index>().begin();
+  _recently_failed_items.get<peer_connection::timestamp_index>().erase(begin_iter, oldest_failed_ids_to_keep_iter);
+
+  if (!_node_is_shutting_down && !_fetch_updated_peer_lists_loop_done.canceled() )
+     _fetch_updated_peer_lists_loop_done = fc::schedule( [this](){ fetch_updated_peer_lists_loop(); },
+                                                         fc::time_point::now() + fc::minutes(15),
+                                                         "fetch_updated_peer_lists_loop" );
+}
 
 1.6.8 node_impl::bandwidth_monitor_loop()
 ================================================================================
@@ -278,3 +478,171 @@ void node_impl::sync_from(const item_id& current_head_block, const std::vector<u
       delete impl_to_delete;
 #endif // P2P_IN_DEDICATED_THREAD
     }
+
+0.2 peer_connection
+================================================================================
+
+    peer_connection : message_oriented_connection_delegate
+    +-----------------------------------------+
+    |_node                                    |
+    |     (peer_connection_delegate *)        |   point to node_impl
+    |                                         |
+    |_remote_endpoint                         |
+    |                                         |
+    |_message_connection                      |
+    |     (message_oriented_connection)       |
+    |_total_queued_messages_size              |
+    |queued_message                           |
+    |_send_queued_messages_done               |
+    |                                         |
+    +-----------------------------------------+
+    |connection_initiation_time               |
+    |connection_closed_time                   |
+    |connection_terminated_time               |
+    |                                         |
+    |direction                                |
+    |                                         |
+    |our_state                                |
+    |their_state                              |
+    |                                         |
+    |                                         |
+    +-----------------------------------------+
+    |node_public_key                          |
+    |node_id                                  |
+    |                                         |
+    +-----------------------------------------+
+    |peer_needs_sync_items_from_us            |
+    |we_need_sync_items_from_peer             |
+    |    (bool)                               |
+    +-----------------------------------------+
+    |ids_of_items_to_get                      | ;id of items in the blockchain that this peer has told us about
+    |                                         |  updated on blockchain item ids inventory message
+    |                                         |
+    |sync_items_requested_from_peer           | ;ids of blocks we've requested from this peer during sync.  fetch from another peer if this peer disconnects
+    |                                         |
+    |                                         |
+    +-----------------------------------------+
+
+0.2.1 message_oriented_connection_delegate
+================================================================================
+
+     message_oriented_connection_delegate(interface)
+     +----------------------------------+
+     |on_message()                      |
+     |on_connection_closed()            |
+     +----------------------------------+
+
+0.3 message exchange
+================================================================================
+
+        handshaking (p2p_network_connect_loop)
+
+        |                                                |
+        |                                                |
+        |             hello_message                      |
+        |----------------------------------------------->|
+        |                                                |
+        |                                                |
+        |             connection_accepted                |
+        |<-----------------------------------------------|
+        |                                                |                   |
+        |                                                |                   |
+        |             [check firewall]                   |    Forward        |
+        |----------------------------------------------->|------------------>|
+        |                                                |                   |
+        |                                                |                   |
+        |              check firewall reply                                  |
+        |<-------------------------------------------------------------------|
+        |                                                                    |
+        |                                                                    |
+        |              check firewall reply                                  |
+        |------------------------------------------------------------------->|
+        |                                                                    |
+        |                                                                    |
+        |                                                                    |
+
+
+
+	get new endpoint from peer (fetch_updated_peer_lists_loop)
+
+        |                                                |
+        |                                                |
+        |             address request                    |
+        |----------------------------------------------->|
+        |                                                |
+        |                                                |
+        |             address message                    |
+        |<-----------------------------------------------|
+        |                                                |
+        |                                                |
+        |                                                |
+
+
+
+
+	fetch items ids (on_address_message, a new peer is found)
+
+        |                                                |
+        |                                                |
+        |             fetch blockchain item ids          |
+        |----------------------------------------------->|
+        |                                                |
+        |                                                |
+        |             blockchain items ids inventory     |
+        |<-----------------------------------------------|
+        |             [fetch blockchain items]           |
+        |<-----------------------------------------------|
+        |                                                |
+        |                                                |
+        |             fetch blockchain item ids          |
+        |----------------------------------------------->|
+
+
+
+
+        |                                                |
+        |                                                |
+        |             fetch items                        |
+        |----------------------------------------------->|
+        |                                                |
+        |                                                |
+        |             item_id                            |
+        |<-----------------------------------------------|
+        |                                                |
+        |                                                |
+        |             ???                                |
+        |<-----------------------------------------------|
+        |                                                |
+        |                                                |
+        |                                                |
+
+
+
+
+
+        |                                                |
+        |                                                |
+        |             current time request               |
+        |----------------------------------------------->|
+        |                                                |
+        |                                                |
+        |             current time reply                 |
+        |<-----------------------------------------------|
+        |                                                |
+        |                                                |
+        |                                                |
+
+
+
+
+        |                                                |
+        |                                                |
+        |             current connection request         |
+        |----------------------------------------------->|
+        |                                                |
+        |                                                |
+        |             current connection reply           |
+        |<-----------------------------------------------|
+        |                                                |
+        |                                                |
+        |                                                |

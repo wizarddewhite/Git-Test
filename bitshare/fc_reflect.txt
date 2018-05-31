@@ -1,0 +1,162 @@
+1. get_typename, a type with name function
+================================================================================
+template<> struct get_typename<int32_t> 
+{
+	static const char* name()  { return "int32_t";  } 
+};
+
+
+2. reflector
+================================================================================
+template<typename T>
+struct reflector{
+    typedef T type;
+    typedef fc::false_type is_defined;
+    typedef fc::false_type is_enum;
+
+    /**
+     *  @tparam Visitor a function object of the form:
+     *
+     *    @code
+     *     struct functor {
+     *        template<typename Member, class Class, Member (Class::*member)>
+     *        void operator()( const char* name )const;
+     *     };
+     *    @endcode
+     *
+     *  If T is an enum then the functor has the following form:
+     *    @code
+     *     struct functor {
+     *        template<int Value>
+     *        void operator()( const char* name )const;
+     *     };
+     *    @endcode
+     *
+     *  @param v a functor that will be called for each member on T
+     *
+     *  @note - this method is not defined for non-reflected types.
+     */
+    #ifdef DOXYGEN
+    template<typename Visitor>
+    static inline void visit( const Visitor& v );
+    #endif // DOXYGEN
+};
+
+0. example, FC_REFLECT(graphene::net::current_time_request_message, (request_sent_time))
+================================================================================
+FC_REFLECT(graphene::net::current_time_request_message, (request_sent_time))
+
+#define FC_REFLECT( TYPE, MEMBERS ) \
+    FC_REFLECT_DERIVED( TYPE, BOOST_PP_SEQ_NIL, MEMBERS )
+
+expands to:
+
+FC_REFLECT_DERIVED( graphene::net::current_time_request_message,
+		BOOST_PP_SEQ_NIL, request_sent_time )
+
+
+#define FC_REFLECT_DERIVED( TYPE, INHERITS, MEMBERS ) \
+namespace fc {  \
+  template<> struct get_typename<TYPE>  { static const char* name()  { return BOOST_PP_STRINGIZE(TYPE);  } }; \
+template<> struct reflector<TYPE> {\
+    typedef TYPE type; \
+    typedef fc::true_type  is_defined; \
+    typedef fc::false_type is_enum; \
+    enum  member_count_enum {  \
+      local_member_count = 0  BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_MEMBER_COUNT, +, MEMBERS ),\
+      total_member_count = local_member_count BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_BASE_MEMBER_COUNT, +, INHERITS )\
+    }; \
+    FC_REFLECT_DERIVED_IMPL_INLINE( TYPE, INHERITS, MEMBERS ) \
+}; }
+
+expands to:
+
+namespace fc {  \
+  template<> struct get_typename<current_time_request_message> 
+{ 
+	static const char* name()
+	{
+	return BOOST_PP_STRINGIZE(graphene::net::current_time_request_message);  
+	} 
+}; \
+
+
+template<> struct reflector<current_time_request_message> {\
+    typedef current_time_request_message type; \
+    typedef fc::true_type  is_defined; \
+    typedef fc::false_type is_enum; \
+    enum  member_count_enum {  \
+      local_member_count = 0  BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_MEMBER_COUNT, +, request_sent_time ),\
+      total_member_count = local_member_count BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_BASE_MEMBER_COUNT, +, BOOST_PP_SEQ_NIL )\
+    }; \
+    FC_REFLECT_DERIVED_IMPL_INLINE( current_time_request_message, BOOST_PP_SEQ_NIL, request_sent_time ) \
+}; }
+
+
+#define FC_REFLECT_MEMBER_COUNT( r, OP, elem ) \
+  OP 1
+
+expands to:
+
+template<> struct reflector<current_time_request_message> {\
+    typedef current_time_request_message type; \
+    typedef fc::true_type  is_defined; \
+    typedef fc::false_type is_enum; \
+    enum  member_count_enum {  \
+      local_member_count = 0  + 1,\
+      total_member_count = local_member_count BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_BASE_MEMBER_COUNT, +, BOOST_PP_SEQ_NIL )\
+    }; \
+    FC_REFLECT_DERIVED_IMPL_INLINE( current_time_request_message, BOOST_PP_SEQ_NIL, request_sent_time ) \
+}; }
+
+#define FC_REFLECT_BASE_MEMBER_COUNT( r, OP, elem ) \
+  OP fc::reflector<elem>::total_member_count
+
+expands to: ?
+
+template<> struct reflector<current_time_request_message> {\
+    typedef current_time_request_message type; \
+    typedef fc::true_type  is_defined; \
+    typedef fc::false_type is_enum; \
+    enum  member_count_enum {  \
+      local_member_count = 0  + 1,\
+      total_member_count = local_member_count 
+    }; \
+    FC_REFLECT_DERIVED_IMPL_INLINE( current_time_request_message, BOOST_PP_SEQ_NIL, request_sent_time ) \
+}; }
+
+#define FC_REFLECT_DERIVED_IMPL_INLINE( TYPE, INHERITS, MEMBERS ) \
+template<typename Visitor>\
+static inline void visit( const Visitor& v ) { \
+    BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_VISIT_BASE, v, INHERITS ) \
+    BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_VISIT_MEMBER, v, MEMBERS ) \
+}
+
+expands to: ?
+
+template<> struct reflector<current_time_request_message> {\
+    typedef current_time_request_message type; \
+    typedef fc::true_type  is_defined; \
+    typedef fc::false_type is_enum; \
+    enum  member_count_enum {  \
+      local_member_count = 0  + 1,\
+      total_member_count = local_member_count 
+    }; \
+
+    FC_REFLECT_DERIVED_IMPL_INLINE( current_time_request_message, BOOST_PP_SEQ_NIL, request_sent_time ) \
+    template<typename Visitor>\
+    static inline void visit( const Visitor& v ) { \
+        BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_VISIT_BASE, v, BOOST_PP_SEQ_NIL ) \
+        BOOST_PP_SEQ_FOR_EACH( FC_REFLECT_VISIT_MEMBER, v, request_sent_time ) \
+    }
+}; }
+
+#define FC_REFLECT_VISIT_BASE(r, visitor, base) \
+  fc::reflector<base>::visit( visitor );
+
+#define FC_REFLECT_VISIT_MEMBER( r, visitor, elem ) \
+{ typedef decltype(((type*)nullptr)->elem) member_type;  \
+  visitor.TEMPLATE operator()<member_type,type,&type::elem>( BOOST_PP_STRINGIZE(elem) ); \
+}
+
+
