@@ -1,9 +1,19 @@
 #include <iostream>
+#include <string>
 #include "Test.h"
 
-int main()
+using namespace std;
+
+int main(int argc, char *argv[])
 {
-	std::cout<<"Hello word!"<<std::endl;
-	std::cout<<add(1,2)<<std::endl;
+	string a, b;
+	if (argc != 3)
+		return 0;
+
+	a = string(argv[1]);
+	b = string(argv[2]);
+
+	cout << add(stoi(a),stoi(b)) << endl;
+
 	return 0;
 }
