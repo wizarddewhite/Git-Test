@@ -8,20 +8,36 @@
 
 void thread_handle()
 {
-	static int num = 0;
-	std::cout << num++ << std::endl;
-	sleep(10);
+        static int num = 0;
+        std::cout << num++ << std::endl;
+        sleep(10);
 }
+
+class T
+{
+	int _a;
+public:
+	void assign(int a)
+	{
+		_a = a;
+		std::cout << "_a is assigned to " << _a << std::endl;
+	}
+};
 
 int main()
 {
-	boost::thread t(thread_handle);
-	t.join();
+        boost::thread t(thread_handle);
+        t.join();
 
-	boost::thread_group tg;
-	int i;
-	for (i = 0; i < 10; i++)
-		tg.create_thread(thread_handle);
-	tg.join_all();
+	T c;
+	boost::thread ct(boost::bind(&T::assign, &c, 5));
+	ct.join();
+
+        boost::thread_group tg;
+        int i;
+        for (i = 0; i < 10; i++)
+                tg.create_thread(thread_handle);
+	tg.create_thread(boost::bind(&T::assign, &c, 5));
+        tg.join_all();
 }
 
