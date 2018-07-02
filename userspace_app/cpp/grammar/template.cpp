@@ -5,6 +5,7 @@
 
 using namespace std;
 
+// template function
 template <class T>
 T const& Max (T const& a, T const& b)
 {
@@ -15,17 +16,18 @@ void function_t()
 {
 	int i = 39;
 	int j = 20;
-	cout << "Max(i, j): " << Max(i, j) << endl;
+	cout << "Max(i, j): " << Max<int>(i, j) << endl;
 
 	double f1 = 13.5;
 	double f2 = 20.7;
-	cout << "Max(f1, f2): " << Max(f1, f2) << endl;
+	cout << "Max(f1, f2): " << Max<float>(f1, f2) << endl;
 
 	string s1 = "Hello";
 	string s2 = "World";
-	cout << "Max(s1, s2): " << Max(s1, s2) << endl;
+	cout << "Max(s1, s2): " << Max<string>(s1, s2) << endl;
 }
 
+// template class
 template <class T>
 class Stack {
 private:
@@ -84,6 +86,7 @@ void class_t()
 	}
 }
 
+// template class specialization
 template <>
 class Stack<float> {
 private:
@@ -135,6 +138,7 @@ void class_template_specialization()
 	}
 }
 
+// template function in class
 class TF_C {
 public:
 	template<typename Stream>
@@ -154,9 +158,9 @@ void template_function_in_class()
 
 int main()
 {
-	//function_t();
+	function_t();
 	//class_t();
 	//class_template_specialization();
-	template_function_in_class();
+	//template_function_in_class();
 	return 0;
 }
