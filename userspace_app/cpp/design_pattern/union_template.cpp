@@ -28,6 +28,7 @@ struct Type_Info;
 template<typename T, typename... Ts>
 struct Type_Info<T&, Ts...> {
     static const bool no_reference_types = false;
+    static const bool no_duplicates = Position<T, Ts...>::pos == -1 && Type_Info<Ts...>::no_duplicates;
     static const size_t size = Type_Info<Ts...>::size > sizeof(T&) ? Type_Info<Ts...>::size : sizeof(T&);
     static const size_t count = 1 + Type_Info<Ts...>::count;
 };
@@ -35,6 +36,7 @@ struct Type_Info<T&, Ts...> {
 template<typename T, typename... Ts>
 struct Type_Info<T, Ts...> {
     static const bool no_reference_types = Type_Info<Ts...>::no_reference_types;
+    static const bool no_duplicates = Position<T, Ts...>::pos == -1 && Type_Info<Ts...>::no_duplicates;
     static const size_t size = Type_Info<Ts...>::size > sizeof(T) ? Type_Info<Ts...>::size : sizeof(T&);
     static const size_t count = 1 + Type_Info<Ts...>::count;
 };
@@ -42,6 +44,7 @@ struct Type_Info<T, Ts...> {
 template<>
 struct Type_Info<> {
     static const bool no_reference_types = true;
+    static const bool no_duplicates = true;
     static const size_t count = 0;
     static const size_t size = 0;
 };
