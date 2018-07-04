@@ -4,6 +4,24 @@
 
 using namespace std;
 
+template<typename X, typename... Ts>
+struct Position;
+
+template<typename X>
+struct Position<X> {
+    static const int pos = -1;
+};
+
+template<typename X, typename... Ts>
+struct Position<X, X, Ts...> {
+    static const int pos = 0;
+};
+
+template<typename X, typename T, typename... Ts>
+struct Position<X, T, Ts...> {
+    static const int pos = Position<X, Ts...>::pos != -1 ? Position<X, Ts...>::pos + 1 : -1;
+};
+
 template<typename... Ts>
 struct Type_Info;
 
@@ -30,7 +48,13 @@ struct Type_Info<> {
 
 int main()
 {
+	// sizeof(Type_Info<>) is the largest size of all the type
 	cout << Type_Info<int, char>::size << endl;
 	cout << Type_Info<int, char, double>::size << endl;
+
+	// pos stands for the position of the first type in following list of
+	// types
+	cout << Position<int, int>::pos << endl;
+	cout << Position<double, int, char, double>::pos << endl;
 	return 0;
 }
