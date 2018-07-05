@@ -156,11 +156,34 @@ void template_function_in_class()
 	tf.Serialize(b);
 }
 
+// Non-type parameters for template
+template <class T, char N> 
+class NTP_TEMP {
+public:
+	T _m;
+	string _name;
+	string& get_name() { return _name;}
+	NTP_TEMP();
+};
+
+template <class T, char N> 
+NTP_TEMP<T, N>::NTP_TEMP()
+{
+	_name = N;
+}
+
+void non_type_template()
+{
+	NTP_TEMP<int, 'i'> nt;
+	cout << nt.get_name() << endl;
+}
+
 int main()
 {
-	function_t();
+	//function_t();
 	//class_t();
 	//class_template_specialization();
 	//template_function_in_class();
+	non_type_template();
 	return 0;
 }
