@@ -22,6 +22,95 @@ struct Position<X, T, Ts...> {
     static const int pos = Position<X, Ts...>::pos != -1 ? Position<X, Ts...>::pos + 1 : -1;
 };
 
+template<int N, typename... Ts>
+struct Storage_Ops;
+
+template<int N, typename T, typename... Ts>
+struct Storage_Ops<N, T&, Ts...> {
+    static void del(int n, void *data) {}
+    static void con(int n, void *data) {}
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, void *data, visitor& v) {}
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, void *data, const visitor& v) {}
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, const void *data, visitor& v) {}
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, const void *data, const visitor& v) {}
+};
+
+template<int N, typename T, typename... Ts>
+struct Storage_Ops<N, T, Ts...> {
+    static void del(int n, void *data) {
+        if(n == N) reinterpret_cast<T*>(data)->~T();
+        else Storage_Ops<N + 1, Ts...>::del(n, data);
+    }
+    static void con(int n, void *data) {
+        if(n == N) new(reinterpret_cast<T*>(data)) T();
+        else Storage_Ops<N + 1, Ts...>::con(n, data);
+    }
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, void *data, visitor& v) {
+        if(n == N) return v(*reinterpret_cast<T*>(data));
+        else return Storage_Ops<N + 1, Ts...>::apply(n, data, v);
+    }
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, void *data, const visitor& v) {
+        if(n == N) return v(*reinterpret_cast<T*>(data));
+        else return Storage_Ops<N + 1, Ts...>::apply(n, data, v);
+    }
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, const void *data, visitor& v) {
+        if(n == N) return v(*reinterpret_cast<const T*>(data));
+        else return Storage_Ops<N + 1, Ts...>::apply(n, data, v);
+    }
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, const void *data, const visitor& v) {
+        if(n == N) return v(*reinterpret_cast<const T*>(data));
+        else return Storage_Ops<N + 1, Ts...>::apply(n, data, v);
+    }
+};
+
+template<int N>
+struct Storage_Ops<N> {
+    static void del(int n, void *data) {
+       //FC_THROW_EXCEPTION( fc::assert_exception, "Internal error: static_variant tag is invalid.");
+       throw "Internal error: static_variant tag is invalid.";
+    }
+    static void con(int n, void *data) {
+       //FC_THROW_EXCEPTION( fc::assert_exception, "Internal error: static_variant tag is invalid." );
+       throw "Internal error: static_variant tag is invalid.";
+    }
+
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, void *data, visitor& v) {
+       //FC_THROW_EXCEPTION( fc::assert_exception, "Internal error: static_variant tag is invalid." );
+       throw "Internal error: static_variant tag is invalid.";
+    }
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, void *data, const visitor& v) {
+       //FC_THROW_EXCEPTION( fc::assert_exception, "Internal error: static_variant tag is invalid." );
+       throw "Internal error: static_variant tag is invalid.";
+    }
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, const void *data, visitor& v) {
+       //FC_THROW_EXCEPTION( fc::assert_exception, "Internal error: static_variant tag is invalid." );
+       throw "Internal error: static_variant tag is invalid.";
+    }
+    template<typename visitor>
+    static typename visitor::result_type apply(int n, const void *data, const visitor& v) {
+       //FC_THROW_EXCEPTION( fc::assert_exception, "Internal error: static_variant tag is invalid." );
+       throw "Internal error: static_variant tag is invalid.";
+    }
+};
 template<typename... Ts>
 struct Type_Info;
 
@@ -93,10 +182,10 @@ public:
     static_variant()
     {
        _tag = 0;
-       //storage_ops<0, Types...>::con(0, storage);
+       Storage_Ops<0, Types...>::con(0, storage);
     }
     ~static_variant() {
-       //storage_ops<0, Types...>::del(_tag, storage);
+       Storage_Ops<0, Types...>::del(_tag, storage);
     }
 
     template<typename X>
@@ -116,6 +205,7 @@ public:
             return *reinterpret_cast<X*>(tmp);
         } else {
             //FC_THROW_EXCEPTION( fc::assert_exception, "static_variant does not contain a value of type ${t}", ("t",fc::get_typename<X>::name()) );
+            throw "Internal error: static_variant tag is invalid.";
         }
     }
     template<typename X>
@@ -129,8 +219,35 @@ public:
             return *reinterpret_cast<const X*>(tmp);
         } else {
             //FC_THROW_EXCEPTION( fc::assert_exception, "static_variant does not contain a value of type ${t}", ("t",fc::get_typename<X>::name()) );
+            throw "Internal error: static_variant tag is invalid.";
         }
     }
+
+    template<typename visitor>
+    typename visitor::result_type visit(visitor& v) {
+        return Storage_Ops<0, Types...>::apply(_tag, storage, v);
+    }
+
+    template<typename visitor>
+    typename visitor::result_type visit(const visitor& v) {
+        return Storage_Ops<0, Types...>::apply(_tag, storage, v);
+    }
+
+    template<typename visitor>
+    typename visitor::result_type visit(visitor& v)const {
+        return Storage_Ops<0, Types...>::apply(_tag, storage, v);
+    }
+
+    template<typename visitor>
+    typename visitor::result_type visit(const visitor& v)const {
+        return Storage_Ops<0, Types...>::apply(_tag, storage, v);
+    }
+};
+
+struct int_visitor {
+	typedef void result_type;
+	int content;
+	result_type operator()(int c){content = c;}
 };
 
 int main()
@@ -170,5 +287,9 @@ int main()
 	cout << "content in val_b: " << val_b << endl;
 	cout << endl;
 
+	// use visitor access content
+	int_visitor iv;
+	b.visit(iv);
+	cout << "access val_b content by visitor: " << iv.content << endl;
 	return 0;
 }
