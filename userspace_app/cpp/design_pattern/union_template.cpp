@@ -17,6 +17,19 @@ struct copy_construct
    }
 };
 
+template<typename StaticVariant>
+struct move_construct
+{
+   typedef void result_type;
+   StaticVariant& sv;
+   move_construct( StaticVariant& s ):sv(s){}
+   template<typename T>
+   void operator()( T& v )const
+   {
+      sv.init( std::move(v) );
+   }
+};
+
 template<typename X, typename... Ts>
 struct Position;
 
@@ -124,6 +137,7 @@ struct Storage_Ops<N> {
        throw "Internal error: static_variant tag is invalid.";
     }
 };
+
 template<typename... Ts>
 struct Type_Info;
 
@@ -173,6 +187,8 @@ class static_variant {
 
     template<typename StaticVariant>
     friend struct copy_construct;
+    template<typename StaticVariant>
+    friend struct move_construct;
 
 public:
     template<typename X>
@@ -197,7 +213,7 @@ public:
 
     static_variant()
     {
-       _tag = 0;
+       _tag = 0; //
        Storage_Ops<0, Types...>::con(0, storage);
     }
     ~static_variant() {
@@ -218,6 +234,10 @@ public:
     static_variant( const static_variant& cpy )
     {
        cpy.visit( copy_construct<static_variant>(*this) );
+    }
+    static_variant( static_variant&& mv )
+    {
+       mv.visit( move_construct<static_variant>(*this) );
     }
 
     template<typename X>
@@ -322,5 +342,9 @@ int main()
 	// copy construct
 	S_Var var_cp(a);
 	cout << "content in var_cp(a): " << var_cp.get<char>() << endl;
+	// move construct
+	S_Var var_mv(S_Var(15));
+	cout << "content in var_mv(S_Var(15)): " << var_mv.get<int>() << endl;
+	cout << endl;
 	return 0;
 }
