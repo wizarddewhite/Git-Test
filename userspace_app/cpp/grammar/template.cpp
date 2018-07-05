@@ -151,9 +151,9 @@ void template_function_in_class()
 {
 	TF_C tf;
 	int a = 1;
-	tf.Serialize(a);
+	tf.Serialize<int>(a);
 	string b = "this is a test";
-	tf.Serialize(b);
+	tf.Serialize<string>(b);
 }
 
 // Non-type parameters for template
@@ -183,7 +183,7 @@ int main()
 	//function_t();
 	//class_t();
 	//class_template_specialization();
-	//template_function_in_class();
-	non_type_template();
+	template_function_in_class();
+	//non_type_template();
 	return 0;
 }
