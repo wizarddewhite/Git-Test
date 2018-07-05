@@ -4,6 +4,19 @@
 
 using namespace std;
 
+template<typename StaticVariant>
+struct copy_construct
+{
+   typedef void result_type;
+   StaticVariant& sv;
+   copy_construct( StaticVariant& s ):sv(s){}
+   template<typename T>
+   void operator()( const T& v )const
+   {
+      sv.init(v);
+   }
+};
+
 template<typename X, typename... Ts>
 struct Position;
 
@@ -158,6 +171,9 @@ class static_variant {
         new(storage) X( std::move(x) );
     }
 
+    template<typename StaticVariant>
+    friend struct copy_construct;
+
 public:
     template<typename X>
     struct tag
@@ -192,6 +208,16 @@ public:
     static_variant(const X& v) {
         static_assert( Position<X, Types...>::pos != -1, "Type not in static_variant.");
         init(v);
+    }
+
+    template<typename... Other>
+    static_variant( const static_variant<Other...>& cpy )
+    {
+       cpy.visit( copy_construct<static_variant>(*this) );
+    }
+    static_variant( const static_variant& cpy )
+    {
+       cpy.visit( copy_construct<static_variant>(*this) );
     }
 
     template<typename X>
@@ -291,5 +317,10 @@ int main()
 	int_visitor iv;
 	b.visit(iv);
 	cout << "access val_b content by visitor: " << iv.content << endl;
+	cout << endl;
+
+	// copy construct
+	S_Var var_cp(a);
+	cout << "content in var_cp(a): " << var_cp.get<char>() << endl;
 	return 0;
 }
