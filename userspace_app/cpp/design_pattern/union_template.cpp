@@ -241,6 +241,30 @@ public:
     }
 
     template<typename X>
+    static_variant& operator=(const X& v) {
+        static_assert(
+            Position<X, Types...>::pos != -1, "Type not in static_variant."
+        );
+        this->~static_variant();
+        init(v);
+        return *this;
+    }
+    static_variant& operator=( const static_variant& v )
+    {
+       if( this == &v ) return *this;
+       this->~static_variant();
+       v.visit( copy_construct<static_variant>(*this) );
+       return *this;
+    }
+    static_variant& operator=( static_variant&& v )
+    {
+       if( this == &v ) return *this;
+       this->~static_variant();
+       v.visit( move_construct<static_variant>(*this) );
+       return *this;
+    }
+
+    template<typename X>
     X& get() {
         static_assert(
             Position<X, Types...>::pos != -1,
@@ -345,6 +369,9 @@ int main()
 	// move construct
 	S_Var var_mv(S_Var(15));
 	cout << "content in var_mv(S_Var(15)): " << var_mv.get<int>() << endl;
+	// operator =
+	c = var_mv;
+	cout << "content in c changed to: " << c.get<int>() << endl;
 	cout << endl;
 	return 0;
 }
