@@ -1,0 +1,30 @@
+
+            Source                                Destination
+
+                                          evaluator::
+                                              apply()    -> SPECIFIED_EVALUATOR::do_apply()
+                                                                                               
+                                          evaluator::
+                                              evaluate() -> SPECIFIED_EVALUATOR::do_evaluate()
+                                                                                               
+                                          generic_evaluator::
+                                              start_evaluate()
+                                                                                               
+                                          op_evaluator_impl<T>::
+                                              evaluate()
+                                                                                               
+                                          database::
+                                              apply_operation()
+                                                                                               
+     wallet_api_impl::                    database::                                                       
+         sign_transaction()                   _apply_transatcion()
+                                                                                               
+     network_broadcast_api::              database::
+         broadcast_transaction()              push_transaction()
+                                                                                               
+     database::                           application_impl::
+         push_transaction()                   handle_transaction()
+                                                                                           
+     node::                               node_impl::
+         broadcast_transaction()              process_ordinary_message()
+

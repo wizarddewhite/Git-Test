@@ -1,0 +1,65 @@
+0. data structure
+================================================================================
+
+0.1 generic_evaluator
+================================================================================
+
+    generic_evaluator
+    +----------------------------------------------+
+    |fee_from_account                              |
+    |      asset                                   |
+    |core_fee_paid                                 |
+    |      share_type                              |
+    |fee_paying_account                            |
+    |      account_object*                         |
+    |fee_paying_account_statistics                 |
+    |      account_statistics_object*              |
+    |fee_asset                                     |
+    |      asset_object*                           |
+    |fee_asset_dyn_data                            |
+    |      asset_dynamic_data_object*              |
+    |                                              |
+    |trx_state                                     |
+    |                                              |
+    +----------------------------------------------+
+    |start_evaluate()  {evaluate(op); apply(op);}  |
+    |evaluate()  = 0                               |
+    |apply()     = 0                               |
+    |                                              |
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
+
+0.1.1 evaluator :: public generic_evaluator
+================================================================================
+
+    evaluator
+    +----------------------------------------------+
+    |evaluate()                                    |
+    |      {eval->do_evaluate(op)}                 |
+    |                                              |
+    |apply()                                       |
+    |      {eval->apply(op)}                       |
+    +----------------------------------------------+
+
+0.1.1.1 asset_publish_feeds_evaluator :: public evaluator<asset_publish_feeds_evaluator>
+================================================================================
+
+0.2 op_evaluator
+================================================================================
+
+0.2.1 op_evaluator_impl
+================================================================================
+
+
+     _operation_evaluators[]
+     +---------------------------------------------+
+     |op_evaluator_impl                            |
+     |      transfer_operation                     |
+     +---------------------------------------------+
+     |op_evaluator_impl                            |
+     |      limit_order_create_operation           |
+     +---------------------------------------------+
+     |op_evaluator_impl                            |
+     |                                             |
+     +---------------------------------------------+
