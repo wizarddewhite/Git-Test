@@ -1,6 +1,9 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+
+// g++ -std=c++11 vector.cpp
+
 using namespace std;
 int main(int argc,char **argv)
 {
@@ -34,6 +37,10 @@ int main(int argc,char **argv)
 	cout<<"now vi is :";
 	for_each(vi.begin(),vi.end(),[](int m){cout<<m<<" ";});
 	cout << endl;
+
+	// count
+	cout << endl << "size of this vector is: " ;
+	cout << vi.size() << endl;
 	
 	cout<<endl;	
 }
