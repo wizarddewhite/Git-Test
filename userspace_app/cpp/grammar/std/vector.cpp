@@ -41,6 +41,11 @@ int main(int argc,char **argv)
 	// count
 	cout << endl << "size of this vector is: " ;
 	cout << vi.size() << endl;
+
+	// data
+	auto* data = vi.data();
+	cout << endl << "Underlying address: " << data << endl;
+	cout << "Access content via pointer:" << *(data) << " "<< *(data+1) << endl;
 	
 	cout<<endl;	
 }
