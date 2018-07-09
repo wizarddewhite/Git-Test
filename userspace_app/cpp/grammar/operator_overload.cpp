@@ -27,12 +27,24 @@ class Distance
       }
 };
 
+class Point
+{
+public:
+
+      int x, y;
+      Point(int _x, int _y):x(_x),y(_y){}
+      operator Distance()const {return Distance(y-x);}
+};
+
 int main()
 {
 	Distance D(5), nD;
 	D.displayDistance();
 	nD = -D;
 	nD.displayDistance();
+
+	Point P(2, 8);
+	nD = P;
 
 	return 0;
 }
