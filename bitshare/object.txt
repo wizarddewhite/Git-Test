@@ -80,24 +80,94 @@ type_id ranges in:
 0.1.1 abstract_object : object
 ================================================================================
 
+    abstract_object
+    +-----------------------------------------------+
+    |clone()                                        |
+    |move_from()                                    |
+    |to_variant()                                   |
+    |pack()                                         |
+    |hash()                                         |
+    |                                               |
+    +-----------------------------------------------+
+
 0.1.1.1 operation_history_object : abstract_object<operation_history_object>
 ================================================================================
 
+    operation_history_object
     +-----------------------------------------------+
     |space_id = protocol_ids                        |
     |type_id = operation_history_object_type        |
-    |                                               |
-    |op                                             |
-    |    (operation)                                |
-    |result                                         |
-    |    (operation_result)                         |
     |                                               |
     |block_num  = 0                                 |
     |trx_in_block = 0                               |
     |op_in_trx = 0                                  |
     |virtual_op = 0                                 |
+    |                                               |
+    |op                                             |
+    |    (operation)                                |
+    |result                                         |
+    |    (operation_result)                         |
     +-----------------------------------------------+
 
+0.1.1.2 limit_order_object : abstract_object<limit_order_object>
+================================================================================
+
+    limit_order_object
+    +-----------------------------------------------+
+    |space_id = protocol_ids                        |
+    |type_id = limit_order_object_type              |
+    |                                               |
+    |expiration                                     |
+    |seller                                         |
+    |for_sale                                       |
+    |sell_price                                     |
+    |deferred_fee                                   |
+    |deferred_paid_fee                              |
+    |                                               |
+    |get_market()                                   |
+    |amount_for_sale()                              |
+    |amount_to_receive()                            |
+    |sell_asset_id()                                |
+    |receive_asset_id()                             |
+    +-----------------------------------------------+
+
+0.1.1.3 call_order_object : abstract_object<call_order_object>
+================================================================================
+
+    call_order_object
+    +-----------------------------------------------+
+    |space_id = protocol_ids                        |
+    |type_id = call_order_object_type               |
+    |                                               |
+    |borrower                                       |
+    |collateral                                     |
+    |debt                                           |
+    |call_price                                     |
+    |target_collateral_ratio                        |
+    |                                               |
+    |get_market()                                   |
+    |get_max_debt_to_cover()                        |
+    |                                               |
+    |get_collateral()                               |
+    |get_debt()                                     |
+    |collateralization()                            |
+    +-----------------------------------------------+
+
+0.1.1.4 force_settlement_object : abstract_object<force_settlement_object>
+================================================================================
+
+    force_settlement_object
+    +-----------------------------------------------+
+    |space_id = protocol_ids                        |
+    |type_id = force_settlement_object_type         |
+    |                                               |
+    |owner                                          |
+    |balance                                        |
+    |settlement_date                                |
+    |                                               |
+    |settlement_asset_id()                          |
+    |                                               |
+    +-----------------------------------------------+
 
 0.2 object_id / object_id_type
 ================================================================================
