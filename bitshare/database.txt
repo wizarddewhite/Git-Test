@@ -1,0 +1,114 @@
+0. data structure
+================================================================================
+
+0.1 object_database
+================================================================================
+
+      undo_database
+      +--------------------------------------------------------------------+
+      |_db                                                                 |
+      |      (object_database&)                                            |
+      |_active_sessions                                                    |
+      |_disabled                                                           |
+      |_stack                                                              |
+      |     (deque<undo_state>)                                            |
+      |     +--------------------------------------------------------------+
+      |     |old_values                                                    |
+      |     |    (unordered_map<object_id_type, unique_ptr<object>>)       |
+      |     |old_index_next_ids                                            |
+      |     |    (unordered_map<object_id_type, object_id_type>)           |
+      |     |new_ids                                                       |
+      |     |    (unordered_set<object_id_type>)                           |
+      |     |removed                                                       |
+      |     |    (unordered_map<object_id_type, unique_ptr<object>>)       |
+      |     |                                                              |
+      |     +--------------------------------------------------------------+
+      |_max_size                                                           |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+      |start_undo_session()                                                |
+      |disable()                                                           |
+      |enable()                                                            |
+      |on_create()                                                         |
+      |on_modify()                                                         |
+      |on_remove()                                                         |
+      |pop_commit()                                                        |
+      |set_max_size()                                                      |
+      |max_size()                                                          |
+      |                                                                    |
+      |undo()                                                              |
+      |merge()                                                             |
+      |commit()                                                            |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+      object_database
+      +--------------------------------------------------------------------+
+      |_undo_db                                                            |
+      |     (undo_database)                                                |
+      |_data_dir                                                           |
+      |     (fc::path)                                                     |
+      |_index                                                              |
+      |     (vector< vector<unique_ptr<index>> >)                          |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+      |reset_indexes()                                                     |
+      |open(fc::path& data_dir)                                            |
+      |flush()                                                             |
+      |wipe()                                                              |
+      |close()                                                             |
+      |                                                                    |
+      |get_index()                                                         |
+      |get_object()                                                        |
+      |find_object()                                                       |
+      |                                                                    |
+      |insert()                                                            |
+      |remove()                                                            |
+      |modify()                                                            |
+      |                                                                    |
+      |add_index()                                                         |
+      |add_secondary_index()                                               |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+0.2 index
+================================================================================
+
+      index
+      +--------------------------------------------------------------------+
+      |object_space_id()    = 0                                            |
+      |object_type_id()     = 0                                            |
+      |                                                                    |
+      |get_next_id()        = 0                                            |
+      |use_next_id()        = 0                                            |
+      |set_next_id()        = 0                                            |
+      |                                                                    |
+      |open()               = 0                                            |
+      |load()               = 0                                            |
+      |save()               = 0                                            |
+      |create()             = 0                                            |
+      |insert()             = 0                                            |
+      |modify()             = 0                                            |
+      |remove()             = 0                                            |
+      |                                                                    |
+      |object find(object_id_type) = 0                                     |
+      |object get(object_id_type)  = 0                                     |
+      |                                                                    |
+      |hash()               = 0                                            |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+
+0.2.1 simple_index
+================================================================================
+
+      simple_index
+      +--------------------------------------------------------------------+
+      |                                                                    |
+      |                                                                    |
+      |                                                                    |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+
+
