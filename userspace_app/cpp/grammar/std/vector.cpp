@@ -48,4 +48,7 @@ int main(int argc,char **argv)
 	cout << "Access content via pointer:" << *(data) << " "<< *(data+1) << endl;
 	
 	cout<<endl;	
+	vi.clear();
+	cout << endl << "after clear size of this vector is: " ;
+	cout << vi.size() << endl;
 }
