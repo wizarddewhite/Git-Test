@@ -51,8 +51,77 @@ int std_type_unordered_map()
   return 0;
 }
 
+// https://blog.csdn.net/charles1e/article/details/52042066
+class Number
+{
+    string str;
+public:
+    Number() { }
+    Number(string s) { str = s; }
+
+    const string& get() const
+    {
+        return str;
+    }
+
+    bool operator==(const Number &other) const
+    {
+       cout << "\tcompare " << get() << " and " << other.get() << endl;
+       return (get() == other.get());
+    }
+};
+
+class Name 
+{
+    string str;
+public:
+    Name() {}
+    Name(string s) { str = s; }
+
+    const string& get() const
+    {
+        return str;
+    }
+};
+
+namespace std{
+template <> struct hash<Number>
+{
+     size_t operator()(const Number& x) const
+     {
+         cout << "\thashing " << x.get() << endl;
+         return std::hash<string>()(x.get());
+     }
+};
+}
+
+void user_defined_unordered_map()
+{
+    unordered_map<Number, Name> map;
+    cout << "emplace 123" << endl;
+    map.emplace(Number("123"), Name("John"));
+    cout << "emplace 124" << endl;
+    map.emplace(Number("124"), Name("Snow"));
+
+
+    cout << "Looking for 234" << endl;
+    unordered_map<Number, Name>::iterator iter;
+    iter = map.find(Number("234"));
+    if (iter != map.end())
+        cout << "Number: " << iter->first.get() << "," << "Name： " << iter->second.get() << endl;
+    else
+        cout << "Not found!" << endl;
+    cout << "Looking for 124" << endl;
+    iter = map.find(Number("124"));
+    if (iter != map.end())
+        cout << "Number: " << iter->first.get() << "," << "Name： " << iter->second.get() << endl;
+    else
+        cout << "Not found!" << endl;
+}
+
 int main()
 {
-   std_type_unordered_map();
+   //std_type_unordered_map();
+   user_defined_unordered_map();
    return 0;
 }
