@@ -34,10 +34,23 @@ void capture_ref()
 	cout << v << endl;
 }
 
+void call_when(int x,const std::function<void(int)>& f)
+{
+	f(x);
+}
+
+void lambda_as_parameter()
+{
+	call_when(10, [&](int a) {
+		std::cout << a << std::endl;
+	});
+}
+
 int main()
 {
 	// implicit_return();
 	// obvious_return();
-	capture_value();
+	// capture_value();
 	// capture_ref();
+	lambda_as_parameter();
 }
