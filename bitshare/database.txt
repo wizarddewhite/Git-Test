@@ -96,7 +96,7 @@
       |remove()             = 0                                            |
       |                                                                    |
       |object find(object_id_type) = 0                                     |
-      |object get(object_id_type)  = 0                                     |
+      |object get(object_id_type)                                          |
       |                                                                    |
       |inspect_all_objects()                                               |
       |add_observer()                                                      |
