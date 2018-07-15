@@ -21,12 +21,15 @@ struct Employee{
     }
 };
 
+struct by_name;
+
 typedef multi_index_container<
 Employee,
    indexed_by<
       ordered_unique<member<Employee, int, &Employee::id> >,
       ordered_non_unique<member<Employee, string, &Employee::name> >,
-      ordered_non_unique<member<Employee, int, &Employee::age> >
+      ordered_non_unique<member<Employee, int, &Employee::age> >,
+      ordered_non_unique<tag<by_name>, member<Employee, string, &Employee::name> >
    >
 > EmployeeContainer;
 
@@ -52,6 +55,10 @@ int main(){
 
     AgeIndex& ages = con.get<2>();
     copy(ages.begin(), ages.end(), ostream_iterator<Employee>(cout));
+    cout << endl;
+
+    auto& name_ids = con.get<by_name>();
+    copy(name_ids.begin(),name_ids.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
     return 0;
