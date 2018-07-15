@@ -66,7 +66,11 @@
       |remove()                                                            |
       |modify()                                                            |
       |                                                                    |
+      |                                                                    |
+      |template<typename IndexType>                                        |
       |add_index()                                                         |
+      |template<typename IndexType, typename SecondaryIndexType,           |
+      |            typename... Args>                                       |
       |add_secondary_index()                                               |
       |                                                                    |
       +--------------------------------------------------------------------+
@@ -84,8 +88,8 @@
       |set_next_id()        = 0                                            |
       |                                                                    |
       |open()               = 0                                            |
-      |load()               = 0                                            |
       |save()               = 0                                            |
+      |load()               = 0                                            |
       |create()             = 0                                            |
       |insert()             = 0                                            |
       |modify()             = 0                                            |
@@ -94,21 +98,135 @@
       |object find(object_id_type) = 0                                     |
       |object get(object_id_type)  = 0                                     |
       |                                                                    |
+      |inspect_all_objects()                                               |
+      |add_observer()                                                      |
+      |                                                                    |
+      |object_from_variant()                                               |
+      |object_default()                                                    |
+      |                                                                    |
       |hash()               = 0                                            |
       |                                                                    |
       +--------------------------------------------------------------------+
 
 
-0.2.1 simple_index
+0.2.1 simple_index : public index
 ================================================================================
 
+      template<typename T>
       simple_index
       +--------------------------------------------------------------------+
+      |_objects                                                            |
+      |     (vector< unique_ptr<object> >)                                 |
+      |typedef T object_type;                                              |
       |                                                                    |
+      +--------------------------------------------------------------------+
+      |create()                                                            |
+      |modify()                                                            |
+      |insert()                                                            |
+      |remove()                                                            |
+      |find()                                                              |
+      |inspect_all_objects()                                               |
+      |hash()                                                              |
       |                                                                    |
-      |                                                                    |
+      |begin()                                                             |
+      |end()                                                               |
       |                                                                    |
       +--------------------------------------------------------------------+
 
+0.2.2 generic_index : public index
+================================================================================
+
+      template<typename ObjectType, typename MultiIndexType>
+      class generic_index : public index
+      +--------------------------------------------------------------------+
+      |typedef MultiIndexType index_type;                                  |
+      |tyepdef ObjectType object_type;                                     |
+      |                                                                    |
+      |_current_hash                                                       |
+      |    (fc::uint128)                                                   |
+      |_indices                                                            |
+      |    (index_type)                                                    |
+      +--------------------------------------------------------------------+
+      |insert()                                                            |
+      |create()                                                            |
+      |modify()                                                            |
+      |remove()                                                            |
+      |find()                                                              |
+      |inspect_all_objects()                                               |
+      |indices()                                                           |
+      |hash()                                                              |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+
+0.3 base_primary_index
+================================================================================
+
+
+       secondary_index                   index_observer
+      +-------------------------+        +---------------------------------+
+      |object_inserted()        |        |on_add()                         |
+      |object_removed()         |        |on_remove()                      |
+      |about_to_modify()        |        |on_modify()                      |
+      |object_modified()        |        |                                 |
+      |                         |        |                                 |
+      +-------------------------+        +---------------------------------+
+
+       base_primary_index
+      +--------------------------------------------------------------------+
+      |_db                                                                 |
+      |     (object_database&)                                             |
+      |_observers                                                          |
+      |     (vector< shared_ptr<index_observer> >)                         |
+      |_sindex                                                             |
+      |     (vector< unique_ptr<secondary_index> >)                        |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+      |save_undo() {_db.save_undo();}                                      |
+      |on_add()    {_db.save_undo_add(); observer->on_add();}              |
+      |on_remove() {_db.save_undo_remove(); observer->on_remove();}        |
+      |on_modify() {observer->on_modify();}                                |
+      |                                                                    |
+      |add_secondary_index() {_sindex.emplace_back();}                     |
+      |get_secondary_index() {_sindex.find();}                             |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+0.3.1 primary_index: public DerivedIndex, base_primary_index
+================================================================================
+
+      template<typename DerivedIndex>
+      class primary_index  : public DerivedIndex, public base_primary_index
+      +--------------------------------------------------------------------+
+      |typedef typename DerivedIndex::object_type object_type;             |
+      |                                                                    |
+      |_next_id                                                            |
+      |    (object_id_type)                                                |
+      +--------------------------------------------------------------------+
+      |primary_index(db):                                                  |
+      |       base_primary_index(db),                                      |
+      |       _next_id(object_type::space_id, object_type::type_id, 0)     |
+      |                                                                    |
+      |object_space_id()                                                   |
+      |object_type_id()                                                    |
+      |                                                                    |
+      |get_next_id()                                                       |
+      |use_next_id()                                                       |
+      |set_next_id()                                                       |
+      |                                                                    |
+      |get_object_version()                                                |
+      |open()                                                              |
+      |save()                                                              |
+      |load()                                                              |
+      |create()                                                            |
+      |insert()                                                            |
+      |remove()                                                            |
+      |modify()                                                            |
+      |                                                                    |
+      |add_observer()                                                      |
+      |                                                                    |
+      |object_from_variant()                                               |
+      |object_default()                                                    |
+      +--------------------------------------------------------------------+
 
 
