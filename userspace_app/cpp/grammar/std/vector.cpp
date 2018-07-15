@@ -32,6 +32,13 @@ int main(int argc,char **argv)
 	cout<<endl<<"after resize(10)"<<endl;
 	cout<<"now vi is :";
 	for_each(vi.begin(),vi.end(),[](int m){cout<<m<<" ";});
+
+	// pop_back
+	vi.pop_back();
+	cout<<endl<<"after vi.pop_back()"<<endl;
+	cout<<"now vi is :";
+	for_each(vi.begin(),vi.end(),[](int m){cout<<m<<" ";});
+
 	vi.resize(3);
 	cout<<endl<<"after resize(3)"<<endl;
 	cout<<"now vi is :";
