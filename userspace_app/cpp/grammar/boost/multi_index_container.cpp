@@ -4,6 +4,7 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/composite_key.hpp>
 
 using namespace boost;
 using namespace boost::multi_index;
@@ -12,12 +13,14 @@ struct Employee{
     int id;
     string name;
     int age;
+    string gender;
 
-    Employee(int id_,string name_,int age_):id(id_),name(name_),age(age_){}
+    Employee(int id_,string name_,int age_, string gender_):
+	    id(id_),name(name_),age(age_),gender(gender_){}
 
     friend ostream& operator<<(ostream& os,const Employee& e)
     {
-        os<<e.id<<" "<<e.name<<" "<<e.age<<endl;
+        os<<e.id<<" "<<e.name<<" "<<e.gender<<" "<<e.age<<endl;
         return os;
     }
 
@@ -35,7 +38,13 @@ Employee,
       ordered_non_unique<member<Employee, int, &Employee::age> >,
       ordered_non_unique<const_mem_fun<Employee, std::size_t, &Employee::name_length> >,
       ordered_non_unique<tag<by_name>, member<Employee, string, &Employee::name> >,
-      ordered_unique<tag<reverse_id>, member<Employee, int, &Employee::id>, std::greater<int> >
+      ordered_unique<tag<reverse_id>, member<Employee, int, &Employee::id>, std::greater<int> >,
+      ordered_non_unique<
+          composite_key< Employee,
+              member<Employee, string, &Employee::gender>,
+              const_mem_fun<Employee, std::size_t, &Employee::name_length>
+	  >
+      >
    >
 > EmployeeContainer;
 
@@ -46,36 +55,47 @@ typedef EmployeeContainer::nth_index<3>::type NameLenIndex;
 
 int main(){
     EmployeeContainer con;
-    con.insert(Employee(0,"Joe",31));
-    con.insert(Employee(1,"Robert",27));
-    con.insert(Employee(2,"John",40));
-    con.insert(Employee(3,"John",25));
-    con.insert(Employee(4,"Zoe",25));
+    con.insert(Employee(0,"Joe",31, "Male"));
+    con.insert(Employee(1,"Robert",27, "Male"));
+    con.insert(Employee(2,"John",40, "Male"));
+    con.insert(Employee(3,"John",25, "Female"));
+    con.insert(Employee(4,"Zoe",20, "Female"));
 
+    cout << "Order by ID:" << endl;
     IdIndex& ids = con.get<0>();
     copy(ids.begin(),ids.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
+    cout << "Order by Reverse ID:" << endl;
     auto& rev_ids = con.get<reverse_id>();
     copy(rev_ids.begin(),rev_ids.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
+    cout << "Order by Name:" << endl;
     NameIndex& names = con.get<1>();
     copy(names.begin(), names.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
+    cout << "Order by Name:" << endl;
+    auto& name_ids = con.get<by_name>();
+    copy(name_ids.begin(),name_ids.end(), ostream_iterator<Employee>(cout));
+    cout << endl;
+
+    cout << "Order by Name Length:" << endl;
     NameLenIndex& namelen = con.get<3>();
     copy(namelen.begin(), namelen.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
-    //  names.erase(names.begin());
-
-    AgeIndex& ages = con.get<2>();
-    copy(ages.begin(), ages.end(), ostream_iterator<Employee>(cout));
+    cout << "Order by Gender then Length:" << endl;
+    auto& gender_len = con.get<6>();
+    copy(gender_len.begin(), gender_len.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
-    auto& name_ids = con.get<by_name>();
-    copy(name_ids.begin(),name_ids.end(), ostream_iterator<Employee>(cout));
+    //  names.erase(names.begin());
+
+    cout << "Order by Age:" << endl;
+    AgeIndex& ages = con.get<2>();
+    copy(ages.begin(), ages.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
     // find
