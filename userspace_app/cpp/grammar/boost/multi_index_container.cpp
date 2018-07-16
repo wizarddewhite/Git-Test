@@ -3,6 +3,7 @@
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
 
 using namespace boost;
 using namespace boost::multi_index;
@@ -19,6 +20,8 @@ struct Employee{
         os<<e.id<<" "<<e.name<<" "<<e.age<<endl;
         return os;
     }
+
+    std::size_t name_length()const{return name.size();}
 };
 
 struct by_name;
@@ -30,6 +33,7 @@ Employee,
       ordered_unique<member<Employee, int, &Employee::id> >,
       ordered_non_unique<member<Employee, string, &Employee::name> >,
       ordered_non_unique<member<Employee, int, &Employee::age> >,
+      ordered_non_unique<const_mem_fun<Employee, std::size_t, &Employee::name_length> >,
       ordered_non_unique<tag<by_name>, member<Employee, string, &Employee::name> >,
       ordered_unique<tag<reverse_id>, member<Employee, int, &Employee::id>, std::greater<int> >
    >
@@ -38,6 +42,7 @@ Employee,
 typedef EmployeeContainer::nth_index<0>::type IdIndex;
 typedef EmployeeContainer::nth_index<1>::type NameIndex;
 typedef EmployeeContainer::nth_index<2>::type AgeIndex;
+typedef EmployeeContainer::nth_index<3>::type NameLenIndex;
 
 int main(){
     EmployeeContainer con;
@@ -45,6 +50,7 @@ int main(){
     con.insert(Employee(1,"Robert",27));
     con.insert(Employee(2,"John",40));
     con.insert(Employee(3,"John",25));
+    con.insert(Employee(4,"Zoe",25));
 
     IdIndex& ids = con.get<0>();
     copy(ids.begin(),ids.end(), ostream_iterator<Employee>(cout));
@@ -56,6 +62,10 @@ int main(){
 
     NameIndex& names = con.get<1>();
     copy(names.begin(), names.end(), ostream_iterator<Employee>(cout));
+    cout << endl;
+
+    NameLenIndex& namelen = con.get<3>();
+    copy(namelen.begin(), namelen.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
     //  names.erase(names.begin());
