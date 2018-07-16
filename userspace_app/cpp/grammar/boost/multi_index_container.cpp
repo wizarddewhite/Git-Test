@@ -22,6 +22,7 @@ struct Employee{
 };
 
 struct by_name;
+struct reverse_id;
 
 typedef multi_index_container<
 Employee,
@@ -29,7 +30,8 @@ Employee,
       ordered_unique<member<Employee, int, &Employee::id> >,
       ordered_non_unique<member<Employee, string, &Employee::name> >,
       ordered_non_unique<member<Employee, int, &Employee::age> >,
-      ordered_non_unique<tag<by_name>, member<Employee, string, &Employee::name> >
+      ordered_non_unique<tag<by_name>, member<Employee, string, &Employee::name> >,
+      ordered_unique<tag<reverse_id>, member<Employee, int, &Employee::id>, std::greater<int> >
    >
 > EmployeeContainer;
 
@@ -46,6 +48,10 @@ int main(){
 
     IdIndex& ids = con.get<0>();
     copy(ids.begin(),ids.end(), ostream_iterator<Employee>(cout));
+    cout << endl;
+
+    auto& rev_ids = con.get<reverse_id>();
+    copy(rev_ids.begin(),rev_ids.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
     NameIndex& names = con.get<1>();
