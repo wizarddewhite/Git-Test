@@ -42,6 +42,7 @@ int main(){
     con.insert(Employee(0,"Joe",31));
     con.insert(Employee(1,"Robert",27));
     con.insert(Employee(2,"John",40));
+    con.insert(Employee(3,"John",25));
 
     IdIndex& ids = con.get<0>();
     copy(ids.begin(),ids.end(), ostream_iterator<Employee>(cout));
@@ -67,5 +68,15 @@ int main(){
         cout << "Name: " << name_it->name << " Age: "<< name_it->age << endl;
     else
         cout << "No Robert" << endl;
+
+    name_it = names.find("John");
+    if (name_it != names.end()) {
+        int count = names.count("John");
+        for (; count > 0; count--, name_it++) {
+            cout << "Name: " << name_it->name << " Age: "<< name_it->age << endl;
+        }
+    } else {
+        cout << "No John" << endl;
+    }
     return 0;
 }
