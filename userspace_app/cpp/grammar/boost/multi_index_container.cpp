@@ -61,5 +61,11 @@ int main(){
     copy(name_ids.begin(),name_ids.end(), ostream_iterator<Employee>(cout));
     cout << endl;
 
+    // find
+    NameIndex::iterator name_it = names.find("Robert");
+    if (name_it != names.end())
+        cout << "Name: " << name_it->name << " Age: "<< name_it->age << endl;
+    else
+        cout << "No Robert" << endl;
     return 0;
 }
