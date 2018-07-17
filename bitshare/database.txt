@@ -58,7 +58,15 @@
       |wipe()                                                              |
       |close()                                                             |
       |                                                                    |
+      |template<typename T, typename F>                                    |
+      |create()                                                            |
+      |template<typename IndexType>                                        |
+      |get_index_type()                                                    |
       |get_index()                                                         |
+      |template<typename IndexType>                                        |
+      |get_mutable_index_type()                                            |
+      |get_mutable_index()                                                 |
+      |                                                                    |
       |get_object()                                                        |
       |find_object()                                                       |
       |                                                                    |
@@ -74,6 +82,126 @@
       |add_secondary_index()                                               |
       |                                                                    |
       +--------------------------------------------------------------------+
+
+0.1.1 database
+================================================================================
+
+      database : public object_database
+      +--------------------------------------------------------------------+
+      |_popped_tx                                                          |
+      |     (std::deque< signed_transaction >)                             |
+      |_pending_tx_session                                                 |
+      |     (optional<undo_database::session>)                             |
+      |_operation_evaluators                                               |
+      |     (vector<op_evaluator>)                                         |
+      |_pending_tx                                                         |
+      |     (vector<processed_transaction>)                                |
+      |_fork_db                                                            |
+      |     (fork_database)                                                |
+      |_block_id_to_block                                                  |
+      |     (block_databas)                                                |
+      |_applied_ops                                                        |
+      |     (vector<optional<operation_history_object>>)                   |
+      |                                                                    |
+      |applied_block                                                       |
+      |     (fc::signal<void(const signed_block&)>)                        |
+      |on_pending_transaction                                              |
+      |     (fc::signal<void(const signed_block&)>)                        |
+      |new_objects                                                         |
+      |     (fc::signal<>)                                                 |
+      |changed_objects                                                     |
+      |     (fc::signal<>)                                                 |
+      |removed_objects                                                     |
+      |     (fc::signal<>)                                                 |
+      |                                                                    |
+      |_current_block_num                                                  |
+      |_current_trx_in_block                                               |
+      |_current_op_in_trx                                                  |
+      |_current_virtual_op                                                 |
+      |_vote_tall_buffer                                                   |
+      |_witness_count_histogram_buffer                                     |
+      |_committee_count_histogram_buffer                                   |
+      |_total_voting_stake                                                 |
+      |                                                                    |
+      |_checkpoints                                                        |
+      |     (flat_map<uint32_t, block_id_type>)                            |
+      |_node_property_object                                               |
+      |     (node_property_object)                                         |
+      |                                                                    |
+      |_opened                                                             |
+      +--------------------------------------------------------------------+
+      |open(data_dir, genesis_loader, db_version)                          |
+      |reindex(data_dir)                                                   |
+      |wipe()                                                              |
+      |close()                                                             |
+      |                                                                    |
+      |is_known_block()                                                    |
+      |is_known_transaction()                                              |
+      |get_block_id_from_num()                                             |
+      |fetch_block_by_id/number()                                          |
+      |get_recent_transaction()                                            |
+      |get_block_ids_on_fork()                                             |
+      |                                                                    |
+      |add_checkpoints()                                                   |
+      |get_checkpoints()                                                   |
+      |                                                                    |
+      |push_block()                                                        |
+      |pop_block()                                                         |
+      |generate_block()                                                    |
+      |                                                                    |
+      |head_block_time/num/id/witness()                                    |
+      |block_interval()                                                    |
+      |last_non_undoable_block_num()                                       |
+      |                                                                    |
+      |validate_transaction()                                              |
+      |_push_transaction()                                                 |
+      |                                                                    |
+      |push_applied_operation()                                            |
+      |get_applied_operations()                                            |
+      |set_applied_operation_result()                                      |
+      |                                                                    |
+      |witness_participation_rate()                                        |
+      |get_scheduled_witness()                                             |
+      |update_witness_schedule()                                           |
+      |get_slot_time()                                                     |
+      |get_slot_at_time()                                                  |
+      |                                                                    |
+      |get_chain_id()                                                      |
+      |get_core_asset()                                                    |
+      |get_chain_properties()                                              |
+      |get_global_properties()                                             |
+      |get_dynamic_global_properties()                                     |
+      |get_node_properties()                                               |
+      |current_fee_schedule()                                              |
+      |node_properties()                                                   |
+      |                                                                    |
+      |initialize_evaluators()                                             |
+      |initialize_indexes()                                                |
+      |init_genesis()                                                      |
+      |register_evaluator()                                                |
+      |                                                                    |
+      |get_balance()                                                       |
+      |adjust_balance()                                                    |
+      |deposit_lazy_vesting()                                              |
+      |deposit_cashback()                                                  |
+      |deposit_witness_pay()                                               |
+      |                                                                    |
+      |globally_settle_asset()                                             |
+      |cancel_order()                                                      |
+      |revive_bitasset()                                                   |
+      |cancel_bid()                                                        |
+      |execute_bid()                                                       |
+      |apply_order()                                                       |
+      |fill_order()                                                        |
+      |pay_order()                                                         |
+      |match()                                                             |
+      |calculate_market_fee()                                              |
+      |pay_market_fees()                                                   |
+      |                                                                    |
+      +--------------------------------------------------------------------+
+
+0.2 fork_database
+================================================================================
 
 0.2 index
 ================================================================================
