@@ -145,7 +145,15 @@ public:
 	void Serialize(Stream &s) const {
 		cout << s << endl;
 	}
+	template<typename Content>
+	void Count(Content &c) const;
 };
+
+template<typename Content>
+void TF_C::Count(Content &c) const
+{
+	cout << "counting... " << c << endl;
+}
 
 void template_function_in_class()
 {
@@ -154,6 +162,7 @@ void template_function_in_class()
 	tf.Serialize<int>(a);
 	string b = "this is a test";
 	tf.Serialize<string>(b);
+	tf.Count<int>(a);
 }
 
 // Non-type parameters for template
