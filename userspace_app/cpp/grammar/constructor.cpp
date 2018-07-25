@@ -53,6 +53,14 @@ void A::operator()(int a)
 	cout << "A::operator(int, int)" << endl; 
 }
 
+class B : public A
+{
+public:
+	int b;
+	B() {};
+	B(int _b): A(0) {};
+};
+
 void constructor_test()
 {
 	A a1;
