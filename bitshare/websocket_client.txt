@@ -1,3 +1,41 @@
+1. call flow
+================================================================================
+
+1.1 create connection
+================================================================================
+
+  get_connection()
+
+1.2 connect
+================================================================================
+
+  client                    connection                 transport_type            transport_con_type
+
+  connect()
+
+                                                     async_connect()
+
+  handle_connect()
+
+                          start()
+	                                                                       init()
+
+                          handle_transport_init()
+
+                          +-- read_handshake()
+
+	                                                                       async_read_at_least()
+
+                              handle_read_handshake()
+
+                          +-- send_http_request()
+
+	                                                                       async_write()
+
+                              handle_send_http_request()
+
+
+
 0. data structure
 ================================================================================
 
@@ -42,3 +80,186 @@
     |                                                     |
     |                                                     |
     +-----------------------------------------------------+
+
+0.2 websocketpp::client
+================================================================================
+
+    template <typename config>
+    websocketpp::client : public endpoint<connection<config>, config>
+    +-----------------------------------------------------+
+    |empty data member                                    |
+    |                                                     |
+    +-----------------------------------------------------+
+    |client() : endpoint_type(false)                      |
+    |                                                     |
+    |connection::ptr get_connection(uri)                  |
+    |     (a new connection returned)                     |
+    |connect(connection::ptr con)                         |
+    |     (use handle_connect() to handle connection)     |
+    |handle_connect(connection::ptr con)                  |
+    |                                                     |
+    |                                                     |
+    +-----------------------------------------------------+
+
+
+0.2.1 endpoint
+================================================================================
+
+    template <typename connection, typename config>
+    class endpoint: public config::transport_type,
+	            public config::endpoint_base
+    +-----------------------------------------------------+
+    |m_user_agent                                         |
+    |m_open/close/fail/ping/pong/interrupt/termination/   |
+    |       http/validate/message/_handler                |
+    |     (open/close/..._handler)                        |
+    |                                                     |
+    |m_rng                                                |
+    |     (rng_type)                                      |
+    |                                                     |
+    +-----------------------------------------------------+
+    |connection::ptr create_connection()                  |
+    |connection::ptr get_con_from_hdl(connection_hdl hdl) |
+    |                                                     |
+    |set/clear_access/error_channels()                    |
+    |                                                     |
+    |pause/resume_reading()                               |
+    |send()                                               |
+    |send_http_response()                                 |
+    |close()                                              |
+    |ping/pong()                                          |
+    |                                                     |
+    |                                                     |
+    +-----------------------------------------------------+
+
+0.2.1.1 connection
+================================================================================
+
+    template <typename config>
+    connection : public config::transport_type::transport_con_type
+                 public config::connection_base
+    +-----------------------------------------------------+
+    |m_handle_read_frame                                  |
+    |     (read_handler)                                  |
+    |m_write_frame_handler                                |
+    |     (write_frame_handler)                           |
+    |                                                     |
+    |m_user_agent                                         |
+    |     (string)                                        |
+    |m_state                                              |
+    |     (session::state::value)                         |
+    |m_internal_state                                     |
+    |     (istate_type)                                   |
+    |                                                     |
+    |m_connection_hdl                                     |
+    |     (connection_hdl)                                |
+    |m_open/close/fail/ping/pong/interrupt/termination/   |
+    |       http/validate/message/_handler                |
+    |     (open/close/..._handler)                        |
+    |m_open/close_handshake_timeout_dur                   |
+    |     (long)                                          |
+    |m_handshake_timer                                    |
+    |     (timer_ptr)                                     |
+    |m_pong_timeout_dur                                   |
+    |     (long)                                          |
+    |m_ping_timer                                         |
+    |     (timer_ptr)                                     |
+    |m_max_message_size                                   |
+    |     (long)                                          |
+    |m_buf[]                                              |
+    |     (char)                                          |
+    |m_buf_cursor                                         |
+    |     (size_t)                                        |
+    |                                                     |
+    |m_request                                            |
+    |     (request_type)                                  |
+    |m_response                                           |
+    |     (response_type)                                 |
+    |m_uri                                                |
+    |     (uri_ptr)                                       |
+    |m_subprotocol                                        |
+    |                                                     |
+    |                                                     |
+    +-----------------------------------------------------+
+    |set_xxx_handler()                                    |
+    |set_xxx_timeout()                                    |
+    |                                                     |
+    |set/get_max_http_body_size()                         |
+    |                                                     |
+    |send()                                               |
+    |                                                     |
+    |handle_interrupt()                                   |
+    |interrupt()                                          |
+    |                                                     |
+    |pause/resume_reading()                               |
+    |handle_pause/resume_reading()                        |
+    |                                                     |
+    |ping/pong()                                          |
+    |                                                     |
+    |close()                                              |
+    |                                                     |
+    |get_request_header/body()                            |
+    |get_request()                                        |
+    |get_response_header/code/msg()                       |
+    |get_response()                                       |
+    |                                                     |
+    |                                                     |
+    |                                                     |
+    |                                                     |
+    +-----------------------------------------------------+
+
+0.2.2 core_client
+================================================================================
+
+    core_client
+    +-----------------------------------------------------+
+    |timeout_open/close_handshake                         |
+    |client_version                                       |
+    |elog/alog_level                                      |
+    |connection_read_buffer_size                          |
+    |drop_on_protocol_error                               |
+    |silent_close                                         |
+    |max_message_size                                     |
+    |max_http_body_size                                   |
+    |                                                     |
+    +-----------------------------------------------------+
+    |typedef type               core_client               |
+    |typedef concurrency_type   concurrency::basic        |
+    |typedef request_type       http::parser::request     |
+    |typedef response_type      http::parser::response    |
+    |typedef message_type       message_buffer::message<> |
+    |typedef con_msg_manager_type                         |
+    |typedef endpoint_msg_manager_type                    |
+    |typedef elog_type          log::basic<>              |
+    |typedef alog_type          log::basic<>              |
+    |typedef rng_type           random::random_device::   |
+    |typedef transport_type     transport::iostream       |
+    |typedef endpoint_base      endpoint_base             |
+    |typedef connection_base    connection_base           |
+    |typedef permessage_deflate_type                      |
+    |                                                     |
+    +-----------------------------------------------------+
+
+0.2.2.1 core_client::transport_config
+================================================================================
+
+    transport_config
+    +-----------------------------------------------------+
+    |enable_multithreading                                |
+    |timeout_socket_pre_init                              |
+    |timeout_proxy                                        |
+    |timeout_socket_post_init                             |
+    |timeout_dns_resolve                                  |
+    |timeout_connect                                      |
+    |timeout_socket_shutdown                              |
+    +-----------------------------------------------------+
+    |typedef concurrency_type                             |
+    |typedef elog_type                                    |
+    |typedef alog_type                                    |
+    |typedef request_type                                 |
+    |typedef response_type                                |
+    +-----------------------------------------------------+
+
+
+
+
