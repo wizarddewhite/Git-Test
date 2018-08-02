@@ -1,5 +1,166 @@
 0. data structure
 ================================================================================
 
-0.1 api_base
+0.1 api_connection
 ================================================================================
+
+    api_connection
+    +---------------------------------------------------+
+    |closed                                             |
+    |_max_conversion_depth                              |
+    |                                                   |
+    |_local_apis                                        |
+    |     (vector< generic_api >)                       |
+    |_handle_to_id                                      |
+    |     (map<uint64_t, api_id_type>)                  |   address to id
+    |_local_callbacks                                   |
+    |     (vector<function<variant(variants&, uint32)>>)|
+    |                                                   |
+    |api_visitor                                        |
+    |    +----------------------------------------------+
+    |    |_api_id                                       |   address of api_connection
+    |    |     (uint32_t)                               |
+    |    |_connection                                   |
+    |    |     (api_connection)                         |
+    |    |                                              |
+    |    |from_varient()                                |
+    |    |convert_callbacks()                           |
+    |    |operator()                                    |   setup reflect function
+    |    |                                              |
+    +----+----------------------------------------------+
+    |get_remote_api()                                   |
+    |                                                   |
+    |receive_call()                                     |
+    |receive_callback()                                 |
+    |receive_notice()                                   |
+    |                                                   |
+    |send_call()                                        |
+    |send_callback()                                    |
+    |send_notice()                                      |
+    |                                                   |
+    |register_api()                                     |
+    |register_callback()                                |
+    |                                                   |
+    |                                                   |
+    +---------------------------------------------------+
+
+
+0.1.1 generic_api
+================================================================================
+
+    generic_api
+    +---------------------------------------------------+
+    |_api_connection                                    |
+    |    (api_connection)                               |
+    |_api                                               |
+    |    (any)                                          |
+    |_by_name                                           |
+    |    (map< std::string, uint32_t>)                  |
+    |_methods                                           |
+    |    (vector<function<variant(variant&)>>)          |
+    |api_visitor                                        |
+    |    +----------------------------------------------+
+    |    |_api                                          |
+    |    |     (generic_api)                            |
+    |    |_api_con                                      |
+    |    |     (api_connection)                         |
+    |    |                                              |
+    |    |to_generic()                                  |
+    |    |operator()                                    |
+    |    |                                              |
+    +---------------------------------------------------+
+    |call(string, variant)                              |
+    |call(method_id, variant)                           |
+    |get_method_names()                                 |
+    |                                                   |
+    |                                                   |
+    |                                                   |
+    |                                                   |
+    |                                                   |
+    |                                                   |
+    |                                                   |
+    +---------------------------------------------------+
+
+0.1.2 websocket_api_connection
+================================================================================
+
+    websocket_api_connection
+    +---------------------------------------------------+
+    |_connection                                        |
+    |     (websocket_connection)                        |
+    |_rpc_state                                         |
+    |     (state)                                       |
+    |     +---------------------------------------------+
+    |     |_next_id                                     |
+    |     |     (uint64_t)                              |
+    |     |_awaiting                                    |
+    |     |     (map<uint64_t, ptr>)                    |
+    |     |_methods                                     |
+    |     |     (map<string, method>)                   |
+    |     |_unhandled                                   |
+    |     |     (function<>)                            |
+    |     +---------------------------------------------+
+    |     |add/remove_method()                          |
+    |     |local_call()                                 |
+    |     |handle_reply()                               |
+    |     |                                             |
+    |     |start_remote_call()                          |
+    |     |wait_for_response()                          |
+    |     |on_unhandled()                               |
+    +-----+---------------------------------------------+
+    |send_call()                                        |
+    |send_callback()                                    |
+    |send_notice()                                      |
+    |                                                   |
+    +---------------------------------------------------+
+
+0.2 api
+================================================================================
+
+    api_base
+    +---------------------------------------------------+
+    |get_handle()     = 0                               |
+    |register_api()   = 0                               |
+    |                                                   |
+    |template<typename T>                               |
+    |api<T, identity_member> as()                       |
+    +---------------------------------------------------+
+
+    * vtable<> is defined in FC_API
+
+    template<typename Interface, typename Transform = identity_member >
+    api : api_base
+    +---------------------------------------------------+
+    | typedef vtable<Interface,Transform> vtable_type;  |
+    |                                                   |
+    |_vtable                                            |  reflection table
+    |     (vtable_type)                                 |
+    |     +-----------------------------------------+   |
+    |     |                                         |   |
+    |     |    define a list of member functions    |   |
+    |     |    linked in vtable_copy_visitor{}      |   |
+    |     |                                         |   |
+    |     |                                         |   |
+    |     |                                         |   |
+    |     +-----------------------------------------+   |
+    |                                                   |
+    |_data                                              |
+    |     (fc::any)                                     |
+    |     +-----------------------------------------+   |
+    |     |     The real interface                  |   |
+    |     |                                         |   |
+    |     |                                         |   |
+    |     +-----------------------------------------+   |
+    |                                                   |
+    +---------------------------------------------------+
+    |get_handle()        return the address of _data    |
+    |register_api(api_connection& conn)                 |  
+    |      register to conn->_local_apis                |
+    +---------------------------------------------------+
+
+
+    most simple usage in api.cpp
+
+    fc::api<calculator> api_calc( std::make_shared<some_calculator>() )
+    wdump( (api_calc->add(5,4)) );
+    wdump( (api_calc->sub(5,4)) );
