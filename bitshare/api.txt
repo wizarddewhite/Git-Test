@@ -164,3 +164,46 @@
     fc::api<calculator> api_calc( std::make_shared<some_calculator>() )
     wdump( (api_calc->add(5,4)) );
     wdump( (api_calc->sub(5,4)) );
+
+0.2.1 FC_API
+================================================================================
+
+class login_api
+{
+   public:
+      fc::api<calculator> get_calc()const
+      {
+         FC_ASSERT( calc );
+         return *calc;
+      }
+      fc::optional<fc::api<calculator>> calc;
+      std::set<std::string> test( const std::string&, const std::string& ) { return std::set<std::string>(); }
+};
+
+FC_API( login_api, (get_calc)(test) );
+
+namespace fc {
+	template<typename Transform> struct vtable<calculator,Transform> : public std::enable_shared_from_this<vtable<calculator,Transform>> 
+	{ 
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::add)) add; 
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::sub)) sub; 
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::on_result)) on_result; 
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::on_result2)) on_result2; 
+
+		template<typename Visitor> void visit_other( Visitor&& v )
+		{
+			typedef typename Visitor::other_type OtherType;
+			v( "add", add, &OtherType::add );
+			v( "sub", sub, &OtherType::sub );
+			v( "on_result", on_result, &OtherType::on_result );
+			v( "on_result2", on_result2, &OtherType::on_result2 );
+		}
+		template<typename Visitor> void visit( Visitor&& v )
+		{
+			v( "add", add );
+			v( "sub", sub );
+			v( "on_result", on_result );
+			v( "on_result2", on_result2 );
+		}
+	};
+}

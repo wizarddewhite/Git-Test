@@ -1,4 +1,32 @@
+1. to_variant()
+================================================================================
+fc::variant(request, _max_conversion_depth)
+
+   template<typename T>
+   variant::variant( const T& val, uint32_t max_depth )
+   {
+      memset( this, 0, sizeof(*this) );
+      to_variant( val, *this, max_depth );
+   }
+
+   template<typename T>
+   void to_variant( const T& o, variant& v, uint32_t max_depth )
+   {
+      if_enum<typename fc::reflector<T>::is_enum>::to_variant( o, v, max_depth );
+   }
+
+   template<typename T>
+   static inline void to_variant( const T& v, fc::variant& vo, uint32_t max_depth )
+   {
+      mutable_variant_object mvo;
+      fc::reflector<T>::visit( to_variant_visitor<T>( mvo, v, max_depth ) );
+      vo = fc::move(mvo);
+   }
+
 0. data structure
+================================================================================
+
+0.1 variant
 ================================================================================
 
     variant
@@ -16,3 +44,61 @@
     |                                                        |
     +--------------------------------------------------------+
 
+0.2 fc::reflector
+================================================================================
+
+    template <typename T>
+    reflector
+    +--------------------------------------------------------+
+    |typedef T type;                                         |
+    |typedef fc::false_type is_defined;                      |
+    |typedef fc::false_type is_enum;                         |
+    |                                                        |
+    |                                                        |
+    |visit(const Visitor& v)                                 |  defined by FC_REFLECT
+    +--------------------------------------------------------+
+
+0.2.1 FC_REFLECT()
+================================================================================
+
+   struct request
+   {
+      optional<uint64_t>  id;
+      std::string         method;
+      variants            params;
+   };
+
+
+FC_REFLECT( fc::rpc::request, (id)(method)(params) );
+
+namespace fc {
+	template<> struct get_typename<fc::rpc::request>
+	{
+		static const char* name() { return "fc::rpc::request"; }
+	};
+	template<> struct reflector<fc::rpc::request>
+	{
+		typedef fc::rpc::request type;
+		typedef fc::true_type is_defined;
+		typedef fc::false_type is_enum;
+		enum member_count_enum {
+			local_member_count = 0 + 1 + 1 + 1 ,
+			total_member_count = local_member_count
+		};
+		template<typename Visitor>static inline void visit( const Visitor& v ) 
+		{
+			{
+				typedef decltype(((type*)nullptr)->id) member_type;
+				v.template operator()<member_type,type,&type::id>( "id" );
+			}
+			{
+				typedef decltype(((type*)nullptr)->method) member_type;
+				v.template operator()<member_type,type,&type::method>( "method" );
+			}
+			{
+				typedef decltype(((type*)nullptr)->params) member_type;
+				v.template operator()<member_type,type,&type::params>( "params" );
+			}
+		}
+	};
+};
