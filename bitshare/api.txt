@@ -28,19 +28,18 @@
     |    |operator()                                    |   setup reflect function
     |    |                                              |
     +----+----------------------------------------------+
-    |get_remote_api()                                   |
-    |                                                   |
-    |receive_call()                                     |
-    |receive_callback()                                 |
-    |receive_notice()                                   |
+    |get_remote_api()                                   |   client side
     |                                                   |
     |send_call()                                        |
     |send_callback()                                    |
     |send_notice()                                      |
     |                                                   |
-    |register_api()                                     |
+    |register_api()                                     |   server side
     |register_callback()                                |
     |                                                   |
+    |receive_call()                                     |
+    |receive_callback()                                 |
+    |receive_notice()                                   |
     |                                                   |
     +---------------------------------------------------+
 
@@ -154,7 +153,7 @@
     |                                                   |
     +---------------------------------------------------+
     |get_handle()        return the address of _data    |
-    |register_api(api_connection& conn)                 |  
+    |register_api(api_connection& conn)                 |
     |      register to conn->_local_apis                |
     +---------------------------------------------------+
 
@@ -165,7 +164,7 @@
     wdump( (api_calc->add(5,4)) );
     wdump( (api_calc->sub(5,4)) );
 
-0.2.1 FC_API
+0.2.1 FC_API, define api::_vtable
 ================================================================================
 
 class login_api
@@ -183,12 +182,12 @@ class login_api
 FC_API( login_api, (get_calc)(test) );
 
 namespace fc {
-	template<typename Transform> struct vtable<calculator,Transform> : public std::enable_shared_from_this<vtable<calculator,Transform>> 
-	{ 
-		decltype(Transform::functor( (calculator*)nullptr, &calculator::add)) add; 
-		decltype(Transform::functor( (calculator*)nullptr, &calculator::sub)) sub; 
-		decltype(Transform::functor( (calculator*)nullptr, &calculator::on_result)) on_result; 
-		decltype(Transform::functor( (calculator*)nullptr, &calculator::on_result2)) on_result2; 
+	template<typename Transform> struct vtable<calculator,Transform> : public std::enable_shared_from_this<vtable<calculator,Transform>>
+	{
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::add)) add;
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::sub)) sub;
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::on_result)) on_result;
+		decltype(Transform::functor( (calculator*)nullptr, &calculator::on_result2)) on_result2;
 
 		template<typename Visitor> void visit_other( Visitor&& v )
 		{
@@ -207,3 +206,43 @@ namespace fc {
 		}
 	};
 }
+
+0.2.1.1 vtable_copy_visitor
+================================================================================
+
+  template<typename OtherType>
+  struct vtable_copy_visitor {
+      typedef OtherType other_type;
+
+      vtable_copy_visitor( OtherType& s):_source( s ){}
+
+      template<typename R, typename MemberPtr, typename... Args>
+      void operator()( const char* name, std::function<R(Args...)>& memb, MemberPtr m )const {
+        OtherType* src = &_source;
+        memb = [src,m]( Args... args ){ return (src->*m)(args...); };
+      }
+      OtherType& _source;
+  };
+
+
+0.3 how local api works
+================================================================================
+
+The effect of following line. (fc/tests/api.cpp)
+
+    fc::api<calculator> api_calc( std::make_shared<some_calculator>() );
+
+    api<calculator>                                  some_calculator
+    +----------------------+                         +----------------------+
+    |_vtable               |  _vtable::visit_other(  |                      |
+    |   +------------------+  vtable_copy_visitor()) |                      |
+    |   | add       -------|------------------------>|add()                 |
+    |   | sub       -------|------------------------>|sub()                 |
+    |   |                  |                         |                      |
+    |   |                  |                         |                      |
+    |   |                  |                         |                      |
+    +---+------------------+                         +----------------------+
+
+0.4 how remote api works
+================================================================================
+
