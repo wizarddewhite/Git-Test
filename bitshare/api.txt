@@ -246,3 +246,41 @@ The effect of following line. (fc/tests/api.cpp)
 0.4 how remote api works
 ================================================================================
 
+                            Client                                                     Server
+       
+       
+                        api_connection                                             api_connection                            api<login_api>
+                        +---------------------------+                              +---------------------------+             +-----------------+
+   +--------------------|get_remote_api()           |                              |register_api()             |             |get_calc()   <---|---+
+   | _vtable::visit(    |                           |                              |                           |             |                 |   |
+   |  api_visitor() )   |                           |                              |_local_apis[<generic_api>]-|--- --+      +-----------------+   |
+   |                    |                           |                              |                           |      |                      ^     |
+   |                    |                           |                              |                           |      |  _vtable::visit(     |     |
+   v                    |                           |                              |                           |      |   api_visitor() )    |     |
+  api<login_api>        |                           |                              |                           |      |                      |     |
+  +--------------+      +---------------------------+                              +---------------------------+      |      generic_api     |     |
+  |_vtable       |                 ^                                                          ^                       +----->+---------------|-----+-+
+  |  +-----------+                 |                                                          |                              |_api         --+     | |
+  |  |get_calc()-|--+              |                                                          |                              |_api_connection      | |
+  |  |           |  |              |                                                          |                              |                     | |
+  |  |           |  |   websocket_api_connection       "id":1,"method":"call",     websocket_api_connection                  |                     | |
+  +--+-----------+  |   +---------------------------+  "params":[0,"get_calc",[]]  +---------------------------+      +----->|_methods[]   --------+ |
+                    +-->|send_call()             ---|----------------------------->|on_message()               |      |      |_by_name[]             |
+                        |                           |                              |  |                        |      |      +-----------------------+
+                        |    websocket_connection:: |                              |  +-rpc_state::local_call()|      |
+                        |      send_message()       |                              |      |                    |      |
+                        |                           |                              |      +--receive_call()  --|------+
+                        +---------------------------+                              +---------------------------+
+
+
+Client:
+1. auto apic = std::make_shared<websocket_api_connection>(*con, MAX_DEPTH);
+2. auto remote_login_api = apic->get_remote_api<login_api>();
+3. auto remote_calc = remote_login_api->get_calc();
+
+Server:
+1. auto wsc = std::make_shared<websocket_api_connection>(*c, MAX_DEPTH);
+2. auto login = std::make_shared<login_api>();
+3. login->calc = calc_api;
+4. wsc->register_api(fc::api<login_api>(login));
+
