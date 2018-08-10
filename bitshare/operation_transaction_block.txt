@@ -1,0 +1,149 @@
+0. data structure
+================================================================================
+
+0.1 operation
+================================================================================
+
+    base_operation
+    +------------------------------------------+
+    |calculate_fee()                           |
+    |validate()                                |
+    |calculate_data_fee()                      |
+    |                                          |
+    +------------------------------------------+
+                        ^
+                        |
+                        |
+    transfer_operation : base_operation
+    +------------------------------------------+
+    |fee                                       |
+    |      (asset)                             |
+    |from                                      |
+    |to                                        |
+    |      (account_id_type)                   |
+    |                                          |
+    +------------------------------------------+
+    |validate()                                |
+    |calculate_fee()                           |
+    |                                          |
+    +------------------------------------------+
+
+
+0.2 transaction
+================================================================================
+
+    transaction
+    +------------------------------------------+
+    |ref_block_num                             |
+    |ref_block_prefix                          |
+    |expiration                                |
+    |     (time_point_sec)                     |
+    |extensions                                |
+    |operations                                |
+    |     (vector<operation>)                  |
+    |                                          |
+    +------------------------------------------+
+    |digest()                                  |
+    |id()                                      |
+    |validate()                                |
+    |sig_digest()                              |
+    |set_expiration()                          |
+    |set_reference_block()                     |
+    |get_required_authorities()                |
+    |                                          |
+    +------------------------------------------+
+                        ^
+                        |
+                        |
+    signed_transaction
+    +------------------------------------------+
+    |signatures                                |
+    |     (vector<signature_type>)             |
+    |                                          |
+    +------------------------------------------+
+    |sign()                                    |
+    |                                          |
+    |get_required_signatures()                 |
+    |verify_authority()                        |
+    |minimize_required_signatures()            |
+    |get_signature_keys()                      |
+    |clear()                                   |
+    +------------------------------------------+
+                        ^
+                        |
+                        |
+    processed_transaction
+    +------------------------------------------+
+    |operation_results                         |
+    |     (vector<operation_result>)           |
+    |                                          |
+    +------------------------------------------+
+    |merkle_digest()                           |
+    +------------------------------------------+
+
+
+0.3 block
+================================================================================
+
+
+    block_header
+    +------------------------------------------+
+    |previous                                  |
+    |    (block_id_type)                       |
+    |timestamp                                 |
+    |witness                                   |
+    |    (witness_id_type)                     |
+    |transaction_merkle_root                   |
+    |    (checksum_type)                       |
+    |extensions                                |
+    |                                          |
+    +------------------------------------------+
+    |digest()                                  |
+    |num_from_id()                             |
+    |block_num()                               |
+    |                                          |
+    +------------------------------------------+
+                        ^
+                        |
+                        |
+    signed_block_header
+    +------------------------------------------+
+    |witness_signature                         |
+    |     (signature_type)                     |
+    |                                          |
+    +------------------------------------------+
+    |id()                                      |
+    |signee()                                  |
+    |sign()                                    |
+    |validate_signee()                         |
+    +------------------------------------------+
+                        ^
+                        |
+                        |
+    signed_block
+    +------------------------------------------+
+    |transactions                              |
+    |     (vector<processed_transaction>)      |
+    |                                          |
+    +------------------------------------------+
+    |calculate_merkle_root()                   |
+    |                                          |
+    +------------------------------------------+
+
+
+
+0.4 whole picture
+================================================================================
+
+
+    signed_block
+    +------------------------------------------+
+    |transactions                              |
+    |     (vector<processed_transaction>)      |
+    |     +------------------------------------+
+    |     |operations                          |
+    |     |    (vector<operation>)             |
+    |     |                                    |
+    +-----+------------------------------------+
+
+
