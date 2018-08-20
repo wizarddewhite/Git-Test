@@ -1,6 +1,13 @@
 #include <string.h>
 #include <stdio.h>
 
+enum kvm_mr_change {
+	KVM_MR_CREATE,
+	KVM_MR_DELETE,
+	KVM_MR_MOVE,
+	KVM_MR_FLAGS_ONLY,
+};
+
 struct kvm_memory_slot {
 	unsigned long base_gfn;
 	unsigned long npages;
@@ -329,10 +336,111 @@ void insert_test()
 
 }
 
+static inline struct kvm_memory_slot *
+search_memslots2(struct kvm_memslots *slots, unsigned long gfn, int *pos)
+{
+	int start = 0, end = slots->used_slots;
+	int slot = slots->lru_slot;
+	struct kvm_memory_slot *memslots = slots->memslots;
+
+	if (gfn >= memslots[slot].base_gfn &&
+	    gfn < memslots[slot].base_gfn + memslots[slot].npages) {
+		*pos = memslots[slot].id;
+		return &memslots[slot];
+	}
+
+	while (start < end) {
+		slot = (start + end) / 2;
+
+		if (gfn >= memslots[slots->id_to_index[slot]].base_gfn)
+			end = slot;
+		else
+			start = slot + 1;
+	}
+
+	short id = slots->id_to_index[start];
+	if (gfn >= memslots[id].base_gfn &&
+	    gfn < memslots[id].base_gfn + memslots[id].npages) {
+		//atomic_set(&slots->lru_slot, start);
+		*pos = memslots[id].id;
+		return &memslots[id];
+	}
+
+	*pos = start;
+	return NULL;
+}
+
+void new_search_test()
+{
+	int i;
+	struct kvm_memslots mem_slot;
+	struct kvm_memory_slot slot, *ps;
+	
+	mem_slot.used_slots = 5;
+	mem_slot.lru_slot = 1;
+
+	memset(&mem_slot, 0, sizeof(struct kvm_memslots));
+	for (i=0; i<10;i++) {
+		mem_slot.id_to_index[i] = mem_slot.memslots[i].id = i;
+	}
+
+	mem_slot.used_slots = 3;
+
+	mem_slot.memslots[1].base_gfn = 0x8000;
+	mem_slot.memslots[1].npages = 0x1000;
+	mem_slot.memslots[1].id = 0;
+	mem_slot.id_to_index[0] = 1;
+
+	mem_slot.memslots[2].base_gfn = 0x4000;
+	mem_slot.memslots[2].npages = 0x1000;
+	mem_slot.memslots[2].id = 1;
+	mem_slot.id_to_index[1] = 2;
+
+	mem_slot.memslots[0].base_gfn = 0x1000;
+	mem_slot.memslots[0].npages = 0x1000;
+	mem_slot.memslots[0].id = 2;
+	mem_slot.id_to_index[2] = 0;
+
+	printf("--- initial state --- \n");
+	dump_memslot(&mem_slot);
+
+	ps = search_memslots2(&mem_slot, 0x1010, &i);
+	if (ps)
+		printf("%lx-%lx at %d\n", ps->base_gfn, ps->npages, i);
+	else
+		printf("0x1010 pos is %d\n", i);
+
+	ps = search_memslots2(&mem_slot, 0x8010, &i);
+	if (ps)
+		printf("%lx-%lx at %d\n", ps->base_gfn, ps->npages, i);
+	else
+		printf("0x8010 pos is %d\n", i);
+
+	ps = search_memslots2(&mem_slot, 0x6010, &i);
+	if (ps)
+		printf("%lx-%lx\n", ps->base_gfn, ps->npages);
+	else
+		printf("0x6010 pos is %d\n", i);
+
+	ps = search_memslots2(&mem_slot, 0x9010, &i);
+	if (ps)
+		printf("%lx-%lx\n", ps->base_gfn, ps->npages);
+	else
+		printf("0x9010 pos is %d\n", i);
+
+	ps = search_memslots2(&mem_slot, 0x0010, &i);
+	if (ps)
+		printf("%lx-%lx\n", ps->base_gfn, ps->npages);
+	else
+		printf("0x0010 pos is %d\n", i);
+
+}
+
 int main()
 {
 	//test1();
 	//remove_test();
-	insert_test();
+	// insert_test();
+	new_search_test();
 	return 0;
 }
