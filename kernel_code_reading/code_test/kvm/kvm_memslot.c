@@ -16,6 +16,7 @@ struct kvm_memory_slot {
 
 struct kvm_memslots {
 	struct kvm_memory_slot memslots[10];
+	short slots_order[10];
 	short id_to_index[10];
 	int used_slots;
 	int lru_slot;
@@ -345,8 +346,8 @@ search_memslots2(struct kvm_memslots *slots, unsigned long gfn, int *pos)
 
 	if (gfn >= memslots[slot].base_gfn &&
 	    gfn < memslots[slot].base_gfn + memslots[slot].npages) {
-		*pos = memslots[slot].id;
-		return &memslots[slot];
+		if (!pos)
+			return &memslots[slot];
 	}
 
 	while (start < end) {
@@ -359,15 +360,53 @@ search_memslots2(struct kvm_memslots *slots, unsigned long gfn, int *pos)
 	}
 
 	short id = slots->id_to_index[start];
+	if (pos)
+		*pos = start;
 	if (gfn >= memslots[id].base_gfn &&
 	    gfn < memslots[id].base_gfn + memslots[id].npages) {
 		//atomic_set(&slots->lru_slot, start);
-		*pos = memslots[id].id;
 		return &memslots[id];
 	}
 
-	*pos = start;
 	return NULL;
+}
+
+static void update_memslots2(struct kvm_memslots *slots,
+			    struct kvm_memory_slot *new,
+			    int id)
+{
+	int i = slots->id_to_index[id];
+	struct kvm_memory_slot *mslots = slots->memslots;
+
+	if (!new->npages) {
+		if (mslots[i].npages)
+			slots->used_slots--;
+	} else {
+		if (!mslots[i].npages)
+			slots->used_slots++;
+	}
+
+	while (i < 10 - 1 &&
+	       new->base_gfn <= mslots[slots->slots_order[i+1]].base_gfn) {
+		if (!mslots[slots->slots_order[i+1]].npages)
+			break;
+		slots->slots_order[i] = slots->slots_order[i+1];
+		slots->id_to_index[slots->slots_order[i]] = i;
+		i++;
+	}
+
+	if (new->npages) {
+		while (i > 0 &&
+		       new->base_gfn >= mslots[slots->slots_order[i-1]].base_gfn) {
+			slots->slots_order[i] = slots->slots_order[i-1];
+			slots->id_to_index[slots->slots_order[i]] = i;
+			i--;
+		}
+	}
+
+	mslots[id] = *new;
+	slots->slots_order[i] = id;
+	slots->id_to_index[slots->slots_order[i]] = i;
 }
 
 void new_search_test()
@@ -436,11 +475,52 @@ void new_search_test()
 
 }
 
+void new_update_slot_test()
+{
+	int i;
+	struct kvm_memslots mem_slot;
+	struct kvm_memory_slot slot, *ps;
+	memset(&mem_slot, 0, sizeof(struct kvm_memslots));
+	mem_slot.lru_slot = 1;
+	for (i=0; i<10;i++) {
+		mem_slot.id_to_index[i] = mem_slot.slots_order[i] = mem_slot.memslots[i].id = i;
+	}
+	printf("--- initial state --- \n");
+	dump_memslot(&mem_slot);
+
+	slot.base_gfn = 0x1000;
+	slot.npages   = 0x1000;
+	update_memslots2(&mem_slot, &slot, 0);
+	printf("--- set slot 0 --- \n");
+	dump_memslot(&mem_slot);
+
+	slot.base_gfn = 0x3000;
+	slot.npages   = 0x1000;
+	update_memslots2(&mem_slot, &slot, 1);
+	printf("--- set slot 1 --- \n");
+	dump_memslot(&mem_slot);
+
+	slot.base_gfn = 0x5000;
+	slot.npages   = 0x1000;
+	update_memslots2(&mem_slot, &slot, 2);
+
+	slot.base_gfn = 0x7000;
+	slot.npages   = 0x1000;
+	update_memslots2(&mem_slot, &slot, 3);
+
+	slot.base_gfn = 0x8000;
+	slot.npages   = 0x1000;
+	update_memslots2(&mem_slot, &slot, 4);
+	printf("--- set slot 1-4 --- \n");
+	dump_memslot(&mem_slot);
+}
+
 int main()
 {
 	//test1();
 	//remove_test();
 	// insert_test();
-	new_search_test();
+	// new_search_test();
+	new_update_slot_test();
 	return 0;
 }
