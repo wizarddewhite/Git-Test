@@ -1,4 +1,46 @@
-1. DEVICE <--> CLASS
+1. type_register_internal(), register a type
+================================================================================
+static TypeImpl *type_register_internal(const TypeInfo *info)
+{
+    TypeImpl *ti;
+    ti = type_new(info);
+
+    type_table_add(ti);
+    return ti;
+}
+
+1.1 type_new(), create TypeImpl
+================================================================================
+
+1.2 type_table_add(), connect TypeImpl and TypeInfo
+================================================================================
+
+2. object_initialize(), create obj with typename
+================================================================================
+void object_initialize(void *data, size_t size, const char *typename)
+{
+    TypeImpl *type = type_get_by_name(typename);
+
+    object_initialize_with_type(data, size, type);
+}
+
+2.1 type_get_by_name()
+================================================================================
+
+2.2 object_initialize_with_type()
+================================================================================
+
+2.2.1 type_initialize(), init class
+================================================================================
+
+ti->class_init()
+
+2.2.2 object_init_with_type(), init object
+================================================================================
+
+ti->instance_init()
+
+1. DEVICE <--> CLASS, cast between Class levels
 ================================================================================
 #define OBJECT_CLASS(class) \
     ((ObjectClass *)(class))
@@ -139,11 +181,8 @@ TypeImpl *type_register(const TypeInfo *info)
        +------------------+                   +--------------------+
 
 
-4. TypeImpl <--  TypeInfo 
-================================================================================
 
-
-3. traverse the qdev tree? 
+4. traverse the qdev tree? 
 ================================================================================
 if (qemu_opts_foreach(qemu_find_opts("device"), device_help_func, NULL, 0) != 0)
 device_help_func
