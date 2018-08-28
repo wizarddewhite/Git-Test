@@ -824,7 +824,7 @@ static FlatView *address_space_get_flatview(AddressSpace *as)
     return view;
 }
 
-5.2.2 generate_memory_topology(), generate new FlatView
+5.2.2 generate_memory_topology(), generate new FlatView of mr as root
 ================================================================================
 static FlatView *generate_memory_topology(MemoryRegion *mr)
 {
@@ -2249,7 +2249,7 @@ static int kvm_mem_flags(MemoryRegion *mr)
            |                               |                                 |
            |                               |                                 |
            |                               |                                 |
-           |  struct MemoryRegion(B)       |    struct memoryregion(C)       |      struct MemoryRegion(B)            
+           |  struct MemoryRegion(B)       |    struct MemoryRegion(C)       |      struct MemoryRegion(B)
            |  +------------------------+   |    +------------------------+   |      +------------------------+
            |  |container               |---+    |container               |---+      |container               |
            |  | (struct MemoryRegion *)|        | (struct MemoryRegion *)|          | (struct MemoryRegion *)|
