@@ -2316,8 +2316,8 @@ static int kvm_mem_flags(MemoryRegion *mr)
          |fd                         |                                |fd                         |
          |    (int)                  |                                |    (int)                  |
          +---------------------------+                                +---------------------------+
-         |host                       |  virtual address in host       |host                       |  
-         |    (uint8_t *)            |                                |    (uint8_t *)            |
+         |host                       |  virtual address of a ram      |host                       |  
+         |    (uint8_t *)            |  in host (mmap)                |    (uint8_t *)            |
          +---------------------------+                                +---------------------------+
          |mr                         |                                |mr                         |
          |    (struct MemoryRegion *)|                                |    (struct MemoryRegion *)|
@@ -2503,3 +2503,36 @@ static int kvm_mem_flags(MemoryRegion *mr)
      |address_space_filter       | ----------> |                    |
      |    (AddressSpace *)       |             |                    |
      +---------------------------+             +--------------------+
+
+
+0.4 address and offset
+================================================================================
+
+    MemoryRegion
+    +---------------------------+
+    |addr                       |      GPA?
+    |                           |
+    |                           |
+    |alias_offset               |      offset in alias region
+    +---------------------------+
+
+    FlatRange
+    +---------------------------+
+    |addr                       |      GPA
+    |                           |
+    |offset_in_region           |      offset to FlatRange->mr
+    |                           |
+    +---------------------------+
+
+    MemoryRegionSection
+    +---------------------------+
+    |offset_within_address_space|      GPA
+    |offset_within_region       |      same as FlatRange->offset_in_region
+    +---------------------------+
+
+    RAMBlock
+    +---------------------------+
+    |host                       |      HVA
+    |                           |
+    |offset                     |      offset in ram_list
+    +---------------------------+
