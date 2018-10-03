@@ -235,3 +235,39 @@ address_space
      |coalesced               |                                         
      |    QTAILQ_HEAD()       |                                         
      +------------------------+                                         
+
+
+
+                            struct MemoryRegion
+                            +------------------------+                                         
+                            |name                    |                                         
+                            |  (const char *)        |                                         
+                            +------------------------+                                         
+                            |addr                    |                                         
+                            |  (hwaddr)              |                                         
+                            |size                    |                                         
+                            |  (Int128)              |                                         
+                            +------------------------+                                         
+                            |subregions              |                                         
+                            |    QTAILQ_HEAD()       |                                         
+                            +------------------------+                                         
+                                       |
+                                       |
+               ----+-------------------+---------------------+----
+                   |                                         |
+                   |                                         |
+                   |                                         |
+
+     struct MemoryRegion                            struct MemoryRegion
+     +------------------------+                     +------------------------+
+     |name                    |                     |name                    |
+     |  (const char *)        |                     |  (const char *)        |
+     +------------------------+                     +------------------------+
+     |addr                    |                     |addr                    |
+     |  (hwaddr)              |                     |  (hwaddr)              |
+     |size                    |                     |size                    |
+     |  (Int128)              |                     |  (Int128)              |
+     +------------------------+                     +------------------------+
+     |subregions              |                     |subregions              |
+     |    QTAILQ_HEAD()       |                     |    QTAILQ_HEAD()       |
+     +------------------------+                     +------------------------+

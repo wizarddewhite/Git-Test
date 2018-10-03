@@ -296,6 +296,17 @@ static inline void kvm_mmu_load_cr3(struct kvm_vcpu *vcpu)
     |    |run                                          |
     |    |    (struct kvm_run)                         |
     |    |                                             |
+    |    |async_pf                                     |
+    |    |    +----------------------------------------+
+    |    |    |queue                                   |
+    |    |    |done                                    |
+    |    |    |     (struct list_head)                 |
+    |    |    |queued                                  |
+    |    |    |     (u32)                              |
+    |    |    |lock                                    |
+    |    |    |     (spinlock_t)                       |
+    |    |    +----------------------------------------+
+    |    |                                             |
     |    |arch                                         |
     |    |    (struct kvm_vcpu_arch)                   |
     |    |    +----------------------------------------+
@@ -338,7 +349,15 @@ static inline void kvm_mmu_load_cr3(struct kvm_vcpu *vcpu)
     |    |    |    |   |   (hpa_t)                     |
     |    |    |    +---+-------------------------------+
     |    |    |                                        |
-    |    |    |                                        |
+    |    |    |apf                                     |
+    |    |    |    +-----------------------------------+
+    |    |    |    |id                                 |
+    |    |    |    |     (u32)                         |
+    |    |    |    |gfns[ASYNC_PF_PER_VCPU]            |    a hash table with linear probing
+    |    |    |    |     (gfn_t)                       |
+    |    |    |    |data                               |
+    |    |    |    |     (struct gfn_to_hva_cache)     |
+    |    |    |    +-----------------------------------+
     |    |    |                                        |
     |    |    |                                        |
     |    |    |                                        |
