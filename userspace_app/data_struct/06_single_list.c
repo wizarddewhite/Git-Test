@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 
 struct single_list {
 	struct single_list *next;
@@ -8,6 +9,11 @@ struct single_list {
 struct single_list_head {
 	struct single_list *head;
 };
+
+bool is_empty(struct single_list_head *head)
+{
+	return head->head == NULL;
+}
 
 void dump(struct single_list_head *head)
 {
@@ -30,6 +36,11 @@ void insert(struct single_list **prev, struct single_list *elem)
 	*prev = elem;
 }
 
+void insert_head(struct single_list_head *head, struct single_list *elem)
+{
+	insert(&head->head, elem);
+}
+
 struct single_list* delete(struct single_list **prev)
 {
 	struct single_list *tmp;
@@ -39,8 +50,14 @@ struct single_list* delete(struct single_list **prev)
 
 	tmp = *prev;
 	*prev = (*prev)->next;
+	tmp->next = NULL;
 
 	return tmp;
+}
+
+struct single_list* delete_head(struct single_list_head* head)
+{
+	return delete(&head->head);
 }
 
 struct single_list** search(struct single_list_head* head, int target)
@@ -55,6 +72,53 @@ struct single_list** search(struct single_list_head* head, int target)
 	return prev;
 }
 
+void reverse(struct single_list_head* head)
+{
+	struct single_list_head tmp;
+	struct single_list *elem;
+
+	while (!is_empty(head)) {
+		elem = delete_head(head);
+		insert_head(&tmp, elem);
+	}
+
+	head->head = tmp.head;
+}
+
+bool is_cyclic(struct single_list_head* head)
+{
+	struct single_list *s1, *s2;
+
+	s1 = s2 = head->head;
+
+	while(s1 && s2) {
+		s1 = s1->next;
+		s2 = s2->next ? s2->next->next:s2->next;
+
+		if (s1 == s2)
+			return true;
+	}
+	return false;
+}
+
+struct single_list* middle(struct single_list_head* head)
+{
+	struct single_list *s1, *s2;
+	struct single_list pseudo_head;
+
+	pseudo_head.next = head->head;
+	s1 = s2 = &pseudo_head;
+
+	while (true) {
+		if (!s2 || !s2->next)
+			return s1;
+		s1 = s1->next;
+		s2 = s2->next->next;
+	}
+
+	return NULL;
+}
+
 int main()
 {
 	struct single_list_head head = {NULL};
@@ -67,11 +131,11 @@ int main()
 		lists[idx].next = NULL;
 	}
 
-	insert(&head.head, &lists[6]);
-	insert(&head.head, &lists[5]);
-	insert(&head.head, &lists[4]);
-	insert(&head.head, &lists[1]);
-	insert(&head.head, &lists[0]);
+	insert_head(&head, &lists[6]);
+	insert_head(&head, &lists[5]);
+	insert_head(&head, &lists[4]);
+	insert_head(&head, &lists[1]);
+	insert_head(&head, &lists[0]);
 
 	printf("=== insert 0, 1, 4, 5, 6\n");
 	dump(&head);
@@ -80,6 +144,8 @@ int main()
 	insert(prev, &lists[2]);
 	printf("=== insert 2\n");
 	dump(&head);
+
+	printf("middle elem is %d\n", middle(&head)->val);
 
 	prev = search(&head, 2);
 	if ((*prev) && ((*prev)->val == 2))
@@ -95,6 +161,16 @@ int main()
 	else
 		printf("The list not contains 2\n");
 	dump(&head);
+
+	printf("After reverse \n");
+	reverse(&head);
+	dump(&head);
+
+	printf("middle elem is %d\n", middle(&head)->val);
+
+	lists[0].next = &lists[6];
+	printf("list is%s cyclic\n", is_cyclic(&head)?"":" not");
+
 	return 0;
 }
 
