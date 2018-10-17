@@ -13,40 +13,31 @@ void dump(int *arr, int size)
 
 void __merge(int *arr, int p, int q, int r)
 {
-	int *a, *b;
+	int *tmp;
 	int i, j, k;
-	int size1, size2;
 
-	size1 = q - p + 1;
-	size2 = r - q;
+	tmp = (int*)malloc((r - p + 1) * sizeof(int));
 
-
-	a = (int*)malloc(size1 * sizeof(int));
-	b = (int*)malloc(size2 * sizeof(int));
-
-	if (!a || !b)
+	if (!tmp)
 		abort();
 
-	memcpy(a, arr, size1 * sizeof(int));
-	memcpy(b, arr + size1, size2 * sizeof(int));
-
-	for (i = 0, j = 0, k = 0; i < size1 && j < size2;) {
-		if (a[i] <= b[j])
-			arr[k++] = a[i++];
+	for (i = p, j = q + 1, k = 0; i <= q && j <= r;) {
+		if (arr[i] <= arr[j])
+			tmp[k++] = arr[i++];
 		else
-			arr[k++] = b[j++];
+			tmp[k++] = arr[j++];
 	}
 
-	if (i == size1) {
-		for (; j < size2;)
-			arr[k++] = b[j++];
+	if (i == q + 1) {
+		for (; j <= r;)
+			tmp[k++] = arr[j++];
 	} else {
-		for (; i < size1;)
-			arr[k++] = a[i++];
+		for (; i <= q;)
+			tmp[k++] = arr[i++];
 	}
 
-	free(a);
-	free(b);
+	memcpy(arr + p, tmp, (r - p + 1) * sizeof(int));
+	free(tmp);
 }
 
 void __merge_sort(int *arr, int p, int r)
