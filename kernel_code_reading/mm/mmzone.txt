@@ -827,3 +827,23 @@ MAX_ZONELISTS is defined to 1 or 2.
       +------------------------------+
            
 
+0.4.1 zone->pageset
+================================================================================
+
+per cpu variable, each zone maintains the status of each cpu
+
+      struct zone
+      +------------------------------------------------------------------------------------------------+
+      |pageset                                                                                         |
+      |   (struct per_cpu_pageset *)                                                                   |
+      |   cpu0                          cpu1                                cpuN                       |
+      |   +--------------------------+  +--------------------------+  ...   +--------------------------+
+      |   |pcp                       |  |pcp                       |        |pcp                       |
+      |   |  (struct per_cpu_pages)  |  |  (struct per_cpu_pages)  |        |  (struct per_cpu_pages)  |
+      |   |  +-----------------------+  |  +-----------------------+        |  +-----------------------+
+      |   |  |count                  |  |  |count                  |        |  |count                  |
+      |   |  |high                   |  |  |high                   |        |  |high                   |
+      |   |  |batch                  |  |  |batch                  |        |  |batch                  |
+      |   |  |                       |  |  |                       |        |  |                       |
+      |   |  |lists[MIGRATE_PCPTYPES]|  |  |lists[MIGRATE_PCPTYPES]|        |  |lists[MIGRATE_PCPTYPES]|
+      +---+--+-----------------------+--+--+-----------------------+--------+--+-----------------------+

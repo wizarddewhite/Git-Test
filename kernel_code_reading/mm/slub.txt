@@ -209,155 +209,20 @@ static int sysfs_slab_alias(struct kmem_cache *s, const char *name)
 
 3. kmem_cache_create()
 ================================================================================
-struct kmem_cache *
-kmem_cache_create(const char *name, size_t size, size_t align,
-		  unsigned long flags, void (*ctor)(void *))
-{
-	struct kmem_cache *s;
-	const char *cache_name;
-	int err;
-
-	get_online_cpus();
-	get_online_mems();
-	memcg_get_cache_ids();
-
-	mutex_lock(&slab_mutex);
-
-	err = kmem_cache_sanity_check(name, size);
-	if (err) {
-		s = NULL;	/* suppress uninit var warning */
-		goto out_unlock;
-	}
-
-	/*
-	 * Some allocators will constraint the set of valid flags to a subset
-	 * of all flags. We expect them to define CACHE_CREATE_MASK in this
-	 * case, and we'll just provide them with a sanitized version of the
-	 * passed flags.
-	 */
-	flags &= CACHE_CREATE_MASK;
-
-	s = __kmem_cache_alias(name, size, align, flags, ctor);
-	if (s)
-		goto out_unlock;
-
-	cache_name = kstrdup_const(name, GFP_KERNEL);
-	if (!cache_name) {
-		err = -ENOMEM;
-		goto out_unlock;
-	}
-
-	s = do_kmem_cache_create(cache_name, size, size,
-				 calculate_alignment(flags, align, size),
-				 flags, ctor, NULL, NULL);
-	if (IS_ERR(s)) {
-		err = PTR_ERR(s);
-		kfree_const(cache_name);
-	}
-
-out_unlock:
-	mutex_unlock(&slab_mutex);
-
-	memcg_put_cache_ids();
-	put_online_mems();
-	put_online_cpus();
-
-	if (err) {
-		if (flags & SLAB_PANIC)
-			panic("kmem_cache_create: Failed to create slab '%s'. Error %d\n",
-				name, err);
-		else {
-			printk(KERN_WARNING "kmem_cache_create(%s) failed with error %d",
-				name, err);
-			dump_stack();
-		}
-		return NULL;
-	}
-	return s;
-}
 
 3.1 kmem_cache_sanity_check()
 ================================================================================
 
 3.2 __kmem_cache_alias(), share one kmem_cache if possible
 ================================================================================
-__kmem_cache_alias(const char *name, size_t size, size_t align,
-		   unsigned long flags, void (*ctor)(void *))
-{
-	struct kmem_cache *s, *c;
 
-	s = find_mergeable(size, align, flags, name, ctor);
-	if (s) {
-		s->refcount++;
-
-		/*
-		 * Adjust the object sizes so that we clear
-		 * the complete object on kzalloc.
-		 */
-		s->object_size = max(s->object_size, (int)size);
-		s->inuse = max_t(int, s->inuse, ALIGN(size, sizeof(void *)));
-
-		for_each_memcg_cache(c, s) {
-			c->object_size = s->object_size;
-			c->inuse = max_t(int, c->inuse,
-					 ALIGN(size, sizeof(void *)));
-		}
-
-		if (sysfs_slab_alias(s, name)) {
-			s->refcount--;
-			s = NULL;
-		}
-	}
-
-	return s;
-}
-
-3.3 do_kmem_cache_create(), create new kmem_cache and add to slab_caches
-================================================================================
-static struct kmem_cache *
-do_kmem_cache_create(const char *name, size_t object_size, size_t size,
-		     size_t align, unsigned long flags, void (*ctor)(void *),
-		     struct mem_cgroup *memcg, struct kmem_cache *root_cache)
-{
-	struct kmem_cache *s;
-	int err;
-
-	err = -ENOMEM;
-	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
-	if (!s)
-		goto out;
-
-	s->name = name;
-	s->object_size = object_size;
-	s->size = size;
-	s->align = align;
-	s->ctor = ctor;
-
-	err = init_memcg_params(s, memcg, root_cache);
-	if (err)
-		goto out_free_cache;
-
-	err = __kmem_cache_create(s, flags);
-	if (err)
-		goto out_free_cache;
-
-	s->refcount = 1;
-	list_add(&s->list, &slab_caches);
-out:
-	if (err)
-		return ERR_PTR(err);
-	return s;
-
-out_free_cache:
-	destroy_memcg_params(s);
-	kmem_cache_free(kmem_cache, s);
-	goto out;
-}
-
-3.3.1 __kmem_cache_create()
+3.3 create_cache
 ================================================================================
 
-3.3.1.1 kmem_cache_open()
+3.3.1 __kmem_cache_create(), alloc struct kmem_cache
+================================================================================
+
+3.3.1.1 kmem_cache_open(), init kmem_cache_node and kmem_cache_cpu
 ================================================================================
 
 3.3.1.2 sysfs_slab_add()
@@ -396,11 +261,15 @@ out_free_cache:
 5. new_slab(), --> allocate_slab() get a page
 ================================================================================
 
-5.1 alloc_slab_page()
+5.1 allocate_slab(), some magic here
 ================================================================================
 
-5.1.1 alloc_pages()
+5.1.1 alloc_slab_page()
 ================================================================================
+
+5.1.1.1 alloc_pages(), get page from buddy
+================================================================================
+
 
 6. kmem_cache_free()
 ================================================================================
@@ -414,10 +283,10 @@ out_free_cache:
 6.2.1 do_slab_free()
 ================================================================================
 
-6.2.1.1 set_freepointer()
+6.2.1.1 set_freepointer(), fast path
 ================================================================================
 
-6.2.1.2 __slab_free()
+6.2.1.2 __slab_free(), slow path
 ================================================================================
 
 0. init flow
@@ -477,30 +346,30 @@ start_kernel()
             |   |order                     |
             |   |order_objects             |
             +---+--------------------------+
-            |cpu_partial                   |  determine max #objects kept in the per cpu partial lists of a processor
-            |    (int)                     |
-            +------------------------------+
             |flags                         |
             |    (unsigned long)           |
             |allocflags                    |
             |    (gfp_t)                   |
             +------------------------------+
+            |cpu_partial                   |  determine max #objects kept in the
+            |    (int)                     |  per cpu partial lists of a processor
+            |                              |
             |cpu_slab                      |  * per cpu variable pointer
             |   (struct kmem_cache_cpu*)   |          kmem_cache_cpu
             |   +--------------------------+
             |   |tid                       |  transaction id = cpu id + event id
+            |   |          (unsigned long) |
             |   |freelist  (void **)       |          
-            |   |                          |
             |   |page      (struct page *) |
             |   |partial   (struct page *) |          
             |   +--------------------------+          
             |   |stat[NR_SLUB_STAT_ITEMS]  |          
             |   |  (unsigned)              |          
             +---+--------------------------+        
-            |                              |
-            |                              |
+            |min_partial                   |  determine max #nr_slabs in kmem_cache_node
+            |    (int)                     |
             +------------------------------+
-            |node[MAX_NUMNODES]            |   one node per NUMA, slab list for all objects
+            |node[MAX_NUMNODES]            |  one node per NUMA, slab list for all objects
             |   (struct kmem_cache_node*)  |  
             +------------------------------+  
                 |                             
@@ -511,13 +380,11 @@ start_kernel()
                             |    (spinlock_t)              |                                   
                             +------------------------------+                                   
                             |partial                       |                                   
-                            |                              |                                   
                             |full                          |                                   
                             |    (struct list_head)        |                                   
                             +------------------------------+                                   
                             |nr_partial                    |                                   
                             |    (unsigned long)           |                                   
-                            +------------------------------+                                   
                             |nr_slabs                      |   number of slab on this node
                             |total_objects                 |   number of objs
                             |    (atomit_long_t)           |                                   
@@ -526,37 +393,31 @@ start_kernel()
 
 0.2.1 kmem_cache_create()
 ================================================================================
+; the state for a fresh kmem_cache
 
 
             kmem_cache                      
             +------------------------------+
-            |kobj                          |
-            |    (struct kobject)          |
-            +------------------------------+
-            |list                          |
-            |    (struct list_head)        |
-            +------------------------------+
-            |name                          |
-            |    (char *)                  |
+            |name   (char *)               |
             +------------------------------+
             |cpu_slab                      |  * per cpu variable pointer
             |   (struct kmem_cache_cpu*)   |
             |   +--------------------------+
             |   |stat[NR_SLUB_STAT_ITEMS]  |
             |   |  (unsigned)              |
-            |   +--------------------------+
             |   |tid                       |    #cpu
-            |   |freelist  (void **)       |          
-            |   |                          |
+            |   |          (unsigned long) |
+            |   |freelist  (void **)       |    NULL
             |   |page      (struct page *) |    NULL
             |   |partial   (struct page *) |    NULL
             +---+--------------------------+
             |node[MAX_NUMNODES]            |
             |   (struct kmem_cache_node*)  |
             |   +--------------------------+
+            |   |list_lock                 |
+            |   |    (spinlock_t)          |
             |   |nr_partial                |    0
             |   |    (unsigned long)       |
-            |   |                          |
             |   |partial                   |    empty
             |   |    (struct list_head)    |
             +---+--------------------------+
@@ -573,20 +434,14 @@ start_kernel()
 
 
 
-0.2.2.1 ___slab_alloc(), no memory on any list, allocate from page_alloc()
+0.2.2.1 ___slab_alloc(), cases for slab allocation
 ================================================================================
-; this is what happens for the first allocation for a kmem_cache
+; Case 1: no memory yet, need to allocate from buddy
+; allocate_slab()
 
     kmem_cache                      
     +------------------------------+
-    |kobj                          |
-    |    (struct kobject)          |
-    +------------------------------+
-    |list                          |
-    |    (struct list_head)        |
-    +------------------------------+
-    |name                          |
-    |    (char *)                  |
+    |name   (char *)               |
     +------------------------------+
     |cpu_slab                      |  * per cpu variable pointer
     |   (struct kmem_cache_cpu*)   |
@@ -594,43 +449,25 @@ start_kernel()
     |   |stat[NR_SLUB_STAT_ITEMS]  |
     |   |  (unsigned)              |
     |   +--------------------------+
-    |   |tid                       |
-    |   |freelist            ------|-------------+     
-    |   |    (void **)             |             |
-    |   |                          |             v
-    |   |page                ------|--->+--------+--------+--------+--------+
-    |   |   (struct page *)        |    |        |        |        |        |
-    |   |                          |    +--------+--------+--------+--------+
+    |   |tid      (unsigned long)  |
     |   |                          |
-    |   |partial                   |    NULL
+    |   |freelist                  |                       
+    |   |    (void **)             |                       
+    |   |                          |                       
+    |   |page                   +--|--->+--------+--------+--------+--------+
+    |   |   (struct page *)     |  |    |        |        |        |        |
+    |   |   +-------------------|--+    +--------+--------+--------+--------+
+    |   |   |freelist        ---+  |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |partial                   |  = NULL
     |   |   (struct page *)        |
-    |   |                          |
     +---+--------------------------+
-    |node[MAX_NUMNODES]            |
-    |   (struct kmem_cache_node*)  |
-    |   +--------------------------+
-    |   |nr_partial                |    0
-    |   |    (unsigned long)       |
-    |   |                          |
-    |   |partial                   |    empty
-    |   |    (struct list_head)    |
-    +---+--------------------------+
-
-
-0.2.2.2 slab_alloc_node(), has memory on c->freelist
-================================================================================
-; has memory on percpu list, so move the freelist
 
     kmem_cache                      
     +------------------------------+
-    |kobj                          |
-    |    (struct kobject)          |
-    +------------------------------+
-    |list                          |
-    |    (struct list_head)        |
-    +------------------------------+
-    |name                          |
-    |    (char *)                  |
+    |name   (char *)               |
     +------------------------------+
     |cpu_slab                      |  * per cpu variable pointer
     |   (struct kmem_cache_cpu*)   |
@@ -638,27 +475,190 @@ start_kernel()
     |   |stat[NR_SLUB_STAT_ITEMS]  |
     |   |  (unsigned)              |
     |   +--------------------------+
-    |   |tid                       |
-    |   |freelist            ------|----------------------+     
-    |   |    (void **)             |                      |
-    |   |                          |                      v
-    |   |page                ------|--->+--------+--------+--------+--------+
-    |   |   (struct page *)        |    |        |        |        |        |
-    |   |                          |    +--------+--------+--------+--------+
+    |   |tid      (unsigned long)  |
     |   |                          |
-    |   |partial                   |    NULL
+    |   |freelist            ------|----+  = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)        |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |partial                   |  = NULL
+    |   |   (struct page *)        |
+    +---+--------------------------+
+
+; Case 2: has memory on percpu freelist, so move the freelist pointer
+; fast path of slab_alloc_node()
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |             a                 A
+    |   |freelist            ------|-------------+..................     
+    |   |    (void **)             |             |                 .
+    |   |                          |             v                 v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)        |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial                   |  = NULL
+    |   |   (struct page *)        |
+    +---+--------------------------+
+
+; Case 3: no memory on freelist but has page on partial list
+; ___slab_alloc() -> get_freelist()
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist                  |  = NULL
+    |   |    (void **)             |
+    |   |page                      |  = NULL
+    |   |   (struct page *)        |
+    |   |                          |
+    |   |partial             ------|--->+-----------+     +-----------+
+    |   |   (struct page *)        |    |A      next|---->|B      next|
+    |   |                          |    +-----------+     +-----------+
+    |   |                          |    |pobjectsA  |  =  |pobjectsB  | + objectsA
+    |   |                          |    |           |     |           |
+    |   |                          |    |inuse <    |     |inuse <    |
+    |   |                          |    | objectsA  |     | objectsB  |
+    |   |                          |    |frozen = 1 |     |frozen = 1 |
+    |   |                          |    +-----------+     +-----------+
+    +---+--------------------------+
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    +---+--------------------------+
+
+; Case 4: no memory on freelist nor cpu_slab->partial, try kmem_cache_node
+; new_slab_objects()->get_partial()->get_partial_node()
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist                  |  = NULL
+    |   |    (void **)             |
+    |   |page                      |  = NULL
+    |   |   (struct page *)        |
+    |   |                          |
+    |   |partial                   |  = NULL
     |   |   (struct page *)        |
     |   |                          |
     +---+--------------------------+
     |node[MAX_NUMNODES]            |
     |   (struct kmem_cache_node*)  |
     |   +--------------------------+
-    |   |nr_partial                |    0
+    |   |nr_partial  = 3           |
     |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+     +-----------+     +-----------+
+    |   |    (struct list_head)    |    |A       lru|---->|B       lru|---->|        lru|
+    +---+--------------------------+    +-----------+     +-----------+     +-----------+ 
+                                        |inuse <    |     |inuse <    |
+                                        | objects   |     | objects   |
+                                        |frozen = 0 |     |frozen = 0 |
+                                        +-----------+     +-----------+
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
     |   |                          |
-    |   |partial                   |    empty
-    |   |    (struct list_head)    |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    |   |                          |    |pobjects   |  = objects
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objects   |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
+    |   |                          |
     +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 1           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+
+    |   |    (struct list_head)    |    |        lru|
+    +---+--------------------------+    +-----------+
 
 
 0.2.2.3 do_slab_free(), the object is in the page cpu_slab->page
@@ -682,7 +682,8 @@ start_kernel()
     |   |stat[NR_SLUB_STAT_ITEMS]  |
     |   |  (unsigned)              |
     |   +--------------------------+
-    |   |tid                       |                              obj to free
+    |   |tid                       |
+    |   |          (unsigned long) |                              obj to free
     |   |freelist            ------|----------------------+        |
     |   |    (void **)             |                      |        |
     |   |                          |                      v        v
@@ -713,7 +714,8 @@ start_kernel()
     |   |stat[NR_SLUB_STAT_ITEMS]  |
     |   |  (unsigned)              |
     |   +--------------------------+
-    |   |tid                       |                              obj
+    |   |tid                       |
+    |   |          (unsigned long) |                              obj
     |   |freelist            ------|-------------------------------+
     |   |    (void **)             |                               |
     |   |                          |                               v
@@ -726,7 +728,38 @@ start_kernel()
     |   |                          |
     +---+--------------------------+
 
+0.3 slab free
+================================================================================
 
+; Case 1: free object on cpu_slab->page
+; fast path of do_slab_free()
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |                               obj
+    |   |freelist            ------|-------------+..................     
+    |   |    (void **)             |             |                 .
+    |   |                          |             v                 v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)        |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial                   |  = NULL
+    |   |   (struct page *)        |
+    +---+--------------------------+
 
 0.3 page, the slub
 ================================================================================
@@ -740,27 +773,19 @@ start_kernel()
     |freelist                      |  first free object (list head)
     |   (viod *)                   |
     +------------------------------+
+    |                              |  * used for kmem_cache_cpu->freelist
     |objects                       |  number of objects in Page
     |inuse                         |  number of objects used in cpu_slab
     |frozen                        |  frozen means it is in cpu_slab
     |   (unsigned )                |
     +------------------------------+
-
-
-    kmem_cache_cpu
+    |                              |  * used for kmem_cache_cpu->partial
+    |next                          |
+    |   (struct page*)             |
+    |pages                         |
+    |pobjects                      |
+    |   (int)                      |
     +------------------------------+
-    |freelist                      |   first free object (list head)
-    |    (void *)                  |
-    +------------------------------+
-    |page                          |
-    |    (struct page*)            |
-    |    +-------------------------+
-    |    |freelist                 |   NULL
-    |    |objects                  |
-    |    |inuse                    |
-    |    |frozen                   |   1
-    |    |    (unsigned)           |
-    +----+-------------------------+
 
 
 0.3.1 allocate_slab, just allocated from page allocator
