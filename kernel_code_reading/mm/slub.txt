@@ -432,8 +432,6 @@ start_kernel()
 ; 3. node[]->partial
 ; 4. page_alloc()
 
-
-
 0.2.2.1 ___slab_alloc(), cases for slab allocation
 ================================================================================
 ; Case 1: no memory yet, need to allocate from buddy
@@ -578,6 +576,12 @@ start_kernel()
     |   |partial             ------|--->+-----------+
     |   |   (struct page *)        |    |B      next|
     |   |                          |    +-----------+
+    |   |                          |    |pobjectsB  | = objectsB
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objectsB  |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
     +---+--------------------------+
 
 ; Case 4: no memory on freelist nor cpu_slab->partial, try kmem_cache_node
@@ -610,12 +614,93 @@ start_kernel()
     |   |nr_partial  = 3           |
     |   |    (unsigned long)       |
     |   |partial               ----|--->+-----------+     +-----------+     +-----------+
-    |   |    (struct list_head)    |    |A       lru|---->|B       lru|---->|        lru|
+    |   |    (struct list_head)    |    |A       lru|---->|B       lru|---->|C       lru|
     +---+--------------------------+    +-----------+     +-----------+     +-----------+ 
                                         |inuse <    |     |inuse <    |
                                         | objects   |     | objects   |
                                         |frozen = 0 |     |frozen = 0 |
                                         +-----------+     +-----------+
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    |   |                          |    |pobjects   | = objects
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objects   |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 1           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+
+    |   |    (struct list_head)    |    |C       lru|
+    +---+--------------------------+    +-----------+
+
+
+0.2.3 slab_free()
+================================================================================
+
+; Case 1: free object on cpu_slab->page
+; fast path of do_slab_free()
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |                               obj
+    |   |freelist            ------|-------------+..................     
+    |   |    (void **)             |             |                 .
+    |   |                          |             v                 v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)        |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial                   |  = NULL
+    |   |   (struct page *)        |
+    +---+--------------------------+
+
+; Case 2: deactivate_slab() remove cpu_slab
+; * to node[]->partial if partial
+; * to node[]->full if full
 
     kmem_cache                      
     +------------------------------+
@@ -657,82 +742,8 @@ start_kernel()
     |   |nr_partial  = 1           |
     |   |    (unsigned long)       |
     |   |partial               ----|--->+-----------+
-    |   |    (struct list_head)    |    |        lru|
+    |   |    (struct list_head)    |    |C       lru|
     +---+--------------------------+    +-----------+
-
-
-0.2.2.3 do_slab_free(), the object is in the page cpu_slab->page
-================================================================================
-; has memory on percpu list, so move the freelist
-
-    kmem_cache                      
-    +------------------------------+
-    |kobj                          |
-    |    (struct kobject)          |
-    +------------------------------+
-    |list                          |
-    |    (struct list_head)        |
-    +------------------------------+
-    |name                          |
-    |    (char *)                  |
-    +------------------------------+
-    |cpu_slab                      |  * per cpu variable pointer
-    |   (struct kmem_cache_cpu*)   |
-    |   +--------------------------+
-    |   |stat[NR_SLUB_STAT_ITEMS]  |
-    |   |  (unsigned)              |
-    |   +--------------------------+
-    |   |tid                       |
-    |   |          (unsigned long) |                              obj to free
-    |   |freelist            ------|----------------------+        |
-    |   |    (void **)             |                      |        |
-    |   |                          |                      v        v
-    |   |page                ------|--->+--------+--------+--------+--------+
-    |   |   (struct page *)        |    |        |        |        |        |
-    |   |                          |    +--------+--------+--------+--------+
-    |   |                          |
-    |   |partial                   |    NULL
-    |   |   (struct page *)        |
-    |   |                          |
-    +---+--------------------------+
-
-
-    kmem_cache                      
-    +------------------------------+
-    |kobj                          |
-    |    (struct kobject)          |
-    +------------------------------+
-    |list                          |
-    |    (struct list_head)        |
-    +------------------------------+
-    |name                          |
-    |    (char *)                  |
-    +------------------------------+
-    |cpu_slab                      |  * per cpu variable pointer
-    |   (struct kmem_cache_cpu*)   |
-    |   +--------------------------+
-    |   |stat[NR_SLUB_STAT_ITEMS]  |
-    |   |  (unsigned)              |
-    |   +--------------------------+
-    |   |tid                       |
-    |   |          (unsigned long) |                              obj
-    |   |freelist            ------|-------------------------------+
-    |   |    (void **)             |                               |
-    |   |                          |                               v
-    |   |page                ------|--->+--------+--------+--------+--------+
-    |   |   (struct page *)        |    |        |        |        |freelist|
-    |   |                          |    +--------+--------+--------+--------+
-    |   |                          |
-    |   |partial                   |    NULL
-    |   |   (struct page *)        |
-    |   |                          |
-    +---+--------------------------+
-
-0.3 slab free
-================================================================================
-
-; Case 1: free object on cpu_slab->page
-; fast path of do_slab_free()
 
     kmem_cache                      
     +------------------------------+
@@ -745,12 +756,99 @@ start_kernel()
     |   |  (unsigned)              |
     |   +--------------------------+
     |   |tid      (unsigned long)  |
-    |   |                          |                               obj
-    |   |freelist            ------|-------------+..................     
-    |   |    (void **)             |             |                 .
-    |   |                          |             v                 v
+    |   |                          |
+    |   |freelist                  |  = NULL
+    |   |    (void **)             |
+    |   |page                      |  = NULL
+    |   |   (struct page *)        |
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    |   |                          |    |pobjects   |  = objects
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objects   |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 1           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+     +-----------+
+    |   |    (struct list_head)    |    |A       lru|---->|C       lru|
+    +---+--------------------------+    +-----------+     +-----------+
+                                        |inuse <    |
+                                        | objects   |
+                                        |frozen = 0 |
+                                        +-----------+
+
+; Case 3: unfreeze_partials() move all cpu_slab->partial to node[]->partial
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
     |   |page                      |    +--------+--------+--------+--------+
-    |   |   (struct page *)        |    |        |        |        |        |
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+     +-----------+
+    |   |   (struct page *)        |    |B      next|---->|C      next|
+    |   |                          |    +-----------+     +-----------+
+    |   |                          |    |pobjectsA  |  =  |pobjectsB  | + objectsA
+    |   |                          |    |           |     |           |
+    |   |                          |    |inuse <    |     |inuse <    |
+    |   |                          |    | objectsA  |     | objectsB  |
+    |   |                          |    |frozen = 1 |     |frozen = 1 |
+    |   |                          |    +-----------+     +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 1           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+
+    |   |    (struct list_head)    |    |D       lru|
+    +---+--------------------------+    +-----------+
+
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
     |   |   +----------------------+    +--------+--------+--------+--------+
     |   |   |freelist = NULL       |
     |   |   |inuse = objects       |
@@ -759,6 +857,210 @@ start_kernel()
     |   |                          |
     |   |partial                   |  = NULL
     |   |   (struct page *)        |
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 1           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+     +-----------+     +-----------+
+    |   |    (struct list_head)    |    |B       lru|---->|C       lru|---->|D       lru|
+    +---+--------------------------+    +-----------+     +-----------+     +-----------+ 
+                                        |inuse <    |     |inuse <    |
+                                        | objects   |     | objects   |
+                                        |frozen = 0 |     |frozen = 0 |
+                                        +-----------+     +-----------+
+
+; Case 4: move a page in node[]->partial to cpu_slab->partial, put_cpu_partial()
+; This is a little similar with the allocation case 4, except only one page is
+; extract
+
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    |   |                          |    |pobjectsB  | = objectsB
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objectsB  |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 3           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+     +-----------+
+    |   |    (struct list_head)    |    |C       lru|---->|D       lru|
+    +---+--------------------------+    +-----------+     +-----------+ 
+                                        |inuse <    |     
+                                        | objects   |     
+                                        |frozen = 0 |     
+                                        +-----------+     
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+     +-----------+
+    |   |   (struct page *)        |    |C      next|---->|B      next|
+    |   |                          |    +-----------+     +-----------+
+    |   |                          |    |pobjectsC  |  =  |pobjectsB  | + objectsC
+    |   |                          |    |           |     |           |
+    |   |                          |    |inuse <    |     |inuse <    |
+    |   |                          |    | objectsC  |     | objectsB  |
+    |   |                          |    |frozen = 1 |     |frozen = 1 |
+    |   |                          |    +-----------+     +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 1           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+
+    |   |    (struct list_head)    |    |C       lru|
+    +---+--------------------------+    +-----------+
+
+; Case 5: move a full page to node[]->partial, __slab_free()->add_partial()
+; this is a little bit interesting, since node[]->full is configurable
+; which means the full page could be an orphan
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    |   |                          |    |pobjectsB  | = objectsB
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objectsB  |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 3           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+     +-----------+
+    |   |    (struct list_head)    |    |C       lru|---->|D       lru|
+    |   +--------------------------+    +-----------+     +-----------+ 
+    |   |full                  ----|--->+-----------+
+    |   |    (struct list_head)    |    |E       lru|
+    +---+--------------------------+    +-----------+
+
+    kmem_cache                      
+    +------------------------------+
+    |name   (char *)               |
+    +------------------------------+
+    |cpu_slab                      |  * per cpu variable pointer
+    |   (struct kmem_cache_cpu*)   |
+    |   +--------------------------+
+    |   |stat[NR_SLUB_STAT_ITEMS]  |
+    |   |  (unsigned)              |
+    |   +--------------------------+
+    |   |tid      (unsigned long)  |
+    |   |                          |
+    |   |freelist            ------|----+   = page->freelist
+    |   |    (void **)             |    |
+    |   |                          |    v
+    |   |page                      |    +--------+--------+--------+--------+
+    |   |   (struct page *)  A     |    |        |        |        |        |
+    |   |   +----------------------+    +--------+--------+--------+--------+
+    |   |   |freelist = NULL       |
+    |   |   |inuse = objects       |
+    |   |   |frozen = 1            |
+    |   |   +----------------------+
+    |   |                          |
+    |   |partial             ------|--->+-----------+
+    |   |   (struct page *)        |    |B      next|
+    |   |                          |    +-----------+
+    |   |                          |    |pobjectsB  | = objectsB
+    |   |                          |    |           |
+    |   |                          |    |inuse <    |
+    |   |                          |    | objectsB  |
+    |   |                          |    |frozen = 1 |
+    |   |                          |    +-----------+
+    |   |                          |
+    +---+--------------------------+
+    |node[MAX_NUMNODES]            |
+    |   (struct kmem_cache_node*)  |
+    |   +--------------------------+
+    |   |nr_partial  = 3           |
+    |   |    (unsigned long)       |
+    |   |partial               ----|--->+-----------+     +-----------+     +-----------+
+    |   |    (struct list_head)    |    |E       lru|---->|C       lru|---->|D       lru|
+    |   +--------------------------+    +-----------+     +-----------+     +-----------+ 
+    |   |full                      |  = NULL
+    |   |    (struct list_head)    |
     +---+--------------------------+
 
 0.3 page, the slub
