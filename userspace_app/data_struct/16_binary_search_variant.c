@@ -56,12 +56,48 @@ int binary_search_first(int *arr, int size, int val)
 		return -1;
 }
 
+int binary_search_first_r(int *arr, int size, int val)
+{
+	int mid = size / 2;
+	int idx;
+
+	if (size <= 0)
+		return -1;
+
+	// we find *val* at mid, try first half
+	if (arr[mid] == val) {
+		idx = binary_search_first_r(arr, mid, val);
+		return idx != -1 ? idx : mid;
+	}
+
+	// mid == 0 means size == 1
+	// so the only element in array doesn't equal to val
+	if (!mid)
+		return -1;
+
+	if (arr[mid] < val) {
+		idx = binary_search_first_r(arr + mid + 1, size - mid - 1, val);
+		if (idx != -1)
+			idx += mid + 1;
+	} else {
+		idx = binary_search_first_r(arr, mid, val);
+	}
+
+	return idx;
+}
+
 int main()
 {
 	int arr[10] = {1, 4, 5, 9, 12, 14, 19, 19, 31, 36};
 	int idx;
 
 	idx = binary_search_first(arr, 10, 19);
+	if (idx != -1)
+		printf("first 19 at %d\n", idx);
+	else
+		printf("19 not in arr \n");
+
+	idx = binary_search_first_r(arr, 10, 19);
 	if (idx != -1)
 		printf("first 19 at %d\n", idx);
 	else
