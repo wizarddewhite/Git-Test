@@ -22,37 +22,43 @@ int binary_search(int *arr, int size, int val)
 	return -1;
 }
 
+/* 
+ * find the first index with *val*
+ *
+ * This is a little tricky because the calculation of mid is integer based, it
+ * will be cast to the lower bound of an integer.
+ * 
+ * In case the [low, high] range is of size 1 or 2 and arr[mid] >= val, we will
+ * have:
+ *
+ * mid = (low + high) / 2 = low
+ * high = mid - 1 = low - 1 < low, which break the loop
+ *
+ */
 int binary_search_first(int *arr, int size, int val)
 {
 	int low = 0, high = size - 1, mid;
 
 	while (low <= high) {
 		mid = (low + high) / 2;
+		//printf("[%d-%d] %d\n", low, high, mid);
 
-		// got one *val*
-		// search [low, mid-1] to find the first *val*
-		if (arr[mid] == val) {
-			int idx;
-			for (idx = mid - 1; idx >= low; idx--) {
-				if (arr[idx] != val)
-					return idx+1;
-			}
-			// touch here means [low, mid-1] all equal *val*
-			return low;
-		}
-
-		if (arr[mid] < val)
-			low = mid + 1;
-		else
+		if (arr[mid] >= val)
 			high = mid - 1;
+		else
+			low = mid + 1;
 	}
 
-	return -1;
+	//printf("[%d-%d] %d\n", low, high, mid);
+	if (arr[low] == val)
+		return low;
+	else
+		return -1;
 }
 
 int main()
 {
-	int arr[10] = {1, 4, 5, 9, 12, 19, 19, 19, 31, 36};
+	int arr[10] = {1, 4, 5, 9, 12, 14, 19, 19, 31, 36};
 	int idx;
 
 	idx = binary_search_first(arr, 10, 19);
