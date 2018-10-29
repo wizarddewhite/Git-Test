@@ -33,7 +33,7 @@ int insert(struct array *array, int elem)
 	}
 
 	if (idx < array->used)
-		memmove(&array->arr[array->used], &array->arr[idx],
+		memmove(&array->arr[idx+1], &array->arr[idx],
 			(array->used - idx) * sizeof(int));
 
 	array->arr[idx] = elem;
@@ -75,8 +75,10 @@ int main()
 	if (!ten_int.arr)
 		return -1;
 	insert(&ten_int, 1);
+	insert(&ten_int, 9);
 	insert(&ten_int, 3);
 	insert(&ten_int, 2);
+	insert(&ten_int, 6);
 	printf("=== insert 1, 3, 2\n");
 	dump(&ten_int);
 
