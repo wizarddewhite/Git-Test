@@ -67,6 +67,8 @@ my_hdr Reply-To: Wei Yang<richard.weiyang@gmail.com>
 macro index G "!fetchmail -av"
 macro pager G "!fetchmail -av"
 
+bind generic \ca "current-top"
+
 #invoke utlview for a url link
 macro pager \cb <pipe-entry>'urlview'<enter>'Follow links with urlview'
 
