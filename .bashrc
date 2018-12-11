@@ -64,6 +64,12 @@ alias ll='ls -l'
 alias la='ls -A'
 #alias l='ls -CF'
 
+alias bb="make -j8 bzImage"
+alias bm="make -j8 modules"
+alias ib="sudo make install"
+alias im="sudo make modules_install"
+alias rb="sudo reboot"
+
 # enable programmable completion features (you don't need to enable
 # this, if it's already enabled in /etc/bash.bashrc and /etc/profile
 # sources /etc/bash.bashrc).
