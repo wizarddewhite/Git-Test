@@ -7,3 +7,8 @@ Host intermediate.edu
 	User interdude
 	LocalForward localhost:3456 remote.edu.22
 	LocalForward localhost:4567 remote.edu.23
+
+Host desktop
+     Hostname desktop
+     User richard
+     Port 22
