@@ -694,8 +694,17 @@ MAX_ZONELISTS is defined to 1 or 2.
    |pfmemalloc_wait              |                                   
    |    (wait_queue_head_t)      |
    +-----------------------------+
-   |                             |
-   |                             |
+   |lru_lock                     |
+   |    (spinlock_t)             |
+   +-----------------------------+
+   |lruvec                       |
+   |    (struct lruvec)          |
+   |    +------------------------+
+   |    |lists[NR_LRU_LISTS]     |   5 lru lists
+   |    |reclaim_stat            |
+   |    |inactive_age            |
+   |    |refaults                |
+   |    +------------------------+
    |                             |
    |                             |
    +-----------------------------+
