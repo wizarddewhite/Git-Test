@@ -1,12 +1,18 @@
-1. x86_64_start_kernel()
+1. x86_64_start_kernel(), jump from head_64.S
 ================================================================================
 
-1.1 set_intr_gate()
+1.1 idt_setup_early_handler()
 ================================================================================
 
-1.2 load_idt()
+1.1.1 set_intr_gate()
 ================================================================================
 
+1.1.2 load_idt(&idt_descr)
+================================================================================
+static inline void native_load_idt(const struct desc_ptr *dtr)
+{
+	asm volatile("lidt %0"::"m" (*dtr));
+}
 
 2. start_kernel()
 ================================================================================
@@ -14,51 +20,70 @@
 2.1 setup_arch()
 ================================================================================
 
-2.1.1 early_trap_init(), DB and BP
-================================================================================
-/* Set of traps needed for early debugging. */
-void __init early_trap_init(void)
-{
-	/*
-	 * Don't use IST to set DEBUG_STACK as it doesn't work until TSS
-	 * is ready in cpu_init() <-- trap_init(). Before trap_init(),
-	 * CPU runs at ring 0 so it is impossible to hit an invalid
-	 * stack.  Using the original stack works well enough at this
-	 * early stage. DEBUG_STACK will be equipped after cpu_init() in
-	 * trap_init().
-	 *
-	 * We don't need to set trace_idt_table like set_intr_gate(),
-	 * since we don't have trace_debug and it will be reset to
-	 * 'debug' in trap_init() by set_intr_gate_ist().
-	 */
-	set_intr_gate_notrace(X86_TRAP_DB, debug);
-	/* int3 can be called from all */
-	set_system_intr_gate(X86_TRAP_BP, &int3);
-#ifdef CONFIG_X86_32
-	set_intr_gate(X86_TRAP_PF, page_fault);
-#endif
-	load_idt(&idt_descr);
-}
-
-
-2.1.1.1 debug, int3, defined in arch/x86/entry/entry_64.S
-================================================================================
-idtentry debug			do_debug		has_error_code=0	paranoid=1 shift_ist=DEBUG_STACK
-idtentry int3			do_int3			has_error_code=0	paranoid=1 shift_ist=DEBUG_STACK
-
-2.1.2 early_trap_pf_init()
+2.1.1 idt_setup_early_traps(), TRAP_DB & TRAP_BP
 ================================================================================
 
-2.1.2.1 do_page_fault()
+2.1.1.1 idt_setup_from_table(idt_table, early_idts)
 ================================================================================
-trace_idtentry page_fault	do_page_fault		has_error_code=1
+; write gates in early_idts to idt_table
 
+2.1.1.2 load_idt(&idt_descr)
+================================================================================
 
 2.2 trap_init()
 ================================================================================
 
+2.2.1 setup_cpu_entry_areas()
+================================================================================
 
-2.3 early_irq_init()
+2.2.2 idt_setup_traps(), set from def_idts
+================================================================================
+
+2.2.2.1 EXPLAIN: how def_idts defines
+================================================================================
+
+static const __initconst struct idt_data def_idts[] = {
+	INTG(X86_TRAP_DE,		divide_error),
+};
+
+idtentry divide_error			do_divide_error			has_error_code=0
+
+DO_ERROR(X86_TRAP_DE,     SIGFPE,  FPE_INTDIV,   IP, "divide error",        divide_error)
+
+#define DO_ERROR(trapnr, signr, sicode, addr, str, name)		   \
+dotraplinkage void do_##name(struct pt_regs *regs, long error_code)	   \
+{									   \
+	do_error_trap(regs, error_code, str, trapnr, signr, sicode, addr); \
+}
+
+2.2.3 cpu_init()
+================================================================================
+
+2.2.3.1 load_current_idt(), load_idt(&idt_descr)
+================================================================================
+
+2.2.3.2 load_TR_desc()
+================================================================================
+
+2.2.3.3 load_mm_ldt()
+================================================================================
+
+2.2.4 idt_setup_ist_traps(), set from ist_idts
+================================================================================
+
+2.2.5 x86_init.irqs.trap_init(), x86_init_noop
+================================================================================
+
+2.3 mm_init()
+================================================================================
+
+2.3.1 mem_init()
+================================================================================
+
+2.4 sched_init()
+================================================================================
+
+2.5 early_irq_init()
 ================================================================================
 
 2.3.1 init_irq_default_affinity()
@@ -136,10 +161,40 @@ static void irq_insert_desc(unsigned int irq, struct irq_desc *desc)
 2.3.5.6 arch_early_ioapic_init()
 ================================================================================
 
-
-2.4 init_IRQ()
+2.6 init_IRQ()
 ================================================================================
 
+2.6.1 ()
+================================================================================
+
+2.6.2 x86_init.irqs.intr_init() -> native_init_IRQ()
+================================================================================
+
+2.6.2.1 idt_setup_apic_and_irq_gates(), idt_table, apci_idts, irq_entries_start
+================================================================================
+common_interrupt:
+	addq	$-0x80, (%rsp)			/* Adjust vector to [-256, -1] range */
+	call	interrupt_entry
+	UNWIND_HINT_REGS indirect=1
+	call	do_IRQ	/* rdi points to pt_regs */
+
+ENTRY(irq_entries_start)
+    vector=FIRST_EXTERNAL_VECTOR
+    .rept (FIRST_SYSTEM_VECTOR - FIRST_EXTERNAL_VECTOR)
+	UNWIND_HINT_IRET_REGS
+	pushq	$(~vector+0x80)			/* Note: always in signed byte range */
+	jmp	common_interrupt
+	.align	8
+	vector=vector+1
+    .endr
+END(irq_entries_start)
+
+
+2.7 local_irq_enable()
+================================================================================
+
+3. do_IRQ(), init by idt_setup_apic_and_irq_gates()
+================================================================================
 
 0. data structure
 ================================================================================
@@ -218,3 +273,32 @@ static void irq_insert_desc(unsigned int irq, struct irq_desc *desc)
 ================================================================================
 
 irq_default_domain = x86_vector_domain
+
+0.4 software arch
+================================================================================
+    
+
+    IDT (idt_table)                struct irq_desc                                struct irqaction      struct irqaction
+    +-----------+        +-----------------------------------------+    +----------------+    +----------------+
+    |           |        |action (struct irqaction*)        next --|--->|         next --|--->|         next --| -> NULL
+    +-----------+        |                                         |    |                |    |                |
+    |           |        |                    +--> handler         |    | +->handler     |    | +->handler     |
+    +-----------+        +--------------------|--------------------+    +-|--------------+    +-|--------------+
+    .           .   +--->|handle_irq()        +----------------+---+------+---------------------+
+    .           .   |    |= handle_level_irq                   |   |
+    .           .   |    |= handle_edge_irq                    |   |
+    +-----------+   |    |= handle_edge_eoi_irq                |   |
+    |           |   |    |= handle_percpu_irq                  |   |
+    +-----------+   |    |  |                                  |   |
+    |do_IRQ  ---|---+    |  +->  __handle_irq_event_percpu() --+   |
+    +-----------+        |                                         |
+    |           |        +-----------------------------------------+
+    +-----------+        
+    .           .        
+    .           .        
+    .           .        
+    +-----------+
+    |           |
+    +-----------+
+    |           |
+    +-----------+
