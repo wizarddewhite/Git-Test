@@ -1,5 +1,7 @@
 # http://www.ibm.com/developerworks/library/l-ppc/
 # with a little change
+# gcc -c hello-ia32.s
+# ld -e main -o hell hello-ia32.o
 .data                   # section declaration
 
 msg:
