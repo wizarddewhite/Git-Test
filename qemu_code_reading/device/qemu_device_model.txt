@@ -63,8 +63,8 @@ DeviceClass *dc = DEVICE_CLASS(klass);
    }
 
 object_class_dynamic_cast() will return none-NULL if kclass is a child or itself.
-so this means the DEVICE_CLASS() trys to get the TypeImpl named "device";
-and means the klass is a child of it or itself, this functio will return
+so this means the DEVICE_CLASS() tries to get the TypeImpl named "device";
+and means the klass is a child of it or itself, this function will return
 klass itself.
 which is defined in qdev.c
 static TypeInfo device_type_info = {
@@ -78,7 +78,7 @@ static TypeInfo device_type_info = {
 };
 
 
-So this is a class hirerach
+So this is a class hierarchy
        +------------------+
        |     TypeImpl     |
        |                  |
@@ -186,4 +186,65 @@ TypeImpl *type_register(const TypeInfo *info)
 ================================================================================
 if (qemu_opts_foreach(qemu_find_opts("device"), device_help_func, NULL, 0) != 0)
 device_help_func
+
+5. TypeImpl <-> ObjectClass
+================================================================================
+
+   TypeImpl                               ObjectClass
+   +----------------------+               +----------------------+
+   |class                 |<------------->|type                  |
+   |     (ObjectClass*)   |               |     (TypeImpl *)     |
+   +----------------------+               +----------------------+
+
+6. e1000 init
+================================================================================
+
+       +--------------------------+                           +----------------------+
+       |                          |                           |                      |
+       |   ObjectClass            | <-------------------------|    Object            |
+       |     class_init           |                           |    instance_init     |
+       |                          |                           |(object_instance_init)|
+       +--------------------------+                           +----------------------+
+                 |                                                      |
+                 |                                                      |
+                 |                                                      |
+                 |                                                      |
+                 v                                                      v
+       +--------------------------+                           +----------------------+
+       |                          |                           |                      |
+       |   DeviceClass            |  <---------------------   |   DeviceState        |
+       |     class_init           |                           |      instance_init   |
+       |     (device_class_init)  |                           |      (device_initfn) |
+       |                          |                           |                      |
+       |     realize              |  overwrite by child class |                      |
+       |     unrealize            |                           |                      |
+       +--------------------------+                           +----------------------+
+                 |                                                      |
+                 |                                                      |
+                 |                                                      |
+                 v                                                      v
+       +--------------------------+                           +----------------------+
+       |                          |                           |                      |
+       |   PCIDeviceClass         |  <---------------------   |   PCIDevice          |
+       |     class_init           |                           |      instance_init   |
+       |   (pci_device_class_init)|                           |      (NULL)          |
+       |     realize              |                           |                      |
+       |     (pci_qdev_realize)   |  call PCIDevice->realize  |                      |
+       |     unrealize            |                           |                      |
+       |     (pci_qdev_unrealize) |                           |                      |
+       +--------------------------+                           +----------------------+
+                 |                                                      |
+                 |                                                      |
+                 |                                                      |
+                 v                                                      v
+       +--------------------------+                           +----------------------+
+       |                          |                           |                      |
+       |   E1000BaseClass         |  <--------------------    |   E1000State         |
+       |     class_init           |                           |      instance_init   |
+       |     (e1000_class_init)   |                           | (e1000_instance_init)|
+       |     realize              |                           |                      |
+       |     (pci_e1000_realize)  |                           |                      |
+       |     unrealize            |                           |                      |
+       |                          |                           |                      |
+       +--------------------------+                           +----------------------+
 
