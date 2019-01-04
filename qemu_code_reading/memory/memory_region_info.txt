@@ -2288,13 +2288,10 @@ static int kvm_mem_flags(MemoryRegion *mr)
 0.1.2 MemoryRegion(RAM) <-> RAMBlock/ram_list
 ================================================================================
 
-  ram_list (RAMList)
+  ram_list (RAMList), a list ordered by size(max_length)
   +------------------------------+
   |dirty_memory[]                |
   |    (unsigned long *)         |
-  +------------------------------+
-  |                              |
-  |                              |
   +------------------------------+
   |                              |
   |                              |
@@ -2336,7 +2333,7 @@ static int kvm_mem_flags(MemoryRegion *mr)
               |iommu_ops               |                                   |iommu_ops               |
               |  (MemoryRegionIOMMUOps)|                                   |  (MemoryRegionIOMMUOps)|
               +------------------------+                                   +------------------------+
-              |addr                    |  virtual address in guest         |addr                    |
+              |addr                    |  physical address in guest        |addr                    |
               |  (hwaddr)              |  (offset in RAMBlock)             |  (hwaddr)              |
               |size                    |                                   |size                    |
               |  (Int128)              |                                   |  (Int128)              |
@@ -2510,7 +2507,7 @@ static int kvm_mem_flags(MemoryRegion *mr)
 
     MemoryRegion
     +---------------------------+
-    |addr                       |      GPA?
+    |addr                       |      GPA
     |                           |
     |                           |
     |alias_offset               |      offset in alias region
