@@ -303,3 +303,40 @@ done:
 	wake_up(&probe_waitqueue);
 	return ret;
 }
+
+0. data structure
+================================================================================
+
+    device_driver
+    +----------------------------------+
+    |name                              |
+    |    (char *)                      |
+    +----------------------------------+
+    |bus                               |
+    |    (struct bus_type*)            |
+    +----------------------------------+
+    |owner                             |
+    |    (struct module*)              |
+    +----------------------------------+
+    |probe                             |
+    |remove                            |
+    |shutdown                          |
+    |suspend                           |
+    |resume                            |
+    |                                  |
+    +----------------------------------+
+    |p                                 |
+    |    (struct driver_private*)      |
+    |    +-----------------------------+
+    |    |driver                       |
+    |    |    (struct device_driver*)  |
+    |    |kobj                         |
+    |    |    +------------------------+
+    |    |    |name                    | = device_driver->name
+    |    |    |kset                    | = device_driver->bus->p->drivers_kset
+    |    |    |ktype                   | = driver_ktype
+    |    |    +------------------------+
+    |    |klist_devices                |
+    |    |                             |
+    +----+-----------------------------+
+

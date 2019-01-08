@@ -190,3 +190,38 @@ void bus_probe_device(struct device *dev)
 			sif->add_dev(dev, sif);
 	mutex_unlock(&bus->p->mutex);
 }
+
+0. data structure
+================================================================================
+
+    device
+    +----------------------------------------+
+    |init_name                               |
+    |    (char *)                            |
+    |devt                                    |
+    |    (dev_t)                             |
+    |id                                      |
+    |    (u32)                               |
+    +----------------------------------------+
+    |kobj                                    |
+    |    (struct kobject)                    |
+    |    +-----------------------------------+
+    |    |name                               | = device->init_name or 
+    |    |                                   |   device->bus->dev_name + id
+    |    |kset                               | = devices_kset
+    |    |ktype                              | = device_ktype
+    +----+-----------------------------------+
+    |type                                    |
+    |    (struct device_type*)               |
+    +----------------------------------------+
+    |bus                                     | = [pci_bus_type|nvdimm_bus_type]
+    |    (struct bus_type)                   |
+    +----------------------------------------+
+    |driver                                  |
+    |    (struct device_driver*)             |
+    +----------------------------------------+
+    |p                                       |
+    |    (struct device_private *)           |
+    |                                        |
+    |                                        |
+    +----------------------------------------+
