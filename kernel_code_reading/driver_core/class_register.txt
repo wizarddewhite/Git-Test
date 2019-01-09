@@ -1,0 +1,76 @@
+1.  class_register/class_create()
+================================================================================
+
+__class_register()
+
+2.  __class_register()
+================================================================================
+
+0. data structure
+================================================================================
+
+    class
+    +--------------------------------+
+    |name                            |
+    |    (char *)                    |
+    +--------------------------------+
+    |dev_kobj                        |
+    |    (struct kobject*)           |
+    +--------------------------------+
+    |class_groups                    |
+    |dev_groups                      |
+    |    (struct attribute_group **) |
+    +--------------------------------+
+    |dev_uevent                      |
+    |devnode                         |
+    |class_release                   |
+    |dev_release                     |
+    |shutdown_pre                    |
+    |get_ownership                   |
+    +--------------------------------+
+    |p                               |
+    |   (struct subsys_private*)     |
+    |   +----------------------------+
+    |   |bus                         |
+    |   |    (struct bus_type*)      |
+    |   |subsys                      |
+    |   |   +------------------------+
+    |   |   |kobj.name               | = class->name
+    |   |   |kobj.kset               | = class_kset
+    |   |   |kobj.ktype              | = class_ktype
+    |   |   +------------------------+
+    |   |devices_kset                | = NULL
+    |   |drivers_kset                | = NULL
+    |   |    (struct kset)           |
+    |   |klist_devices               | = NULL
+    |   |klist_drivers               | = NULL
+    |   |    (struct klist)          |
+    |   |class                       | = class
+    |   |    (struct class*)         |
+    +---+----------------------------+
+
+0.1 sysfs relationship
+================================================================================
+
+
+           bus(bus_kset)                          class(class_kset)
+                |                                        |
+  --+-----------+------+-----                   ----+----+-----+--------+--------+-----
+    |                  |                            |          |        |        |
+    +- drivers         +- devices                   |          |        |        |
+       |                  |                         |          |        |        |
+       +- drvA   <- - -   +- devA   - * - *    >    +- clsA    +- clsB  +- clsC  +- clsD 
+       |                  |  |                          ^          ^        ^        ^
+       |                  |  +- subsystem  -------------+          |        |        |
+       |                  |                                        |        |        |
+       +- drvB   <- - -   +- devB   - * - *    >                   |        |        |
+       |                  |  |                                     |        |        |
+       |                  |  +- subsystem  ------------------------+        |        |
+       |                  |                                                 |        |
+       +- drvC   <- - -   +- devC   - * - *    >                            |        |
+       |                  |  |                                              |        |
+       |                  |  +- subsystem  ---------------------------------+        |
+       |                  |                                                          |
+       +- drvD   <- - -   +- devD   - * - * -  >                                     |
+                             |                                                       |
+                             +- subsystem  ------------------------------------------+
