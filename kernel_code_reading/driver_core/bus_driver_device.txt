@@ -1,0 +1,22 @@
+0. data structure
+================================================================================
+
+Try to show the relationship in sysfs
+
+
+           bus(bus_kset)                          devices(devices_kset)
+                |                                        |
+  --+-----------+------+-----                   ----+----+-------------
+    |                  |                            |
+    +- drivers         +- devices                   |
+       |                  |                         |
+       +- drvA   <- - -   +- devA   - * - * -  >    +- devA
+       |                  |                         |  
+       +- drvB   <- - -   +- devB   - * - * -  >    +- devB
+       |                  |                         |  
+       +- drvC   <- - -   +- devC   - * - * -  >    +- devC
+       |                  |                         |  
+       +- drvD   <- - -   +- devD   - * - * -  >    +- devD
+
+
+
