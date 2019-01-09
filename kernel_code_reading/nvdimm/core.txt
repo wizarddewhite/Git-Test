@@ -1,0 +1,853 @@
+1. acpi_nfit_add -> acpi_nfit_desc_init()
+================================================================================
+; set up nvdimm_bus_descriptor
+
+1. acpi_nfit_add -> acpi_nfit_init
+================================================================================
+
+1.1 nvdimm_bus_register(), create ndbus0(nvdimm_bus)
+================================================================================
+; one acpi_nfit_desc has one nvdimm_bus
+
+1.2 nfit_mem_init() 
+================================================================================
+
+1.3 acpi_nfit_register_dimms(), create nmem0(nvdimm)
+================================================================================
+
+1.4 acpi_nfit_register_regions()
+================================================================================
+
+1.4.1 acpi_nfit_register_region()
+================================================================================
+
+1.4.1.1 nvdimm_pmem_region_create()
+================================================================================
+
+1.4.1.2 nvdimm_volatile_region_create()
+================================================================================
+
+1.4.1.3 nvdimm_blk_region_create()
+================================================================================
+
+2. libnvdimm_init()
+================================================================================
+
+2.1 nvdimm_bus_init()
+================================================================================
+
+2.1.1 bus_register(&nvdimm_bus_type), "/sys/bus/nd"
+================================================================================
+
+2.1.2 register_chrdev("ndctl", &nvdimm_bus_fops), "/dev/ndctl"
+================================================================================
+
+2.1.3 register_chrdev("dimmctl", &nvdimm_fops), "/dev/dimmctl"
+================================================================================
+
+2.1.4 nd_class = class_create("nd"), "/sys/class/nd"
+================================================================================
+
+2.1.5 driver_register(&nd_bus_driver.drv), "/sys/bus/nd/drivers/nd_bus"
+================================================================================
+
+2.2 nvdimm_init()
+================================================================================
+
+2.2.1 nd_driver_register(&nvdimm_driver), "/sys/bus/nd/drivers/nvdimm"
+================================================================================
+
+2.3 nd_region_init()
+================================================================================
+
+2.3.1 nd_driver_register(&nd_region_driver), "/sys/bus/nd/drivers/nd_region"
+================================================================================
+
+2.4 nd_label_init()
+================================================================================
+
+3. interface
+================================================================================
+
+3.1 __/nd_device_register()
+================================================================================
+
+3.1.1 nd_region_create() -> region0
+================================================================================
+
+3.1.2 create_namespace() -> namespace0.0
+================================================================================
+
+3.1.3 nd_dax_create() -> dax0.0
+================================================================================
+
+3.2 __/nd_driver_register()
+================================================================================
+
+3.3 nvdimm_bus_register() -> ndbus0
+================================================================================
+
+
+0. data structure
+================================================================================
+
+0.0 sysfs example
+================================================================================
+# ls /sys/bus/nd/drivers 
+dax_pmem  nd_bus  nd_pmem  nd_region  nvdimm
+
+# ls /sys/bus/nd/devices -l
+total 0
+lrwxrwxrwx 1 root root 0 10月 10 00:01 btt0.0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0/btt0.0
+lrwxrwxrwx 1 root root 0 10月 10 00:01 dax0.0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0/dax0.0
+lrwxrwxrwx 1 root root 0 10月 10 00:34 dax0.1 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0/dax0.1
+lrwxrwxrwx 1 root root 0 10月 10 00:01 namespace0.0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0/namespace0.0
+lrwxrwxrwx 1 root root 0 10月 10 00:01 namespace0.1 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0/namespace0.1
+lrwxrwxrwx 1 root root 0 10月 10 00:01 ndbus0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0
+lrwxrwxrwx 1 root root 0 10月 10 00:01 nmem0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/nmem0
+lrwxrwxrwx 1 root root 0 10月 10 00:01 nmem1 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/nmem1
+lrwxrwxrwx 1 root root 0 10月 10 00:01 pfn0.0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0/pfn0.0
+lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region0
+
+             
+                                           /sys/                                              
+                                            |                                                 
+                   +------------------------+------------------------------------------+      
+                   |                                                                   |      
+                  bus/                                                              devices/  
+                   |                                                                   |      
+                   |                                                                   .
+                   |                                                                   .
+                   |                                                                   .
+                   |                                                                   |
+           --------+-------                                                       -----+-----
+                   |                                                                   |
+                  nd                                                                   |
+            (nvdimm_bus_type)                                          +--------->  ndbus0/
+                   |                                                   |          (nvdimm_bus)
+                   |                                                   |               |
+            -------+-------                                            |               |
+                   |                                                   |               |
+                drivers/                                               |       +-------+------+
+                   |                                                   |       |              |
+           +-------+-------+--------+--------------+-------------+     |       |              |
+           |       |       |        |              |             |     |       |              |
+           |     nd_pmem   |    nd_region          |         nd_bus ---+   +-> nmem0    +--> region0/
+           |  (nd_pmem_driver) (nd_region_driver)  |     (nd_bus_driver)   |  (nvdimm)  |  (nd_region)
+           |       |       |        |              |                       |            |     |
+           |       |    nd_blk      |              |                       |            |     |
+           |       | (nd_blk_driver)|            nvdimm -------------------+            |     |
+           |       |       |        |        (nvdimm_driver)                            |     |
+           |       |       |        |                                                   |     |
+           |       |       |        +---------------------------------------------------+     |
+           |       |       |                                                                  |
+           |       |       |                                 +----------------+-------------+-+---------+ 
+           |       |       |                                 |                |             |           |
+           |       |       |                             namespace0.0         |             |           |
+           |       |       +---------------------------> (nd_namespace_blk)   |             |           |
+           |       |                                                          |             |           |
+           |       +-----------------------------------> (nd_namespace_io)    |             |           |
+           |       |                                     (nd_namespace_pmem)  |             |           |
+           |       |                                                          |             |           |
+           |       |                                                          |             |           |
+           |       +-------------------------------------------------------> btt0.0         |           |
+           |       |                                                         (nd_btt)       |           |
+           |       |                                                                        |           |
+           |       +----------------------------------------------------------------->  pfn0.0          |
+           |                                                                            (nd_pfn)        |
+           |                                                                                            |
+           |                                                                                            |
+           dax_pmem   -----------------------------------------------------------------------------> dax0.0      
+          (dax_pmem_driver)                                                                          (nd_dax)    
+                                                                                                        |
+                                                                                                        |
+                                                                                                       dax
+                                                                                                        |
+                                                                                                        |
+                                                                                                      dax0.0
+                                                                                                     (dax_fops)
+
+
+
+0.1 acpi_nfit_desc
+================================================================================
+
+    acpi_nfit_desc
+    +-----------------------------------------------+
+    |dev                                            | = point to an acpi_device
+    |    (struct device*)                           |
+    +-----------------------------------------------+
+    |acpi_header                                    |
+    |    (struct acpi_table_header)                 |
+    +-----------------------------------------------+
+    |nd_desc                                        | *  <-----------------------------------+
+    |    (struct nvdimm_bus_descriptor)             |                                        |
+    |    +------------------------------------------+                                        |
+    |    |attr_groups                               | = acpi_nfit_attribute_groups           |
+    |    |      (struct attribute_group**)          |                                        |
+    |    |provider_name                             | = "ACPI.NFIT"                          |
+    |    |      (char *)                            |                                        |
+    |    |                                          |                                        |
+    |    +------------------------------------------+                                        |
+    |    |ndctl                                     | = acpi_nfit_ctl                        |
+    |    |      (ndctl_fn)                          |                                        |
+    |    |flush_probe                               | = acpi_nfit_flush_probe                |
+    |    |clear_to_send                             | = acpi_nfit_clear_to_send              |
+    |    |                                          |                                        |
+    |    +------------------------------------------+                                        |
+    |nvdimm_bus                                     | *                                      |
+    |    (struct nvdimm_bus*)                       |                                        |
+    |    +------------------------------------------+                                        |
+    |    |nd_desc                                   | point to the above nd_desc  -----------+
+    |    |      (struct nvdimm_bus_descriptor*)     |
+    |    |dev                                       |
+    |    |      (struct device)                     |
+    |    |      +-----------------------------------+
+    |    |      |name                               | "ndbus%d"
+    |    |      |groups                             | = nd_desc->attr_groups
+    |    |      |release                            | = nvdimm_bus_release
+    |    |      |                                   |
+    |    |      +-----------------------------------+
+    |    |list                                      |
+    |    |mapping_list                              |
+    |    |      (struct list_head)                  |
+    |    |                                          |
+    |    |                                          |
+    +----+------------------------------------------+
+    |spas                                           |  a list of nfit_spa
+    |    (struct list_head)                         |  added from acpi_table
+    |    +------------------------------------------+  
+    |    |nd_region                                 |  *  created from nfit_spa
+    |    |    (struct nd_region*)                   |
+    |    |ars_state                                 |
+    |    |    (unsigned long)                       |
+    |    |spa[0]                                    |  looks just have one spa
+    |    |    (struct acpi_nfit_system_address)     |
+    |    |    +-------------------------------------+
+    |    |    |header                               |
+    |    |    |    (struct acpi_nfit_header)        |
+    |    |    |range_guid[16]                       |  spa type: NFIT_SPA_VOLATILE, etc
+    |    |    |    (u8)                             |
+    |    |    |range_index                          |
+    |    |    |flags                                |
+    |    |    |address                              |  spa address
+    |    |    |length                               |
+    |    |    |    (u16)                            |
+    |    |    |                                     |
+    |    +----+-------------------------------------+
+    |                                               |
+    |memdevs                                        |  a list of nfit_memdev
+    |    (struct list_head)                         |  added from acpi table
+    |    +------------------------------------------+
+    |    |memdev                                    |
+    |    |     (struct acpi_nfit_memory_map)        |
+    |    |     +------------------------------------+
+    |    |     |header                              |
+    |    |     |    (struct acpi_nfit_header)       |
+    |    |     |device_handle                       |
+    |    |     |physical_id                         |
+    |    |     |region_id/index/size/offset         |
+    |    |     |range_index                         |
+    |    |     |address                             |  *
+    |    |     |interleave_index/ways               |
+    |    |     |                                    |
+    |    +-----+------------------------------------+
+    |                                               |
+    |dimms                                          |  a list of nfit_mem
+    |    (struct list_head)                         |  parsed from above spa & memdevs
+    |    +------------------------------------------+
+    |    |nvdimm                                    |  *
+    |    |     (struct nvdimm*)                     |
+    |    |     +------------------------------------+
+    |    |     |dev                                 |
+    |    |     |   (struct device)                  |
+    |    |     |   +--------------------------------+
+    |    |     |   |name                            |  = "nmem%d"
+    |    |     |   |groups                          |  = acpi_nfit_dimm_attribute_groups
+    |    |     |   |                                |
+    |    |     |   |driver_data                     |  = struct nvdimm_drvdata
+    |    |     |   |   (void*)                      |
+    |    |     |   |  +-----------------------------+
+    |    |     |   |  |dev                          |
+    |    |     |   |  |   (struct device*)          |
+    |    |     |   |  |ns_current, ns_next          |
+    |    |     |   |  |nslabel_size                 |  = 128
+    |    |     |   |  |   (int)                     |
+    |    |     |   |  |nsarea                       |
+    |    |     |   |  |     (nd_cmd_get_config_size)|
+    |    |     |   |  |data                         |  config data
+    |    |     |   |  |   (void*)                   |  namespace index + namespace label
+    |    |     |   |  |dpa                          |  created from namespace label
+    |    |     |   |  |   (struct resource)         |  from nvdimm_drvdata->data
+    |    |     |   |  |                             |  used to calculate dpa/spa offset
+    |    |     |   |  +-----------------------------+
+    |    |     |   |                                |
+    |    |     |   +--------------------------------+
+    |    |     |provider_data                       |  = nfit_mem
+    |    |     |   (void*)                          |
+    |    |     |flush_wpq                           |
+    |    |     |   (struct resource*)               |
+    |    |     |dwork                               |
+    |    |     |   (struct delayed_work)            |
+    |    |     |sec.ops                             |
+    |    |     |                                    |
+    |    |     |                                    |
+    |    +-----+------------------------------------+
+    |    |memdev_dcr                                |
+    |    |memdev_pmem                               |
+    |    |memdev_bdw                                |
+    |    |     (struct acpi_nfit_memory_map)        |
+    |    |                                          |
+    |    +------------------------------------------+
+    |                                               |
+    +-----------------------------------------------+
+    |scrub_spa                                      |
+    |    (struct nfit_spa*)                         |
+    +-----------------------------------------------+
+    |                                               |
+    |                                               |
+    +-----------------------------------------------+
+
+0.2 nd_region_desc, a temporary data used to create nd_region
+================================================================================
+; those fields are setup in acpi_nfit_register_region with knowledge from 
+; acpi_nfit_desc and acpi_nfit_desc->nfit_spa
+
+    nd_region_desc
+    +-----------------------------------------------+
+    |res                                            |
+    |     (struct resource*)                        |
+    |     +-----------------------------------------+
+    |     |name                                     |
+    |     |start                                    |  nfit_spa->address
+    |     |end                                      |  nfit_spa->address + nfit_spa->length - 1
+    +-----+-----------------------------------------+
+    |provider_data                                  |  = nfit_spa
+    |     (void*)                                   |
+    |attr_groups                                    |  = acpi_nfit_region_attribute_groups
+    |     (struct attribute_group**)                |
+    |num_lanes                                      |
+    |numa_node                                      |
+    |     (int)                                     |
+    |flags                                          |
+    |     (unsigned logn)                           |
+    |                                               |
+    |                                               |
+    +-----------------------------------------------+
+    |num_mappings                                   |
+    |     (u16)                                     |
+    |mapping                                        |  created from acpi_nfit_desc->memdev
+    |     (struct nd_mapping_desc*)                 |
+    |     +-----------------------------------------+
+    |     |nvdimm                                   |
+    |     |    (struct nvdimm*)                     |
+    |     |start/size                               |
+    |     |    (u64)                                |
+    |     |position                                 |
+    |     |    (int)                                |
+    +-----+-----------------------------------------+
+    |nd_set                                         |  * will be used in nd_region
+    |     (struct nd_interleave_set*)               |
+    |     +-----------------------------------------+
+    |     |cookie1                                  |
+    |     |cookie2                                  |
+    |     |altcookie                                |
+    |     |    (u64)                                |
+    |     |type_guid                                |
+    |     |    (guid_t)                             |
+    +-----+-----------------------------------------+
+    |                                               |
+    |                                               |
+    +-----------------------------------------------+
+
+0.3 nd_region
+================================================================================
+
+    nd_region
+    +-------------------------------------------------+  
+    |dev                                              |
+    |   (struct device)                               |
+    |   +---------------------------------------------+
+    |   |groups                                       | = acpi_nfit_region_attribute_groups
+    |   |    (struct attr_groups**)                   |
+    |   |                                             |
+    |   +---------------------------------------------+
+    |   |type                                         | = &nd_pmem_device_type
+    |   |    (struct device_type*)                    |   &nd_blk_device_type
+    |   |                                             |   &nd_volatile_device_type
+    |   |driver_data                                  | = nd_region_data
+    |   |    (void*) nd_region_data                   |
+    |   |    +----------------------------------------+
+    |   |    |ns_count                                |
+    |   |    |ns_active                               |
+    |   |    |    (int)                               |
+    |   |    |hints_shift                             |
+    |   |    |    (unsigned int)                      |
+    |   |    |flush_wpq[0]                            |
+    |   |    |    (void*)                             |
+    +---+----+----------------------------------------+  
+    |ns_ida                                           |
+    |btt_ida                                          |
+    |pfn_ida                                          |
+    |dax_ida                                          |
+    |     (struct ida)                                |
+    +-------------------------------------------------+  
+    |ns_seed                                          |
+    |btt_seed                                         |
+    |pfn_seed                                         |
+    |dax_seed                                         |
+    |     (struct device*)                            |
+    +-------------------------------------------------+  
+    |lane                                             |
+    |     (struct nd_percpu_lan)                      |
+    +-------------------------------------------------+  
+    |provider_data                                    | = ndr_desc->provider_data
+    |     (void *)                                    |
+    |ndr_mappings                                     | = ndr_desc->num_mappings
+    |     (u16)                                       |
+    |ndr_start                                        | = ndr_desc->res->start
+    |ndr_size                                         | = ndr_desc->res:size
+    |     (u16/u64)                                   |
+    |num_lanes                                        | = ndr_desc->num_lanes
+    |numa_node                                        | = ndr_desc->numa_node
+    |     (int)                                       |
+    |                                                 |
+    |nd_set                                           | = ndr_desc->nd_set
+    |     (struct nd_interleave_set*)                 |
+    |                                                 |
+    +-------------------------------------------------+  
+    |mapping[0]                                       | copied from ndr_des->mapping
+    |     (struct nd_mapping)                         |
+    |     +-------------------------------------------+
+    |     |start/size/position                        |
+    |     |    (u64/int)                              |
+    |     |labels                                     | a list of nd_label_ent
+    |     |    (struct list_head)                     |
+    |     |    +--------------------------------------+
+    |     |    |     uuid[NSLABEL_UUID_LEN]           |
+    |     |    |     name[NSLABEL_NAME_LEN]           |
+    |     |    |     flags                            |
+    |     |    |     nlabel                           |
+    |     |    |     position                         |
+    |     |    |                                      |
+    |     |    |     dpa                              |
+    |     |    |     rawsize                          |
+    |     |    |                                      |
+    |     |    +--------------------------------------+
+    |     |nvdimm                                     |
+    |     |    (struct nvdimm*)                       |
+    |     |ndd                                        | = nvdimm->dev->driver_data
+    |     |    (struct nvdimm_drvdata*)               |
+    |     |                                           |
+    |     |                                           |
+    +-----+-------------------------------------------+  
+
+0.4 nd_namespace_common
+================================================================================
+
+    nd_namespace_common
+    +-------------------------------------------------+  
+    |dev                                              |
+    |    (struct device)                              |
+    |claim                                            |
+    |    (struct device*)                             |
+    +-------------------------------------------------+  
+    |force_raw                                        |
+    |    (int)                                        |
+    +-------------------------------------------------+  
+    |claim_class                                      |
+    |    (enum nvdimm_claim_class)                    |
+    +-------------------------------------------------+  
+     
+0.4.1 nd_namespace_blk
+================================================================================
+
+    nd_namespace_blk
+    +-------------------------------------------------+  
+    |common                                           |
+    |    (struct nd_namespace_common)                 |
+    |    +--------------------------------------------+
+    |    |dev                                         |
+    |    |    (struct device)                         |
+    |    |    +---------------------------------------+
+    |    |    |type                                   | = namespace_blk_device_type
+    |    |    |                                       |
+    |    |    +---------------------------------------+
+    |    |claim                                       |
+    |    |    (struct device*)                        |
+    |    +--------------------------------------------+  
+    |    |force_raw                                   |
+    |    |    (int)                                   |
+    |    +--------------------------------------------+  
+    |    |rw_bytes                                    |
+    |    |    ()                                      |
+    |    +--------------------------------------------+  
+    |    |claim_class                                 | = BTT/BTT2/PFN/DAX
+    |    |    (enum nvdimm_claim_class)               |
+    +----+--------------------------------------------+  
+    |alt_name                                         | = nd_label->name
+    |    (char *)                                     |
+    |uuid                                             | = nd_label->uuid
+    |    (u8*)                                        |
+    +-------------------------------------------------+  
+    |id                                               |
+    |    (int)                                        |
+    |lbasize                                          |
+    |    (unsigned long)                              |
+    |size                                             |
+    |    (resource_size_t)                            |
+    +-------------------------------------------------+  
+    |num_resources                                    |
+    |    (int)                                        |
+    |res                                              | dpa res array
+    |    (struct resource**)                          |
+    +-------------------------------------------------+  
+
+0.4.2 nd_namespace_io
+================================================================================
+
+    nd_namespace_io
+    +-------------------------------------------------+  
+    |common                                           |
+    |    (struct nd_namespace_common)                 |
+    |    +--------------------------------------------+
+    |    |dev                                         |
+    |    |    (struct device)                         |
+    |    |    +---------------------------------------+
+    |    |    |type                                   | = namespace_io_device_type
+    |    |    |                                       |
+    |    |    +---------------------------------------+
+    |    |claim                                       |
+    |    |    (struct device*)                        |
+    |    +--------------------------------------------+  
+    |    |force_raw                                   |
+    |    |    (int)                                   |
+    |    +--------------------------------------------+  
+    |    |rw_bytes                                    | = nsio_rw_bytes
+    |    |    ()                                      |
+    |    +--------------------------------------------+  
+    |    |claim_class                                 |
+    |    |    (enum nvdimm_claim_class)               |
+    +----+--------------------------------------------+  
+    |size                                             |
+    |    (resource_size_t)                            |
+    +-------------------------------------------------+  
+    |res                                              |
+    |    (struct resource)                            |
+    |    +--------------------------------------------+
+    |    |flags                                       | = IORESOURCE_MEM
+    |    |start                                       | = nd_region->ndr_start 
+    |    |end                                         | = res->start + nd_region->ndr_size - 1
+    |    |                                            |
+    +----+--------------------------------------------+  
+    |addr                                             | devm_memremap()
+    |    (void *)                                     | ioremap to access raw data?
+    +-------------------------------------------------+  
+    |bb                                               |
+    |    (struct badblock)                            |
+    +-------------------------------------------------+  
+
+0.4.3 nd_namespace_pmem
+================================================================================
+
+    nd_namespace_pmem
+    +-------------------------------------------------+  
+    |nsio                                             |
+    |    (struct nd_namespace_io)                     |
+    +----+--------------------------------------------+
+    |    |common                                      |
+    |    |    (struct nd_namespace_common)            |
+    |    |    +---------------------------------------+
+    |    |    |dev                                    |
+    |    |    |    (struct device)                    |
+    |    |    |    +----------------------------------+
+    |    |    |    |type                              | = namespace_pmem_device_type
+    |    |    |    |                                  |
+    |    |    |    +----------------------------------+
+    |    |    |claim                                  |
+    |    |    |    (struct device*)                   |
+    |    |    +---------------------------------------+  
+    |    |    |force_raw                              |
+    |    |    |    (int)                              |
+    |    |    +---------------------------------------+  
+    |    |    |rw_bytes                               |
+    |    |    |    ()                                 |
+    |    |    +---------------------------------------+  
+    |    |    |claim_class                            |
+    |    |    |    (enum nvdimm_claim_class)          |
+    |    +----+---------------------------------------+  
+    |    |size                                        |
+    |    |    (resource_size_t)                       |
+    |    +--------------------------------------------+  
+    |    |res                                         |
+    |    |    (struct resource)                       |
+    |    |    +---------------------------------------+
+    |    |    |flags                                  | = IORESOURCE_MEM
+    |    |    |start                                  | = nd_region->ndr_start + dpa/spa offset
+    |    |    |end                                    | = start + size - 1
+    |    |    |                                       |
+    |    +----+---------------------------------------+  
+    |    |addr                                        | devm_memremap()
+    |    |    (void *)                                |
+    |    |--------------------------------------------+  
+    |    |bb                                          |
+    |    |    (struct badblock)                       |
+    +----+--------------------------------------------+  
+    |alt_name                                         | = nd_label->name
+    |    (char *)                                     |
+    |lbasize                                          | = nd_label->lbasize
+    |    (unsigned long)                              |
+    |uuid                                             | = nd_label->uuid
+    |    (u8*)                                        |
+    +-------------------------------------------------+  
+
+
+
+0.5 nvdimm_bus
+================================================================================
+
+    nvdimm_bus_list
+    +------------------+
+    |list              |
+    +------------------+
+        |
+        |       nvdimm_bus
+        |       +-------------------------------------------------+  
+        +------>|list                                             |
+                |     (struct list_head)                          |
+                +-------------------------------------------------+  
+                |dev                                              |  ndbus%d
+                |     (struct device)                             |
+                +-------------------------------------------------+  
+                |nd_desc                                          |
+                |     (struct nvdimm_bus_descriptor*)             |
+                |     +-------------------------------------------+
+                |     |attr_groups                                |
+                |     |    (struct attribute_group**)             |
+                |     +-------------------------------------------+
+                |     |flush_probe                                |
+                |     |clear_to_send                              |
+                |     |                                           |
+                +-----+-------------------------------------------+  
+                |                                                 |
+                |                                                 |
+                +-------------------------------------------------+  
+
+0.6 nd_dax
+================================================================================
+; created in nd_dax_probe()
+
+    nd_dax
+    +-------------------------------------------------+  
+    |nd_pfn                                           |
+    |     (struct nd_pfn)                             |
+    |     +-------------------------------------------+
+    |     |ndns                                       | points to the ns
+    |     |    (struct nd_namespace_common*)          |
+    |     |dev                                        |
+    |     |    (struct device)                        |
+    |     |    +--------------------------------------+
+    |     |    |name                                  | "dax0.0"
+    |     |    |groups                                | nd_dax_attribute_groups
+    |     |    |type                                  | nd_dax_device_type
+    |     |    |                                      |
+    |     |    |driver_data                           | = dax_region
+    |     |    |                                      |
+    |     |    +--------------------------------------+
+    |     |id                                         |
+    |     |    (int)                                  |
+    |     |uuid                                       |
+    |     |    (u8*)                                  |
+    |     |mode                                       | PFN_MODE_NONE
+    |     |    (enum nd_pfn_mode)                     |
+    |     |align                                      | HPAGE_PMD_SIZE / PAGE_SIZE
+    |     |npfns                                      | tricky?
+    |     |pfn_sb                                     | setup in nd_pfn_init
+    |     |    (struct nd_pfn_sb*)                    |
+    |     |    +--------------------------------------+
+    |     |    |signature[PFN_SIG_LEN]                |
+    |     |    |uuid[16]                              | = nd_pfn->uuid
+    |     |    |parent_uuid[16]                       |
+    |     |    |   (u8)                               |
+    |     |    |mode                                  | = nd_pfn->mode
+    |     |    |align                                 | = nd_pfn->align
+    |     |    |   (__le32)                           |
+    |     |    |dataoff                               | meta data
+    |     |    |npfns                                 | number of pfn
+    |     |    |   (__le64)                           |
+    |     |    |start_pad                             |
+    |     |    |end_trunc                             |
+    |     |    |   (__le32)                           |
+    |     |    |                                      |
+    |     |    |                                      |
+    +-----+----+--------------------------------------+  
+
+
+
+      |< start_pad >|<    dataoff      >|              |< end_trunc >|
+      v             v 8k |page |dax_res v              v             v
+      |--------------------------------------------------------------|
+      ^                                                              ^
+      |                                                              |
+  nsio->res.start                                               nsio->res.end
+
+
+
+0.7 dax_pmem
+================================================================================
+; created in dax_pmem_probe()
+
+    dax_pmem                                          nd_dax
+    +----------------------------------------+        +--------------+
+    |dev                                     |        |nd_pfn        |
+    |     (struct device*)               ----|--------|--> dev       |
+    +----------------------------------------+        +--------------+             
+    |ref                                 <---|------------------------------------+
+    |     (struct percpu_ref)                |                                    |
+    |     +----------------------------------+                                    |
+    |     |count                             |                                    |
+    |     |  (atomic_long_t)                 |                                    |
+    |     |percpu_count_ptr                  |                                    |
+    |     |  (unsigned long)                 |                                    |
+    |     |release/confirm_switch            |                                    |
+    |     |  (percpu_ref_func_t)             |                                    |
+    |     |force_atomit                      |                                    |
+    |     |                                  |                                    |
+    |     |rcu                               |                                    |
+    |     |  (struct rcu_head)               |                                    |
+    +-----+----------------------------------+                                    |
+    |cmp                                     |                                    |
+    |     (struct completion)                |                                    |
+    +----------------------------------------+                                    |
+    |pgmap                                   | setup in nvdimm_setup_pfn          |
+    |     (struct dev_pagemap)               |                                    |
+    |     +----------------------------------+                                    |
+    |     |dev                               |                                    |
+    |     |   (struct device*)               |                                    |
+    |     |ref                               | -----------------------------------+
+    |     |   (struct percpu_ref*)           |
+    |     |res                               |
+    |     |   (struct resource)              |
+    |     |   +------------------------------+
+    |     |   |start                         |  nsio->res.start + start_pad
+    |     |   |end                           |  nsio->res.start + size - end_trunc
+    |     |   +------------------------------+
+    |     |page_free                         |
+    |     |   (dev_page_free_t)              |
+    |     |kill                              | = dax_pmem_percpu_kill
+    |     |   ()                             |
+    |     |                                  |
+    |     |altmap                            |
+    |     |   (struct vmem_altmap)           |
+    |     |   +------------------------------+
+    |     |   |base_pfn                      | = PFN_SECTION_ALIGN_DOWN(nsio->res.start + start_pad)
+    |     |   |                              |
+    |     |   |reserve                       | = base_pfn + 8K
+    |     |   |                              |
+    |     |   |   (const unsigned long)      |
+    |     |   |free/align/alloc              |
+    |     |   |   (unsigned long)            |
+    |     |   +------------------------------+
+    |     |                                  |
+    +-----+----------------------------------+  
+
+0.8 dax_region
+================================================================================
+
+    dax_region
+    +-------------------------------------------------+  
+    |id                                               |
+    |   (int)                                         |
+    |dev                                              |  = nd_pfn
+    |   (struct device*)                              |
+    |ida                                              |
+    |   (struct ida)                                  |
+    |res                                              |
+    |   (struct resource)                             |
+    |   +---------------------------------------------+
+    |   |start                                        |  nsio->res.start + start_pad + dataoff
+    |   |end                                          |  nsio->res.start + size - end_trunc
+    |   +---------------------------------------------+
+    |                                                 |
+    |                                                 |
+    |base                                             |  remapped addr
+    |   (void *)                                      |
+    |                                                 |
+    |                                                 |
+    |                                                 |
+    +-------------------------------------------------+  
+
+0.9 dev_dax
+================================================================================
+
+
+                                                                                                dax_pmem                                          nd_dax
+                                                                                                +----------------------------------------+        +--------------+
+                                                                                                |dev                                     |        |nd_pfn        |
+                                                                                                |     (struct device*)               ----|--------|--> dev       |
+                                                                                                +----------------------------------------+        +--------------+             
+                                                                                                |ref                                 <---|------------------------------------+
+                                                                                                |     (struct percpu_ref)                |                                    |
+                                                                                                |     +----------------------------------+                                    |
+                                                                                                |     |count                             |                                    |
+                                                                                                |     |  (atomic_long_t)                 |                                    |
+                                                                                                |     |percpu_count_ptr                  |                                    |
+                                                                                                |     |  (unsigned long)                 |                                    |
+    dev_dax                                                                                     |     |release/confirm_switch            |                                    |
+    +-------------------------------------+<----------------------------+                       |     |  (percpu_ref_func_t)             |                                    |
+    |id                                   |                             |                       |     |force_atomit                      |                                    |
+    |   (int)                             |                             |                       |     |                                  |                                    |
+    |dev                                  |                             |                       |     |rcu                               |                                    |
+    |   (struct device)                   |                             |                       |     |  (struct rcu_head)               |                                    |
+    |   +---------------------------------+                             |                       +-----+----------------------------------+                                    |
+    |   |devt                             |  dax_dev.inode->i_rdev      |                       |cmp                                     |                                    |
+    |   |class                            |  dax_class                  |                       |     (struct completion)                |                                    |
+    |   |groups                           |  dax_attribute_groups       |                       +----------------------------------------+                                    |
+    |   |parent                           |  dax_region->dev = nd_pfn   |                       |pgmap                                   | setup in nvdimm_setup_pfn          |
+    |   |                                 |                             |                       |     (struct dev_pagemap)               |                                    |
+    |   +---------------------------------+                             |                       |     +----------------------------------+                                    |
+    |                                     |                             |                       |     |dev                               |                                    |
+    |num_resources                        |                             |                       |     |   (struct device*)               |                                    |
+    |res[]                                |  copy from dax_region.res   |                       |     |ref                               | -----------------------------------+
+    |   (struct resource)                 |                             |                       |     |   (struct percpu_ref*)           |
+    |                                     |                             |                       |     |res                               |
+    |dax_dev                              |                             |                       |     |   (struct resource)              |
+    |   (struct dax_device*)              |                             |                       |     |   +------------------------------+
+    |   +---------------------------------+                             |                       |     |   |start                         |  nsio->res.start + start_pad
+    |   |private                      ----| ----------------------------+                       |     |   |end                           |  nsio->res.start + size - end_trunc
+    |   |   (void*)                       |                                                     |     |   +------------------------------+
+    |   |inode                            |                                                     |     |page_free                         |
+    |   |   (struct inode)                |                                                     |     |   (dev_page_free_t)              |
+    |   |   +-----------------------------+                                                     |     |kill                              | = dax_pmem_percpu_kill
+    |   |   |i_cdev                       |                                                     |     |   ()                             |
+    |   |   |   ops                       |  dax_fops                                           |     |                                  |
+    |   |   |                             |                                                     |     |altmap                            |
+    |   |   +-----------------------------+                                                     |     |   (struct vmem_altmap)           |
+    |   |cdev                             |                                                     |     |   +------------------------------+
+    |   |   (struct cdev)                 |                                                     |     |   |base_pfn                      | = PFN_SECTION_ALIGN_DOWN(nsio->res.start + start_pad)
+    |   |                                 |                                                     |     |   |                              |
+    |   |host                             |                                                     |     |   |reserve                       | = base_pfn + 8K
+    |   |   (char*)                       |                                                     |     |   |                              |
+    |   |ops                              |                                                     |     |   |   (const unsigned long)      |
+    |   |   (struct dax_operations*)      |                                                     |     |   |free/align/alloc              |
+    |   +---------------------------------+                                                     |     |   |   (unsigned long)            |
+    |region                           ----|------> dax_region                                   |     |   +------------------------------+
+    |   (struct dax_region*)              |        +---------------------------+                |     |                                  |
+    +-------------------------------------+        |id                         |                +-----+----------------------------------+  
+                                                   |   (int)                   |                                                      |
+                                                   |dev                        |  = nd_pfn                                            |
+                                                   |   (struct device*)        |                                                      |
+                                                   |ida                        |                                                      |
+                                                   |   (struct ida)            |                                                      |
+                                                   |res                        |                                                      |
+                                                   |   (struct resource)       |                                                      |
+                                                   |   +-----------------------+                                                      |
+                                                   |   |start                  |  nsio->res.start + start_pad + dataoff               |
+                                                   |   |end                    |  nsio->res.start + size - end_trunc                  |
+                                                   |   +-----------------------+                                                      |
+                                                   |                           |                                                      |
+                                                   |                           |                                                      |
+                                                   |base                       |  devm_memremap_pages(nd_pfn, &dax_pmem->pgmap) <-----+
+                                                   |   (void *)                |
+                                                   |                           |
+                                                   +---------------------------+  
