@@ -66,9 +66,13 @@ alias la='ls -A'
 
 alias bb="make -j8 bzImage"
 alias bm="make -j8 modules"
+alias ba="bb && bm"
 alias ib="sudo make install"
 alias im="sudo make modules_install"
+alias ia="im && ib"
 alias rb="sudo reboot"
+
+alias x11="x11vnc -display :0 -shared -forever"
 
 # enable programmable completion features (you don't need to enable
 # this, if it's already enabled in /etc/bash.bashrc and /etc/profile
