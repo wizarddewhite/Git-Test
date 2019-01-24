@@ -1,0 +1,116 @@
+backend:
+user_creatable_add_type(type="memory-backend-file", id="nv_be3", qdic)
+	|---->obj = object_new(type)
+	|---->for each options v in qdict
+	|  |---->object_property_set(obj, v, name="align,pmem,shared") 
+	|  	|---->file_memory_backend_set_name(obj, v, name, val)
+	|		|---->HostMemoryBackend *backend = MEMORY_BACKEND(o);
+	|		|---->HostMemoryBackendFile *fb = MEMORY_BACKEND_FILE(o);
+	|		|---->fb->name = val;
+	|---->user_creatable_complete(obj);
+		|---->UserCreatable *uc = (UserCreatable *)object_dynamic_cast(obj, TYPE_USER_CREATABLE) = obj;
+		|---->host_memory_backend_memory_complete(uc)
+			|---->HostMemoryBackend *backend = MEMORY_BACKEND(uc);
+			|---->HostMemoryBackendClass *bc = MEMORY_BACKEND_GET_CLASS(uc);
+			|---->bc->alloc(backend) = file_backend_memory_alloc
+			|	|---->HostMemoryBackendFile *fb = MEMORY_BACKEND_FILE(backend);
+			|	|---->gchar *name;
+			|	|---->char *path = fb->mem_path;
+			|	|---->MemoryRegion *mr = &backend->mr;
+			|	|---->int size = backend->size;
+			|	|---->int align = fb->align;
+			|	|---->name = object_get_canonical_path(OBJECT(backend));
+			|	|---->memory_region_init_ram_from_file(mr,OBJECT(backend),name,size,align,path)
+			|		|---->mr->align = align;
+			|		|---->mr->ram_block = qemu_ram_alloc_from_file(size, mr, ram_flags, path)
+			|			|----> fd = file_ram_open(path, memory_region_name(mr));
+			|			|----> = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd);
+			|				|---->RAMBlock *new_block;
+			|				|---->new_block = g_malloc0(sizeof(*new_block));
+			|				|---->new_block->mr = mr;
+			|				|---->new_block->flags = ram_flags;
+			|				|---->new_block->max_length = size;
+			|				|---->new_block->host = file_ram_alloc(size, fd, ram_flags)
+			|				|	|---->qemu_ram_mmap(fd, size, mr->align)
+			|				|		|---->mmap(2)
+			|				|---->ram_block_add(new_block, ram_flags & RAM_SHARED);
+			|				|---->return new_block;
+			|---->ptr = memory_region_get_ram_ptr(&backend->mr);
+			|---->if(backend->prealloc)
+			   |----->os_mem_prealloc(memory_region_get_fd(&backend->mr), ptr, size)
+
+
+frontend:
+device_set_realized(Object *obj)
+	|----> DeviceState *dev = DEVICE(obj);
+    	|----> DeviceClass *dc = DEVICE_GET_CLASS(dev);
+	|----> HotplugHandler *hotplug_ctrl;
+	|----> hotplug_ctrl = qdev_get_hotplug_handler(dev);
+	|	|---->pc_get_hotpug_handler(machine, dev);
+	|----> dc->realize(dev, &local_err);
+	|	|---->pc_dimm_realize(dev)
+	|		|---->PCDIMMDevice *dimm = PC_DIMM(dev);
+	|		|---->PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+	|		|---->ddc->realize(dimm)
+	|		|	|---->nvdimm_realize(dimm)
+	|		|		|---->MemoryRegion *mr = host_memory_backend_get_memory(dimm->hostmem)
+	|		|		|---->NVDIMMDevice *nvdimm = NVDIMM(dimm);
+	|		|		|---->uint64_t align, pmem_size, size = memory_region_size(mr)
+	|		|		|---->align = memory_region_get_alignment(mr)
+	|		|		|---->pmem_size = size - nvdimm->label_size;
+	|		|		|---->nvdimm->label_data = memory_region_get_ram_ptr(mr) + pmem_size;
+	|		|		|	|---->qemu_map_ram_ptr(mr->ram_block);
+	|		|		|		|---->return ramblock_ptr(mr->ram_block)
+	|		|		|			|---->return (char *)block->host;
+	|		|		|---->pmem_size = QEMU_ALIGN_DOWN(pmem_size, align);
+	|		|		|---->memory_region_init_alias(&nvdimm->nvdimm_mr, OBJECT(dimm),"nvdimm-memory", mr, 0, pmem_size);
+	|		|		|---->nvdimm->nvdimm_mr.align = align
+	|		|---->host_memory_backend_set_mapped(dimm->hostmem, true)
+	|----> hotplug_handler_plug(hotplug_ctrl, dev)
+		|----> HotplugHandlerClass *hdc = HOTPLUG_HANDLER_GET_CLASS(hotplug_ctrl);
+		|----> pc_machine_device_plug_cb(hotplug_ctrl, dev)
+			|----> pc_memory_plug(hotplug_ctrl, dev)
+				|----> PCDIMMDevice *dimm = PC_DIMM(dev);
+				|----> PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+				|----> PCMachineState *pcms = PC_MACHINE(hotplug_ctrl);
+				|----> MachineState *machine = MACHINE(pcms);
+				|----> PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+				|----> MemoryRegion *mr;
+				|----> uint64_t align = TARGET_PAGE_SIZE
+				|----> bool is_nvdimm = object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM);
+				|----> mr = nvdimm_get_memory_region(dimm)
+				|		|----> NVDIMMDevice *nvdimm = NVDIMM(dimm);
+				|		|----> return &nvdimm->nvdimm_mr;
+				|----> if (memory_region_get_alignment(mr) && pcmc->enforce_aligned_dimm)
+				|	|-->align = memory_region_get_alignment(mr)
+				|----> pc_dimm_plug(dev, machine, align)
+				|	|---->MemoryRegion *vmstate_mr = ddc->get_vmstate_memory_region(dimm)
+				|		|---->pc_dimm_get_memory_region()
+				|	|---->memory_device_plug()
+				|		|---->addr = mdc->get_addr(); // addr is GPA
+				|		|---->memory_region_add_subregion(, addr - base, mr);
+				|
+				|
+				|----> if is_nvdimm nvdimm_plug(state)
+					|---->nvdimm_build_fit_buffer(state)
+						|---->NvdimmFitBuffer *fit_buf = &state->fit_buf;
+						|---->fit_buf->fit = nvdimm_build_device_structure(state);
+						|	|---->GArray *structures = g_array_new(false, true /* clear */, 1);
+						|	|---->for each nvdimm dev 
+						|	  |---->nvdimm_build_structure_spa(structures, dev); [System Physical Address Range]
+						|	  |	|----> NvdimmNfitSpa *nfit_spa;
+						|	  |	|----> nfit_spa = acpi_data_push(structures, sizeof(*nfit_spa));
+						|	  |	|----> addr,size,node = object_property_get_uint();
+						|	  |	|----> nfit_spa->proximity_domain = cpu_to_le32(node);
+						|	  |	|----> nfit_spa->spa_base = cpu_to_le64(addr);
+						|	  |	|----> nfit_spa->spa_length = cpu_to_le64(size);
+						|	  |---->nvdimm_build_structure_memdev(structures, dev); [Memory Range Map]
+						|	  |	|---->NvdimmNfitMemDev *nfit_memdev;
+						|	  |	|---->NVDIMMDevice *nvdimm = NVDIMM(OBJECT(dev));
+						|	  |	|---->nfit_memdev = acpi_data_push(structures, sizeof(*nfit_memdev));
+						|	  |	|---->nfit_memdev->spa_index = cpu_to_le16(nvdimm_slot_to_spa_index(slot));
+						|	  |	|---->nfit_memdev->region_dpa = cpu_to_le64(0);
+						|	  |	|---->nfit_memdev->interleave_ways = cpu_to_le16(1);
+						|	  |---->nvdimm_build_structure_dcr(GArray *structures, DeviceState *dev) [NVDIMM Control Region]
+						|---->fit_buf->dirty = true;
+

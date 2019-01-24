@@ -1,0 +1,78 @@
+pc_init1()
+	nvdimm_init_acpi_state()
+		memory_region_init_io(&state->io_mr, owner, &nvdimm_dsm_ops, state,
+                          "nvdimm-acpi-io", NVDIMM_ACPI_IO_LEN);
+		memory_region_add_subregion(io, NVDIMM_ACPI_IO_BASE, &state->io_mr);
+						= 0x0a18
+		state->dsm_mem = g_array_new(false, true /* clear */, 1);
+		acpi_data_push(state->dsm_mem, sizeof(NvdimmDsmIn));
+		fw_cfg_add_file(fw_cfg, NVDIMM_DSM_MEM_FILE, state->dsm_mem->data,
+					= "etc/acpi/nvdimm-mem"
+				state->dsm_mem->len);
+
+		nvdimm_init_fit_buffer(&state->fit_buf);
+
+
+acpi_setup()
+|---->acpi_build
+	|---->nvdimm_build_acpi
+		|---->nvdimm_build_ssdt
+		|	|---->Aml *ssdt, *sb_scope, *dev;
+		|	|---->dev = aml_device("NVDR")
+		|	|---->aml_append(dev, aml_name_decl("_HID", aml_string("ACPI0012")));
+		|	|---->nvdimm_build_common_dsm(dev)
+		|	|	|---->method = aml_method("NCAL", 5, AML_SERIALIZED);
+		|	|	|---->function = aml_arg(2);
+		|	|	|---->handle = aml_arg(4);
+		|	|	/* map DSM memory and IO into ACPI namespace. */
+		|	|	|---->aml_append(method,aml_operation_region("NPIO",AML_SYSTEM_IO,aml_int(NVDIMM_ACPI_IO_BASE=0xa18),NVDIMM_ACPI_IO_LEN))
+		|	|	|---->aml_append(method, aml_operation_region("NRAM", AML_SYSTEM_MEMORY, dsm_mem, sizeof(NvdimmDsmIn)));
+		|	|	|---->aml_append(field, "HDLE" aml_named_field("",sizeof(typeof_field(NvdimmDsmIn, handle)))
+		|	|	|---->aml_append(field, "REVS" aml_named_field("",sizeof(typeof_field(NvdimmDsmIn, revision)))
+		|	|	|---->aml_append(field, "FUNC" aml_named_field("",sizeof(typeof_field(NvdimmDsmIn, function)))
+		|	|	|---->aml_append(field, "FARG" aml_named_field("",sizeof(typeof_field(NvdimmDsmIn, arg3)))
+		|	|---->nvdimm_build_device_dsm(dev, 0);
+		|	|	|---->method = aml_method("_DSM", 4, AML_NOTSERIALIZED);
+		|	|	|---->aml_append(method, aml_return(aml_call5("NCAL", aml_arg(0),aml_arg(1), aml_arg(2), aml_arg(3))
+		|	|---->nvdimm_build_fit(dev);
+		|	|---->nvdimm_build_nvdimm_devices(dev, ram_slots);
+		|		|---->for each slot
+		|		  |---->nvdimm_dev = aml_device("NV%02X", slot)
+		|		  |---->aml_append(nvdimm_dev, aml_name_decl("_ADR", aml_int(handle)));
+		|		  |---->nvdimm_build_device_dsm(nvdimm_dev, handle);
+		|---->nvdimm_build_nfit
+			|---->NvdimmFitBuffer *fit_buf = &state->fit_buf;
+			|---->g_array_append_vals(table_data, fit_buf->fit->data, fit_buf->fit->len)
+			|---->build_header(table_data, "NFIT")
+
+flatview_write(fv, addr=0xa18, buf=0x7ffff7ff4000)
+	|----flatview_write_continue(fv, addr=0xa18, buf=0x7ffff7ff4000)
+		|---->uint64_t data = *buf
+		|---->memory_region_dispatch_writed(data)
+			|---->memory_region_write_accessor(data)
+				|---->nvdimm_dsm_write(data)
+					|---->hwaddr dsm_mem_addr = data
+					|---->NvdimmDsmIn *in = g_new(NvdimmDsmIn, 1);
+					|---->cpu_physical_memory_read(dsm_mem_addr, in, sizeof(*in));
+					|---->nvdimm_dsm_device(in, dsm_mem_addr);
+						|---->NVDIMMDevice *nvdimm = nvdimm_get_device_by_handle(in->handle);
+						|---->switch (in->function)
+						  |---->nvdimm_dsm_label_size(nvdimm, dsm_mem_addr)
+						  |---->nvdimm_dsm_get_label_data(nvdimm, in, dsm_mem_addr)
+						  |	|---->NvdimmFuncGetLabelDataOut *get_label_data_out;
+						  |	|---->get_label_data = (NvdimmFuncGetLabelDataIn *)in->arg3;
+						  |	|---->nvc->read_label_data()
+						  |		|---->nvdimm_read_label_data()
+						  |		|	|---->memcpy(buf, nvdimm->label_data + offset, size)
+						  |		|----> cpu_physical_memory_write(dsm_mem_addr, get_label_data_out, size);
+						  |---->nvdimm_dsm_set_label_data(nvdimm, in, dsm_mem_addr)
+						  	|---->NvdimmFuncSetLabelDataIn *set_label_data;
+						  	|---->set_label_data = (NvdimmFuncSetLabelDataIn *)in->arg3;
+							|---->nvc->write_label_data()
+								|---->nvdimm_write_label_data()
+									|---->if(pmem)
+									| |---->pmem_memcpy_persist()
+									|---->else
+									  |---->memcpy()
+	
+					
