@@ -12,6 +12,12 @@ pc_init1()
 
 		nvdimm_init_fit_buffer(&state->fit_buf);
 
+# dump acpi information
+
+# acpidump -b
+# iasl nfit.dat
+
+This will output nfit.dsl, for nfit table apci data.
 
 acpi_setup()
 |---->acpi_build
