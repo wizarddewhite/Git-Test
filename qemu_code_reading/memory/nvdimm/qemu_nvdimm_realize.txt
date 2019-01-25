@@ -115,3 +115,27 @@ device_set_realized(Object *obj)
 						|	  |---->nvdimm_build_structure_dcr(GArray *structures, DeviceState *dev) [NVDIMM Control Region]
 						|---->fit_buf->dirty = true;
 
+
+    AcpiNVDIMMState
+    +------------------------------------------+
+    |dsm_mem                                   | point to NvdimmDsmIn(4K space)
+    |     (GArray*)                            |
+    |                                          |
+    +------------------------------------------+
+    |io_mr                                     |
+    |     (MemoryRegion)                       |
+    |     +------------------------------------+
+    |     |name                                | = "nvdimm-acpi-io"
+    |     |ops                                 | = nvdimm_dsm_ops
+    |     |size                                | = NVDIMM_ACPI_IO_LEN = 4
+    |     |addr                                | = NVDIMM_ACPI_IO_BASE = 0x0a18
+    |     |                                    |
+    +-----+------------------------------------+
+    |fit_buf                                   | nfit sub tables
+    |     (NvdimmFitBuffer)                    |
+    |     NvdimmNfitSpa                        |
+    |     NvdimmNfitMemDev                     |
+    |     NvdimmNfitControlRegion              |
+    |                                          |
+    +------------------------------------------+
+
