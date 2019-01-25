@@ -98,6 +98,7 @@ device_set_realized(Object *obj)
 						|	|---->GArray *structures = g_array_new(false, true /* clear */, 1);
 						|	|---->for each nvdimm dev 
 						|	  |---->nvdimm_build_structure_spa(structures, dev); [System Physical Address Range]
+						|	  |     this will be processed in nvdimm driver, add_table()
 						|	  |	|----> NvdimmNfitSpa *nfit_spa;
 						|	  |	|----> nfit_spa = acpi_data_push(structures, sizeof(*nfit_spa));
 						|	  |	|----> addr,size,node = object_property_get_uint();
