@@ -1,5 +1,10 @@
-pc_init1()
+machine_run_board_init()    
+    machine_class->init()   
+      pc_init1()
 	nvdimm_init_acpi_state()
+               // setup PCMachineState.AcpiNVvIMMState mr and space 
+               // add etc/acpi/nvdimm-mem to PCMachineState.fw_cfg  
+
 		memory_region_init_io(&state->io_mr, owner, &nvdimm_dsm_ops, state,
                           "nvdimm-acpi-io", NVDIMM_ACPI_IO_LEN);
 		memory_region_add_subregion(io, NVDIMM_ACPI_IO_BASE, &state->io_mr);
@@ -12,7 +17,8 @@ pc_init1()
 
 		nvdimm_init_fit_buffer(&state->fit_buf);
 
-
+qemu_run_machine_init_done_notifiers()
+pc_machine_done()
 acpi_setup()
 |---->acpi_build
 	|---->nvdimm_build_acpi
@@ -154,12 +160,22 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
     |     |    |   start_offset                 |
     |     |    |                                |
     |     |    +--------------------------------+
+    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_POINTER
+    |     |    |   dest_file                    | = "etc/acpi/tables"
+    |     |    |   src_file                     | = "etc/acpi/nvdimm-mem"
+    |     |    |                                |
+    |     |    |                                |
+    |     |    |                                |
+    |     |    +--------------------------------+
     |     |                                     |
     |     |file_list                            | list of BiosLinkerFileEntry
     |     |    (GArray*)                        |
     |     |    +--------------------------------+
     |     |    |name                            | = "etc/acpi/tables"
     |     |    |bolb                            | = table_data
+    |     |    +--------------------------------+
+    |     |    |name                            | = "etc/acpi/nvdimm-mem"
+    |     |    |bolb                            | = AcpiNVDIMMState.dsm_mem
     |     |    +--------------------------------+
     |     |    |                                |
     |     |    |                                |
