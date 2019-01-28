@@ -12,12 +12,6 @@ pc_init1()
 
 		nvdimm_init_fit_buffer(&state->fit_buf);
 
-# dump acpi information
-
-# acpidump -b
-# iasl nfit.dat
-
-This will output nfit.dsl, for nfit table apci data.
 
 acpi_setup()
 |---->acpi_build
@@ -82,3 +76,113 @@ flatview_write(fv, addr=0xa18, buf=0x7ffff7ff4000)
 									  |---->memcpy()
 	
 					
+0. AML ASL DSL
+================================================================================
+ACPI has 2 type of tables: AML and Data Table
+	Data Table is simply a structure of static packed binary.
+	Only DSDT and SSDT is AML format.
+
+AML: ACPI Machine Language, binary machine code
+ASL: ACPI source language, assembly code
+DSL: file suffix of decoded acpi table
+DTL: Data Table Language, to describe Data Table
+
+https://wiki.osdev.org/AML	
+https://acpica.org/sites/acpica/files/aslcompiler_8.pdf
+https://osx86.org/files/file/4155-iasl-intel-acpi-tools-x64/
+https://01.org/zh/linux-acpi/utilities?langredirect=1
+
+# dump acpi information
+
+# acpidump -b      // dump to binary format *.dat, this is the same as
+		   // cat /sys/firmware/acpi/tables/* > *.dat
+# iasl nfit.dat    // translate .dat to ASL or readable Data Table
+# iasl test.asl    // compile ASL to AML, or DTL to binary ACPI table
+
+
+
+0. data structure
+================================================================================
+
+0.1 AcpiBuildTables
+================================================================================
+
+    AcpiBuildTables
+    +-------------------------------------------+
+    |table_data                                 |
+    |     (GArray*)                             |
+    |     +-------------------------------------+ ------------  facs
+    |     |AcpiFacsDescriptorRev1               | 
+    |     |   signature                         | = "FACS"
+    |     |                                     |               64bytes
+    |     |                                     |
+    |     |                                     |
+    |     +-------------------------------------+ ------------  dsdt
+    |     |AcpiTableHeader                      |
+    |     |   signature                         | = "DSDT"
+    |     |                                     |
+    |     |                                     |
+    |     |                                     |
+    |     |                                     |
+    |     +-------------------------------------+ ------------  
+    |                                           |
+    +-------------------------------------------+
+    |rsdp                                       |
+    |     (GArray*)                             |
+    |                                           |
+    +-------------------------------------------+
+    |tcpalog                                    |
+    |     (GArray*)                             |
+    |                                           |
+    +-------------------------------------------+
+    |vmgenid                                    |
+    |     (GArray*)                             |
+    |                                           |
+    +-------------------------------------------+
+    |linker                                     |
+    |     (BIOSLinker*)                         |
+    |     +-------------------------------------+
+    |     |cmd_blob                             | list of BiosLinkerLoaderEntry
+    |     |    (GArray*)                        |
+    |     |    +--------------------------------+
+    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ALLOCATE
+    |     |    |                                |
+    |     |    +--------------------------------+
+    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_CHECKSUM
+    |     |    |   file                         | = "etc/acpi/tables"
+    |     |    |   offset                       |
+    |     |    |   start_offset                 |
+    |     |    |                                |
+    |     |    +--------------------------------+
+    |     |                                     |
+    |     |file_list                            | list of BiosLinkerFileEntry
+    |     |    (GArray*)                        |
+    |     |    +--------------------------------+
+    |     |    |name                            | = "etc/acpi/tables"
+    |     |    |bolb                            | = table_data
+    |     |    +--------------------------------+
+    |     |    |                                |
+    |     |    |                                |
+    +-----+----+--------------------------------+
+
+0.2 AcpiBuildState
+================================================================================
+
+    AcpiBuildState
+    +-------------------------------------------+
+    |patched                                    |
+    |     (uint8_t)                             |
+    +-------------------------------------------+
+    |rsdp                                       |
+    |     (void*)                               |
+    +-------------------------------------------+
+    |table_mr                                   |
+    |                                           |
+    |rsdp_mr                                    |
+    |                                           |
+    |linker_mr                                  |
+    |                                           |
+    |     (MemoryRegion*)                       |
+    +-------------------------------------------+
+    |                                           |
+    +-------------------------------------------+
