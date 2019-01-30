@@ -151,21 +151,23 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
     |     |cmd_blob                             | list of BiosLinkerLoaderEntry
     |     |    (GArray*)                        |
     |     |    +--------------------------------+
-    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ALLOCATE
-    |     |    |                                |
-    |     |    +--------------------------------+
     |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_CHECKSUM
     |     |    |   file                         | = "etc/acpi/tables"
     |     |    |   offset                       |
     |     |    |   start_offset                 |
     |     |    |                                |
     |     |    +--------------------------------+
+    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ALLOCATE
+    |     |    |   alloc.file                   | = "etc/acpi/nvdimm-mem"
+    |     |    |   alloc.align                  |
+    |     |    |   alloc.zone                   |
+    |     |    |                                |
+    |     |    +--------------------------------+
     |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_POINTER
     |     |    |   dest_file                    | = "etc/acpi/tables"
     |     |    |   src_file                     | = "etc/acpi/nvdimm-mem"
-    |     |    |                                |
-    |     |    |                                |
-    |     |    |                                |
+    |     |    |   offset                       | = mem_addr_offset
+    |     |    |   size                         | = 4
     |     |    +--------------------------------+
     |     |                                     |
     |     |file_list                            | list of BiosLinkerFileEntry
