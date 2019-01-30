@@ -173,13 +173,46 @@ TypeImpl *type_register(const TypeInfo *info)
                 v
        +------------------+                   +--------------------+
        |TypeImpl*         | <--- type_new()   | TypeInfo           |
+       |    TYPE_PC_DIMM  |                   |     TYPE_PC_DIMM   |
        +------------------+                   +--------------------+
                 |
                 v
        +------------------+                   +--------------------+
        |TypeImpl*         | <--- type_new()   | TypeInfo           |
+       |    TYPE_MACHINE  |                   |     TYPE_MACHINE   |
        +------------------+                   +--------------------+
 
+
+3.1 init_type_list[MODULE_INIT_MAX]
+================================================================================
+
+typedef enum {
+    MODULE_INIT_BLOCK,
+    MODULE_INIT_OPTS,
+    MODULE_INIT_QOM,
+    MODULE_INIT_TRACE,
+    MODULE_INIT_MAX
+} module_init_type;
+
+
+   init_type_list[MODULE_INIT_MAX]
+   +-----------------------------+
+   |MODULE_INIT_BLOCK            |
+   |                             |
+   |                             |
+   +-----------------------------+
+   |MODULE_INIT_OPTS             |
+   |                             |
+   |                             |
+   +-----------------------------+      +-----------------------+     +-----------------------+
+   |MODULE_INIT_QOM              | ---->|                       |---->|                       |
+   |                             |      |e1000_register_types   |     |pc_dimm_register_types |
+   |                             |      |   --> type_register() |     |   --> type_register() |
+   +-----------------------------+      +-----------------------+     +-----------------------+
+   |MODULE_INIT_TRACE            |
+   |                             |
+   |                             |
+   +-----------------------------+
 
 
 4. traverse the qdev tree? 
