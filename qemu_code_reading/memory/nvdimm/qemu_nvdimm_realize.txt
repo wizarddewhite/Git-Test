@@ -116,62 +116,62 @@ device_set_realized(Object *obj)
 						|---->fit_buf->dirty = true;
 
 
-    AcpiNVDIMMState
-    +------------------------------------------+
-    |dsm_mem                                   | point to NvdimmDsmIn(4K space)
-    |     (GArray*)                            |
-    |                                          |
-    +------------------------------------------+
-    |io_mr                                     |
-    |     (MemoryRegion)                       |
-    |     +------------------------------------+
-    |     |name                                | = "nvdimm-acpi-io"
-    |     |ops                                 | = nvdimm_dsm_ops
-    |     |size                                | = NVDIMM_ACPI_IO_LEN = 4
-    |     |addr                                | = NVDIMM_ACPI_IO_BASE = 0x0a18
-    |     |                                    |
-    +-----+------------------------------------+
-    |fit_buf                                   | nfit sub tables
-    |     (NvdimmFitBuffer)                    |
-    |     NvdimmNfitSpa                        |
-    |     NvdimmNfitMemDev                     |
-    |     NvdimmNfitControlRegion              |
-    |                                          |
-    +------------------------------------------+
-
-
-
-
-    FWCfgState
-    +------------------------------------------+
-    |file_slots                                |
-    |                                          |
-    +------------------------------------------+
-    |files                                     |
-    |   (FWCfgFiles)                           |
-    |   +--------------------------------------+
-    |   |count                                 |
-    |   |   (uint32_t)                         |
-    |   +--------------------------------------+
-    |   |f[]                                   |
-    |   |   (FWCfgFile)                        |
-    |   |   +----------------------------------+
-    |   |   |name                              |
-    |   |   |   (char [FW_CFG_MAX_FILE_PATH])  |
-    |   |   |size                              |
-    |   |   |select                            |
-    |   |   |reserved                          |
-    +---+---+----------------------------------+
-    |entries[2]                                | [FW_CFG_SIGNATURE...FW_CFG_CMDLINE_ADDR] static key
-    |   (FWCfgEntry*)                          | [FW_CFG_FILE_FIRST... ] related to f[]
-    |   +--------------------------------------+
-    |   |data                                  |
-    |   |   (uint8_t *)                        |
-    |   |callback_opaque                       |
-    |   |   (void*)                            |
-    |   |select_cb                             |
-    |   |write_cb                              |
-    +---+--------------------------------------+
-    |                                          |
-    |                                          |
-    +------------------------------------------+
+    PCMachineState            AcpiNVDIMMState
+    +-------------------+  +->+------------------------------------------+
+    |acpi_nvdimm_state  |--+  |dsm_mem                                   | point to NvdimmDsmIn(4K space)
+    |                   |     |     (GArray*)                            |
+    |                   |     |                                          |
+    |fw_cfg  ---+       |     +------------------------------------------+
+    +-------------------+     |io_mr                                     |
+                |             |     (MemoryRegion)                       |
+                |             |     +------------------------------------+
+                |             |     |name                                | = "nvdimm-acpi-io"
+                |             |     |ops                                 | = nvdimm_dsm_ops
+                |             |     |size                                | = NVDIMM_ACPI_IO_LEN = 4
+                |             |     |addr                                | = NVDIMM_ACPI_IO_BASE = 0x0a18
+                |             |     |                                    |
+                |             +-----+------------------------------------+
+                |             |fit_buf                                   | nfit sub tables
+                |             |     (NvdimmFitBuffer)                    |
+                |             |     NvdimmNfitSpa                        |
+                |             |     NvdimmNfitMemDev                     |
+                |             |     NvdimmNfitControlRegion              |
+                |             |                                          |
+                |             +------------------------------------------+
+                |         
+                |         
+                |         
+                |         
+                |             FWCfgState
+                +------------>+------------------------------------------+
+                              |file_slots                                |
+                              |                                          |
+                              +------------------------------------------+
+                              |files                                     |
+                              |   (FWCfgFiles)                           |
+                              |   +--------------------------------------+
+                              |   |count                                 |
+                              |   |   (uint32_t)                         |
+                              |   +--------------------------------------+
+                              |   |f[]                                   |
+                              |   |   (FWCfgFile)                        |
+                              |   |   +----------------------------------+
+                              |   |   |name                              |
+                              |   |   |   (char [FW_CFG_MAX_FILE_PATH])  |
+                              |   |   |size                              |
+                              |   |   |select                            |
+                              |   |   |reserved                          |
+                              +---+---+----------------------------------+
+                              |entries[2]                                | [FW_CFG_SIGNATURE...FW_CFG_CMDLINE_ADDR] static key
+                              |   (FWCfgEntry*)                          | [FW_CFG_FILE_FIRST... ] related to f[]
+                              |   +--------------------------------------+
+                              |   |data                                  |
+                              |   |   (uint8_t *)                        |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             |
+                              |   |write_cb                              |
+                              +---+--------------------------------------+
+                              |                                          |
+                              |                                          |
+                              +------------------------------------------+
