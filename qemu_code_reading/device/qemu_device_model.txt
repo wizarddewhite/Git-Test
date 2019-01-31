@@ -171,16 +171,32 @@ TypeImpl *type_register(const TypeInfo *info)
        +-----------------------+
                 |
                 v
-       +------------------+                   +--------------------+
-       |TypeImpl*         | <--- type_new()   | TypeInfo           |
-       |    TYPE_PC_DIMM  |                   |     TYPE_PC_DIMM   |
-       +------------------+                   +--------------------+
+       +--------------------------+                   +----------------------------+
+       |TypeImpl*                 | <--- type_new()   | TypeInfo                   |
+       |    name                  |                   |     name                   |
+       |    parent                |                   |     parent                 |
+       |                          |                   |                            |
+       |    class_size            |                   |     class_size             |
+       |    class_init            |                   |     class_init             |
+       |    class_base_init       |                   |     class_base_init        |
+       |    class_finalize        |                   |     class_finalize         |
+       |    class_data            |                   |     class_data             |
+       |                          |                   |                            |
+       |    instance_size         |                   |     instance_size          |
+       |    instance_init         |                   |     instance_init          |
+       |    instance_post_init    |                   |     instance_post_init     |
+       |    instance_finalize     |                   |     instance_finalize      |
+       |                          |                   |                            |
+       |    abstract              |                   |     abstract               |
+       |    interfaces            |                   |     interfaces             |
+       |    num_interfaces        |                   |     num_interfaces         |
+       +--------------------------+                   +----------------------------+
                 |
                 v
-       +------------------+                   +--------------------+
-       |TypeImpl*         | <--- type_new()   | TypeInfo           |
-       |    TYPE_MACHINE  |                   |     TYPE_MACHINE   |
-       +------------------+                   +--------------------+
+       +--------------------------+                   +----------------------------+
+       |TypeImpl*                 | <--- type_new()   | TypeInfo                   |
+       |    TYPE_MACHINE          |                   |     TYPE_MACHINE           |
+       +--------------------------+                   +----------------------------+
 
 
 3.1 init_type_list[MODULE_INIT_MAX]
@@ -228,6 +244,33 @@ device_help_func
    |class                 |<------------->|type                  |
    |     (ObjectClass*)   |               |     (TypeImpl *)     |
    +----------------------+               +----------------------+
+
+5.1 Interfaces
+================================================================================
+
+                                                  TypeImpl
+                                                  +------------------------------------+
+                                                  |name                                |
+                                                  |   "conventional-pci-device"        |
+                                                  |class (struct InterfaceClass)       |
+                                                  |                                    |
+                                                  +------------------------------------+
+                                                                      ^
+                                                                      |
+                                                                      |
+    TypeImpl                                      TypeImpl            |
+                                                  +------------------------------------+
+    +--------------------------+                  |parent          ---+                |
+    |name                      |                  |name                                |
+    |   "e1000-base"           |                  |   "e1000::conventional-pci-device" |
+    |class (E1000BaseClass)    |     +----------->|class (struct InterfaceClass)       |
+    |   ^  interfaces     -----|-----+            |       concrete_class  ----+        |
+    |   |                      |                  +------------------------------------+
+    +--------------------------+                                              |
+        |                                                                     |
+        +---------------------------------------------------------------------+
+
+
 
 6. e1000 init
 ================================================================================
