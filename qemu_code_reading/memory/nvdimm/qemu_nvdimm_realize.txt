@@ -115,6 +115,35 @@ device_set_realized(Object *obj)
 						|	  |---->nvdimm_build_structure_dcr(GArray *structures, DeviceState *dev) [NVDIMM Control Region]
 						|---->fit_buf->dirty = true;
 
+1. call flow
+================================================================================
+
+main()
+    qemu_opts_foreach(qemu_find_opts("device"), device_init_func, NULL, NULL)
+        ...
+        device_set_realized()
+            hotplug_handler_pre_plug
+                ...
+                memory_device_pre_plug
+                    nvdimm_prepare_memory_region
+            hotplug_handler_plug
+                ...
+                nvdimm_plug
+                    nvdimm_build_fit_buffer
+    qemu_run_machine_init_done_notifiers()
+        pc_machine_done
+            acpi_setup
+                acpi_build
+                    nvdimm_build_acpi
+                        nvdimm_build_ssdt
+                        nvdimm_build_nfit
+    
+
+	    
+
+
+
+
 
     PCMachineState            AcpiNVDIMMState
     +-------------------+  +->+------------------------------------------+
