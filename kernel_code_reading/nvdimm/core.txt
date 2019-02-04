@@ -740,12 +740,14 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |     |altmap                            |
     |     |   (struct vmem_altmap)           |
     |     |   +------------------------------+
-    |     |   |base_pfn                      | = PFN_SECTION_ALIGN_DOWN(nsio->res.start + start_pad)
-    |     |   |                              |
-    |     |   |reserve                       | = base_pfn + 8K
+    |     |   |base_pfn                      | = PFN_SECTION_ALIGN_DOWN
+    |     |   |                              |   (nsio->res.start + start_pad)
+    |     |   |reserve                       | = PHYS_PFN(SZ_8K)
     |     |   |                              |
     |     |   |   (const unsigned long)      |
-    |     |   |free/align/alloc              |
+    |     |   |free                          | = PHYS_PFN(offset - SZ_8K);
+    |     |   |align                         |
+    |     |   |alloc                         |
     |     |   |   (unsigned long)            |
     |     |   +------------------------------+
     |     |                                  |
