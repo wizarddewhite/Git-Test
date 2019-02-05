@@ -3,6 +3,7 @@
 #include <string.h>
 
 #define SZ_4K				0x00001000
+#define SZ_16K				0x00004000
 #define SZ_64M				0x04000000
 #define SZ_2G				0x80000000
 
@@ -293,15 +294,20 @@ static int split_mem_range2(struct map_range *mr, int nr_range,
 int main()
 {
 #ifdef CONFIG_X86_64
-	printf("Original version:\n");
+	printf("Original version [4k, 2G + 64M]:\n");
 	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M);
-	printf("Refined version:\n");
+	printf("Refined version [4k, 2G + 64M]:\n");
 	split_mem_range2(range, 0, SZ_4K, SZ_2G + SZ_64M);
 
-	printf("Original version no 1G:\n");
+	printf("Original version [4k, 64M]:\n");
 	split_mem_range(range, 0, SZ_4K, SZ_64M);
-	printf("Refined version no 1G:\n");
+	printf("Refined version [4k, 64M]:\n");
 	split_mem_range2(range, 0, SZ_4K, SZ_64M);
+
+	printf("Original version [4k, 16k]:\n");
+	split_mem_range(range, 0, SZ_4K, SZ_16K);
+	printf("Refined version [4k, 16k]:\n");
+	split_mem_range2(range, 0, SZ_4K, SZ_16K);
 #else
 	printf("Original version:\n");
 	split_mem_range(range, 0, 0, SZ_2G);
