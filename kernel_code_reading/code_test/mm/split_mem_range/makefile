@@ -1,6 +1,7 @@
 SOURCES := $(wildcard *.c)
-PROGRAM := main
-OBJS := $(filter-out main.o, $(subst .c,.o,$(SOURCES)))
+PROGRAM := main split_mem_range_refine
+FOBJS := main.o split_mem_range_refine.o
+OBJS := $(filter-out $(FOBJS), $(subst .c,.o,$(SOURCES)))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
 CFLAGS = -g -I../
 LD_FLAGS = -lm
@@ -11,6 +12,9 @@ LD_FLAGS = -lm
 all: $(PROGRAM)
 
 main: main.c $(OBJS)
+	gcc $(CFLAGS) $^ -o $@
+
+split_mem_range_refine: split_mem_range_refine.c
 	gcc $(CFLAGS) $^ -o $@
 
 %.o : %.c
