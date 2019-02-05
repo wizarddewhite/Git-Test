@@ -230,7 +230,7 @@ static int split_mem_range2(struct map_range *mr, int nr_range,
 	/* big page (2M) range */
 	start_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
 	end_pfn = round_up(pfn, PFN_DOWN(PUD_SIZE));
-	if (end_pfn > round_down(limit_pfn, PFN_DOWN(PMD_SIZE)))
+	if (end_pfn > limit_pfn)
 		end_pfn = round_down(limit_pfn, PFN_DOWN(PMD_SIZE));
 
 	if (start_pfn < end_pfn) {
