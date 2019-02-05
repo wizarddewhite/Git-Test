@@ -294,9 +294,14 @@ int main()
 {
 #ifdef CONFIG_X86_64
 	printf("Original version:\n");
-	split_mem_range(range, 0, SZ_4K, SZ_2G);
+	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M);
 	printf("Refined version:\n");
-	split_mem_range2(range, 0, SZ_4K, SZ_2G);
+	split_mem_range2(range, 0, SZ_4K, SZ_2G + SZ_64M);
+
+	printf("Original version no 1G:\n");
+	split_mem_range(range, 0, SZ_4K, SZ_64M);
+	printf("Refined version no 1G:\n");
+	split_mem_range2(range, 0, SZ_4K, SZ_64M);
 #else
 	printf("Original version:\n");
 	split_mem_range(range, 0, 0, SZ_2G);
