@@ -722,7 +722,7 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |pgmap                                   | setup in nvdimm_setup_pfn          |
     |     (struct dev_pagemap)               |                                    |
     |     +----------------------------------+                                    |
-    |     |dev                               |                                    |
+    |     |dev                               | = dax_pmem.dev                     |
     |     |   (struct device*)               |                                    |
     |     |ref                               | -----------------------------------+
     |     |   (struct percpu_ref*)           |
