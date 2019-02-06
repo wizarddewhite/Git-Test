@@ -232,7 +232,7 @@ static int split_mem_range2(struct map_range *mr, int nr_range,
 	start_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
 	end_pfn = round_up(pfn, PFN_DOWN(PUD_SIZE));
 	if (end_pfn > limit_pfn)
-		end_pfn = round_down(limit_pfn, PFN_DOWN(PMD_SIZE));
+		goto no_1g_range;
 
 	if (start_pfn < end_pfn) {
 		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
@@ -251,6 +251,7 @@ static int split_mem_range2(struct map_range *mr, int nr_range,
 	}
 #endif
 
+no_1g_range:
 	/* big page (2M) range */
 	start_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
 	end_pfn = round_down(limit_pfn, PFN_DOWN(PMD_SIZE));
