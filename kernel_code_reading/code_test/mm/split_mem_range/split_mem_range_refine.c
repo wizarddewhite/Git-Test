@@ -221,7 +221,7 @@ static int split_mem_range2(struct map_range *mr, int nr_range,
 	end_pfn = round_up(pfn, PFN_DOWN(PMD_SIZE));
 #endif
 	if (end_pfn > limit_pfn)
-		end_pfn = limit_pfn;
+		goto only_4k_range;
 	if (start_pfn < end_pfn) {
 		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
 		pfn = end_pfn;
@@ -261,6 +261,7 @@ no_1g_range:
 		pfn = end_pfn;
 	}
 
+only_4k_range:
 	/* tail is not big page (2M) alignment */
 	start_pfn = pfn;
 	end_pfn = limit_pfn;
