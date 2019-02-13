@@ -260,3 +260,6 @@ au BufEnter *.txt setlocal ft=txt
 let TxtBrowser_Title_Level = 5
 
 set mouse=a
+
+imap <silent> <leader>sob Signed-off-by: Wei Yang <richard.weiyang@gmail.com><Esc>
+imap <silent> <leader>rb Reviewed-by: Wei Yang <richard.weiyang@gmail.com><Esc>
