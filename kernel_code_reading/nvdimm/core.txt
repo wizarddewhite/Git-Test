@@ -247,7 +247,7 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |    |     |device_handle                       |
     |    |     |physical_id                         |
     |    |     |region_id/index/size/offset         |
-    |    |     |range_index                         |
+    |    |     |range_index                         |  match with nfit_spa->range_index
     |    |     |address                             |  *
     |    |     |interleave_index/ways               |
     |    |     |                                    |
@@ -270,16 +270,21 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |    |     |   |  +-----------------------------+
     |    |     |   |  |dev                          |
     |    |     |   |  |   (struct device*)          |
+    |    |     |   |  |nsarea                       |
+    |    |     |   |  |     (nd_cmd_get_config_size)|
+    |    |     |   |  |                             |
     |    |     |   |  |ns_current, ns_next          |
     |    |     |   |  |nslabel_size                 |  = 128
     |    |     |   |  |   (int)                     |
-    |    |     |   |  |nsarea                       |
-    |    |     |   |  |     (nd_cmd_get_config_size)|
-    |    |     |   |  |data                         |  config data
+    |    |     |   |  |data                         |
     |    |     |   |  |   (void*)                   |  namespace index + namespace label
+    |    |     |   |  |                             |  Refer to NVDIMM_NAMESPACE_SPEC chapter 2.
+    |    |     |   |  |                             |  and __nd_label_validate
+    |    |     |   |  |                             |
     |    |     |   |  |dpa                          |  created from namespace label
     |    |     |   |  |   (struct resource)         |  from nvdimm_drvdata->data
     |    |     |   |  |                             |  used to calculate dpa/spa offset
+    |    |     |   |  |                             |
     |    |     |   |  +-----------------------------+
     |    |     |   |                                |
     |    |     |   +--------------------------------+
@@ -308,6 +313,37 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |                                               |
     +-----------------------------------------------+
 
+0.1.1 nvdimm_drvdata->data, Namespace Label Storage
+================================================================================
+; nd_label_data_init()
+; 	__nd_label_validate()
+; nd_region_register_namespaces()
+; 	init_active_labels()
+
+                      Namespace Label Storage
+                      +-----------------------------+
+        index 0       |struct nd_namespace_index    |
+                      |                             |
+                      |                             |
+                      |                             |
+                      +-----------------------------+
+        index 1       |struct nd_namespace_index    |
+                      |                             |
+                      |                             |
+                      |                             |
+                      +-----------------------------+
+        label 0       |nd_namespace_label           |
+                      |                             |
+                      +-----------------------------+
+                      |                             |
+		      .                             .
+                      |                             |
+                      +-----------------------------+
+        label N - 1   |nd_namespace_label           |
+                      |                             |
+                      +-----------------------------+
+
+
 0.2 nd_region_desc, a temporary data used to create nd_region
 ================================================================================
 ; those fields are setup in acpi_nfit_register_region with knowledge from 
@@ -334,27 +370,27 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |                                               |
     |                                               |
     +-----------------------------------------------+
-    |num_mappings                                   |
+    |num_mappings                                   |  number of entry in mapping
     |     (u16)                                     |
     |mapping                                        |  created from acpi_nfit_desc->memdev
-    |     (struct nd_mapping_desc*)                 |
+    |     (struct nd_mapping_desc*)                 |  related to current nfit_spa
     |     +-----------------------------------------+
     |     |nvdimm                                   |
     |     |    (struct nvdimm*)                     |
     |     |start/size                               |
     |     |    (u64)                                |
-    |     |position                                 |
+    |     |position                                 |  position in sort map2
     |     |    (int)                                |
     +-----+-----------------------------------------+
-    |nd_set                                         |  * will be used in nd_region
-    |     (struct nd_interleave_set*)               |
+    |nd_set                                         |  * created in acpi_nfit_init_interleave_set()
+    |     (struct nd_interleave_set*)               |    will be used in nd_region
     |     +-----------------------------------------+
-    |     |cookie1                                  |
+    |     |type_guid                                |  = acpi_nfit_system_address->range_guid
+    |     |    (guid_t)                             |
+    |     |cookie1                                  |  those cookies are calculated from mapping
     |     |cookie2                                  |
     |     |altcookie                                |
     |     |    (u64)                                |
-    |     |type_guid                                |
-    |     |    (guid_t)                             |
     +-----+-----------------------------------------+
     |                                               |
     |                                               |
@@ -403,8 +439,6 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     +-------------------------------------------------+  
     |provider_data                                    | = ndr_desc->provider_data
     |     (void *)                                    |
-    |ndr_mappings                                     | = ndr_desc->num_mappings
-    |     (u16)                                       |
     |ndr_start                                        | = ndr_desc->res->start
     |ndr_size                                         | = ndr_desc->res:size
     |     (u16/u64)                                   |
@@ -416,22 +450,28 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |     (struct nd_interleave_set*)                 |
     |                                                 |
     +-------------------------------------------------+  
+    |ndr_mappings                                     | = ndr_desc->num_mappings
+    |     (u16)                                       |
     |mapping[0]                                       | copied from ndr_des->mapping
     |     (struct nd_mapping)                         |
     |     +-------------------------------------------+
     |     |start/size/position                        |
     |     |    (u64/int)                              |
+    |     |labels_uuid_num                            |
+    |     |    (int)                                  |
     |     |labels                                     | a list of nd_label_ent
-    |     |    (struct list_head)                     |
-    |     |    +--------------------------------------+
+    |     |    (struct list_head)                     | which is a wrapper of nd_namespace_label
+    |     |    +--------------------------------------+ Refer NVDIMM NameSpace Spec, chapter 2.2
     |     |    |     uuid[NSLABEL_UUID_LEN]           |
     |     |    |     name[NSLABEL_NAME_LEN]           |
     |     |    |     flags                            |
     |     |    |     nlabel                           |
     |     |    |     position                         |
-    |     |    |                                      |
+    |     |    |     isetcookie                       |
+    |     |    |     lbasize                          |
     |     |    |     dpa                              |
     |     |    |     rawsize                          |
+    |     |    |     slot                             |
     |     |    |                                      |
     |     |    +--------------------------------------+
     |     |nvdimm                                     |
