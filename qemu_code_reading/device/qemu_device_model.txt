@@ -248,28 +248,89 @@ device_help_func
 5.1 Interfaces
 ================================================================================
 
-                                                  TypeImpl
-                                                  +------------------------------------+
-                                                  |name                                |
-                                                  |   "conventional-pci-device"        |
-                                                  |class (struct InterfaceClass)       |
-                                                  |                                    |
-                                                  +------------------------------------+
-                                                                      ^
-                                                                      |
-                                                                      |
-    TypeImpl                                      TypeImpl            |
-                                                  +------------------------------------+
-    +--------------------------+                  |parent          ---+                |
-    |name                      |                  |name                                |
-    |   "e1000-base"           |                  |   "e1000::conventional-pci-device" |
-    |class (E1000BaseClass)    |     +----------->|class (struct InterfaceClass)       |
-    |   ^  interfaces     -----|-----+            |       concrete_class  ----+        |
-    |   |                      |                  +------------------------------------+
-    +--------------------------+                                              |
-        |                                                                     |
-        +---------------------------------------------------------------------+
 
+                                              +---------------------------------------------------------------+
+                                              |                                                               |
+                                              v                                                               |
+       TypeInfo                               TypeImpl*                       InterfaceClass                  |
+       +---------------------+                +----------------------+    +-->+------------------------+      |
+       |name                 | type_new()---> |name                  |    |   |parent_class            |      |
+       |     TYPE_INTERFACE  |                |    TYPE_INTERFACE    |    |   |   (ObjectClass)        |      |
+       +---------------------+                |class              ---|----+   |   type             ----|------+
+                                              |    (ObjectClass*)    |        |concrete_class          |
+                                              +----------------------+        |   (ObjectClass*)       |
+                                                                              |interface_type          |
+                                                                              |   (TypeImpl*)          |
+                                                                              +------------------------+
+                                                                                    |
+                                                                                    |
+                                                                                    |
+                                                                                    v
+                                              +---------------------------------------------------------------+
+                                              |                                MemoryDeviceClass              |
+                                              v                                +--------------------------+   |
+       TypeInfo                               TypeImpl*                        |InterfaceClass            |   |
+       +---------------------+                +----------------------+    +--> | +------------------------+   |
+       |name                 | type_new()---> |name                  |    |    | |parent_class            |   |
+       |   TYPE_MEMORY_DEVICE|                |   TYPE_MEMORY_DEVICE |    |    | |   (ObjectClass)        |   |
+       +---------------------+                |class              ---|----+    | |   type             ----|---+
+                                              |    (ObjectClass*)    |         | |concrete_class          |
+                                              +----------------------+         | |   (ObjectClass*)       |
+                                                                               | |interface_type          |
+                                                                               | |   (TypeImpl*)          |
+                                                                               | +------------------------+
+                                                                               |get_addr                  |
+                                                                               |set_addr                  |
+                                                                               |...                       |
+                                                                               |                          |
+                                                                               +--------------------------+
+
+
+
+                                              +----------------------------------------------------------------+-----+
+                                              |                                                                |     |
+                                              |                                MemoryDeviceClass               |     |
+                                              v                                +--------------------------+    |     |
+                                              TypeImpl*                        |InterfaceClass            |    |     |
+                                              +----------------------+    +--> | +------------------------+    |     |
+                                              |name                  |    |    | |parent_class            |    |     |
+                                              |   TYPE_MEMORY_DEVICE |    |    | |   (ObjectClass)        |    |     |
+                                              |class              ---|----+    | |   type             ----|----+     |
+                                              |    (ObjectClass*)    |         | |interface_type          |          |
+                                              +----------------------+         | |   (TypeImpl*)          |          |
+                                                         ^                     | |concrete_class          |          |
+                                                         |                     | |   (ObjectClass*)       |          |
+                                                         |                     | +------------------------+          |
+                                                         |                     |get_addr                  |          |
+                                                         |                     |set_addr                  |          |
+                                                         |                     |...                       |          |
+                                                         |                     |                          |          |
+                                                         |                     +--------------------------+          |
+                                                         |                                                           |
+                                                         |                                                           |
+                                                         |                                                           |
+    TypeImpl                                 +----------------------------------------------------------------+      |
+    +--------------------------+             |           |                                                    |      |
+    |name                      |             |           |                    MemoryDeviceClass               |      |
+    |   TYPE_PC_DIMM           |             v           |                    +--------------------------+    |      |
+    +--------------------------+             TypeImpl*   |                    |InterfaceClass            |    |      |
+               ^                             +----------------------+    +--> | +------------------------+    |      |
+               |                             |name                  |    |    | |parent_class            |    |      |
+    PCDIMMDeviceClass                        |   TYPE_PC_DIMM::     |    |    | |   (ObjectClass)        |    |      |
+    +--------------------------+             |   TYPE_MEMORY_DEVICE |    |    | |   type             ----|----+      |
+    |parent_class              |      +----->|class              ---|----+    | |interface_type      ----|-----------+
+    |   (ObjectClass)          |      |      |    (ObjectClass*)    |         | |   (TypeImpl*)          |
+    |      interfaces      ----|------+      +----------------------+         | |concrete_class      ----|----+ 
+    |                          |                                              | |   (ObjectClass*)       |    |
+    +--------------------------+                                              | +------------------------+    |
+    ^                                                                         |get_addr                  |    |
+    |                                                                         |set_addr                  |    |
+    |                                                                         |...                       |    |
+    |                                                                         |                          |    |
+    |                                                                         +--------------------------+    |
+    |                                                                                                         |
+    |                                                                                                         |
+    +---------------------------------------------------------------------------------------------------------+
 
 
 6. e1000 init
