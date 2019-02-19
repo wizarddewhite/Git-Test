@@ -151,16 +151,22 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
     |     |cmd_blob                             | list of BiosLinkerLoaderEntry
     |     |    (GArray*)                        |
     |     |    +--------------------------------+
-    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_CHECKSUM
-    |     |    |   file                         | = "etc/acpi/tables"
-    |     |    |   offset                       |
-    |     |    |   start_offset                 |
+    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ALLOCATE
+    |     |    |   alloc.file                   | = "etc/acpi/tables"
+    |     |    |   alloc.align                  |
+    |     |    |   alloc.zone                   |
     |     |    |                                |
     |     |    +--------------------------------+
     |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ALLOCATE
     |     |    |   alloc.file                   | = "etc/acpi/nvdimm-mem"
     |     |    |   alloc.align                  |
     |     |    |   alloc.zone                   |
+    |     |    |                                |
+    |     |    +--------------------------------+
+    |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_CHECKSUM
+    |     |    |   file                         | = "etc/acpi/tables"
+    |     |    |   offset                       |
+    |     |    |   start_offset                 |
     |     |    |                                |
     |     |    +--------------------------------+
     |     |    |command                         | = BIOS_LINKER_LOADER_COMMAND_ADD_POINTER
@@ -189,10 +195,7 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
     AcpiBuildState
     +-------------------------------------------+
     |patched                                    |
-    |     (uint8_t)                             |
-    +-------------------------------------------+
-    |rsdp                                       |
-    |     (void*)                               |
+    |     (bool)                                |
     +-------------------------------------------+
     |table_mr                                   |
     |                                           |
@@ -204,3 +207,99 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
     +-------------------------------------------+
     |                                           |
     +-------------------------------------------+
+
+
+0.3 FWCfgState
+================================================================================
+
+
+    PCMachineState            AcpiNVDIMMState
+    +-------------------+  +->+------------------------------------------+
+    |acpi_nvdimm_state  |--+  |dsm_mem                                   | point to NvdimmDsmIn(4K space)
+    |                   |     |     (GArray*)                            |
+    |                   |     |                                          |
+    |fw_cfg  ---+       |     +------------------------------------------+
+    +-------------------+     |io_mr                                     |
+                |             |     (MemoryRegion)                       |
+                |             |     +------------------------------------+
+                |             |     |name                                | = "nvdimm-acpi-io"
+                |             |     |ops                                 | = nvdimm_dsm_ops
+                |             |     |size                                | = NVDIMM_ACPI_IO_LEN = 4
+                |             |     |addr                                | = NVDIMM_ACPI_IO_BASE = 0x0a18
+                |             |     |                                    |
+                |             +-----+------------------------------------+
+                |             |fit_buf                                   | nfit sub tables
+                |             |     (NvdimmFitBuffer)                    |
+                |             |     NvdimmNfitSpa                        |
+                |             |     NvdimmNfitMemDev                     |
+                |             |     NvdimmNfitControlRegion              |
+                |             |                                          |
+                |             +------------------------------------------+
+                |
+                |
+                |
+                |
+                |             FWCfgIoState
+                +------------>+------------------------------------------+
+                              |machine_ready                             |
+                              |   notify                                 | = fw_cfg_machine_ready
+                              +------------------------------------------+
+                              |file_slots                                |
+                              |                                          |
+                              +------------------------------------------+
+                              |files                                     |
+                              |   (FWCfgFiles)                           |
+                              |   +--------------------------------------+
+                              |   |count                                 |
+                              |   |   (uint32_t)                         |
+                              |   +--------------------------------------+
+                              |   |f[]                                   |
+                              |   |   (FWCfgFile)                        |
+                              |   |   +----------------------------------+
+                              |   |   |name                              |
+                              |   |   |   (char [FW_CFG_MAX_FILE_PATH])  |
+                              |   |   |size                              |
+                              |   |   |select                            |
+                              |   |   |reserved                          |
+                              +---+---+----------------------------------+
+                              |entry_order                               | [FW_CFG_FILE_FIRST + file_slots]
+                              |   (int*)                                 |
+                              +------------------------------------------+
+                              |entries[0]                                | [FW_CFG_FILE_FIRST + file_slots]
+                              |   (FWCfgEntry*)                          | [FW_CFG_SIGNATURE...FW_CFG_CMDLINE_ADDR] static key
+                              |                                          | [FW_CFG_FILE_FIRST... ] related to f[]
+                              |                                          |
+                              |   +--------------------------------------+
+                              |   |data                                  |
+                              |   |   (uint8_t *)                        |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             |
+                              |   |write_cb                              |
+                              +---+--------------------------------------+
+                              |entries[1]                                |
+                              |   (FWCfgEntry*)                          |
+                              |   +--------------------------------------+
+                              |   |data                                  |
+                              |   |   (uint8_t *)                        |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             |
+                              |   |write_cb                              |
+                              +---+--------------------------------------+
+                              |dma_iomem                                 |
+                              |   (MemoryRegion)                         |
+                              |   +--------------------------------------+
+                              |   |name                                  |  = "fwcfg.dma"
+                              |   |ops                                   |  fw_cfg_dma_mem_ops
+                              |   |opaque                                |  FWCfgState itself
+                              |   |size                                  |  = 8
+                              +---+--------------------------------------+
+                              |comb_iomem                                |
+                              |   (MemoryRegion)                         |
+                              |   +--------------------------------------+
+                              |   |name                                  |  = "fwcfg"
+                              |   |ops                                   |  fw_cfg_comb_mem_ops
+                              |   |opaque                                |  FWCfgState itself
+                              |   |size                                  |  = 0x02
+                              +---+--------------------------------------+
