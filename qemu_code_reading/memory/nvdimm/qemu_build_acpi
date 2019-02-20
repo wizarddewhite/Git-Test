@@ -224,8 +224,124 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
                                         |FARG          |
                                         +--------------+
 
+0.4 Rom
+================================================================================
+; seems are under pc-bios/
+
+
+roms
+   |
+   |     
+   |     
+   |         Rom
+   +-------->+-------------------------------------------+
+   |         |name                                       |
+   |         |path                                       |
+   |         |     (char*)                               |
+   |         +-------------------------------------------+
+   |         |romsize                                    |
+   |         |datasize                                   |
+   |         |     (size_t)                              |
+   |         |data                                       |  read rom file to data
+   |         |     (uint8_t*)                            |
+   |         +-------------------------------------------+
+   |         |addr                                       |
+   |         |     (hwaddr)                              |
+   |         +-------------------------------------------+
+   |         |fw_dir                                     |
+   |         |fw_file                                    |
+   |         |     (char*)                               |
+   |         +-------------------------------------------+
+   |         |mr                                         |
+   |         |     (MemoryRegion*)                       |
+   |         |     +-------------------------------------+
+   |         |     |ram                                  |  = true
+   |         |     |    (bool)                           |
+   |         |     |                                     |
+   |         |     |                                     |
+   |         |     |ram_block                            |
+   |         |     |    host                             |  copy Rom->data 
+   |         |     |                                     |
+   |         +-----+-------------------------------------+
+   |
+   |
+   |
+   |         Rom
+   +-------->+-------------------------------------------+
+   |         |name                                       |  = etc/acpi/tables
+   |         |path                                       |
+   |         |     (char*)                               |
+   |         +-------------------------------------------+
+   |         |romsize                                    |  0x200000
+   |         |datasize                                   |  len(AcpiBuildTables.table_data)
+   |         |     (size_t)                              |
+   |         |data                                       |  AcpiBuildTables.table_data
+   |         |     (uint8_t*)                            |
+   |         +-------------------------------------------+
+   |         |addr                                       |  -1 at init
+   |         |     (hwaddr)                              |
+   |         +-------------------------------------------+
+   |         |fw_dir                                     |
+   |         |fw_file                                    |
+   |         |     (char*)                               |
+   |         +-------------------------------------------+
+   |         |mr                                         |
+   |         |     (MemoryRegion*)                       |
+   |         |     +-------------------------------------+
+   |         |     |ram                                  |  = true
+   |         |     |terminates                           |  = true
+   |         |     |    (bool)                           |
+   |         |     |                                     |
+   |         |     |ram_block                            |
+   |         |     |    host                             |  AcpiBuildTables.table_data
+   |         |     |                                     |
+   |         +-----+-------------------------------------+
+   |
+   |
+   |
+   |         Rom
+   +-------->+-------------------------------------------+
+             |name                                       |  = etc/table-loader
+             |path                                       |
+             |     (char*)                               |
+             +-------------------------------------------+
+             |romsize                                    |  len(AcpiBuildTables.linker->cmd_blob)
+             |datasize                                   |  len(AcpiBuildTables.linker->cmd_blob)
+             |     (size_t)                              |
+             |data                                       |  AcpiBuildTables.linker->cmd_blob
+             |     (uint8_t*)                            |
+             +-------------------------------------------+
+             |addr                                       |  -1 at init
+             |     (hwaddr)                              |
+             +-------------------------------------------+
+             |fw_dir                                     |
+             |fw_file                                    |
+             |     (char*)                               |
+             +-------------------------------------------+
+             |mr                                         |
+             |     (MemoryRegion*)                       |
+             |     +-------------------------------------+
+             |     |ram                                  |  = true
+             |     |terminates                           |  = true
+             |     |    (bool)                           |
+             |     |                                     |
+             |     |ram_block                            |
+             |     |    host                             |  AcpiBuildTables.linker->cmd_blob
+             |     |                                     |
+             +-----+-------------------------------------+
+
+
+
 0.4 FWCfgState
 ================================================================================
+pc_memory_init
+    bochs_bios_init
+        fw_cfg_init_io_dma
+	    qdev_create(NULL, TYPE_FW_CFG_IO);
+	    qdev_init_nofail(dev);
+	        fw_cfg_io_realize
+		    fw_cfg_common_realize
+    rom_set_fw();
 
 
     PCMachineState            AcpiNVDIMMState
@@ -259,6 +375,10 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
                               |machine_ready                             |
                               |   notify                                 | = fw_cfg_machine_ready
                               +------------------------------------------+
+                              |cur_entry                                 |
+                              |cur_offset                                |
+                              |   (uint)                                 |
+                              +------------------------------------------+
                               |file_slots                                |
                               |                                          |
                               +------------------------------------------+
@@ -285,14 +405,79 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
                               |                                          | [FW_CFG_FILE_FIRST... ] related to f[]
                               |                                          |
                               |   +--------------------------------------+
-                              |   |data                                  |
+         [FW_CFG_FILE_DIR]    |   |data                                  | = s->files
                               |   |   (uint8_t *)                        |
+                              |   |len                                   | = size of s->files
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       | = NULL
+                              |   |   (void*)                            |
+                              |   |select_cb                             | = NULL
+                              |   |write_cb                              | = NULL
+                              |   +--------------------------------------+
+         [FW_CFG_SIGNATURE]   |   |data                                  | = "QEMU"
+                              |   |   (uint8_t *)                        |
+                              |   |len                                   | = 4
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       | = NULL
+                              |   |   (void*)                            |
+                              |   |select_cb                             | = NULL
+                              |   |write_cb                              | = NULL
+                              |   +--------------------------------------+
+         [FW_CFG_UUID]        |   |data                                  | = &qemu_uuid
+                              |   |   (uint8_t *)                        |
+                              |   |len                                   | = 16
+                              |   |   (uint32_t)                         |
                               |   |callback_opaque                       |
                               |   |   (void*)                            |
                               |   |select_cb                             |
                               |   |write_cb                              |
+                              |   +--------------------------------------+
+         [FW_CFG_BOOT_MENU]   |   |data                                  | = boot_menu
+                              |   |   (uint8_t *)                        |
+                              |   |len                                   | = 2
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             |
+                              |   |write_cb                              |
+                              |   +--------------------------------------+
+         []                   |   |data                                  | = boot_menu
+                              |   |   (uint8_t *)                        |
+                              |   |len                                   | = 2
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             |
+                              |   |write_cb                              |
+                              |   +--------------------------------------+
+         [FW_CFG_FILE_FIRST]  |   |data                                  | = file content
+                              |   |   (uint8_t *)                        |
+                              |   |len                                   | = file length
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             | = select_cb
+                              |   |write_cb                              | = write_cb
+                              |   +--------------------------------------+
+         [FW_CFG_FILE_FIRST+2]|   |data                                  | = Rom.mr.host
+          etc/acpi/tables     |   |   (uint8_t *)                        |
+                              |   |len                                   | = Rom.datasize
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       | = AcpiBuildState
+                              |   |   (void*)                            |
+                              |   |select_cb                             | = acpi_build_update
+                              |   |write_cb                              | = NULL
+                              |   +--------------------------------------+
+         [FW_CFG_FILE_FIRST+1]|   |data                                  | = Rom.mr.host
+          etc/table-loader    |   |   (uint8_t *)                        |
+                              |   |len                                   | = Rom.datasize
+                              |   |   (uint32_t)                         |
+                              |   |callback_opaque                       | = AcpiBuildState
+                              |   |   (void*)                            |
+                              |   |select_cb                             | = acpi_build_update
+                              |   |write_cb                              | = NULL
                               +---+--------------------------------------+
-                              |entries[1]                                |
+                              |entries[1]                                | [FW_CFG_FILE_FIRST + file_slots]
                               |   (FWCfgEntry*)                          |
                               |   +--------------------------------------+
                               |   |data                                  |
@@ -305,6 +490,7 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
                               |dma_iomem                                 |
                               |   (MemoryRegion)                         |
                               |   +--------------------------------------+
+                              |   |addr                                  |  = FW_CFG_IO_BASE + 4(0x514)
                               |   |name                                  |  = "fwcfg.dma"
                               |   |ops                                   |  fw_cfg_dma_mem_ops
                               |   |opaque                                |  FWCfgState itself
@@ -313,8 +499,12 @@ https://01.org/zh/linux-acpi/utilities?langredirect=1
                               |comb_iomem                                |
                               |   (MemoryRegion)                         |
                               |   +--------------------------------------+
+                              |   |addr                                  |  = FW_CFG_IO_BASE(0x510) 
                               |   |name                                  |  = "fwcfg"
                               |   |ops                                   |  fw_cfg_comb_mem_ops
                               |   |opaque                                |  FWCfgState itself
                               |   |size                                  |  = 0x02
                               +---+--------------------------------------+
+
+FW_CFG_IO_BASE:                drivers/firmware/qemu_fw_cfg.c
+qemu_fw_cfg.ioport=12@0x510:0:1:4        (the default on x86)
