@@ -375,7 +375,7 @@ pc_memory_init
                               |machine_ready                             |
                               |   notify                                 | = fw_cfg_machine_ready
                               +------------------------------------------+
-                              |cur_entry                                 |
+                              |cur_entry                                 | fw_cfg_select(key)
                               |cur_offset                                |
                               |   (uint)                                 |
                               +------------------------------------------+
