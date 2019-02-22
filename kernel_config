@@ -2212,7 +2212,8 @@ CONFIG_E1000=m
 # CONFIG_IXGB is not set
 # CONFIG_IXGBE is not set
 # CONFIG_IXGBEVF is not set
-# CONFIG_I40E is not set
+CONFIG_I40E=m
+# CONFIG_I40E_DCB is not set
 # CONFIG_I40EVF is not set
 # CONFIG_ICE is not set
 # CONFIG_FM10K is not set
@@ -3222,7 +3223,7 @@ CONFIG_DRM_NOUVEAU_BACKLIGHT=y
 # CONFIG_DRM_VMWGFX is not set
 # CONFIG_DRM_GMA500 is not set
 # CONFIG_DRM_UDL is not set
-# CONFIG_DRM_AST is not set
+CONFIG_DRM_AST=m
 # CONFIG_DRM_MGAG200 is not set
 # CONFIG_DRM_CIRRUS_QEMU is not set
 # CONFIG_DRM_QXL is not set
