@@ -375,118 +375,6 @@ pc_memory_init
                               |machine_ready                             |
                               |   notify                                 | = fw_cfg_machine_ready
                               +------------------------------------------+
-                              |cur_entry                                 | fw_cfg_select(key)
-                              |cur_offset                                |
-                              |   (uint)                                 |
-                              +------------------------------------------+
-                              |file_slots                                |
-                              |                                          |
-                              +------------------------------------------+
-                              |files                                     |
-                              |   (FWCfgFiles)                           |
-                              |   +--------------------------------------+
-                              |   |count                                 |
-                              |   |   (uint32_t)                         |
-                              |   +--------------------------------------+
-                              |   |f[]                                   |
-                              |   |   (FWCfgFile)                        |
-                              |   |   +----------------------------------+
-                              |   |   |name                              |
-                              |   |   |   (char [FW_CFG_MAX_FILE_PATH])  |
-                              |   |   |size                              |
-                              |   |   |select                            |
-                              |   |   |reserved                          |
-                              +---+---+----------------------------------+
-                              |entry_order                               | [FW_CFG_FILE_FIRST + file_slots]
-                              |   (int*)                                 |
-                              +------------------------------------------+
-                              |entries[0]                                | [FW_CFG_FILE_FIRST + file_slots]
-                              |   (FWCfgEntry*)                          | [FW_CFG_SIGNATURE...FW_CFG_CMDLINE_ADDR] static key
-                              |                                          | [FW_CFG_FILE_FIRST... ] related to f[]
-                              |                                          |
-                              |   +--------------------------------------+
-         [FW_CFG_FILE_DIR]    |   |data                                  | = s->files
-                              |   |   (uint8_t *)                        |
-                              |   |len                                   | = size of s->files
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       | = NULL
-                              |   |   (void*)                            |
-                              |   |select_cb                             | = NULL
-                              |   |write_cb                              | = NULL
-                              |   +--------------------------------------+
-         [FW_CFG_SIGNATURE]   |   |data                                  | = "QEMU"
-                              |   |   (uint8_t *)                        |
-                              |   |len                                   | = 4
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       | = NULL
-                              |   |   (void*)                            |
-                              |   |select_cb                             | = NULL
-                              |   |write_cb                              | = NULL
-                              |   +--------------------------------------+
-         [FW_CFG_UUID]        |   |data                                  | = &qemu_uuid
-                              |   |   (uint8_t *)                        |
-                              |   |len                                   | = 16
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       |
-                              |   |   (void*)                            |
-                              |   |select_cb                             |
-                              |   |write_cb                              |
-                              |   +--------------------------------------+
-         [FW_CFG_BOOT_MENU]   |   |data                                  | = boot_menu
-                              |   |   (uint8_t *)                        |
-                              |   |len                                   | = 2
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       |
-                              |   |   (void*)                            |
-                              |   |select_cb                             |
-                              |   |write_cb                              |
-                              |   +--------------------------------------+
-         []                   |   |data                                  | = boot_menu
-                              |   |   (uint8_t *)                        |
-                              |   |len                                   | = 2
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       |
-                              |   |   (void*)                            |
-                              |   |select_cb                             |
-                              |   |write_cb                              |
-                              |   +--------------------------------------+
-         [FW_CFG_FILE_FIRST]  |   |data                                  | = file content
-                              |   |   (uint8_t *)                        |
-                              |   |len                                   | = file length
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       |
-                              |   |   (void*)                            |
-                              |   |select_cb                             | = select_cb
-                              |   |write_cb                              | = write_cb
-                              |   +--------------------------------------+
-         [FW_CFG_FILE_FIRST+2]|   |data                                  | = Rom.mr.host
-          etc/acpi/tables     |   |   (uint8_t *)                        |
-                              |   |len                                   | = Rom.datasize
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       | = AcpiBuildState
-                              |   |   (void*)                            |
-                              |   |select_cb                             | = acpi_build_update
-                              |   |write_cb                              | = NULL
-                              |   +--------------------------------------+
-         [FW_CFG_FILE_FIRST+1]|   |data                                  | = Rom.mr.host
-          etc/table-loader    |   |   (uint8_t *)                        |
-                              |   |len                                   | = Rom.datasize
-                              |   |   (uint32_t)                         |
-                              |   |callback_opaque                       | = AcpiBuildState
-                              |   |   (void*)                            |
-                              |   |select_cb                             | = acpi_build_update
-                              |   |write_cb                              | = NULL
-                              +---+--------------------------------------+
-                              |entries[1]                                | [FW_CFG_FILE_FIRST + file_slots]
-                              |   (FWCfgEntry*)                          |
-                              |   +--------------------------------------+
-                              |   |data                                  |
-                              |   |   (uint8_t *)                        |
-                              |   |callback_opaque                       |
-                              |   |   (void*)                            |
-                              |   |select_cb                             |
-                              |   |write_cb                              |
-                              +---+--------------------------------------+
                               |dma_iomem                                 |
                               |   (MemoryRegion)                         |
                               |   +--------------------------------------+
@@ -504,6 +392,61 @@ pc_memory_init
                               |   |ops                                   |  fw_cfg_comb_mem_ops
                               |   |opaque                                |  FWCfgState itself
                               |   |size                                  |  = 0x02
+                              +---+--------------------------------------+
+                              |cur_entry                                 | fw_cfg_select(key)
+                              |cur_offset                                |
+                              |   (uint)                                 |
+                              +------------------------------------------+
+                              |file_slots                                |
+                              |   (uint16)                               |
+                              +------------------------------------------+
+                              |files                                     |
+                              |   (FWCfgFiles)                           |
+                              |   +--------------------------------------+
+                              |   |count                                 |
+                              |   |   (uint32_t)                         |
+                              |   +--------------------------------------+ 
+                              |   |f[]                                   |                                                                                             etc/acpi/tables                                         etc/table-loader 
+                              |   |   (FWCfgFile)                        | ------------------------------------------------------------------------------------------->+------------------------------+----------------------->+------------------------------+
+                              |   |   +----------------------------------+                                                                                             |name                          |                        |name                          |
+                              |   |   |name                              |                                                                                             | (char [FW_CFG_MAX_FILE_PATH])|                        | (char [FW_CFG_MAX_FILE_PATH])|
+                              |   |   |   (char [FW_CFG_MAX_FILE_PATH])  |                                                                                             |size                          |                        |size                          |
+                              |   |   |size                              |                                                                                             |select                        |                        |select                        |
+                              |   |   |select                            |                                                                                             |reserved                      |                        |reserved                      |
+                              |   |   |reserved                          |                                                                                             +------------------------------+                        +------------------------------+
+                              +---+---+----------------------------------+                                                                                                   ^                                                       ^
+                              |entry_order                               | [FW_CFG_FILE_FIRST + file_slots]                                                                  |                                                       |
+                              |   (int*)                                 |                                                                                                   |                                                       |
+                              +------------------------------------------+                                                                                                   |                                                       |
+                              |entries[0]                                | [FW_CFG_FILE_FIRST + file_slots]                                                                  |                                                       |
+                              |   (FWCfgEntry*)                          |                                                                                                   |                                                       |
+                              |                                          |                                                                                                   |                                                       |
+                              |                                          |                                                                                                   v                                                       v
+                              |                                          |     [FW_CFG_SIGNATURE]                         [FW_CFG_FILE_DIR]                            [FW_CFG_FILE_FIRST+1]                                   [FW_CFG_FILE_FIRST+2]
+                              |                                          |     +-------------------+                      +-----------------+                          +------------------+                                    +------------------+
+                              |                                          |     |data               | = "QEMU"             |data             | = s->files               |data              | = AcpiBuildTables.table_data       |data              | = AcpiBuildTables.linker->cmd_blob
+                              |                                          |     |   (uint8_t *)     |                      |   (uint8_t *)   |                          |   (uint8_t *)    |                                    |   (uint8_t *)    |
+                              |                                          |     |len                | = 4                  |len              | = size of s->files       |len               | = sizeof (table_data)              |len               | = sizeof (cmd_blob)
+                              |                                          |     |   (uint32_t)      |            . . .     |   (uint32_t)    |                          |   (uint32_t)     |                                    |   (uint32_t)     |
+                              |                                          |     |callback_opaque    | = NULL               |callback_opaque  | = NULL                   |callback_opaque   | = AcpiBuildState                   |callback_opaque   | = AcpiBuildState
+                              |                                          |     |   (void*)         |                      |   (void*)       |                          |   (void*)        |                                    |   (void*)        |
+                              |                                          |     |select_cb          | = NULL               |select_cb        | = NULL                   |select_cb         | = acpi_build_update                |select_cb         | = acpi_build_update
+                              |                                          |     |write_cb           | = NULL               |write_cb         | = NULL                   |write_cb          | = NULL                             |write_cb          | = NULL
+                              |                                          |     +-------------------+                      +-----------------+                          +------------------+                                    +------------------+
+                              |                                          | 
+                              |                                          |     [FW_CFG_SIGNATURE...FW_CFG_FILE_DIR] static key                                         [FW_CFG_FILE_FIRST... ] related to f[]
+                              |                                          | 
+                              |                                          | 
+                              +------------------------------------------+
+                              |entries[1]                                | [FW_CFG_FILE_FIRST + file_slots]
+                              |   (FWCfgEntry*)                          |
+                              |   +--------------------------------------+
+                              |   |data                                  |
+                              |   |   (uint8_t *)                        |
+                              |   |callback_opaque                       |
+                              |   |   (void*)                            |
+                              |   |select_cb                             |
+                              |   |write_cb                              |
                               +---+--------------------------------------+
 
 FW_CFG_IO_BASE:                drivers/firmware/qemu_fw_cfg.c
