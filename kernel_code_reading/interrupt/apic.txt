@@ -1,0 +1,103 @@
+1. call flow
+================================================================================
+setup_arch
+  early_acpi_boot_init
+    early_acpi_process_madt
+      acpi_table_parse()
+        acpi_parse_madt
+          acpi_lapic_addr = (u64) madt->address;
+          default_acpi_madt_oem_check   match apic driver
+	    apic = *drv
+      early_acpi_parse_madt_lapic_addr_ovr
+        acpi_table_parse_madt(acpi_parse_lapic_addr_ovr)
+          acpi_lapic_addr = lapic_addr_ovr->address;
+        register_lapic_address(acpi_lapic_addr);
+	  mp_lapic_addr = address
+  acpi_boot_init
+    acpi_process_madt
+      acpi_parse_madt                           --- Parse MADT
+        acpi_lapic_addr = (u64) madt->address;
+        default_acpi_madt_oem_check   match apic driver
+	  drv->acpi_madt_oem_check
+	  apic = *drv
+    acpi_parse_madt_lapic_entries
+      acpi_table_parse_madt(acpi_parse_sapic)
+        acpi_register_lapic
+      acpi_table_parse_madt(acpi_parse_x2apic)
+      acpi_table_parse_madt(acpi_parse_lapic_nmi)
+    acpi_parse_madt_ioapic_entries
+  init_apic_mappings
+    apic_phys = mp_lapic_addr
+late_time_init = x86_late_time_init
+  x86_init.irqs.intr_mode_init = apic_intr_mode_init
+    apic_intr_mode_select
+    default_setup_apic_routing
+      enable_IR_x2apic
+        irq_remapping_prepare
+          remap_ops = &intel_irq_remap_ops;
+      drv->probe
+    apic_bsp_setup
+      connect_bsp_APIC
+      setup_local_APIC                    <---  config lapic
+      enable_IO_APIC
+      end_local_APIC_setup
+      irq_remap_enable_fault_handling
+        remap_ops->enable_faulting = enable_drhd_fault_handling
+      setup_IO_APIC
+
+late_initcall(lapic_insert_resource);
+  lapic_resource.start = apic_phys;
+  lapic_resource.end = lapic_resource.start + PAGE_SIZE - 1;
+  insert_resource(&iomem_resource, &lapic_resource);
+
+
+2. apic driver definition
+================================================================================
+apic_driver/apic_drivers
+
+AP : Application Processor
+BSP: Boot Strap Processor
+
+3. apic register access
+================================================================================
+apic_read/apic_write
+
+register offset is defined in arch/x86/include/asm/apicdef.h
+
+APIC_ID
+APIC_LVR
+
+4. lapic register usage summary
+================================================================================
+Refer to Figure 10-4. Local APIC Structure in SDM vol 3A
+
+Timer related:
+
+    CCR: Current Count Register
+    ICR: Initial Count Register
+    DCR: Divide Configuration Register
+    Timer: in LVT
+
+LVT (Local Vector Table):
+
+    Timer
+    Local Interrupt
+    Performance Monitor Counters
+    Thermal Sensor
+    Error
+
+IPI:
+
+    ICR: Interrupt Command Register
+    LDR: Logical Destination Register
+    DFR: Destination Format Register
+
+Interrupt State:
+
+    ISR: In-Service Register
+    IRR: Interrupt Request Register
+    TMR: Trigger Mode Register
+
+0. 
+================================================================================
+acpi_lapic_addr = APIC_DEFAULT_PHYS_BASE or read from madt

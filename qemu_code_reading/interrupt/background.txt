@@ -4,3 +4,17 @@ https://stackoverflow.com/questions/40583848/differences-among-various-interrupt
 SCI: System Control Interrupt
 SMI: System Management Interrupt
 NMI: Non-maskable Interrupt
+
+2. APIC
+================================================================================
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/x86/i386/IO-APIC.txt
+
+3. kvm interrupt
+================================================================================
+https://blog.csdn.net/leoufung/article/details/53081207
+https://www.binss.me/blog/qemu-note-of-interrupt/
+
+4. 
+================================================================================
+x86_cpu_realizefn
+    x86_cpu_apic_create
