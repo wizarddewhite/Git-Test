@@ -1,0 +1,84 @@
+1. general call flow
+================================================================================
+x86_cpu_realizefn
+    x86_cpu_apic_create
+        apic_common_initfn
+	set apic->id with cpu->apic_id
+    x86_cpu_apic_realize
+        object_property_set_bool(cpu->apic_state, realized)
+	    apic_common_realize
+	// only one memory region installed
+	memory_region_add_subregion_overlap(&apic->io_memory)
+
+2. "apic"
+================================================================================
+
+x86_cpu_realizefn
+    x86_cpu_apic_create
+        apic_common_initfn
+	set apic->id with cpu->apic_id
+    x86_cpu_apic_realize
+        object_property_set_bool(cpu->apic_state, realized)
+	    apic_common_realize
+                apic_realize
+	// only one memory region installed
+	memory_region_add_subregion_overlap(&apic->io_memory)
+
+    APICCommonClass TYPE_APIC_COMMON "apic-common"
+    +-----------------------------+
+    |class_init                   |
+    |    apic_common_class_init   |
+    |instance_init                |
+    |    apic_common_initfn       |
+    |                             |
+    |                             |
+    |DeviceClass                  |
+    | +---------------------------+
+    | |reset                      |
+    | |    apic_reset_common      |
+    | |realize                    |
+    | |    apic_common_realize    |
+    | |props                      |
+    | |    apic_properties_common |
+    | |                           |
+    +-+---------------------------+
+
+
+
+    APICCommonClass TYPE_APIC "apic"                  APICCommonState
+    +-----------------------------+                   +-----------------------------+       
+    |class_init                   |                   |io_memory                    |
+    |    apic_class_init          |                   |    ops                      | = apic_io_ops
+    |                             |                   |                             |
+    |realize                      |                   |                             |
+    |    apic_realize             |                   |                             |
+    |set_base                     |                   |apicbase                     |
+    |    apic_set_base            |                   |isr/irr/tmr                  |
+    |set_tpr                      |                   |lvt                          |
+    |    apic_set_tpr             |                   |                             |
+    |send_msi                     |                   |sipi_vector                  |
+    |    apic_send_msi            |                   |                             |
+    |                             |                   |cpu                          |
+    +-----------------------------+                   |    (X86CPU *)               |   +---------------------+
+                                                      |                             |   |interrupt_request    |
+                                                      |                             |   |                     |
+                                                      |                             |   +---------------------+
+                                                      +-----------------------------+
+
+
+2.1 sent interrupt
+================================================================================
+apic_mem_write
+    apic_deliver
+        ...
+	cpu_interrupt
+	    qemu_cpu_kick
+	        pthread_kill(cpu->thread->thread, SIG_IPI)
+
+2.2 process interrupt
+================================================================================
+cpu_handle_interrupt
+
+3. "kvm-apic"
+================================================================================
+
