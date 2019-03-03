@@ -778,424 +778,44 @@ static void listener_add_address_space(MemoryListener *listener,
     flatview_unref(view);
 }
 
-7. MemoryListener
-================================================================================
-    as->dispatch_listener = (MemoryListener) {
-        .begin = mem_begin,
-        .commit = mem_commit,
-        .region_add = mem_add,
-        .region_nop = mem_add,
-        .priority = 0,
-    };
-
-7.1 mem_begin(), create as->next_dispatch 's MemoryRegionSection and PhysPageEntry
-================================================================================
-static void mem_begin(MemoryListener *listener)
-{
-    AddressSpace *as = container_of(listener, AddressSpace, dispatch_listener);
-    AddressSpaceDispatch *d = g_new0(AddressSpaceDispatch, 1);
-    uint16_t n;
-
-    n = dummy_section(&d->map, as, &io_mem_unassigned);
-    assert(n == PHYS_SECTION_UNASSIGNED);
-    n = dummy_section(&d->map, as, &io_mem_notdirty);
-    assert(n == PHYS_SECTION_NOTDIRTY);
-    n = dummy_section(&d->map, as, &io_mem_rom);
-    assert(n == PHYS_SECTION_ROM);
-    n = dummy_section(&d->map, as, &io_mem_watch);
-    assert(n == PHYS_SECTION_WATCH);
-
-    d->phys_map  = (PhysPageEntry) { .ptr = PHYS_MAP_NODE_NIL, .skip = 1 };
-    d->as = as;
-    as->next_dispatch = d;
-}
-
-7.1.1 dummy_section()
-================================================================================
-static uint16_t dummy_section(PhysPageMap *map, AddressSpace *as,
-                              MemoryRegion *mr)
-{
-    assert(as);
-    MemoryRegionSection section = {
-        .address_space = as,
-        .mr = mr,
-        .offset_within_address_space = 0,
-        .offset_within_region = 0,
-        .size = int128_2_64(),
-    };
-
-    return phys_section_add(map, &section);
-}
-
-7.1.1.1 phys_section_add()
-================================================================================
-static uint16_t phys_section_add(PhysPageMap *map,
-                                 MemoryRegionSection *section)
-{
-    /* The physical section number is ORed with a page-aligned
-     * pointer to produce the iotlb entries.  Thus it should
-     * never overflow into the page-aligned value.
-     */
-    assert(map->sections_nb < TARGET_PAGE_SIZE);
-
-    if (map->sections_nb == map->sections_nb_alloc) {
-        map->sections_nb_alloc = MAX(map->sections_nb_alloc * 2, 16);
-        map->sections = g_renew(MemoryRegionSection, map->sections,
-                                map->sections_nb_alloc);
-    }
-    map->sections[map->sections_nb] = *section;
-    memory_region_ref(section->mr);
-    return map->sections_nb++;
-}
-
-7.2 mem_add(), add a MemoryRegionSection into AddressSpaceDispatch for each FlatRange
-================================================================================
-; called in address_space_update_topology_pass()
-
-static void mem_add(MemoryListener *listener, MemoryRegionSection *section)
-{
-    AddressSpace *as = container_of(listener, AddressSpace, dispatch_listener);
-    AddressSpaceDispatch *d = as->next_dispatch;
-    MemoryRegionSection now = *section, remain = *section;
-    Int128 page_size = int128_make64(TARGET_PAGE_SIZE);
-
-    if (now.offset_within_address_space & ~TARGET_PAGE_MASK) {
-        uint64_t left = TARGET_PAGE_ALIGN(now.offset_within_address_space)
-                       - now.offset_within_address_space;
-
-        now.size = int128_min(int128_make64(left), now.size);
-        register_subpage(d, &now);
-    } else {
-        now.size = int128_zero();
-    }
-    while (int128_ne(remain.size, now.size)) {
-        remain.size = int128_sub(remain.size, now.size);
-        remain.offset_within_address_space += int128_get64(now.size);
-        remain.offset_within_region += int128_get64(now.size);
-        now = remain;
-        if (int128_lt(remain.size, page_size)) {
-            register_subpage(d, &now);
-        } else if (remain.offset_within_address_space & ~TARGET_PAGE_MASK) {
-            now.size = page_size;
-            register_subpage(d, &now);
-        } else {
-            now.size = int128_and(now.size, int128_neg(page_size));
-            register_multipage(d, &now);
-        }
-    }
-}
-
-7.2.1 register_subpage()
-================================================================================
-static void register_subpage(AddressSpaceDispatch *d, MemoryRegionSection *section)
-{
-    subpage_t *subpage;
-    hwaddr base = section->offset_within_address_space
-        & TARGET_PAGE_MASK;
-    MemoryRegionSection *existing = phys_page_find(d->phys_map, base,
-                                                   d->map.nodes, d->map.sections);
-    MemoryRegionSection subsection = {
-        .offset_within_address_space = base,
-        .size = int128_make64(TARGET_PAGE_SIZE),
-    };
-    hwaddr start, end;
-
-    assert(existing->mr->subpage || existing->mr == &io_mem_unassigned);
-
-    if (!(existing->mr->subpage)) {
-        subpage = subpage_init(d->as, base);
-        subsection.address_space = d->as;
-        subsection.mr = &subpage->iomem;
-        phys_page_set(d, base >> TARGET_PAGE_BITS, 1,
-                      phys_section_add(&d->map, &subsection));
-    } else {
-        subpage = container_of(existing->mr, subpage_t, iomem);
-    }
-    start = section->offset_within_address_space & ~TARGET_PAGE_MASK;
-    end = start + int128_get64(section->size) - 1;
-    subpage_register(subpage, start, end,
-                     phys_section_add(&d->map, section));
-}
-
-7.2.1.1 phys_page_find()
-================================================================================
-static MemoryRegionSection *phys_page_find(PhysPageEntry lp, hwaddr addr,
-                                           Node *nodes, MemoryRegionSection *sections)
-{
-    PhysPageEntry *p;
-    hwaddr index = addr >> TARGET_PAGE_BITS;
-    int i;
-
-    for (i = P_L2_LEVELS; lp.skip && (i -= lp.skip) >= 0;) {
-        if (lp.ptr == PHYS_MAP_NODE_NIL) {
-            return &sections[PHYS_SECTION_UNASSIGNED];
-        }
-        p = nodes[lp.ptr];
-        lp = p[(index >> (i * P_L2_BITS)) & (P_L2_SIZE - 1)];
-    }
-
-    if (sections[lp.ptr].size.hi ||
-        range_covers_byte(sections[lp.ptr].offset_within_address_space,
-                          sections[lp.ptr].size.lo, addr)) {
-        return &sections[lp.ptr];
-    } else {
-        return &sections[PHYS_SECTION_UNASSIGNED];
-    }
-}
-
-7.2.1.2 subpage_init(), allocate subpage_t
-================================================================================
-static subpage_t *subpage_init(AddressSpace *as, hwaddr base)
-{
-    subpage_t *mmio;
-
-    mmio = g_malloc0(sizeof(subpage_t));
-
-    mmio->as = as;
-    mmio->base = base;
-    memory_region_init_io(&mmio->iomem, NULL, &subpage_ops, mmio,
-                          NULL, TARGET_PAGE_SIZE);
-    mmio->iomem.subpage = true;
-#if defined(DEBUG_SUBPAGE)
-    printf("%s: %p base " TARGET_FMT_plx " len %08x\n", __func__,
-           mmio, base, TARGET_PAGE_SIZE);
-#endif
-    subpage_register(mmio, 0, TARGET_PAGE_SIZE-1, PHYS_SECTION_UNASSIGNED);
-
-    return mmio;
-}
-
-7.2.1.2.1 subpage_register()
-================================================================================
-static int subpage_register (subpage_t *mmio, uint32_t start, uint32_t end,
-                             uint16_t section)
-{
-    int idx, eidx;
-
-    if (start >= TARGET_PAGE_SIZE || end >= TARGET_PAGE_SIZE)
-        return -1;
-    idx = SUBPAGE_IDX(start);
-    eidx = SUBPAGE_IDX(end);
-#if defined(DEBUG_SUBPAGE)
-    printf("%s: %p start %08x end %08x idx %08x eidx %08x section %d\n",
-           __func__, mmio, start, end, idx, eidx, section);
-#endif
-    for (; idx <= eidx; idx++) {
-        mmio->sub_section[idx] = section;
-    }
-
-    return 0;
-}
-
-7.2.1.3 phys_section_add(), insert section into map->sections
-================================================================================
-static uint16_t phys_section_add(PhysPageMap *map,
-                                 MemoryRegionSection *section)
-{
-    /* The physical section number is ORed with a page-aligned
-     * pointer to produce the iotlb entries.  Thus it should
-     * never overflow into the page-aligned value.
-     */
-    assert(map->sections_nb < TARGET_PAGE_SIZE);
-
-    if (map->sections_nb == map->sections_nb_alloc) {
-        map->sections_nb_alloc = MAX(map->sections_nb_alloc * 2, 16);
-        map->sections = g_renew(MemoryRegionSection, map->sections,
-                                map->sections_nb_alloc);
-    }
-    map->sections[map->sections_nb] = *section;
-    memory_region_ref(section->mr);
-    return map->sections_nb++;
-}
-
-7.2.1.4 phys_page_set(), make map->nodes from map->sections
-================================================================================
-static void phys_page_set(AddressSpaceDispatch *d,
-                          hwaddr index, hwaddr nb,
-                          uint16_t leaf)
-{
-    /* Wildly overreserve - it doesn't matter much. */
-    phys_map_node_reserve(&d->map, 3 * P_L2_LEVELS);
-
-    phys_page_set_level(&d->map, &d->phys_map, &index, &nb, leaf, P_L2_LEVELS - 1);
-}
-
-7.2.1.4.1 phys_map_node_reserve(), expand d->map.nodes
-================================================================================
-static void phys_map_node_reserve(PhysPageMap *map, unsigned nodes)
-{
-    if (map->nodes_nb + nodes > map->nodes_nb_alloc) {
-        map->nodes_nb_alloc = MAX(map->nodes_nb_alloc * 2, 16);
-        map->nodes_nb_alloc = MAX(map->nodes_nb_alloc, map->nodes_nb + nodes);
-        map->nodes = g_renew(Node, map->nodes, map->nodes_nb_alloc);
-    }
-}
-
-7.2.1.4.2 phys_page_set_level()
-================================================================================
-static void phys_page_set_level(PhysPageMap *map, PhysPageEntry *lp,
-                                hwaddr *index, hwaddr *nb, uint16_t leaf,
-                                int level)
-{
-    PhysPageEntry *p;
-    hwaddr step = (hwaddr)1 << (level * P_L2_BITS);
-
-    if (lp->skip && lp->ptr == PHYS_MAP_NODE_NIL) {
-        lp->ptr = phys_map_node_alloc(map, level == 0);
-    }
-    p = map->nodes[lp->ptr];
-    lp = &p[(*index >> (level * P_L2_BITS)) & (P_L2_SIZE - 1)];
-
-    while (*nb && lp < &p[P_L2_SIZE]) {
-        if ((*index & (step - 1)) == 0 && *nb >= step) {
-            lp->skip = 0;
-            lp->ptr = leaf;
-            *index += step;
-            *nb -= step;
-        } else {
-            phys_page_set_level(map, lp, index, nb, leaf, level - 1);
-        }
-        ++lp;
-    }
-}
-
-7.2.1.4.2.1 phys_map_node_alloc(), init a new line of Node
-================================================================================
-static uint32_t phys_map_node_alloc(PhysPageMap *map, bool leaf)
-{
-    unsigned i;
-    uint32_t ret;
-    PhysPageEntry e;
-    PhysPageEntry *p;
-
-    ret = map->nodes_nb++;
-    p = map->nodes[ret];
-    assert(ret != PHYS_MAP_NODE_NIL);
-    assert(ret != map->nodes_nb_alloc);
-
-    e.skip = leaf ? 0 : 1;
-    e.ptr = leaf ? PHYS_SECTION_UNASSIGNED : PHYS_MAP_NODE_NIL;
-    for (i = 0; i < P_L2_SIZE; ++i) {
-        memcpy(&p[i], &e, sizeof(e));
-    }
-    return ret;
-}
-
-7.2.1.5 subpage_register()
+6. generate_memory_topology()
 ================================================================================
 
-7.2.2 register_multipage()
+6.1 render_memory_region()
 ================================================================================
-static void register_multipage(AddressSpaceDispatch *d,
-                               MemoryRegionSection *section)
-{
-    hwaddr start_addr = section->offset_within_address_space;
-    uint16_t section_index = phys_section_add(&d->map, section);
-    uint64_t num_pages = int128_get64(int128_rshift(section->size,
-                                                    TARGET_PAGE_BITS));
 
-    assert(num_pages);
-    phys_page_set(d, start_addr >> TARGET_PAGE_BITS, num_pages, section_index);
-}
-
-7.3 mem_commit()
+6.2 flatview_simplify()
 ================================================================================
-static void mem_commit(MemoryListener *listener)
-{
-    AddressSpace *as = container_of(listener, AddressSpace, dispatch_listener);
-    AddressSpaceDispatch *cur = as->dispatch;
-    AddressSpaceDispatch *next = as->next_dispatch;
 
-    phys_page_compact_all(next, next->map.nodes_nb);
-
-    atomic_rcu_set(&as->dispatch, next);
-    if (cur) {
-        call_rcu(cur, address_space_dispatch_free, rcu);
-    }
-}
-
-7.3.1 phys_page_compact_all()
+6.3 address_space_dispatch_new()
 ================================================================================
-static void phys_page_compact_all(AddressSpaceDispatch *d, int nodes_nb)
-{
-    DECLARE_BITMAP(compacted, nodes_nb);
 
-    if (d->phys_map.skip) {
-        phys_page_compact(&d->phys_map, d->map.nodes, compacted);
-    }
-}
-
-7.3.1.1 phys_page_compact_all()
+6.4 flatview_add_to_dispatch()
 ================================================================================
-static void phys_page_compact(PhysPageEntry *lp, Node *nodes, unsigned long *compacted)
-{
-    unsigned valid_ptr = P_L2_SIZE;
-    int valid = 0;
-    PhysPageEntry *p;
-    int i;
 
-    if (lp->ptr == PHYS_MAP_NODE_NIL) {
-        return;
-    }
-
-    p = nodes[lp->ptr];
-    for (i = 0; i < P_L2_SIZE; i++) {
-        if (p[i].ptr == PHYS_MAP_NODE_NIL) {
-            continue;
-        }
-
-        valid_ptr = i;
-        valid++;
-        if (p[i].skip) {
-            phys_page_compact(&p[i], nodes, compacted);
-        }
-    }
-
-    /* We can only compress if there's only one child. */
-    if (valid != 1) {
-        return;
-    }
-
-    assert(valid_ptr < P_L2_SIZE);
-
-    /* Don't compress if it won't fit in the # of bits we have. */
-    if (lp->skip + p[valid_ptr].skip >= (1 << 3)) {
-        return;
-    }
-
-    lp->ptr = p[valid_ptr].ptr;
-    if (!p[valid_ptr].skip) {
-        /* If our only child is a leaf, make this a leaf. */
-        /* By design, we should have made this node a leaf to begin with so we
-         * should never reach here.
-         * But since it's so simple to handle this, let's do it just in case we
-         * change this rule.
-         */
-        lp->skip = 0;
-    } else {
-        lp->skip += p[valid_ptr].skip;
-    }
-}
-
-7.3.2 address_space_dispatch_free(), release the old AddressSpaceDispatch
+6.4.1 register_subpage()
 ================================================================================
-static void address_space_dispatch_free(AddressSpaceDispatch *d)
-{
-    phys_sections_free(&d->map);
-    g_free(d);
-}
 
-7.3.2.1 phys_sections_free(), release AddressSpaceDispatch->map
+6.4.1.1 phys_page_find()
 ================================================================================
-static void phys_sections_free(PhysPageMap *map)
-{
-    while (map->sections_nb > 0) {
-        MemoryRegionSection *section = &map->sections[--map->sections_nb];
-        phys_section_destroy(section->mr);
-    }
-    g_free(map->sections);
-    g_free(map->nodes);
-}
+
+6.4.1.2 subpage_init()
+================================================================================
+
+6.4.1.3 phys_page_set()
+================================================================================
+
+6.4.1.3.1 phys_page_set_level()
+================================================================================
+
+6.4.1.4 subpage_register()
+================================================================================
+
+6.4.2 register_multipage()
+================================================================================
+
+6.5 address_space_dispatch_compact()
+================================================================================
 
 7. kvm listener
 ================================================================================
@@ -1744,53 +1364,109 @@ static int kvm_mem_flags(MemoryRegion *mr)
     |                         |
     |                         |
     +-------------------------+
-    |dispatch                 |                                           
-    |next_dispatch            |                                           
-    | (AddressSpaceDispatch *)|                                           
-    |           |             |                                           
-    +-------------------------+                                           
-                |          ^                                              
-                v          |
-    AddressSpaceDispatch   |
-    +-------------------------+
-    |as                  --+  |
-    |   (AddressSpace *)      |
-    +-------------------------+
-    |map(PhysPageMap)         |         MemoryRegionSection[]
-    |   +---------------------+         +---------------------------+---------------------------+
-    |   |sections             |-------->|mr                         |mr                         |
-    |   | MemoryRegionSection*|         |   (MemoryRegion *)        |   (MemoryRegion *)        |
-    |   +---------------------+         +---------------------------+---------------------------+
-    |   |sections_nb          |         |address_space              |address_space              |
-    |   |sections_nb_alloc    |         |   (AddressSpace *)        |   (AddressSpace *)        |
-    |   |   (unsigned)        |         +---------------------------+---------------------------+
-    |   +---------------------+         |size (Int128)              |size (Int128)              |
-    |   |                     |         +---------------------------+---------------------------+
-    |   |                     |         |offset_within_region       |offset_within_region       |
-    |   |                     |         |offset_within_address_space|offset_within_address_space|
-    |   |                     |         |   (hwaddr)                |   (hwaddr)                |
-    |   |                     |         +---------------------------+---------------------------+
-    |   |                     |
-    |   |                     |         PhysPageEntry[P_L2_SIZE]
-    |   +---------------------+         +------------------+       +------------------+
-    |   |nodes                | ------->|u32 skip:6        |  ...  |u32 skip:6        |
-    |   |  (Node *)           |         |u32 ptr:26        |       |u32 ptr:26        |
-    |   +---------------------+         +------------------+       +------------------+
-    |   |nodes_nb             |
-    |   |nodes_nb_alloc       |            ...
-    |   |  (unsigned)         |
-    |   +---------------------+         +------------------+       +------------------+
-    |   |                     |         |u32 skip:6        |  ...  |u32 skip:6        |
-    |   |                     |         |u32 ptr:26        |       |u32 ptr:26        |
-    |   |                     |         +------------------+       +------------------+
-    |   |                     |
-    |   |                     |
-    +---+---------------------+
-    |phys_map(PhysPageEntry)  |
-    |   +---------------------+
-    |   |u32 skip:6           |
-    |   |u32 ptr:26           |
-    +---+---------------------+
+
+
+
+
+        FlatView (An array of FlatRange)
+        +----------------------+
+        |nr                    |
+        |nr_allocated          |
+        |   (unsigned)         |         FlatRange             FlatRange
+        +----------------------+         
+        |ranges                | ------> +---------------------+---------------------+
+        |   (FlatRange *)      |         |offset_in_region     |offset_in_region     |
+        +----------------------+         |    (hwaddr)         |    (hwaddr)         |
+        |                      |         +---------------------+---------------------+
+        |                      |         |addr(AddrRange)      |addr(AddrRange)      |
+        |                      |         |    +----------------|    +----------------+
+        |                      |         |    |start (Int128)  |    |start (Int128)  |     
+        |                      |         |    |size  (Int128)  |    |size  (Int128)  |
+        |                      |         +----+----------------+----+----------------+
+        |                      |         |mr                   |mr                   |
+        |                      |         | (MemoryRegion *)    | (MemoryRegion *)    |
+        |                      |         +---------------------+---------------------+
+        |                      |
+        |                      |         AddressSpaceDispatch
+        +----------------------+         +-------------------------+
+        |dispatch              | ------->|as                       |
+        |(AddressSpaceDispatch)|         |   (AddressSpace *)      |
+        +----------------------+         +-------------------------+
+                                         |mru_section              |
+                                         |   (MemoryRegionSection*)|
+                                         |                         |
+                                         |                         |
+                                         |                         |
+                                         |                         |
+                                         |                         |
+                                         +-------------------------+
+                                         |map(PhysPageMap)         |         MemoryRegionSection[]
+                                         |   +---------------------+         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |sections             |-------->|mr = io_mem_unassigned     |mr = io_mem_notdirty       |mr = io_mem_rom            |mr = io_mem_watch          |mr  = subpage_t->iomem     |
+                                         |   | MemoryRegionSection*|         |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |
+                                         |   |                     |         |                           |                           |                           |                           |                           |
+                                         |   +---------------------+         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |sections_nb          |         |fv                         |fv                         |fv                         |fv                         |fv                         |
+                                         |   |sections_nb_alloc    |         |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |
+                                         |   |   (unsigned)        |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   +---------------------+         |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |
+                                         |   |                     |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |                     |         |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |
+                                         |   |                     |         |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |
+                                         |   |                     |         |offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|
+                                         |   |                     |         |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)                |
+                                         |   |                     |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |                     |                                                                                                                                  ^
+                                         |   |                     |                                                           nodes[1]                                                               |
+                                         |   |                     |                                                     +---->+------------------+                                                   |
+                                         |   |                     |                                                     |     |u32 skip:6        | = 0                                               |
+                                         |   |                     |                                                     |     |u32 ptr:26        | = 4      -----------------------------------------+
+                                         |   |                     |         P_L2_LEVELS = 6                             |     +------------------+
+                                         |   |                     |         nodes[0] = PhysPageEntry[P_L2_SIZE = 2^9]   |     |                  |
+                                         |   +---------------------+         +------------------+                        |     |  ...             |
+                                         |   |nodes                | ------->|u32 skip:6        | = 1                    |     |                  |
+                                         |   |  (Node *)           |         |u32 ptr:26        | = 1       -------------+     +------------------+
+                                         |   +---------------------+         +------------------+                              |u32 skip:6        | = 0
+                                         |   |nodes_nb             |         |                  |                              |u32 ptr:26        | = PHYS_SECTION_UNASSIGNED
+                                         |   |nodes_nb_alloc       |         |  ...             |                              +------------------+
+                                         |   |  (unsigned)         |         |                  |
+                                         |   +---------------------+         +------------------+
+                                         |   |                     |         |u32 skip:6        | = 1
+                                         |   |                     |         |u32 ptr:26        | = PHYS_MAP_NODE_NIL          nodes[2]
+                                         |   |                     |         +------------------+                        +---->+------------------+
+                                         |   |                     |         |u32 skip:6        | = 1                    |     |u32 skip:6        |
+                                         |   |                     |         |u32 ptr:26        | = 2       -------------+     |u32 ptr:26        |
+                                         |   |                     |         +------------------+                              +------------------+
+                                         |   |                     |              ^                                            |                  |
+                                         |   |                     |              |                                            |  ...             |
+                                         |   |                     |              |                                            |                  |
+                                         +---+---------------------+              |                                            +------------------+
+                                         |phys_map(PhysPageEntry)  |              |                                            |u32 skip:6        |
+                                         |   +---------------------+              |                                            |u32 ptr:26        |
+                                         |   |u32 skip:6           | = 1          |                                            +------------------+
+                                         |   |u32 ptr:26           | = 0  --------+
+                                         +---+---------------------+
+
+
+     subpage_t                                               TARGET_PAGE_SIZE entries
+     +----------------------------+                          +-------------------+
+     |sub_section[]               | ------------------------>| 0                 |
+     |    (uint16_t)              |                          | 0                 |
+     +----------------------------+                          | 0                 |
+     |fv                          |                     -+-  |                   |
+     |    (FlatView*)             |                      ^   |                   |
+     |base                        | = GPA if correct     |   |                   |
+     |    (hwaddr)                |                          |                   |
+     +----------------------------+                    size  |                   |
+     |iomem                       |                      |   |                   |
+     |    (MemoryRegion)          |                      v   |                   |
+     |    +-----------------------+                     -+-  |                   |
+     |    |ops                    | = subpage_ops            | 0                 |
+     |    |size                   | = TARGET_PAGE_SIZE       | 0                 |
+     |    |subpage                | = true                   | 0                 |
+     |    |                       |                          | 0                 |
+     +----+-----------------------+                          +-------------------+
+
 
 
 0.3 memory_listeners
@@ -1812,7 +1488,7 @@ static int kvm_mem_flags(MemoryRegion *mr)
 ================================================================================
 
 
-     MemoryListerner
+     MemoryListener
      +---------------------------+
      |begin                      |
      |commit                     |
@@ -1821,11 +1497,14 @@ static int kvm_mem_flags(MemoryRegion *mr)
      |region_del                 |
      +---------------------------+
      |eventfd_add                |
-     |eventfd_del                |             AddressSpace
-     +---------------------------+             +--------------------+
-     |address_space_filter       | ----------> |                    |
-     |    (AddressSpace *)       |             |                    |
-     +---------------------------+             +--------------------+
+     |eventfd_del                |
+     +---------------------------+
+     |log_start                  |
+     |log_stop                   |
+     +---------------------------+
+     |address_space              |
+     |    (AddressSpace *)       |
+     +---------------------------+
 
 
 0.4 address and offset
