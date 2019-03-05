@@ -1101,6 +1101,39 @@ static int kvm_mem_flags(MemoryRegion *mr)
 7.2 kvm_region_del()
 ================================================================================
 
+8. address_space_rw(as, addr, attrs, buf, len, is_write)
+================================================================================
+
+8.1 address_space_write()
+================================================================================
+
+8.1.1 address_space_to_flatview()
+================================================================================
+
+8.1.2 flatview_write(fv, addr, attrs, buf, len)
+================================================================================
+
+8.1.2.1 mr = flatview_translate(), from addr to MemoryRegion
+================================================================================
+
+8.1.2.2 flatview_write_continue()
+================================================================================
+
+8.2 address_space_read_full()
+================================================================================
+
+8.2.1 address_space_to_flatview()
+================================================================================
+
+8.2.2 flatview_read(fv, addr, attrs, buf, len)
+================================================================================
+
+8.2.2.1 mr = flatview_translate()
+================================================================================
+
+8.2.2.2 flatview_read_continue()
+================================================================================
+
 0. data structure
 ================================================================================
 
@@ -1401,21 +1434,21 @@ static int kvm_mem_flags(MemoryRegion *mr)
                                          |                         |
                                          +-------------------------+
                                          |map(PhysPageMap)         |         MemoryRegionSection[]
-                                         |   +---------------------+         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
-                                         |   |sections             |-------->|mr = io_mem_unassigned     |mr = io_mem_notdirty       |mr = io_mem_rom            |mr = io_mem_watch          |mr  = subpage_t->iomem     |
-                                         |   | MemoryRegionSection*|         |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |
-                                         |   |                     |         |                           |                           |                           |                           |                           |
-                                         |   +---------------------+         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
-                                         |   |sections_nb          |         |fv                         |fv                         |fv                         |fv                         |fv                         |
-                                         |   |sections_nb_alloc    |         |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |
-                                         |   |   (unsigned)        |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
-                                         |   +---------------------+         |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |
-                                         |   |                     |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
-                                         |   |                     |         |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |
-                                         |   |                     |         |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |
-                                         |   |                     |         |offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|
-                                         |   |                     |         |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)                |
-                                         |   |                     |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   +---------------------+         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |sections             |-------->|mr = io_mem_unassigned     |mr = io_mem_notdirty       |mr = io_mem_rom            |mr = io_mem_watch          |mr  = one mr in tree       |mr  = subpage_t->iomem     |
+                                         |   | MemoryRegionSection*|         |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |   (MemoryRegion *)        |
+                                         |   |                     |         |                           |                           |                           |                           |                           |                           |
+                                         |   +---------------------+         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |sections_nb          |         |fv                         |fv                         |fv                         |fv                         |fv                         |fv                         |
+                                         |   |sections_nb_alloc    |         |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |   (FlatView *)            |
+                                         |   |   (unsigned)        |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   +---------------------+         |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |size (Int128)              |
+                                         |   |                     |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+                                         |   |                     |         |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |offset_within_region       |
+                                         |   |                     |         |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |   (hwaddr)                |
+                                         |   |                     |         |offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|offset_within_address_space|
+                                         |   |                     |         |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)  GPA           |   (hwaddr)                |   (hwaddr)                |
+                                         |   |                     |         +---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
                                          |   |                     |                                                                                                                                  ^
                                          |   |                     |                                                           nodes[1]                                                               |
                                          |   |                     |                                                     +---->+------------------+                                                   |
