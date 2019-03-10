@@ -1,0 +1,83 @@
+1. main()
+================================================================================
+
+1.1 MACHINE(object_new(object_class_get_name(OBJECT_CLASS(machine_class))));
+================================================================================
+
+1.1.1 object_init_with_type
+================================================================================
+
+1.1.1.1 machine_initfn
+================================================================================
+
+1.1.1.2 pc_machine_initfn
+================================================================================
+
+1.2 machine_run_board_init
+================================================================================
+
+1.2.1 machine_class->init(), pc_init_v4_0
+================================================================================
+
+1.2.1.1 pc_init1
+================================================================================
+
+0. data struct
+================================================================================
+
+0.1 TYPE_PC_MACHINE
+================================================================================
+
+   TYPE_OBJECT
+   +-------------------------------+ 
+   |abstract                       | = true
+   |class_init                     | = object_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   +-------------------------------+ 
+
+
+   TYPE_MACHINE
+   +-------------------------------+ 
+   |abstract                       | = true
+   |class_size                     | = sizeof(MachineClass)
+   |class_init                     | = machine_class_init
+   |class_base_init                | = machine_class_base_init
+   |                               |
+   |instance_size                  | = sizeof(MachineState)
+   |instance_init                  | = machine_initfn
+   |instance_finalize              | = machine_finalize
+   +-------------------------------+ 
+
+
+   TYPE_PC_MACHINE
+   +-------------------------------+ 
+   |abstract                       | = true
+   |class_size                     | = sizeof(PCMachineClass)
+   |class_init                     | = pc_machine_class_init
+   |class_base_init                | = NULL
+   |                               |
+   |instance_size                  | = sizeof(PCMachineState)
+   |instance_init                  | = pc_machine_initfn
+   |instance_finalize              | = NULL
+   +-------------------------------+ 
+
+Real PC_MACHINE is defined by
+DEFINE_I440FX_MACHINE(v4_0, "pc-i440fx-4.0", NULL,
+                      pc_i440fx_4_0_machine_options);
+DEFINE_PC_MACHINE(suffix, namestr, initfn, optsfn)
+
+
+   pc_i440x_4.0-machine
+   +-------------------------------+ 
+   |abstract                       | = true
+   |class_init                     | = pc_machine_v4_0_class_init
+   |                               |       -> pc_i440fx_4_0_machine_options
+   |                               |
+   |instance_size                  | = sizeof(PCMachineState)
+   |instance_init                  | = pc_machine_initfn
+   |instance_finalize              | = NULL
+   |                               |
+   |init                           | = pc_init_v4_0
+   |                               |       -> pc_init1
+   +-------------------------------+      
