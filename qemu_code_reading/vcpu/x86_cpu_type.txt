@@ -1,0 +1,104 @@
+1. x86_cpu_register_types
+================================================================================
+
+1.1 type_register_static(&x86_cpu_type_info);
+================================================================================
+
+1.2 x86_register_cpudef_type(&builtin_x86_defs)
+================================================================================
+
+1.3 type_register_static(&max_x86_cpu_type_info);
+================================================================================
+
+1.4 type_register_static(&x86_base_cpu_type_info);
+================================================================================
+
+1.5 type_register_static(&host_x86_cpu_type_info);
+================================================================================
+
+2. pc_init1/pc_q35_init
+================================================================================
+
+2.1 pc_cpus_init
+================================================================================
+
+2.1.1 pc_new_cpu("qemu64-x86_64-cpu", , )
+================================================================================
+
+3. pc_new_cpu("qemu64-x86_64-cpu", , )
+================================================================================
+
+3.1 cpu_common_initfn
+================================================================================
+
+3.1.1 x86_cpu_initfn
+================================================================================
+
+3.2 x86_cpu_realizefn
+================================================================================
+
+3.2.1 cpu_common_realizefn
+================================================================================
+
+0. data type
+================================================================================
+
+0.1 TYPE_CPU
+================================================================================
+
+   TYPE_OBJECT
+   +-------------------------------+ 
+   |class_init                     | = object_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   +-------------------------------+ 
+
+   TYPE_DEVICE
+   +-------------------------------+ 
+   |class_size                     | = sizeof(DeviceClass)
+   |class_init                     | = device_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   |instance_init                  | = device_initfn
+   |instance_finalize              | = device_finalize
+   |                               |
+   |realize                        | = x86_cpu_realizefn
+   +-------------------------------+ 
+
+
+   TYPE_CPU
+   +-------------------------------+ 
+   |class_size                     | = sizeof(CPUClass)
+   |class_init                     | = cpu_class_init
+   |                               |
+   |instance_size                  | = sizeof(CPUState)
+   |instance_init                  | = cpu_common_initfn
+   |instance_finalize              | = cpu_common_finalize
+   +-------------------------------+ 
+
+
+
+   TYPE_X86_CPU
+   +-------------------------------+ 
+   |abstract                       | = true
+   |class_size                     | = sizeof(X86CPUClass)
+   |class_init                     | = x86_cpu_common_class_init
+   |                               |
+   |instance_size                  | = sizeof(X86CPU)
+   |instance_init                  | = x86_cpu_initfn
+   |                               |
+   |parent_realize                 | = cpu_common_realizefn
+   +-------------------------------+ 
+
+
+   base-x86_64-cpu                                                    qemu64-x86_64-cpu                                                   host-x86_64-cpu
+   +-------------------------------+                                  +-------------------------------+                                   +-------------------------------+ 
+   |class_size                     |                                  |class_size                     |                                   |class_size                     |
+   |class_init                     | = x86_cpu_base_class_init        |class_init                     | = x86_cpu_cpudef_class_init       |class_init                     | = host_x86_cpu_class_init
+   |                               |                                  |                               |                                   |                               |
+   |instance_size                  |                                  |instance_size                  |                                   |instance_size                  |
+   |instance_init                  |                                  |instance_init                  |                                   |instance_init                  |
+   +-------------------------------+                                  +-------------------------------+                                   +-------------------------------+ 
+
+
+
