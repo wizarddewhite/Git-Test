@@ -1,0 +1,626 @@
+1. cpu_class_init(), CPUClass->class_init 
+================================================================================
+static void cpu_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    CPUClass *k = CPU_CLASS(klass);
+
+    k->class_by_name = cpu_common_class_by_name;
+    k->parse_features = cpu_common_parse_features;
+    k->reset = cpu_common_reset;
+    k->get_arch_id = cpu_common_get_arch_id;
+    k->has_work = cpu_common_has_work;
+    k->get_paging_enabled = cpu_common_get_paging_enabled;
+    k->get_memory_mapping = cpu_common_get_memory_mapping;
+    k->write_elf32_qemunote = cpu_common_write_elf32_qemunote;
+    k->write_elf32_note = cpu_common_write_elf32_note;
+    k->write_elf64_qemunote = cpu_common_write_elf64_qemunote;
+    k->write_elf64_note = cpu_common_write_elf64_note;
+    k->gdb_read_register = cpu_common_gdb_read_register;
+    k->gdb_write_register = cpu_common_gdb_write_register;
+    k->virtio_is_big_endian = cpu_common_virtio_is_big_endian;
+    k->debug_excp_handler = cpu_common_noop;
+    k->cpu_exec_enter = cpu_common_noop;
+    k->cpu_exec_exit = cpu_common_noop;
+    k->cpu_exec_interrupt = cpu_common_exec_interrupt;
+    dc->realize = cpu_common_realizefn;
+    /*
+     * Reason: CPUs still need special care by board code: wiring up
+     * IRQs, adding reset handlers, halting non-first CPUs, ...
+     */
+    dc->cannot_instantiate_with_device_add_yet = true;
+}
+
+1.1 ppc_cpu_class_init(), PowerPCCPUClass->class_init 
+================================================================================
+static void ppc_cpu_class_init(ObjectClass *oc, void *data)
+{
+    PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
+    CPUClass *cc = CPU_CLASS(oc);
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    pcc->parent_realize = dc->realize;
+    pcc->pvr_match = ppc_pvr_match_default;
+    pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_always;
+    dc->realize = ppc_cpu_realizefn;
+    dc->unrealize = ppc_cpu_unrealizefn;
+
+    pcc->parent_reset = cc->reset;
+    cc->reset = ppc_cpu_reset;
+
+    cc->class_by_name = ppc_cpu_class_by_name;
+    cc->has_work = ppc_cpu_has_work;
+    cc->do_interrupt = ppc_cpu_do_interrupt;
+    cc->cpu_exec_interrupt = ppc_cpu_exec_interrupt;
+    cc->dump_state = ppc_cpu_dump_state;
+    cc->dump_statistics = ppc_cpu_dump_statistics;
+    cc->set_pc = ppc_cpu_set_pc;
+    cc->gdb_read_register = ppc_cpu_gdb_read_register;
+    cc->gdb_write_register = ppc_cpu_gdb_write_register;
+#ifdef CONFIG_USER_ONLY
+    cc->handle_mmu_fault = ppc_cpu_handle_mmu_fault;
+#else
+    cc->get_phys_page_debug = ppc_cpu_get_phys_page_debug;
+    cc->vmsd = &vmstate_ppc_cpu;
+#if defined(TARGET_PPC64)
+    cc->write_elf64_note = ppc64_cpu_write_elf64_note;
+    cc->write_elf64_qemunote = ppc64_cpu_write_elf64_qemunote;
+#endif
+#endif
+    cc->cpu_exec_enter = ppc_cpu_exec_enter;
+
+    cc->gdb_num_core_regs = 71;
+
+#ifdef USE_APPLE_GDB
+    cc->gdb_read_register = ppc_cpu_gdb_read_register_apple;
+    cc->gdb_write_register = ppc_cpu_gdb_write_register_apple;
+    cc->gdb_num_core_regs = 71 + 32;
+#endif
+
+#if defined(TARGET_PPC64)
+    cc->gdb_core_xml_file = "power64-core.xml";
+#else
+    cc->gdb_core_xml_file = "power-core.xml";
+#endif
+#ifndef CONFIG_USER_ONLY
+    cc->virtio_is_big_endian = ppc_cpu_is_big_endian;
+#endif
+
+    dc->fw_name = "PowerPC,UNKNOWN";
+}
+
+2. cpu_common_initfn
+================================================================================
+static void cpu_common_initfn(Object *obj)
+{
+    CPUState *cpu = CPU(obj);
+    CPUClass *cc = CPU_GET_CLASS(obj);
+
+    cpu->cpu_index = -1;
+    cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
+    QTAILQ_INIT(&cpu->breakpoints);
+    QTAILQ_INIT(&cpu->watchpoints);
+}
+
+2.1 ppc_cpu_initfn()
+================================================================================
+static void ppc_cpu_initfn(Object *obj)
+{
+    CPUState *cs = CPU(obj);
+    PowerPCCPU *cpu = POWERPC_CPU(obj);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    CPUPPCState *env = &cpu->env;
+
+    cs->env_ptr = env;
+
+    env->msr_mask = pcc->msr_mask;
+    env->mmu_model = pcc->mmu_model;
+    env->excp_model = pcc->excp_model;
+    env->bus_model = pcc->bus_model;
+    env->insns_flags = pcc->insns_flags;
+    env->insns_flags2 = pcc->insns_flags2;
+    env->flags = pcc->flags;
+    env->bfd_mach = pcc->bfd_mach;
+    env->check_pow = pcc->check_pow;
+
+#if defined(TARGET_PPC64)
+    if (pcc->sps) {
+        env->sps = *pcc->sps;
+    } else if (env->mmu_model & POWERPC_MMU_64) {
+        /* Use default sets of page sizes */
+        static const struct ppc_segment_page_sizes defsps = {
+            .sps = {
+                { .page_shift = 12, /* 4K */
+                  .slb_enc = 0,
+                  .enc = { { .page_shift = 12, .pte_enc = 0 } }
+                },
+                { .page_shift = 24, /* 16M */
+                  .slb_enc = 0x100,
+                  .enc = { { .page_shift = 24, .pte_enc = 0 } }
+                },
+            },
+        };
+        env->sps = defsps;
+    }
+#endif /* defined(TARGET_PPC64) */
+
+    if (tcg_enabled()) {
+        ppc_translate_init();
+    }
+}
+
+3. ppc_cpu_realizefn, set to dc->realize, PowerPCCPU realize function
+================================================================================
+static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
+{
+    CPUState *cs = CPU(dev);
+    PowerPCCPU *cpu = POWERPC_CPU(dev);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    Error *local_err = NULL;
+#if !defined(CONFIG_USER_ONLY)
+    int max_smt = kvm_enabled() ? kvmppc_smt_threads() : 1;
+#endif
+
+#if !defined(CONFIG_USER_ONLY)
+    if (smp_threads > max_smt) {
+        error_setg(errp, "Cannot support more than %d threads on PPC with %s",
+                   max_smt, kvm_enabled() ? "KVM" : "TCG");
+        return;
+    }
+    if (!is_power_of_2(smp_threads)) {
+        error_setg(errp, "Cannot support %d threads on PPC with %s, "
+                   "threads count must be a power of 2.",
+                   smp_threads, kvm_enabled() ? "KVM" : "TCG");
+        return;
+    }
+#endif
+
+    cpu_exec_init(cs, &local_err);
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+#if !defined(CONFIG_USER_ONLY)
+    cpu->cpu_dt_id = (cs->cpu_index / smp_threads) * max_smt
+        + (cs->cpu_index % smp_threads);
+#endif
+
+    if (tcg_enabled()) {
+        if (ppc_fixup_cpu(cpu) != 0) {
+            error_setg(errp, "Unable to emulate selected CPU with TCG");
+            return;
+        }
+    }
+
+#if defined(TARGET_PPCEMB)
+    if (!ppc_cpu_is_valid(pcc)) {
+        error_setg(errp, "CPU does not possess a BookE or 4xx MMU. "
+                   "Please use qemu-system-ppc or qemu-system-ppc64 instead "
+                   "or choose another CPU model.");
+        return;
+    }
+#endif
+
+    create_ppc_opcodes(cpu, &local_err);
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
+        return;
+    }
+    init_ppc_proc(cpu);
+
+    if (pcc->insns_flags & PPC_FLOAT) {
+        gdb_register_coprocessor(cs, gdb_get_float_reg, gdb_set_float_reg,
+                                 33, "power-fpu.xml", 0);
+    }
+    if (pcc->insns_flags & PPC_ALTIVEC) {
+        gdb_register_coprocessor(cs, gdb_get_avr_reg, gdb_set_avr_reg,
+                                 34, "power-altivec.xml", 0);
+    }
+    if (pcc->insns_flags & PPC_SPE) {
+        gdb_register_coprocessor(cs, gdb_get_spe_reg, gdb_set_spe_reg,
+                                 34, "power-spe.xml", 0);
+    }
+
+    qemu_init_vcpu(cs);
+
+    pcc->parent_realize(dev, errp);
+
+#if defined(PPC_DUMP_CPU)
+    {
+        CPUPPCState *env = &cpu->env;
+        const char *mmu_model, *excp_model, *bus_model;
+        switch (env->mmu_model) {
+        case POWERPC_MMU_32B:
+            mmu_model = "PowerPC 32";
+            break;
+        case POWERPC_MMU_SOFT_6xx:
+            mmu_model = "PowerPC 6xx/7xx with software driven TLBs";
+            break;
+        case POWERPC_MMU_SOFT_74xx:
+            mmu_model = "PowerPC 74xx with software driven TLBs";
+            break;
+        case POWERPC_MMU_SOFT_4xx:
+            mmu_model = "PowerPC 4xx with software driven TLBs";
+            break;
+        case POWERPC_MMU_SOFT_4xx_Z:
+            mmu_model = "PowerPC 4xx with software driven TLBs "
+                "and zones protections";
+            break;
+        case POWERPC_MMU_REAL:
+            mmu_model = "PowerPC real mode only";
+            break;
+        case POWERPC_MMU_MPC8xx:
+            mmu_model = "PowerPC MPC8xx";
+            break;
+        case POWERPC_MMU_BOOKE:
+            mmu_model = "PowerPC BookE";
+            break;
+        case POWERPC_MMU_BOOKE206:
+            mmu_model = "PowerPC BookE 2.06";
+            break;
+        case POWERPC_MMU_601:
+            mmu_model = "PowerPC 601";
+            break;
+#if defined (TARGET_PPC64)
+        case POWERPC_MMU_64B:
+            mmu_model = "PowerPC 64";
+            break;
+#endif
+        default:
+            mmu_model = "Unknown or invalid";
+            break;
+        }
+        switch (env->excp_model) {
+        case POWERPC_EXCP_STD:
+            excp_model = "PowerPC";
+            break;
+        case POWERPC_EXCP_40x:
+            excp_model = "PowerPC 40x";
+            break;
+        case POWERPC_EXCP_601:
+            excp_model = "PowerPC 601";
+            break;
+        case POWERPC_EXCP_602:
+            excp_model = "PowerPC 602";
+            break;
+        case POWERPC_EXCP_603:
+            excp_model = "PowerPC 603";
+            break;
+        case POWERPC_EXCP_603E:
+            excp_model = "PowerPC 603e";
+            break;
+        case POWERPC_EXCP_604:
+            excp_model = "PowerPC 604";
+            break;
+        case POWERPC_EXCP_7x0:
+            excp_model = "PowerPC 740/750";
+            break;
+        case POWERPC_EXCP_7x5:
+            excp_model = "PowerPC 745/755";
+            break;
+        case POWERPC_EXCP_74xx:
+            excp_model = "PowerPC 74xx";
+            break;
+        case POWERPC_EXCP_BOOKE:
+            excp_model = "PowerPC BookE";
+            break;
+#if defined (TARGET_PPC64)
+        case POWERPC_EXCP_970:
+            excp_model = "PowerPC 970";
+            break;
+#endif
+        default:
+            excp_model = "Unknown or invalid";
+            break;
+        }
+        switch (env->bus_model) {
+        case PPC_FLAGS_INPUT_6xx:
+            bus_model = "PowerPC 6xx";
+            break;
+        case PPC_FLAGS_INPUT_BookE:
+            bus_model = "PowerPC BookE";
+            break;
+        case PPC_FLAGS_INPUT_405:
+            bus_model = "PowerPC 405";
+            break;
+        case PPC_FLAGS_INPUT_401:
+            bus_model = "PowerPC 401/403";
+            break;
+        case PPC_FLAGS_INPUT_RCPU:
+            bus_model = "RCPU / MPC8xx";
+            break;
+#if defined (TARGET_PPC64)
+        case PPC_FLAGS_INPUT_970:
+            bus_model = "PowerPC 970";
+            break;
+#endif
+        default:
+            bus_model = "Unknown or invalid";
+            break;
+        }
+        printf("PowerPC %-12s : PVR %08x MSR %016" PRIx64 "\n"
+               "    MMU model        : %s\n",
+               object_class_get_name(OBJECT_CLASS(pcc)),
+               pcc->pvr, pcc->msr_mask, mmu_model);
+#if !defined(CONFIG_USER_ONLY)
+        if (env->tlb.tlb6) {
+            printf("                       %d %s TLB in %d ways\n",
+                   env->nb_tlb, env->id_tlbs ? "splitted" : "merged",
+                   env->nb_ways);
+        }
+#endif
+        printf("    Exceptions model : %s\n"
+               "    Bus model        : %s\n",
+               excp_model, bus_model);
+        printf("    MSR features     :\n");
+        if (env->flags & POWERPC_FLAG_SPE)
+            printf("                        signal processing engine enable"
+                   "\n");
+        else if (env->flags & POWERPC_FLAG_VRE)
+            printf("                        vector processor enable\n");
+        if (env->flags & POWERPC_FLAG_TGPR)
+            printf("                        temporary GPRs\n");
+        else if (env->flags & POWERPC_FLAG_CE)
+            printf("                        critical input enable\n");
+        if (env->flags & POWERPC_FLAG_SE)
+            printf("                        single-step trace mode\n");
+        else if (env->flags & POWERPC_FLAG_DWE)
+            printf("                        debug wait enable\n");
+        else if (env->flags & POWERPC_FLAG_UBLE)
+            printf("                        user BTB lock enable\n");
+        if (env->flags & POWERPC_FLAG_BE)
+            printf("                        branch-step trace mode\n");
+        else if (env->flags & POWERPC_FLAG_DE)
+            printf("                        debug interrupt enable\n");
+        if (env->flags & POWERPC_FLAG_PX)
+            printf("                        inclusive protection\n");
+        else if (env->flags & POWERPC_FLAG_PMM)
+            printf("                        performance monitor mark\n");
+        if (env->flags == POWERPC_FLAG_NONE)
+            printf("                        none\n");
+        printf("    Time-base/decrementer clock source: %s\n",
+               env->flags & POWERPC_FLAG_RTC_CLK ? "RTC clock" : "bus clock");
+        dump_ppc_insns(env);
+        dump_ppc_sprs(env);
+        fflush(stdout);
+    }
+#endif
+}
+
+3.1 kvmppc_smt_threads()
+================================================================================
+int kvmppc_smt_threads(void)
+{
+    return cap_ppc_smt ? cap_ppc_smt : 1;
+}
+
+3.2 cpu_exec_init()
+================================================================================
+void cpu_exec_init(CPUState *cpu, Error **errp)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    int cpu_index;
+    Error *local_err = NULL;
+
+#ifndef CONFIG_USER_ONLY
+    cpu->as = &address_space_memory;
+    cpu->thread_id = qemu_get_thread_id();
+    cpu_reload_memory_map(cpu);
+#endif
+
+#if defined(CONFIG_USER_ONLY)
+    cpu_list_lock();
+#endif
+    cpu_index = cpu->cpu_index = cpu_get_free_index(&local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+#if defined(CONFIG_USER_ONLY)
+        cpu_list_unlock();
+#endif
+        return;
+    }
+    QTAILQ_INSERT_TAIL(&cpus, cpu, node);
+#if defined(CONFIG_USER_ONLY)
+    cpu_list_unlock();
+#endif
+    if (qdev_get_vmsd(DEVICE(cpu)) == NULL) {
+        vmstate_register(NULL, cpu_index, &vmstate_cpu_common, cpu);
+    }
+#if defined(CPU_SAVE_VERSION) && !defined(CONFIG_USER_ONLY)
+    register_savevm(NULL, "cpu", cpu_index, CPU_SAVE_VERSION,
+                    cpu_save, cpu_load, cpu->env_ptr);
+    assert(cc->vmsd == NULL);
+    assert(qdev_get_vmsd(DEVICE(cpu)) == NULL);
+#endif
+    if (cc->vmsd != NULL) {
+        vmstate_register(NULL, cpu_index, cc->vmsd, cpu);
+    }
+}
+
+3.2.1 cpu_reload_memory_map()
+================================================================================
+void cpu_reload_memory_map(CPUState *cpu)
+{
+    AddressSpaceDispatch *d;
+
+    if (qemu_in_vcpu_thread()) {
+        /* Do not let the guest prolong the critical section as much as it
+         * as it desires.
+         *
+         * Currently, this is prevented by the I/O thread's periodinc kicking
+         * of the VCPU thread (iothread_requesting_mutex, qemu_cpu_kick_thread)
+         * but this will go away once TCG's execution moves out of the global
+         * mutex.
+         *
+         * This pair matches cpu_exec's rcu_read_lock()/rcu_read_unlock(), which
+         * only protects cpu->as->dispatch.  Since we reload it below, we can
+         * split the critical section.
+         */
+        rcu_read_unlock();
+        rcu_read_lock();
+    }
+
+    /* The CPU and TLB are protected by the iothread lock.  */
+    d = atomic_rcu_read(&cpu->as->dispatch);
+    cpu->memory_dispatch = d;
+    tlb_flush(cpu, 1);
+}
+
+3.2.1.1 tlb_flush()
+================================================================================
+void tlb_flush(CPUState *cpu, int flush_global)
+{
+    CPUArchState *env = cpu->env_ptr;
+
+#if defined(DEBUG_TLB)
+    printf("tlb_flush:\n");
+#endif
+    /* must reset current TB so that interrupts cannot modify the
+       links while we are modifying them */
+    cpu->current_tb = NULL;
+
+    memset(env->tlb_table, -1, sizeof(env->tlb_table));
+    memset(env->tlb_v_table, -1, sizeof(env->tlb_v_table));
+    memset(cpu->tb_jmp_cache, 0, sizeof(cpu->tb_jmp_cache));
+
+    env->vtlb_index = 0;
+    env->tlb_flush_addr = -1;
+    env->tlb_flush_mask = 0;
+    tlb_flush_count++;
+}
+
+3.3 create_ppc_opcodes()
+================================================================================
+static void create_ppc_opcodes(PowerPCCPU *cpu, Error **errp)
+{
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    CPUPPCState *env = &cpu->env;
+    opcode_t *opc;
+
+    fill_new_table(env->opcodes, PPC_CPU_OPCODES_LEN);
+    for (opc = opcodes; opc < &opcodes[ARRAY_SIZE(opcodes)]; opc++) {
+        if (((opc->handler.type & pcc->insns_flags) != 0) ||
+            ((opc->handler.type2 & pcc->insns_flags2) != 0)) {
+            if (register_insn(env->opcodes, opc) < 0) {
+                error_setg(errp, "ERROR initializing PowerPC instruction "
+                           "0x%02x 0x%02x 0x%02x", opc->opc1, opc->opc2,
+                           opc->opc3);
+                return;
+            }
+        }
+    }
+    fix_opcode_tables(env->opcodes);
+    fflush(stdout);
+    fflush(stderr);
+}
+
+3.4 init_ppc_proc()
+================================================================================
+
+3.5 qemu_init_vcpu()
+================================================================================
+
+3.6 ppc->parent_realize(), cpu_common_realizefn()
+================================================================================
+static void cpu_common_realizefn(DeviceState *dev, Error **errp)
+{
+    CPUState *cpu = CPU(dev);
+
+    if (dev->hotplugged) {
+        cpu_synchronize_post_init(cpu);
+        cpu_resume(cpu);
+    }
+}
+
+0. data structure
+================================================================================
+
+   ObjectClass
+   +--------------+
+   |              |
+   +--------------+
+
+   DeviceClass
+   +--------------+
+   |              |
+   +--------------+
+
+   CPUClass                                            CPUState                           
+   +--------------------------------+                  +--------------------------------+
+   |vmsd                            |   ------->       |cpu_index                       |
+   |   (struct VMStateDescription *)|                  |    (int)                       |
+   +--------------------------------+                  +--------------------------------+
+                                                       |thread                          |
+                                                       |    (struct QemuThread*)        |
+                                                       |thread_id                       |
+                                                       |    (int)                       |
+                                                       +--------------------------------+
+                                                       |nr_cores                        |
+                                                       |nr_threads                      |
+                                                       |numa_node                       |
+                                                       |    (int)                       |
+                                                       +--------------------------------+
+                                                       |kvm_fd                          |
+                                                       |    (int)                       |
+                                                       |kvm_vcpu_dirty                  |
+                                                       |    (bool)                      |
+                                                       |kvm_state                       |
+                                                       |    (struct KVMState*)          |
+                                                       |kvm_run                         |
+                                                       |    (struct kvm_run*)           |
+                                                       +--------------------------------+
+                                                       |breadpoints                     |
+                                                       |    QTAILQ_HEAD(CPUBreakpoint)  |
+                                                       |watchpoints                     |
+                                                       |    QTAILQ_HEAD(CPUWatchpoint)  |
+                                                       +--------------------------------+
+                                                       |as                              |
+                                                       |    (AddressSpace*)             |
+                                                       |memory_dispatch                 |
+                                                       |    struct AddressSpaceDispatch*|
+                                                       |                                |
+                                                       |                                |
+                                                       |                                |
+                                                       +--------------------------------+
+                                                       |env_ptr                         |
+                                                       |    (CPUArchState *)            | ------+
+                                                       +--------------------------------+       |
+                                                                                                |
+                                                                                                |
+                                                                                                |
+                                                                                                |
+   PowerPCCPUClass                                     PowerPCCPU                               |
+   +--------------------------------+                  +--------------------------------+       |
+   |                                |    ------>       |cpu_dt_id                       |       |
+   +--------------------------------+                  |cpu_version                     |       |
+                                                       |max_compat                      |       |
+                                                       |    (int/uint32)                |       |
+                                                       +--------------------------------+ <-----+
+                                                       |env                             |
+                                                       |    (CPUPPCState)               |
+                                                       |    +---------------------------+
+                                                       |    |gpr[32]                    |
+                                                       |    |gprh[32]                   |
+                                                       |    |lr                         |
+                                                       |    |ctr                        |
+                                                       |    |                           |
+                                                       |    |spr[1024]                  |
+                                                       |    |                           |
+                                                       |    |   (target_ulong)          |
+                                                       |    +---------------------------+
+                                                       |    |slb_nr                     |
+                                                       |    |   (int32_t)               |
+                                                       |    |slb[MAX_SLB_ENTRIES]       |
+                                                       |    |   (ppc_slb_t)             |
+                                                       |    |   +-----------------------+
+                                                       |    |   |esid                   |
+                                                       |    |   |vsid                   |
+                                                       |    |   |   (uint64_t)          |
+                                                       |    +---+-----------------------+
+                                                       |    |                           |
+                                                       |    |                           |
+                                                       +----+---------------------------+
+     
+     
+     
