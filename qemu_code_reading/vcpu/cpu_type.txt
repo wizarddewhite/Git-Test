@@ -20,6 +20,8 @@
    |instance_size                  | = sizeof(Object)
    |instance_init                  | = device_initfn
    |instance_finalize              | = device_finalize
+   |                               |
+   |realize                        | = cpu_common_realizefn
    +-------------------------------+ 
 
 
