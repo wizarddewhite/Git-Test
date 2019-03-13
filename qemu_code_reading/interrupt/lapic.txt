@@ -24,46 +24,69 @@ x86_cpu_realizefn
 	// only one memory region installed
 	memory_region_add_subregion_overlap(&apic->io_memory)
 
+    TYPE_OBJECT
+    +-----------------------------+ 
+    |class_init                   | = object_class_init
+    |                             |
+    |instance_size                | = sizeof(Object)
+    +-----------------------------+ 
+ 
+ 
+    TYPE_DEVICE
+    +-----------------------------+ 
+    |class_size                   | = sizeof(DeviceClass)
+    |class_init                   | = device_class_init
+    |                             |
+    |instance_size                | = sizeof(Object)
+    |instance_init                | = device_initfn
+    |instance_finalize            | = device_finalize
+    |                             |
+    |realize                      | = apic_common_realize
+    +-----------------------------+ 
+
+
+                                 
     APICCommonClass TYPE_APIC_COMMON "apic-common"
     +-----------------------------+
-    |class_init                   |
-    |    apic_common_class_init   |
-    |instance_init                |
-    |    apic_common_initfn       |
+    |class_size                   | = sizeof(APICCommonClass)
+    |class_init                   | = apic_common_class_init   
     |                             |
+    |instance_size                | = sizeof(APICCommonState)
+    |instance_init                | = apic_common_initfn       
     |                             |
-    |DeviceClass                  |
-    | +---------------------------+
-    | |reset                      |
-    | |    apic_reset_common      |
-    | |realize                    |
-    | |    apic_common_realize    |
-    | |props                      |
-    | |    apic_properties_common |
-    | |                           |
-    +-+---------------------------+
+    +-----------------------------+
 
 
 
-    APICCommonClass TYPE_APIC "apic"                  APICCommonState
-    +-----------------------------+                   +-----------------------------+       
-    |class_init                   |                   |io_memory                    |
-    |    apic_class_init          |                   |    ops                      | = apic_io_ops
-    |                             |                   |                             |
-    |realize                      |                   |                             |
-    |    apic_realize             |                   |                             |
-    |set_base                     |                   |apicbase                     |
-    |    apic_set_base            |                   |isr/irr/tmr                  |
-    |set_tpr                      |                   |lvt                          |
-    |    apic_set_tpr             |                   |                             |
-    |send_msi                     |                   |sipi_vector                  |
-    |    apic_send_msi            |                   |                             |
-    |                             |                   |cpu                          |
-    +-----------------------------+                   |    (X86CPU *)               |   +---------------------+
-                                                      |                             |   |interrupt_request    |
-                                                      |                             |   |                     |
-                                                      |                             |   +---------------------+
-                                                      +-----------------------------+
+    APICCommonClass TYPE_APIC "apic"                  
+    +-----------------------------+                   
+    |class_init                   | = apic_class_init
+    |                             |                   
+    |instance_size                | = sizeof(APICCommonState)
+    |                             |                   
+    |realize                      | = apic_realize
+    +-----------------------------+                   
+                                                      
+                                                      
+    APICCommonState
+    +-----------------------------+       
+    |io_memory                    |
+    |    ops                      | = apic_io_ops
+    |                             |                                                                            
+    |apicbase                     | = APIC_DEFAULT_ADDRESS
+    |                             |
+    |isr/irr/tmr                  |
+    |lvt                          |
+    |sipi_vector                  |
+    |                             |
+    |cpu                          |
+    |    (X86CPU *)               |
+    |    +------------------------+
+    |    |interrupt_request       |
+    |    |                        |
+    +----+------------------------+
+
+                                                      
 
 
 2.1 sent interrupt
