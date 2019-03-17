@@ -14,7 +14,3 @@ https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Document
 https://blog.csdn.net/leoufung/article/details/53081207
 https://www.binss.me/blog/qemu-note-of-interrupt/
 
-4. 
-================================================================================
-x86_cpu_realizefn
-    x86_cpu_apic_create

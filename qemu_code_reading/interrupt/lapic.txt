@@ -92,15 +92,33 @@ x86_cpu_realizefn
 2.1 sent interrupt
 ================================================================================
 apic_mem_write
+    apic_send_msi()
+        apic_deliver_irq
+            apic_bus_deliver
     apic_deliver
-        ...
-	cpu_interrupt
-	    qemu_cpu_kick
-	        pthread_kill(cpu->thread->thread, SIG_IPI)
+        apic_startup
+            cpu_interrupt = tcg_handle_interrupt
+                qemu_cpu_kick
+                    cpu_exit
+                    qemu_cpu_kick_rr_cpu
+        apic_bus_deliver
+            cpu_interrupt
+            apic_set_irq
+                apic_update_irq
+                    cpu_interrupt
 
-2.2 process interrupt
+
+2.2 process interrupt, qemu_tcg_cpu_thread_fn
 ================================================================================
-cpu_handle_interrupt
+tcg_cpu_exec
+    cpu_exec
+        cpu_handle_interrupt
+            cpu_handle_exception()
+                cc->do_interrupt = x86_cpu_do_interrupt
+                    do_interrupt_all
+                        do_interrupt_protected
+            cpu_handle_interrupt()
+                cc->cpu_exec_interrupt = x86_cpu_exec_interrupt
 
 3. "kvm-apic"
 ================================================================================
