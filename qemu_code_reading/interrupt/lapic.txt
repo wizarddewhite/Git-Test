@@ -123,3 +123,126 @@ tcg_cpu_exec
 3. "kvm-apic"
 ================================================================================
 
+    TYPE_OBJECT
+    +-----------------------------+ 
+    |class_init                   | = object_class_init
+    |                             |
+    |instance_size                | = sizeof(Object)
+    +-----------------------------+ 
+ 
+ 
+    TYPE_DEVICE
+    +-----------------------------+ 
+    |class_size                   | = sizeof(DeviceClass)
+    |class_init                   | = device_class_init
+    |                             |
+    |instance_size                | = sizeof(Object)
+    |instance_init                | = device_initfn
+    |instance_finalize            | = device_finalize
+    |                             |
+    |realize                      | = apic_common_realize
+    +-----------------------------+ 
+
+
+                                 
+    APICCommonClass TYPE_APIC_COMMON "apic-common"
+    +-----------------------------+
+    |class_size                   | = sizeof(APICCommonClass)
+    |class_init                   | = apic_common_class_init   
+    |                             |
+    |instance_size                | = sizeof(APICCommonState)
+    |instance_init                | = apic_common_initfn       
+    |                             |
+    +-----------------------------+
+
+
+
+    APICCommonClass TYPE_APIC "kvm-apic"                  
+    +-----------------------------+                   
+    |class_init                   | = kvm_apic_class_init
+    |                             |                   
+    |instance_size                | = sizeof(APICCommonState)
+    |                             |                   
+    |realize                      | = kvm_apic_realize
+    +-----------------------------+                   
+
+
+    APICCommonState
+    +-----------------------------+       
+    |io_memory                    |
+    |    ops                      | = kvm_apic_io_ops
+    |                             |                                                                            
+    |apicbase                     | = APIC_DEFAULT_ADDRESS
+    |                             |
+    |isr/irr/tmr                  |
+    |lvt                          |
+    |sipi_vector                  |
+    |                             |
+    |cpu                          |
+    |    (X86CPU *)               |
+    |    +------------------------+
+    |    |interrupt_request       |
+    |    |                        |
+    +----+------------------------+
+
+3.1 setup flow
+================================================================================
+
+3.1.1 irqchip
+================================================================================
+
+3.1.1.1 qemu side
+================================================================================
+
+kvm_init
+    machine_kernel_irqchip_allowed
+    kvm_irqchip_create
+        kvm_vm_ioctl(s, KVM_CREATE_IRQCHIP)
+        kvm_init_irq_routing()
+
+3.1.2 lapic
+================================================================================
+
+3.1.2.1 qemu side
+================================================================================
+
+x86_cpu_realizefn
+    x86_cpu_apic_create
+        apic_common_initfn
+	set apic->id with cpu->apic_id
+    qemu_init_vcpu
+        qemu_kvm_start_vcpu
+            qemu_kvm_cpu_thread_fn
+                kvm_init_vcpu
+                    kvm_get_vcpu
+                        kvm_vm_ioctl(s, KVM_CREATE_VCPU, (void *)vcpu_id)
+    x86_cpu_apic_realize
+        object_property_set_bool(cpu->apic_state, realized)
+	    apic_common_realize
+                kvm_apic_realize
+	// only one memory region installed
+	memory_region_add_subregion_overlap(&apic->io_memory)
+
+3.1.2.2 kernel side
+================================================================================
+
+KVM_CREATE_VCPU
+
+kvm_vm_ioctl_create_vcpu
+    kvm_arch_vcpu_create
+        kvm_x86_ops->vcpu_create = vmx_create_vcpu
+            kvm_vcpu_init
+                kvm_arch_vcpu_init
+                    kvm_create_lapic
+
+
+3.2 sent interrupt
+================================================================================
+
+kvm_apic_mem_write()
+    kvm_send_msi()
+        kvm_irqchip_send_msi(kvm_state, *msg)
+            kvm_vm_ioctl(s, KVM_SIGNAL_MSI, &msi)
+            route = kvm_lookup_msi_route(s, msg)
+            kvm_set_irq(s, route->kroute.gsi, 1)
+                kvm_vm_ioctl(s, s->irq_set_ioctl, $event)  KVM_IRQ_LINE/_STATUS
