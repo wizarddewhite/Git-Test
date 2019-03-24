@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import datetime
+from datetime import datetime, timedelta
 import mailbox
 from dateutil.parser import parse
 
@@ -61,12 +61,15 @@ def put_to_thread(message):
         for ref in message['references'].split():
             references[ref] = thread
 
-def threadify(mbox_name):
+def threadify(mbox_name, start, end):
     mbox = mailbox.mbox(mbox_name)
     mbox.lock()
     #for message in mbox:
     for idx, message in mbox.iteritems():
         if dup_message_id(message):
+            continue
+        date = parse(message['date']).replace(tzinfo=None)
+        if date < start or date > end:
             continue
         put_to_thread(message)
     mbox.flush()
@@ -91,4 +94,8 @@ def iterate_mailbox():
 
 if __name__ == "__main__":
     #iterate_mailbox()
-    threadify('example.mbox')
+    #start = datetime.now() - timedelta(weeks=2)
+    #end = datetime.now()
+    start = parse("2018-08-15")
+    end = parse("2018-08-18")
+    threadify('example.mbox', start, end)
