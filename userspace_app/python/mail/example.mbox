@@ -1,0 +1,1810 @@
+From root  Fri Aug 17 07:25:32 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 07:25:32 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp417515ooi;
+        Fri, 17 Aug 2018 00:24:30 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPxxURPCVdWY81YarENYcZyTZm4XPAbWW0MhGx4N3Jp7h9SoGGZUdVSbDYlQw6ovIwZdbdco
+X-Received: by 2002:a63:8e41:: with SMTP id k62-v6mr31437543pge.187.1534490670692;
+        Fri, 17 Aug 2018 00:24:30 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534490670; cv=none;
+        d=google.com; s=arc-20160816;
+        b=MJ/piuypFi5exqLl6BUGr2BC7ew4mpRUn1Q0s4B0AxYGnAkYae/Mz6paoRialcOBNt
+         xZpEfNYHY7UUF3eRm8QfyZMnqPsKoL0zD3wf7MpBrWlNydXoIlQu89wTMDuBffoCmN2R
+         5SxIhu2tTxXqCqnaP6lMGT4WGKwU9q1KsFbEiSK3XjjCBbssCGG1RPkE4k6BLwSuQICs
+         ht3/O2S4yDGjnDulhbPoy04E1NixYBOamzF6TFHXCHGcdhdPdZ2Inb+JUJGjHxWgF7mm
+         /Lj0ixfj2FBm7hshp+GIvQjuI6Y7ka2Gcd/zWkyEgBOYOiIcV/EajVHKwgknacaIDs4P
+         gUSg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :user-agent:in-reply-to:content-disposition:mime-version:references
+         :message-id:subject:to:from:date:dkim-signature:delivered-to
+         :arc-authentication-results;
+        bh=rx4Ant2KawJWaHrpfLzBLYFveXdlkV7GKw5RsQEXUQo=;
+        b=f71fdF97JWszoxaY3lnxeGbyP/s6F45KbSoGBzh8JQ5A+EzCuGTqvSH+G5lWABQg+z
+         hpx/yaK+Ydn3zTauiG0GSPTz8mnOmUonDRBgJxXWTHulNzDkXjgnh+AnoxWkXWA6e6oP
+         41XtJmtZbtwWNpgQkkXyFmsvs7G+rBUsVUj4oAdxkXHoaPsAnkgGbIj1EiAJQkZgqvjU
+         gWL86NBADjHaTDX8YKdHJ0MbKJJ6sCsGUm9CtxC7ZeuL/1gRV3xbb2mrj5b125G3sY9s
+         wZJ+cHBsBcz7/YehemwF+l8/3DMYyvVRZ9beriwfmz3VXyk7EK0Jj5OsjOf7IXG0S/Uk
+         UsoQ==
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=neutral (body hash did not verify) header.i=@infradead.org header.s=bombadil.20170209 header.b=gK+vJ7aA;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id m5-v6si1497952plt.417.2018.08.17.00.24.29
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 00:24:30 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       dkim=neutral (body hash did not verify) header.i=@infradead.org header.s=bombadil.20170209 header.b=gK+vJ7aA;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id 88968C7A;
+	Fri, 17 Aug 2018 07:24:25 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id 498A1941
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 07:24:24 +0000 (UTC)
+X-Greylist: from auto-whitelisted by SQLgrey-1.7.6
+Received: from bombadil.infradead.org (bombadil.infradead.org
+	[198.137.202.133])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTPS id DEDE4163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 07:24:23 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/relaxed;
+	d=infradead.org; s=bombadil.20170209;
+	h=In-Reply-To:Content-Type:MIME-Version
+	:References:Message-ID:Subject:Cc:To:From:Date:Sender:Reply-To:
+	Content-Transfer-Encoding:Content-ID:Content-Description:Resent-Date:
+	Resent-From:Resent-Sender:Resent-To:Resent-Cc:Resent-Message-ID:List-Id:
+	List-Help:List-Unsubscribe:List-Subscribe:List-Post:List-Owner:List-Archive;
+	bh=9lMkQVIsoOi2ZhzHOrduHYDF7CM30YxvFxsCIOddsSI=;
+	b=gK+vJ7aAkG9JWMXv7vnDZqEym
+	jn98fzbRPGcGFJDXiofQcIURN26g65VPlU8wr3imK3kyXbcn+KeB6sd34B2t6XQyVppT+npsfp6MR
+	vNwXXyRG5jKpxW7Gp/icyF6/RMo6q4+sOU0WcOz1vorVUCR+dMK+kQy+5UOTrG5afnF9GDmijRqt1
+	UNOcx2HhCMGKJhWPjAbJDpMwpOtY12zVTI+YA9DG+w6bWi2Ebm3l24JYS0bnCjzaF9LCUXH4Uod9R
+	gaTRdPuJHRkoyKtct0GiF0q/g7DgcjuxjmV0VnZ3/d10cNIjwEfN5uIpKFTWL1zpnHe7SHQttj0WM
+	qlZpa/I1w==;
+Received: from hch by bombadil.infradead.org with local (Exim 4.90_1 #2 (Red
+	Hat Linux)) id 1fqZ7H-0005qO-V4; Fri, 17 Aug 2018 07:24:15 +0000
+Date: Fri, 17 Aug 2018 00:24:15 -0700
+From: Christoph Hellwig <hch@infradead.org>
+To: Robin Murphy <robin.murphy@arm.com>
+Subject: Re: [PATCH 0/3] iommu: Avoid DMA ops domain refcount contention
+Message-ID: <20180817072415.GA22241@infradead.org>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+MIME-Version: 1.0
+Content-Disposition: inline
+In-Reply-To: <cover.1534250425.git.robin.murphy@arm.com>
+User-Agent: Mutt/1.9.2 (2017-12-15)
+X-SRS-Rewrite: SMTP reverse-path rewritten from <hch@infradead.org> by
+	bombadil.infradead.org. See http://www.infradead.org/rpr.html
+X-Spam-Status: No, score=-2.0 required=5.0 tests=BAYES_00,DKIM_SIGNED,
+	DKIM_VALID, DKIM_VALID_AU,
+	RCVD_IN_DNSWL_NONE autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: catalin.marinas@arm.com, will.deacon@arm.com, linuxarm@huawei.com,
+	iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 381
+Lines: 8
+
+I plan to make the arm iommu dma ops generic and move them to
+drivers/iommu for the 4.20 merge window.  Because of that it would
+be great to create a stable branch or even pull this in through
+the dma-mapping tree entirely.
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 09:03:34 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 09:03:34 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp494396ooi;
+        Fri, 17 Aug 2018 02:03:22 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPynBHBkoVWUaGTiFD9Qi4w6L9AwzMQT4Iqc4C6IA6XbqbzgXBAFtkY90iobYzz5QuozZSU+
+X-Received: by 2002:a62:d1b:: with SMTP id v27-v6mr36061928pfi.87.1534496602734;
+        Fri, 17 Aug 2018 02:03:22 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534496602; cv=none;
+        d=google.com; s=arc-20160816;
+        b=Ct9YEDW83ZS4O9z/g0LPQsNu7z8hLedjv0Ge7kmHJeRuiIfYHWauFQakCndLNzqMBR
+         RPd0gUI7pol6sW+sa1LUVpvw/xbsWf37YPSgwXsK+MlS+qPIRktO6mwTdly/2Xm6UoyV
+         tK0R7SQP+sJ4SRlOWqxKzhblpYhhbYHBlneKyAobDnYTRMDtBlhhTCziFhf5ipXmbTls
+         1wSG7aWEBkB8DB+sJPM/0prMRV3ZQXwk6jQjf2Wqny3NQZO1DLxfv4U7nVkMum6LlRrM
+         6Gt88M/CO1b1f6FLVlQJMl2786OJB9wY4iFAr2UlIoUyiMveesOnQs6sEknn6YcpnMYL
+         adIA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :user-agent:in-reply-to:content-disposition:mime-version:references
+         :message-id:subject:to:from:date:delivered-to
+         :arc-authentication-results;
+        bh=uDxtAqxwQPSASD4Pz8mB2Wa/6Z8evptjb4xI/ZfF6gU=;
+        b=tfD0ZTlBp2U6xtapqKmwqIwgb4ISBQHngcYtNFN04+liR9WNFt+aIXbjvUNjZ+rn4u
+         9beDFj4+FMtGmr1bhlL2llBdzUtxaFHkZgzftQwClYWqiJ7kBdVyjGYMjgRDZwYZkS39
+         zAniHUB5swy7awQrjHiTOd48xuEFe6hw+C+kfUkM/owvwbUiu5OnsLcFC4nAteALKkST
+         7Zd9TDuyHNh8eG0QniLow5Z81DH4YRK+ZPks4K1rsN/4R8d6CFIFeQObZa5VZxxZM/7h
+         YBFSmfc7OnmZU8viWEF2JwyrZDNPyuR5QRRHZijBvG92PHNGgE8DJTORXEwkcPM0wjjo
+         tg+Q==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id r84-v6si1718437pfj.355.2018.08.17.02.03.22
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 02:03:22 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id 833D0CA1;
+	Fri, 17 Aug 2018 09:03:18 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id A4F29C7F
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 09:03:17 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.7.6
+Received: from foss.arm.com (usa-sjc-mx-foss1.foss.arm.com [217.140.101.70])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTP id AED79163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 09:03:16 +0000 (UTC)
+Received: from usa-sjc-imap-foss1.foss.arm.com (unknown [10.72.51.249])
+	by usa-sjc-mx-foss1.foss.arm.com (Postfix) with ESMTP id E43F715A2;
+	Fri, 17 Aug 2018 02:03:15 -0700 (PDT)
+Received: from edgewater-inn.cambridge.arm.com
+	(usa-sjc-imap-foss1.foss.arm.com [10.72.51.249])
+	by usa-sjc-imap-foss1.foss.arm.com (Postfix) with ESMTPA id B5CBD3F5B3; 
+	Fri, 17 Aug 2018 02:03:15 -0700 (PDT)
+Received: by edgewater-inn.cambridge.arm.com (Postfix, from userid 1000)
+	id 49D0B1AE1373; Fri, 17 Aug 2018 10:03:23 +0100 (BST)
+Date: Fri, 17 Aug 2018 10:03:23 +0100
+From: Will Deacon <will.deacon@arm.com>
+To: Christoph Hellwig <hch@infradead.org>
+Subject: Re: [PATCH 0/3] iommu: Avoid DMA ops domain refcount contention
+Message-ID: <20180817090322.GA8540@arm.com>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+	<20180817072415.GA22241@infradead.org>
+MIME-Version: 1.0
+Content-Disposition: inline
+In-Reply-To: <20180817072415.GA22241@infradead.org>
+User-Agent: Mutt/1.5.23 (2014-03-12)
+X-Spam-Status: No, score=-6.9 required=5.0 tests=BAYES_00,RCVD_IN_DNSWL_HI
+	autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: catalin.marinas@arm.com, linuxarm@huawei.com,
+	iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	Robin Murphy <robin.murphy@arm.com>, linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 543
+Lines: 15
+
+On Fri, Aug 17, 2018 at 12:24:15AM -0700, Christoph Hellwig wrote:
+> I plan to make the arm iommu dma ops generic and move them to
+> drivers/iommu for the 4.20 merge window.  Because of that it would
+> be great to create a stable branch or even pull this in through
+> the dma-mapping tree entirely.
+
+In which case, for the arm64 bits:
+
+Acked-by: Will Deacon <will.deacon@arm.com>
+
+Will
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 09:37:58 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 09:37:58 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp520663ooi;
+        Fri, 17 Aug 2018 02:36:54 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPzv0BnNqCvwrrlzKL/hYqC+CCojKZMET8Z+06LFRR8BX+RvtUQHSJxS/2svcKaNwDHz16aR
+X-Received: by 2002:a17:902:262:: with SMTP id 89-v6mr32451350plc.221.1534498614936;
+        Fri, 17 Aug 2018 02:36:54 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534498614; cv=none;
+        d=google.com; s=arc-20160816;
+        b=AvXHR3HwrYujWvz/xgdKUh91dX7LVGsBIBM9kzvJukAp4DsnR7nqBN+b9zzv7y78zG
+         puRR/lZHg9vOSwfoSYKfHvjnJtOxAu223HI6zu+zuqX//siqFNFn9+MQTb8DOvLY0AgN
+         W0AC5VmgwvWPWEB20rRpRPHMFCFc//u+iGLiNpSClYcZGbteD4sw3hfWRle6cC1bNjP0
+         AzaBc/ylla0yHnfUi/gome3Db1fYCbrR3X1apfrrbrKVlmSOA18Mk3HglyeLt4PsDemp
+         aS7HH9CXzJ5UpIwNcJQEF8nCAD0KsYBrRh/FVXV7U1WP9PikjU0K7C3cetf/fHwLcc+Q
+         komw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :in-reply-to:mime-version:user-agent:date:message-id:from:references
+         :to:subject:delivered-to:arc-authentication-results;
+        bh=7vRHgpZVkkN5ATm9epLEEEgHWH51nEwApKnSL76f1JM=;
+        b=1FFzUT8hMVzYdVoEqaOsXfJUY7AmbQuWJZWA89sIOKOlHq2geFuGJeTUHDBDJtKuJm
+         0oN1cKmcprABEnu/hhpBnk3ZNMfFhSFeC3cIpS5h0fAnflz+X4nZpeJk4wQ3+HgGGJKc
+         KOj9LRxAOtDm72AhWotFJfxLefTCDm+03MgAVELVFlgoivaQDfLJ++Quboz2Qz6Vw/Wb
+         JxNAzJHsBHHttoh2Yzh7bkHlIImkZWDCpvU+ycPBLgP9sDHgd1+HTwjU4A6H98mLNk39
+         6CXW1VT9rX00OoWjdd3FJD5/M8BoY9pnWqzEW83oZaCYQwOOI4KX7hSfN+xtJDSGBzNO
+         9Jpw==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id f21-v6si2004833plj.180.2018.08.17.02.36.54
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 02:36:54 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id AA644D62;
+	Fri, 17 Aug 2018 09:36:21 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id 45B6D89C
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 09:36:20 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.7.6
+Received: from huawei.com (szxga04-in.huawei.com [45.249.212.190])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTPS id 8CCE7163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 09:36:19 +0000 (UTC)
+Received: from DGGEMS405-HUB.china.huawei.com (unknown [172.30.72.60])
+	by Forcepoint Email with ESMTP id 85AF2E838BD66;
+	Fri, 17 Aug 2018 17:36:15 +0800 (CST)
+Received: from [127.0.0.1] (10.202.226.41) by DGGEMS405-HUB.china.huawei.com
+	(10.3.19.205) with Microsoft SMTP Server id 14.3.399.0; Fri, 17 Aug 2018
+	17:36:10 +0800
+Subject: Re: [PATCH 1/3] iommu: Add fast hook for getting DMA domains
+To: Robin Murphy <robin.murphy@arm.com>, <joro@8bytes.org>,
+	<will.deacon@arm.com>, <catalin.marinas@arm.com>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+	<4d50587e62c16f7b5cfc45dee808d774655155cf.1534250425.git.robin.murphy@arm.com>
+From: John Garry <john.garry@huawei.com>
+Message-ID: <d31ca4b3-5cb3-8ba3-485b-3fee58807cae@huawei.com>
+Date: Fri, 17 Aug 2018 10:36:05 +0100
+User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101
+	Thunderbird/45.3.0
+MIME-Version: 1.0
+In-Reply-To: <4d50587e62c16f7b5cfc45dee808d774655155cf.1534250425.git.robin.murphy@arm.com>
+X-Originating-IP: [10.202.226.41]
+X-CFilter-Loop: Reflected
+X-Spam-Status: No, score=-1.9 required=5.0 tests=BAYES_00,RCVD_IN_DNSWL_NONE
+	autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: linuxarm@huawei.com, iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="us-ascii"; Format="flowed"
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 2880
+Lines: 71
+
+On 14/08/2018 14:04, Robin Murphy wrote:
+> While iommu_get_domain_for_dev() is the robust way for arbitrary IOMMU
+> API callers to retrieve the domain pointer, for DMA ops domains it
+> doesn't scale well for large systems and multi-queue devices, since the
+> momentary refcount adjustment will lead to exclusive cacheline contention
+> when multiple CPUs are operating in parallel on different mappings for
+> the same device.
+>
+> In the case of DMA ops domains, however, this refcounting is actually
+> unnecessary, since they already imply that the group exists and is
+> managed by platform code and IOMMU internals (by virtue of
+> iommu_group_get_for_dev()) such that a reference will already be held
+> for the lifetime of the device. Thus we can avoid the bottleneck by
+> providing a fast lookup specifically for the DMA code to retrieve the
+> default domain it already knows it has set up - a simple read-only
+> dereference plays much nicer with cache-coherency protocols.
+>
+> Signed-off-by: Robin Murphy <robin.murphy@arm.com>
+> ---
+>  drivers/iommu/iommu.c | 9 +++++++++
+>  include/linux/iommu.h | 1 +
+>  2 files changed, 10 insertions(+)
+>
+> diff --git a/drivers/iommu/iommu.c b/drivers/iommu/iommu.c
+> index 63b37563db7e..63c586875df5 100644
+> --- a/drivers/iommu/iommu.c
+> +++ b/drivers/iommu/iommu.c
+> @@ -1379,6 +1379,15 @@ struct iommu_domain *iommu_get_domain_for_dev(struct device *dev)
+>  }
+>  EXPORT_SYMBOL_GPL(iommu_get_domain_for_dev);
+>
+> +/*
+> + * For IOMMU_DOMAIN_DMA implementations which already provide their own
+> + * guarantees that the group and its default domain are valid and correct.
+> + */
+> +struct iommu_domain *iommu_get_dma_domain(struct device *dev)
+> +{
+> +	return dev->iommu_group->default_domain;
+> +}
+> +
+>  /*
+>   * IOMMU groups are really the natrual working unit of the IOMMU, but
+>   * the IOMMU API works on domains and devices.  Bridge that gap by
+> diff --git a/include/linux/iommu.h b/include/linux/iommu.h
+> index 19938ee6eb31..16f2172698e5 100644
+> --- a/include/linux/iommu.h
+> +++ b/include/linux/iommu.h
+> @@ -297,6 +297,7 @@ extern int iommu_attach_device(struct iommu_domain *domain,
+>  extern void iommu_detach_device(struct iommu_domain *domain,
+>  				struct device *dev);
+>  extern struct iommu_domain *iommu_get_domain_for_dev(struct device *dev);
+> +extern struct iommu_domain *iommu_get_dma_domain(struct device *dev);
+
+Hi Robin,
+
+I was wondering whether it's standard to provide a stubbed version of 
+this function for !CONFIG_IOMMU_API?
+
+Cheers,
+John
+
+>  extern int iommu_map(struct iommu_domain *domain, unsigned long iova,
+>  		     phys_addr_t paddr, size_t size, int prot);
+>  extern size_t iommu_unmap(struct iommu_domain *domain, unsigned long iova,
+>
+
+
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 11:12:30 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 11:12:30 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp603876ooi;
+        Fri, 17 Aug 2018 04:12:04 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPzKB6QTtBSmwwoMPKgnFGpLgFDJtwRME4vE60YJITHxBiwKSYAMNz/JAfG2zoSZNOYOv+n+
+X-Received: by 2002:a17:902:f20c:: with SMTP id gn12mr1189228plb.41.1534504324380;
+        Fri, 17 Aug 2018 04:12:04 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534504324; cv=none;
+        d=google.com; s=arc-20160816;
+        b=llTq0ETUB/IJe987pvnuYCpl90K5kAhKDsueBpp8p/kTN0/p5jBYDDddvOPWHeghUZ
+         Fn2xZe4glqkBq0Xa7UqCXU4aDFs23qfhTjXwm4Nuj5z85M05HpmLQSE52aSn5xL9N8Ou
+         3kxw9OXRpviglTVhodqckq+QBsa3I31VRh11dBCAwAlmBB/5OBiEoOKnWcRYvkI3RkC0
+         etUvn4LRYZ+K+0PUxEIAreWhxwW01OjFgKa7UAyLOxVGH+Npc1aknf6LbNfBQMMk/JQE
+         HXpR0rXIV5P3Z3TWwpvgyVFcUn+efynRoYBX35uJJDZvTN5P0eqZ3Ta9RE8outroHg6/
+         ZZpg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :content-language:in-reply-to:mime-version:user-agent:date
+         :message-id:from:references:to:subject:delivered-to
+         :arc-authentication-results;
+        bh=k9VfqvG7QjpoALr8EeQDvcvqfVslAkOpWcZ7Bh5DwMo=;
+        b=xgi8n3wPidDS6u7SMW8SGI5cb/oCqx8jHySl6S6wIWUF5Q+9m/kufWfP0p624rARBr
+         VBhjnWUTouiH4yFv/fFMqlRxTYj9pWwjGwJnIpd5qfuxsGP8e60sItujtd7EZhYt0vig
+         EllcU3kS3jFQsmx6/6t3NEkdUQNgwm+wFpz4BtynLGyFFHPFhR1onl7pDu8jeZ/+w7b4
+         lAmd2Wm4Q3n/1OmdrdmFJprtc8MQqxGfxJH1An8kqUhQTjJiiEa2YSLW+V2r3RElncLO
+         bipeB599MhJwE+uNYyjDjEGZ7K4Y2HsskHRfFpwgf0ODhRmRONt8/OJDgyChHqlSw+GB
+         EiBQ==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id 1-v6si1274686plr.326.2018.08.17.04.12.03
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 04:12:04 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id BBABAE37;
+	Fri, 17 Aug 2018 11:12:02 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id ABAEAE35
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 11:12:01 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.7.6
+Received: from foss.arm.com (usa-sjc-mx-foss1.foss.arm.com [217.140.101.70])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTP id 4359F163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 11:12:01 +0000 (UTC)
+Received: from usa-sjc-imap-foss1.foss.arm.com (unknown [10.72.51.249])
+	by usa-sjc-mx-foss1.foss.arm.com (Postfix) with ESMTP id D2D0A7A9;
+	Fri, 17 Aug 2018 04:12:00 -0700 (PDT)
+Received: from [10.4.12.131] (e110467-lin.Emea.Arm.com [10.4.12.131])
+	by usa-sjc-imap-foss1.foss.arm.com (Postfix) with ESMTPSA id 127C93F5BD;
+	Fri, 17 Aug 2018 04:11:58 -0700 (PDT)
+Subject: Re: [PATCH 1/3] iommu: Add fast hook for getting DMA domains
+To: John Garry <john.garry@huawei.com>, joro@8bytes.org, will.deacon@arm.com, 
+	catalin.marinas@arm.com
+References: <cover.1534250425.git.robin.murphy@arm.com>
+	<4d50587e62c16f7b5cfc45dee808d774655155cf.1534250425.git.robin.murphy@arm.com>
+	<d31ca4b3-5cb3-8ba3-485b-3fee58807cae@huawei.com>
+From: Robin Murphy <robin.murphy@arm.com>
+Message-ID: <29a126d2-4bbe-1750-5265-d3dbfcb658ae@arm.com>
+Date: Fri, 17 Aug 2018 12:11:57 +0100
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:52.0) Gecko/20100101
+	Thunderbird/52.9.1
+MIME-Version: 1.0
+In-Reply-To: <d31ca4b3-5cb3-8ba3-485b-3fee58807cae@huawei.com>
+Content-Language: en-GB
+X-Spam-Status: No, score=-6.9 required=5.0 tests=BAYES_00,RCVD_IN_DNSWL_HI
+	autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: linuxarm@huawei.com, iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset="windows-1252"; Format="flowed"
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 3294
+Lines: 97
+
+On 17/08/18 10:36, John Garry wrote:
+> On 14/08/2018 14:04, Robin Murphy wrote:
+>> While iommu_get_domain_for_dev() is the robust way for arbitrary IOMMU
+>> API callers to retrieve the domain pointer, for DMA ops domains it
+>> doesn't scale well for large systems and multi-queue devices, since the
+>> momentary refcount adjustment will lead to exclusive cacheline contention
+>> when multiple CPUs are operating in parallel on different mappings for
+>> the same device.
+>>
+>> In the case of DMA ops domains, however, this refcounting is actually
+>> unnecessary, since they already imply that the group exists and is
+>> managed by platform code and IOMMU internals (by virtue of
+>> iommu_group_get_for_dev()) such that a reference will already be held
+>> for the lifetime of the device. Thus we can avoid the bottleneck by
+>> providing a fast lookup specifically for the DMA code to retrieve the
+>> default domain it already knows it has set up - a simple read-only
+>> dereference plays much nicer with cache-coherency protocols.
+>>
+>> Signed-off-by: Robin Murphy <robin.murphy@arm.com>
+>> ---
+>> =A0drivers/iommu/iommu.c | 9 +++++++++
+>> =A0include/linux/iommu.h | 1 +
+>> =A02 files changed, 10 insertions(+)
+>>
+>> diff --git a/drivers/iommu/iommu.c b/drivers/iommu/iommu.c
+>> index 63b37563db7e..63c586875df5 100644
+>> --- a/drivers/iommu/iommu.c
+>> +++ b/drivers/iommu/iommu.c
+>> @@ -1379,6 +1379,15 @@ struct iommu_domain =
+
+>> *iommu_get_domain_for_dev(struct device *dev)
+>> =A0}
+>> =A0EXPORT_SYMBOL_GPL(iommu_get_domain_for_dev);
+>>
+>> +/*
+>> + * For IOMMU_DOMAIN_DMA implementations which already provide their own
+>> + * guarantees that the group and its default domain are valid and =
+
+>> correct.
+>> + */
+>> +struct iommu_domain *iommu_get_dma_domain(struct device *dev)
+>> +{
+>> +=A0=A0=A0 return dev->iommu_group->default_domain;
+>> +}
+>> +
+>> =A0/*
+>> =A0 * IOMMU groups are really the natrual working unit of the IOMMU, but
+>> =A0 * the IOMMU API works on domains and devices.=A0 Bridge that gap by
+>> diff --git a/include/linux/iommu.h b/include/linux/iommu.h
+>> index 19938ee6eb31..16f2172698e5 100644
+>> --- a/include/linux/iommu.h
+>> +++ b/include/linux/iommu.h
+>> @@ -297,6 +297,7 @@ extern int iommu_attach_device(struct iommu_domain =
+
+>> *domain,
+>> =A0extern void iommu_detach_device(struct iommu_domain *domain,
+>> =A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0 struct device *dev);
+>> =A0extern struct iommu_domain *iommu_get_domain_for_dev(struct device =
+
+>> *dev);
+>> +extern struct iommu_domain *iommu_get_dma_domain(struct device *dev);
+> =
+
+> Hi Robin,
+> =
+
+> I was wondering whether it's standard to provide a stubbed version of =
+
+> this function for !CONFIG_IOMMU_API?
+
+Nope, that's deliberate - this is one of those hooks where any =
+
+legitimate caller will already be dependent on IOMMU_API itself.
+
+Robin.
+
+> =
+
+> Cheers,
+> John
+> =
+
+>> =A0extern int iommu_map(struct iommu_domain *domain, unsigned long iova,
+>> =A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0=A0 phys_addr_t paddr, size_t size, =
+int prot);
+>> =A0extern size_t iommu_unmap(struct iommu_domain *domain, unsigned long =
+
+>> iova,
+>>
+> =
+
+> =
+
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 11:31:19 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 11:31:19 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp621290ooi;
+        Fri, 17 Aug 2018 04:30:39 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPzSfrDzy3K5+xdzoM+Gxe+Xd848lIKKt2RTsqojadls1xLy5IYw9oLQxoIz0r24bpD/B8o0
+X-Received: by 2002:a63:7f0b:: with SMTP id a11-v6mr5085407pgd.22.1534505439835;
+        Fri, 17 Aug 2018 04:30:39 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534505439; cv=none;
+        d=google.com; s=arc-20160816;
+        b=HCyOid87VQCI/ijQw+XqZ9MSILg6f98G4PCN8Hl92C9FxwabsLcj/D+zwF4QMsIhIq
+         zOGpQp1grjjhQ70hU3RXctMdr1Zm5TItpQ/l9DdNUiH8X7hn8sqophNd4scokimBxe16
+         AU9vjHAEzMmvurSGdQqnTzpLWhpg8w6v/xtBC1rMYzCAWd8pCt7ns0z1tiOJiZCvIbRH
+         dqnOHX1SYCyb/0lUm6tMFZIci4dwrZ1XOczXZGDpBBagNZNKEyOrPm6b/s96DsDEi6Gm
+         JXRGbQ4ck9RKeIF35vMf35wHwl2KWfDiArWJdlyAAAN0Rrk3vLgEJTexLcDx8XzvK+EZ
+         xUag==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :content-language:in-reply-to:mime-version:user-agent:date
+         :message-id:from:references:to:subject:delivered-to
+         :arc-authentication-results;
+        bh=tbWUj+2SzuNj1aGhOfK4JD+I56pNLOVlyAFxX4SpJSo=;
+        b=Po1VTNpZcspdazrYGSVaXuSawKjz/3CP5sBXk0gFxLYigTQcYqm2W2BluYGnw7jS1Z
+         6JmWNwzXsMXd8om7k0zYGKwYppKnuS6hEOqXwGKaWgCvVVcR94IC0VSnwNdlNxUJ9EWQ
+         /spsPpJVNK1Xuqefk2ZeCzkTQe9CuAJ1VEqPYH6h1bl1mzmj/qSyafsMWocIHBpgGQWJ
+         53aX/CYgkG4H72Qlnqb1+ymUeWxVlmBUvrNq9u6rtW8Ogf5k+Fgx9SzQWuPsISIt/1kB
+         2Zhi6SDgERDbM0hLIzbFa+tDO/csaF+XVpAoBcvLUGaPJGeafu1pMSjZ049erwnBfyH4
+         zqTA==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id j124-v6si2136252pfb.191.2018.08.17.04.30.39
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 04:30:39 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id E290FE3C;
+	Fri, 17 Aug 2018 11:30:36 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id 85037E35
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 11:30:35 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.7.6
+Received: from foss.arm.com (foss.arm.com [217.140.101.70])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTP id 31FC9163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 11:30:35 +0000 (UTC)
+Received: from usa-sjc-imap-foss1.foss.arm.com (unknown [10.72.51.249])
+	by usa-sjc-mx-foss1.foss.arm.com (Postfix) with ESMTP id B56987A9;
+	Fri, 17 Aug 2018 04:30:34 -0700 (PDT)
+Received: from [10.4.12.131] (e110467-lin.Emea.Arm.com [10.4.12.131])
+	by usa-sjc-imap-foss1.foss.arm.com (Postfix) with ESMTPSA id 5EE093F5BD;
+	Fri, 17 Aug 2018 04:30:33 -0700 (PDT)
+Subject: Re: [PATCH 0/3] iommu: Avoid DMA ops domain refcount contention
+To: Christoph Hellwig <hch@infradead.org>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+	<20180817072415.GA22241@infradead.org>
+From: Robin Murphy <robin.murphy@arm.com>
+Message-ID: <74796f9d-5320-ea26-630a-207f4c537c55@arm.com>
+Date: Fri, 17 Aug 2018 12:30:31 +0100
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:52.0) Gecko/20100101
+	Thunderbird/52.9.1
+MIME-Version: 1.0
+In-Reply-To: <20180817072415.GA22241@infradead.org>
+Content-Language: en-GB
+X-Spam-Status: No, score=-6.9 required=5.0 tests=BAYES_00,RCVD_IN_DNSWL_HI
+	autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: catalin.marinas@arm.com, will.deacon@arm.com, linuxarm@huawei.com,
+	iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="us-ascii"; Format="flowed"
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 1260
+Lines: 30
+
+On 17/08/18 08:24, Christoph Hellwig wrote:
+> I plan to make the arm iommu dma ops generic and move them to
+> drivers/iommu for the 4.20 merge window.
+
+You mean 32-bit arm? The only place that code should move to is 
+/dev/null ;) - the plan has always been to convert it to use groups and 
+default domains so it can just plug iommu-dma in. The tricky bit is 
+either weaning the users of the private arm_iommu_*() API onto generic 
+IOMMU API usage, or at least implementing transitional wrappers in a way 
+that doesn't break anything.
+
+>  Because of that it would
+> be great to create a stable branch or even pull this in through
+> the dma-mapping tree entirely.
+
+FWIW I might still need to tweak the first patch depending on how we 
+choose to resolve the interaction between DMA ops and unmanaged 
+domains[1] - if we want to add fallback paths to iommu-dma instead of 
+swizzling device ops then the assumptions for this hook change and it 
+will need to reference group->domain rather than group->default_domain.
+
+Robin.
+
+
+[1] 
+https://www.mail-archive.com/dri-devel@lists.freedesktop.org/msg230275.html
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 12:02:36 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 12:02:36 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp649087ooi;
+        Fri, 17 Aug 2018 05:01:44 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPyWoX/Dzb41RzZCiwsNg8cTidlPuUUMZutA80VlOKRNBt3Cdz5o9U+tT26J0KQ2dAArtvcC
+X-Received: by 2002:a63:1126:: with SMTP id g38-v6mr32351363pgl.122.1534507304325;
+        Fri, 17 Aug 2018 05:01:44 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534507304; cv=none;
+        d=google.com; s=arc-20160816;
+        b=c2oiSu8kOoEozktox08XkG+s98UG8pr2mDugPniKSQTOLnyLs6CIA1yxp+rFpl8lWp
+         d9tMF9deJYGpthHh+eRfvJmyo1ZksdK48u0gGRC4qdIcsTjpxoTEMygTheej1yCsPfO1
+         5EoWUOAu+fuvmNDOpnAiPlAU1v/8NxQmmY9qBmOjU+w3UcRIdfV4ZhLCYu7Roo/BymUm
+         TWf6HgGuHbqaCVMgkQ8wvi1fhLZIBPu37Y93imI1sL1VGVwn8wHomd9hG0M+YkWXIWIv
+         m/Jv+snSA89AJMpG3NGEOllutY+rC0qZ482Qd/U8n59+P1gthyVi+wjsOof7fEaF7jQI
+         ZARQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :user-agent:in-reply-to:content-disposition:mime-version:references
+         :message-id:subject:to:from:date:dkim-signature:delivered-to
+         :arc-authentication-results;
+        bh=ie2TOfxih//CbDZdPkU7PHUc3SXLhp4QEFmCZffaTL8=;
+        b=vN1gcnMijYznmQw35tc7GJYX9a6kPfmcQWx8yjI45WRWsiyh0gNmXGEcKDUGFrw0UM
+         vMiDIoW0SMlZoQ0AQmxzHvcwc8WpBs9E5xt8EavmyIPJk+wYhlHRrxMxndBob3dJJ118
+         TnAIRqyItQJSpH6i0ZpY8nNZbHfsor/oVHKpTU/XxoMWsLrAea+6KhDTQ9U/8vy0kImB
+         X4vrRstsHdSdquD/PDiQx7kTFu53KVcUa4lkpqvgPxgjYq4gSauwW0SL2Rltimf09tNw
+         7N2GQDnMXntADzG9M0utBylb5WKzVHQZl+U4tHNj/k3n0/+qIxiw15H7IuW/hF2TXCF7
+         xWaA==
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=neutral (body hash did not verify) header.i=@infradead.org header.s=bombadil.20170209 header.b="D/nGpzrc";
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id p13-v6si1995360pgg.616.2018.08.17.05.01.43
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 05:01:44 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       dkim=neutral (body hash did not verify) header.i=@infradead.org header.s=bombadil.20170209 header.b="D/nGpzrc";
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id D7B3DDBA;
+	Fri, 17 Aug 2018 12:01:20 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id C86A8D0A
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 12:01:19 +0000 (UTC)
+X-Greylist: from auto-whitelisted by SQLgrey-1.7.6
+Received: from bombadil.infradead.org (bombadil.infradead.org
+	[198.137.202.133])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTPS id 78693163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 12:01:19 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/relaxed;
+	d=infradead.org; s=bombadil.20170209;
+	h=In-Reply-To:Content-Type:MIME-Version
+	:References:Message-ID:Subject:Cc:To:From:Date:Sender:Reply-To:
+	Content-Transfer-Encoding:Content-ID:Content-Description:Resent-Date:
+	Resent-From:Resent-Sender:Resent-To:Resent-Cc:Resent-Message-ID:List-Id:
+	List-Help:List-Unsubscribe:List-Subscribe:List-Post:List-Owner:List-Archive;
+	bh=hpUWggEfMZGNpYu/064VC1pDF683ATfCtXBWmio6tVg=;
+	b=D/nGpzrc0SM6GzdId1H4Ad5NW
+	vUD3KvGw0Gx+YS8dRRblprQxYjQuRV8fnEX5sacFi4FrOacuaZyyhpagtBPHSASWHW3bMi7YqvMr0
+	OES80ZPs9eRvyXQ0dl0Kc3rZGPkFf39QxwoBytj+7dudYtAAiVMrXyjLaggjLw8gMRQSsdKyakXVn
+	1/pBLNTE01J3w56w0hcR1dhEMBg3y0LeNPVYWrLW1fiII5GFYEYBIhfgp/573h58+3qEaF0FWfyWl
+	MFFndYaBtuv6vBNyA+uGDiF7K2u9tkASmmCcAVCijikwdeOpNC0TPMNeqs366ppaRWbNVmwqDXKQi
+	vrdEsfAcA==;
+Received: from hch by bombadil.infradead.org with local (Exim 4.90_1 #2 (Red
+	Hat Linux)) id 1fqdRJ-0008Et-Pb; Fri, 17 Aug 2018 12:01:13 +0000
+Date: Fri, 17 Aug 2018 05:01:13 -0700
+From: Christoph Hellwig <hch@infradead.org>
+To: Robin Murphy <robin.murphy@arm.com>
+Subject: Re: [PATCH 0/3] iommu: Avoid DMA ops domain refcount contention
+Message-ID: <20180817120113.GA31542@infradead.org>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+	<20180817072415.GA22241@infradead.org>
+	<74796f9d-5320-ea26-630a-207f4c537c55@arm.com>
+MIME-Version: 1.0
+Content-Disposition: inline
+In-Reply-To: <74796f9d-5320-ea26-630a-207f4c537c55@arm.com>
+User-Agent: Mutt/1.9.2 (2017-12-15)
+X-SRS-Rewrite: SMTP reverse-path rewritten from <hch@infradead.org> by
+	bombadil.infradead.org. See http://www.infradead.org/rpr.html
+X-Spam-Status: No, score=-2.0 required=5.0 tests=BAYES_00,DKIM_SIGNED,
+	DKIM_VALID, DKIM_VALID_AU,
+	RCVD_IN_DNSWL_NONE autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: catalin.marinas@arm.com, will.deacon@arm.com, linuxarm@huawei.com,
+	iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 862
+Lines: 20
+
+On Fri, Aug 17, 2018 at 12:30:31PM +0100, Robin Murphy wrote:
+> On 17/08/18 08:24, Christoph Hellwig wrote:
+> > I plan to make the arm iommu dma ops generic and move them to
+> > drivers/iommu for the 4.20 merge window.
+> 
+> You mean 32-bit arm?
+
+Sorry, I meant the arm64 wrappers for dma-iommu of course.
+
+> The only place that code should move to is /dev/null ;)
+> - the plan has always been to convert it to use groups and default domains
+> so it can just plug iommu-dma in. The tricky bit is either weaning the users
+> of the private arm_iommu_*() API onto generic IOMMU API usage, or at least
+> implementing transitional wrappers in a way that doesn't break anything.
+
+Agreed on the arm32 iommu code.
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 13:04:22 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 13:04:22 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp713084ooi;
+        Fri, 17 Aug 2018 06:03:53 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPxtaHlC2fqz4kRMUUxI14R0pW9JQ0OTtVmmciXaAiV6weGsGOV2PP7Ii/d+/7jeX9KzPg0U
+X-Received: by 2002:a17:902:bd4a:: with SMTP id b10-v6mr33788711plx.209.1534511032969;
+        Fri, 17 Aug 2018 06:03:52 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534511032; cv=none;
+        d=google.com; s=arc-20160816;
+        b=Ft0xiyrtVk7q6IFQgJAlw7udHB8+0yZLOGOx8NS9Qq9t8iwWssqfwFWAGebD+1+iGe
+         mtMBe2BIs8f4eaF/kLZIXHAiNwd0H2Ywf1XKuu/TvzXlmZ4+LrGCYiNd1kZYEUTkdlWq
+         zPVnfp4MONqOx3hs+6jAXd3EEoYxFY1sTSpdRRApSCPFjxi7hCg3v2pSPYGJYHpImV/Y
+         6hhcb2Iw0WxeD4MNQjckpOzBILEq3IY8bvmVHQK75dmENXNp4Ib/WjGxiaiuVEja78+A
+         UeOUPlDF4GJnAUO50H7n3/s/cfsDe/fsYbD1LDTMACGd076IpmQNy7DTD9cWHc0xHGfq
+         sg7w==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :in-reply-to:mime-version:user-agent:date:message-id:from:references
+         :to:subject:delivered-to:arc-authentication-results;
+        bh=QBmtxY86GIVy/J/EupmzyiE32FvxGSafPp6hGnktQ6Y=;
+        b=tE6POlNjsxFhdHJui3MmQ2FHcanMcjR8k4Idk+Uq2EhFupqXXfjEGHqYz15vu2EYSy
+         JA1MsDBq5xWhRXMmCzArMBX9D8Rl5PNt2l2rbJkt9JG+oi+oyc+rzDSdgs0IPIASJjSA
+         HJ++pwrmTT1ht74zoHm9djnHLT780iSe4GfqavgFt4CYpcZDbI8dVxxC/wBsn45pxE68
+         zm/X+enKRKCntFDUpYKyjaaHpYmjW1wWY+Zj1Hi9jUxpy7URUPQOJ9Go/8lY91nDJmM5
+         ZD8VEkVZalcqGqeBnOOupkpBTaaSHxajukxusLSzPVTufR+KXRNW2wljkWHTtIdyYHi/
+         Bi8A==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id h7-v6si2118990plt.258.2018.08.17.06.03.52
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 06:03:52 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id 2FB61D7E;
+	Fri, 17 Aug 2018 13:03:50 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id 1438ED73
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 13:03:48 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.7.6
+Received: from huawei.com (szxga04-in.huawei.com [45.249.212.190])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTPS id 8B94A163
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 13:03:47 +0000 (UTC)
+Received: from DGGEMS413-HUB.china.huawei.com (unknown [172.30.72.60])
+	by Forcepoint Email with ESMTP id B8D6F4E34DA56;
+	Fri, 17 Aug 2018 21:03:43 +0800 (CST)
+Received: from [127.0.0.1] (10.202.226.41) by DGGEMS413-HUB.china.huawei.com
+	(10.3.19.213) with Microsoft SMTP Server id 14.3.399.0; Fri, 17 Aug 2018
+	21:03:35 +0800
+Subject: Re: [PATCH 0/3] iommu: Avoid DMA ops domain refcount contention
+To: Robin Murphy <robin.murphy@arm.com>, <joro@8bytes.org>,
+	<will.deacon@arm.com>, <catalin.marinas@arm.com>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+From: John Garry <john.garry@huawei.com>
+Message-ID: <db0d436a-6f3c-6161-0dd1-ac42f908c1ee@huawei.com>
+Date: Fri, 17 Aug 2018 14:03:28 +0100
+User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101
+	Thunderbird/45.3.0
+MIME-Version: 1.0
+In-Reply-To: <cover.1534250425.git.robin.murphy@arm.com>
+X-Originating-IP: [10.202.226.41]
+X-CFilter-Loop: Reflected
+X-Spam-Status: No, score=-1.9 required=5.0 tests=BAYES_00,RCVD_IN_DNSWL_NONE
+	autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: linuxarm@huawei.com, iommu@lists.linux-foundation.org, guohanjun@huawei.com,
+	linux-arm-kernel@lists.infradead.org
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="us-ascii"; Format="flowed"
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 1961
+Lines: 62
+
+On 14/08/2018 14:04, Robin Murphy wrote:
+> John raised the issue[1] that we have some unnecessary refcount contention
+> in the DMA ops path which shows scalability problems now that we have more
+> real high-performance hardware using iommu-dma. The x86 IOMMU drivers are
+> sidestepping this by stashing domain references in archdata, but since
+> that's not very nice for architecture-agnostic code, I think it's time to
+> look at a generic API-level solution.
+>
+> These are a couple of quick patches based on the idea I had back when
+> first implementing this lot, but didn't have any way to justify at the
+> time. The third patch can be ignored for the sake of API discussion, but
+> is included for completeness.
+>
+> Robin.
+>
+
+Some results:
+
+PCIe NIC iperf test (128 processes, small packets):
+Without patchset:
+289232.00 rxpck/s
+
+With patchset:
+367283 rxpck/s
+
+JFYI, with Leizhen's non-strict mode patchset + Robin's patchset:
+1215539 rxpck/s
+
+Leizhen can share non-strict mode results in his own patchset however.
+
+We did also try the storage controller fio test with a lot of SAS SSD 
+disks (24 disks, 24 fio processes) for Robin's patchset only, but did 
+not see a significant change.
+
+Thanks to Dongdong + chenxiang for testing.
+
+Let me know if you require more info.
+
+Thanks again,
+John
+
+
+>
+> [1] https://lists.linuxfoundation.org/pipermail/iommu/2018-August/029303.html
+>
+> Robin Murphy (3):
+>   iommu: Add fast hook for getting DMA domains
+>   iommu/dma: Use fast DMA domain lookup
+>   arm64/dma-mapping: Mildly optimise non-coherent IOMMU ops
+>
+>  arch/arm64/mm/dma-mapping.c | 10 +++++-----
+>  drivers/iommu/dma-iommu.c   | 23 ++++++++++++-----------
+>  drivers/iommu/iommu.c       |  9 +++++++++
+>  include/linux/iommu.h       |  1 +
+>  4 files changed, 27 insertions(+), 16 deletions(-)
+>
+
+
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 14:31:45 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 14:31:45 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp808684ooi;
+        Fri, 17 Aug 2018 07:31:37 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPzgyz3wu//ytkBEl9Do/F2pnAKUP9yByuOVfALwz3iLDzlYoTI7Y7BqrTYVDQK0ezs6WfqH
+X-Received: by 2002:a17:902:6b47:: with SMTP id g7-v6mr34269208plt.128.1534516297140;
+        Fri, 17 Aug 2018 07:31:37 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534516297; cv=none;
+        d=google.com; s=arc-20160816;
+        b=jT5hBJbMF+8GFRfHaFDYdA79TNBLA7EyJT8LGI5a1tIgXntdQb9X+CojSWy7/Ihk/a
+         yixB6TAx1CVXPIY+KqkaOdb5AvvMmO34Cj9/cGUZeD4mzs0HfK4zzy6zcjZ9hiDiGfHj
+         Q58v69Mc/lpr46Uzn6EWhVnenDfdfNmIzARhN1SBSrbMHWGS1zG50bzIFUnIBkHov6Kz
+         PZakVBj0ovnJlMAj9cCaGEa0tH+7tcXwiXGFPdf0mwypMe2ErMnzMfzDl41/iyVU3IIE
+         7rrVU1WwL5HF2urbFOmxSif7GJdgci9WF9HKhqeFNqtdQR0FDfeqtz3fV+WVYxEEyFqw
+         nnmg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:mime-version
+         :list-subscribe:list-help:list-post:list-archive:list-unsubscribe
+         :list-id:precedence:cc:references:in-reply-to:message-id:date
+         :subject:to:from:delivered-to:arc-authentication-results;
+        bh=dUxH/1KFbVbuMkqtb0ewmgUB/5W05HUYNa1UHMINfOw=;
+        b=JCbrG8LYcyY04nETDd0YUWz01JBxuV0ZZ7WG8UJ1vpwMx48ccloO2ArVhEXYdax9TH
+         XzrBrPNYvDHri3ximZKxDnhh97DnLJbrfW4U/CwXLMq31hq2uKMpGL79XoYQ4hlbvKjR
+         35vJC7y4oZ4yez2svEU2/u4F3C5SWKWhnnRxmXFv3eQYlaXniV0OQrZKXl1PmkcIXon+
+         YHbL2dLZVUKDCJjwfCVNM91LXJoBypHa4wYwWeuAsfFCl4vz1BLVydMvsqbIiTxgwLH4
+         S11VdsKnx3lst4r7a5kQD84N261TVLfD4PGZolpu3Un0Ltg8Tfm8oEO15cA127/Qyev/
+         a+EA==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id i18-v6si2332127pgk.595.2018.08.17.07.31.36
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 07:31:37 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id E7AE0D95;
+	Fri, 17 Aug 2018 14:31:32 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id 926DBC50
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 14:31:32 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.7.6
+Received: from relmlie2.idc.renesas.com (relmlor3.renesas.com
+	[210.160.252.173])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTP id D8CB8189
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 14:31:31 +0000 (UTC)
+Received: from unknown (HELO relmlir1.idc.renesas.com) ([10.200.68.151])
+	by relmlie2.idc.renesas.com with ESMTP; 17 Aug 2018 23:31:30 +0900
+Received: from relmlii2.idc.renesas.com (relmlii2.idc.renesas.com
+	[10.200.68.66])
+	by relmlir1.idc.renesas.com (Postfix) with ESMTP id D3398846F2;
+	Fri, 17 Aug 2018 23:31:30 +0900 (JST)
+X-IronPort-AV: E=Sophos;i="5.53,251,1531753200"; d="scan'208";a="289879040"
+Received: from unknown (HELO fabrizio-dev.ree.adwin.renesas.com)
+	([10.226.36.250])
+	by relmlii2.idc.renesas.com with ESMTP; 17 Aug 2018 23:31:28 +0900
+From: Fabrizio Castro <fabrizio.castro@bp.renesas.com>
+To: Joerg Roedel <joro@8bytes.org>
+Subject: [PATCH 1/2] iommu/ipmmu-vmsa: Hook up R8A774A1 DT maching code
+Date: Fri, 17 Aug 2018 15:31:04 +0100
+Message-Id: <1534516265-10059-2-git-send-email-fabrizio.castro@bp.renesas.com>
+X-Mailer: git-send-email 2.7.4
+In-Reply-To: <1534516265-10059-1-git-send-email-fabrizio.castro@bp.renesas.com>
+References: <1534516265-10059-1-git-send-email-fabrizio.castro@bp.renesas.com>
+X-Spam-Status: No, score=-1.9 required=5.0 tests=BAYES_00,RCVD_IN_DNSWL_NONE
+	autolearn=ham version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: Fabrizio Castro <fabrizio.castro@bp.renesas.com>,
+	Chris Paterson <Chris.Paterson2@renesas.com>,
+	Geert Uytterhoeven <geert+renesas@glider.be>,
+	Magnus Damm <magnus.damm@gmail.com>, Biju Das <biju.das@bp.renesas.com>,
+	linux-renesas-soc@vger.kernel.org, iommu@lists.linux-foundation.org,
+	Simon Horman <horms@verge.net.au>
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 1636
+Lines: 47
+
+Add support for RZ/G2M (R8A774A1) SoC IPMMUs.
+
+Signed-off-by: Fabrizio Castro <fabrizio.castro@bp.renesas.com>
+Reviewed-by: Biju Das <biju.das@bp.renesas.com>
+---
+This patch applies on top of renesas-drivers-2018-07-31-v4.18-rc7
+
+ drivers/iommu/ipmmu-vmsa.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/iommu/ipmmu-vmsa.c b/drivers/iommu/ipmmu-vmsa.c
+index 51af2c5..cf5cfcf 100644
+--- a/drivers/iommu/ipmmu-vmsa.c
++++ b/drivers/iommu/ipmmu-vmsa.c
+@@ -761,6 +761,7 @@ static bool ipmmu_slave_whitelist(struct device *dev)
+ }
+ 
+ static const struct soc_device_attribute soc_rcar_gen3[] = {
++	{ .soc_id = "r8a774a1", },
+ 	{ .soc_id = "r8a7795", },
+ 	{ .soc_id = "r8a7796", },
+ 	{ .soc_id = "r8a77965", },
+@@ -942,6 +943,9 @@ static const struct of_device_id ipmmu_of_ids[] = {
+ 		.compatible = "renesas,ipmmu-vmsa",
+ 		.data = &ipmmu_features_default,
+ 	}, {
++		.compatible = "renesas,ipmmu-r8a774a1",
++		.data = &ipmmu_features_rcar_gen3,
++	}, {
+ 		.compatible = "renesas,ipmmu-r8a7795",
+ 		.data = &ipmmu_features_rcar_gen3,
+ 	}, {
+@@ -1143,6 +1147,7 @@ subsys_initcall(ipmmu_init);
+ module_exit(ipmmu_exit);
+ 
+ IOMMU_OF_DECLARE(ipmmu_vmsa_iommu_of, "renesas,ipmmu-vmsa");
++IOMMU_OF_DECLARE(ipmmu_r8a774a1_iommu_of, "renesas,ipmmu-r8a774a1");
+ IOMMU_OF_DECLARE(ipmmu_r8a7795_iommu_of, "renesas,ipmmu-r8a7795");
+ IOMMU_OF_DECLARE(ipmmu_r8a7796_iommu_of, "renesas,ipmmu-r8a7796");
+ IOMMU_OF_DECLARE(ipmmu_r8a77965_iommu_of, "renesas,ipmmu-r8a77965");
+-- 
+2.7.4
+
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 15:27:55 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 15:27:55 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp867828ooi;
+        Fri, 17 Aug 2018 08:27:28 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPxWBQcmNCWFtT1RQbbYBloEWhgmmC6QT9wcj+xIYDqUnAaA87C+aESDTGYPAgXgzMXwnz2/
+X-Received: by 2002:a63:1e66:: with SMTP id p38-v6mr33193578pgm.376.1534519648658;
+        Fri, 17 Aug 2018 08:27:28 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534519648; cv=none;
+        d=google.com; s=arc-20160816;
+        b=SMNXV70aqlDr1t3ZNwlYy+lBmudCClVIhJA/1FhhQauQqy9WEThV+VnZn+JjMJIEo1
+         okG6nZOAosYbkDGAeXPuCM5GB1puLumwB1jtWOQaEHWgBPNPSe/hemPCTTYueG+UmRI9
+         +zPdZDEyH7P7AYOvKDUTUoI+vv7YWVE3aKw2jYH9HM4S+iXdpE3EsfRl3b447kH2ZDyz
+         GqZFQ0wNg2AJ5Qc17cfiAJXMJURPjvx1s+/NCT2Bsie13r4f0gqQ4tWVPlImSpD1wRuQ
+         Bhqn/uX1QOlbmvm3g7DE1DChIQ9UsMGs/MjD6ROHKaJi3wz1sSf1jg7YwqvsWM6L0Z5y
+         lKzw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=errors-to:sender:content-transfer-encoding:list-subscribe:list-help
+         :list-post:list-archive:list-unsubscribe:list-id:precedence:cc
+         :mime-version:content-id:spamdiagnosticmetadata:spamdiagnosticoutput
+         :content-language:accept-language:in-reply-to:references:message-id
+         :date:thread-index:thread-topic:subject:to:from:dkim-signature
+         :delivered-to:arc-authentication-results;
+        bh=3+P77jz6ifyigtm8+Z9v3D8jTBFoyaELJFd201taRx8=;
+        b=VT1JGHP6jnQ1A0UoFo087meiAnTx+gZVA4deNW/VZpgN8G7Qabs/n6vxcTzr69GU45
+         ISGZAYmb5cQP4YXisHvSwIyPwpIX9+GCRuJYcypneecTOUEqmq3dyQEbsYgeqM34u0Ff
+         Nbg5Yqm4h/xEKSVq0hhLecoXRDh+yxJfruEFp+6U+lGKJVFfjV3+nuj+0i03fpmmMm+A
+         lV/jLsraQlIAQGW874ldk1/sCIVWvI0GkcY/i4bq5mQ9i4du5UwmuCKS8CaUOOQGAkmc
+         5TMLIB/0mzADovOenQdf6uv+4AqRBbb3lxEQbxK7YEdK5MFlHMo3y5YOl7XUauUSXba0
+         JjXQ==
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=neutral (body hash did not verify) header.i=@nxp.com header.s=selector1 header.b=Vot7YsLS;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=nxp.com
+Return-Path: <iommu-bounces@lists.linux-foundation.org>
+Received: from mail.linuxfoundation.org (mail.linuxfoundation.org. [140.211.169.12])
+        by mx.google.com with ESMTPS id 184-v6si2380423pgj.421.2018.08.17.08.27.27
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 08:27:28 -0700 (PDT)
+Received-SPF: pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) client-ip=140.211.169.12;
+Authentication-Results: mx.google.com;
+       dkim=neutral (body hash did not verify) header.i=@nxp.com header.s=selector1 header.b=Vot7YsLS;
+       spf=pass (google.com: domain of iommu-bounces@lists.linux-foundation.org designates 140.211.169.12 as permitted sender) smtp.mailfrom=iommu-bounces@lists.linux-foundation.org;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=nxp.com
+Received: from mail.linux-foundation.org (localhost [127.0.0.1])
+	by mail.linuxfoundation.org (Postfix) with ESMTP id 2D9AAD19;
+	Fri, 17 Aug 2018 15:27:23 +0000 (UTC)
+X-Original-To: iommu@lists.linux-foundation.org
+Delivered-To: iommu@mail.linuxfoundation.org
+Received: from smtp1.linuxfoundation.org (smtp1.linux-foundation.org
+	[172.17.192.35])
+	by mail.linuxfoundation.org (Postfix) with ESMTPS id 40D97C34
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 15:27:21 +0000 (UTC)
+X-Greylist: whitelisted by SQLgrey-1.7.6
+Received: from EUR02-HE1-obe.outbound.protection.outlook.com
+	(mail-eopbgr10049.outbound.protection.outlook.com [40.107.1.49])
+	by smtp1.linuxfoundation.org (Postfix) with ESMTPS id A437A67F
+	for <iommu@lists.linux-foundation.org>;
+	Fri, 17 Aug 2018 15:27:19 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=nxp.com; s=selector1; 
+	h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-SenderADCheck;
+	bh=2dZVvjBGZjMs3vcgHy7yD3/8mIptL5c1JskWtE8XB2w=;
+	b=Vot7YsLSifSRg1RoSKOUQfbxjd2qZWq8loVEq1B95wnMou+gyLIYRoSW/TmJh7ePogLJgCLnrrs8QrNkBFmU1Itj1i0i0aFw8qxhWvlP/LxsdypI3nEosHUkkiO/AOSDnflokU4+oMPhkSBkKO4QlzSe6e6elJNqOgO0iUWp5EY=
+Received: from AM6PR0402MB3864.eurprd04.prod.outlook.com (52.133.29.151) by
+	AM6PR0402MB3941.eurprd04.prod.outlook.com (52.133.30.16) with Microsoft
+	SMTP
+	Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id
+	15.20.1059.20; Fri, 17 Aug 2018 15:27:16 +0000
+Received: from AM6PR0402MB3864.eurprd04.prod.outlook.com
+	([fe80::85a:eb44:afd8:8e2d]) by
+	AM6PR0402MB3864.eurprd04.prod.outlook.com
+	([fe80::85a:eb44:afd8:8e2d%2]) with mapi id 15.20.1059.021;
+	Fri, 17 Aug 2018 15:27:16 +0000
+From: Laurentiu Tudor <laurentiu.tudor@nxp.com>
+To: Robin Murphy <robin.murphy@arm.com>, "joro@8bytes.org" <joro@8bytes.org>, 
+	"will.deacon@arm.com" <will.deacon@arm.com>, "catalin.marinas@arm.com"
+	<catalin.marinas@arm.com>
+Subject: Re: [PATCH 1/3] iommu: Add fast hook for getting DMA domains
+Thread-Topic: [PATCH 1/3] iommu: Add fast hook for getting DMA domains
+Thread-Index: AQHUM89g2M5ahgBKzEiVyyhvnGMtYqTEFe8A
+Date: Fri, 17 Aug 2018 15:27:16 +0000
+Message-ID: <b2b043f7-6f28-42e4-d630-d9694d34b5b6@nxp.com>
+References: <cover.1534250425.git.robin.murphy@arm.com>
+	<4d50587e62c16f7b5cfc45dee808d774655155cf.1534250425.git.robin.murphy@arm.com>
+In-Reply-To: <4d50587e62c16f7b5cfc45dee808d774655155cf.1534250425.git.robin.murphy@arm.com>
+Accept-Language: en-US
+Content-Language: en-US
+X-MS-Has-Attach: 
+X-MS-TNEF-Correlator: 
+authentication-results: spf=none (sender IP is )
+	smtp.mailfrom=laurentiu.tudor@nxp.com; 
+x-originating-ip: [86.34.165.90]
+x-ms-publictraffictype: Email
+x-microsoft-exchange-diagnostics: 1; AM6PR0402MB3941;
+	6:YS68tq8Dp64wTuSgeC3/20WzWsH9sdFdTN1/biadlZ+qvW9zyjvSIQaYQ99Ffc7FDJNsx9yuDIhlEh8q5Dk9b1xGZkkU3VQRrhkDDpnupeiPdE0nu3Y9fCkWBllX03tJ5qryjEBV0SmDhPI74TKyYWp79OVrq10Ot+8qIOk9oB7NblGgU7R7v6e/dVVy8NU31Ly6gyTDlL5AANtUfUXUXKiKQyCi6IE5K6hUvDnp6qOFbMKMCmhaNQd4e//7MnlEZ2oWuKyNasql0YEbqpIeOUNVpaPFZ8sEFRmjKGNw3maHgYztUfS3BHOIC9o2kLGIYnnHTgRQBgamIA/ZcqX0cIxCvcLTOm4puvJpwppTcZ4AJMekW6FT9lz7xvseZW784sxxj8GgpLEYaLcMGiCGDecjMe50MVyHGTzkBMOZdh2RvOjpg8wHOLxUPyASVhqxtH/obT9fq3j/nVTmmXbm7Q==;
+	5:s3KgaG2DQ+WEo87P3AK/5QHD0z8Ep86mpa8ChmznJ36CIhjQ8KJiDF0HsM41hBIXoVPi+2626Mnkl/RGa1guz4POaLC6fnTGgRi0qYqAfREpJsUtsojWAHtMj7KlQzynAVvg+x+i+tcmbwcebv9OlbGt/qbqlfjD6eJmZ3t8GoI=;
+	7:fj1qCrV2kR7qo7hmxG092XgIItOcR3/Hbi0gVG7s6SEa6UwN0msA8tYDGHl2XOQLm5IipdUAwpwq/FArv7y63lghLeN9jyFfxrKyiMbNVpM8JmtTUvpyFHu5qkEc76Yavo21GkzgVYxj28LcDUVz0Bm80g98zMxld/HaPho/wE0uEW+spsXSVeRmtqaVzN9priEPbNxys7Pu7eh02IPKusnxlZBZ6ih32ZXLXnN5cuVsh2VUGVeN034k2BG2D/L8
+x-ms-exchange-antispam-srfa-diagnostics: SOS;
+x-ms-office365-filtering-correlation-id: 88704ed4-a666-463f-ec97-08d60455ea34
+x-ms-office365-filtering-ht: Tenant
+x-microsoft-antispam: BCL:0; PCL:0;
+	RULEID:(7020095)(4652040)(8989137)(4534165)(4627221)(201703031133081)(201702281549075)(8990107)(5600074)(711020)(4618075)(2017052603328)(7153060)(7193020);
+	SRVR:AM6PR0402MB3941; 
+x-ms-traffictypediagnostic: AM6PR0402MB3941:
+x-microsoft-antispam-prvs: <AM6PR0402MB3941E41CF59180E6CE0BB389EC3D0@AM6PR0402MB3941.eurprd04.prod.outlook.com>
+x-exchange-antispam-report-test: UriScan:(180628864354917);
+x-ms-exchange-senderadcheck: 1
+x-exchange-antispam-report-cfa-test: BCL:0; PCL:0;
+	RULEID:(8211001083)(6040522)(2401047)(5005006)(8121501046)(93006095)(93001095)(3002001)(3231311)(944501410)(52105095)(10201501046)(6055026)(149027)(150027)(6041310)(20161123564045)(20161123560045)(20161123558120)(20161123562045)(201703131423095)(201702281528075)(20161123555045)(201703061421075)(201703061406153)(201708071742011)(7699016);
+	SRVR:AM6PR0402MB3941; BCL:0; PCL:0; RULEID:;
+	SRVR:AM6PR0402MB3941; 
+x-forefront-prvs: 076777155F
+x-forefront-antispam-report: SFV:NSPM;
+	SFS:(10009020)(136003)(39860400002)(346002)(396003)(366004)(376002)(199004)(189003)(229853002)(6246003)(26005)(102836004)(25786009)(2906002)(53936002)(6486002)(2900100001)(4326008)(186003)(6436002)(6512007)(76176011)(105586002)(316002)(36756003)(68736007)(106356001)(478600001)(2501003)(5250100002)(8936002)(14454004)(110136005)(256004)(31686004)(86362001)(2201001)(3846002)(81156014)(54906003)(31696002)(6116002)(6506007)(5660300001)(81166006)(44832011)(8676002)(53546011)(11346002)(7736002)(486006)(99286004)(476003)(446003)(2616005)(66066001)(97736004)(305945005);
+	DIR:OUT; SFP:1101; SCL:1; SRVR:AM6PR0402MB3941;
+	H:AM6PR0402MB3864.eurprd04.prod.outlook.com; FPR:; SPF:None;
+	LANG:en; PTR:InfoNoRecords; A:1; MX:1; 
+received-spf: None (protection.outlook.com: nxp.com does not designate
+	permitted sender hosts)
+x-microsoft-antispam-message-info: jtP0aPJMn34icHzwpMFYiVGX04KuiyBZbsRgFozPIgbLm1Fqv+hD4GnFpmxen+EE7345B0lW9BfPWT2hy3fyJbSLyjdgbzKWhK3pcFwfrnc6n4k7oDOAlftjqsPd1cF5AnwBGSYQjeXarVYGLkkNkmg44ls+PmCdeuIOMry50RmvtOYaQbM7Sv3VzsVSg9jHNfMaHO6U9fT9BZ4iR2CcsHkyDQjiEnkIAdPwLbgOJ4x45T75bjq3wWTb+ApvFZOx/9kT8yle6+Pgtsb4ljtA3RCnsgbJReqb9Iz/plismGVsIcpkGeiLuWZT1cE2eMwhn9qLbI78yQFHIV+lDxtc1FMJys6o0/n6gMkPLY1TKHQ=
+spamdiagnosticoutput: 1:99
+spamdiagnosticmetadata: NSPM
+Content-ID: <33B777E0A73B7147ADA602C9653B8963@eurprd04.prod.outlook.com>
+MIME-Version: 1.0
+X-OriginatorOrg: nxp.com
+X-MS-Exchange-CrossTenant-Network-Message-Id: 88704ed4-a666-463f-ec97-08d60455ea34
+X-MS-Exchange-CrossTenant-originalarrivaltime: 17 Aug 2018 15:27:16.6790 (UTC)
+X-MS-Exchange-CrossTenant-fromentityheader: Hosted
+X-MS-Exchange-CrossTenant-id: 686ea1d3-bc2b-4c6f-a92c-d99c5c301635
+X-MS-Exchange-Transport-CrossTenantHeadersStamped: AM6PR0402MB3941
+X-Spam-Status: No, score=-0.5 required=5.0 tests=BAYES_00,DKIM_SIGNED,
+	DKIM_VALID, DKIM_VALID_AU, RCVD_IN_DNSWL_NONE,
+	RCVD_IN_SORBS_WEB autolearn=no version=3.3.1
+X-Spam-Checker-Version: SpamAssassin 3.3.1 (2010-03-16) on
+	smtp1.linux-foundation.org
+Cc: "iommu@lists.linux-foundation.org" <iommu@lists.linux-foundation.org>,
+	"linuxarm@huawei.com" <linuxarm@huawei.com>,
+	"linux-arm-kernel@lists.infradead.org"
+	<linux-arm-kernel@lists.infradead.org>,
+	"guohanjun@huawei.com" <guohanjun@huawei.com>
+X-BeenThere: iommu@lists.linux-foundation.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: Development issues for Linux IOMMU support
+	<iommu.lists.linux-foundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/iommu/>
+List-Post: <mailto:iommu@lists.linux-foundation.org>
+List-Help: <mailto:iommu-request@lists.linux-foundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/iommu>,
+	<mailto:iommu-request@lists.linux-foundation.org?subject=subscribe>
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+Sender: iommu-bounces@lists.linux-foundation.org
+Errors-To: iommu-bounces@lists.linux-foundation.org
+Status: RO
+Content-Length: 2181
+Lines: 53
+
+Hi Robin,
+
+On 14.08.2018 16:04, Robin Murphy wrote:
+> While iommu_get_domain_for_dev() is the robust way for arbitrary IOMMU
+> API callers to retrieve the domain pointer, for DMA ops domains it
+> doesn't scale well for large systems and multi-queue devices, since the
+> momentary refcount adjustment will lead to exclusive cacheline contention
+> when multiple CPUs are operating in parallel on different mappings for
+> the same device.
+> 
+> In the case of DMA ops domains, however, this refcounting is actually
+> unnecessary, since they already imply that the group exists and is
+> managed by platform code and IOMMU internals (by virtue of
+> iommu_group_get_for_dev()) such that a reference will already be held
+> for the lifetime of the device. Thus we can avoid the bottleneck by
+> providing a fast lookup specifically for the DMA code to retrieve the
+> default domain it already knows it has set up - a simple read-only
+> dereference plays much nicer with cache-coherency protocols.
+> 
+> Signed-off-by: Robin Murphy <robin.murphy@arm.com>
+> ---
+>   drivers/iommu/iommu.c | 9 +++++++++
+>   include/linux/iommu.h | 1 +
+>   2 files changed, 10 insertions(+)
+> 
+> diff --git a/drivers/iommu/iommu.c b/drivers/iommu/iommu.c
+> index 63b37563db7e..63c586875df5 100644
+> --- a/drivers/iommu/iommu.c
+> +++ b/drivers/iommu/iommu.c
+> @@ -1379,6 +1379,15 @@ struct iommu_domain *iommu_get_domain_for_dev(struct device *dev)
+>   }
+>   EXPORT_SYMBOL_GPL(iommu_get_domain_for_dev);
+>   
+> +/*
+> + * For IOMMU_DOMAIN_DMA implementations which already provide their own
+> + * guarantees that the group and its default domain are valid and correct.
+> + */
+> +struct iommu_domain *iommu_get_dma_domain(struct device *dev)
+> +{
+> +	return dev->iommu_group->default_domain;
+> +}
+
+After some preliminary tests I'm seeing a ~10% performance improvement 
+on one of our chips (nxp ls1046a) which is pretty nice. :-)
+Any chance of making the function inline?
+If not, shouldn't an EXPORT_SYMBOL_GPL be added?
+
+---
+Thanks & Best Regards, Laurentiu
+_______________________________________________
+iommu mailing list
+iommu@lists.linux-foundation.org
+https://lists.linuxfoundation.org/mailman/listinfo/iommu
+
+From root  Fri Aug 17 16:28:11 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 16:28:11 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp931097ooi;
+        Fri, 17 Aug 2018 09:27:38 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPyM31nCNYGp2ECAJDM6Qn1EHqramsIm2EW9PIdr6YlLandVCQjKmVJdZUFkpWvBB1jplbM/
+X-Received: by 2002:a17:902:158b:: with SMTP id m11-v6mr19286767pla.102.1534523258414;
+        Fri, 17 Aug 2018 09:27:38 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534523258; cv=none;
+        d=google.com; s=arc-20160816;
+        b=iXgzjiKP4t8Jsuz0FFQdxk6IdJsktE18ubOQSmLAtqc66nVE3nyWf+yLpI8GTP8o+v
+         XfO7iyePPsqSLBHEjS2YqDLPiqz0fWgiQcxHzyD2hjrKHT+VnBtthD2me6T4ohgroqwc
+         y09PzuUW0MwJHPJg89g+l3wYKfocVQZA+XQI+fnNDmP36AmPv9YBhvcfMYKcpUK1EQ3z
+         W3hhf0VVGOPdSa4Xr5Puv361kaqG9krhkVeEk6LNrDKdH50bwUcnY/dOar3naU6g4G4W
+         aHYvcP7hitYCr2nLbuzzDCZsATDYoi7Hq1pAdcaZ0yqZtzEaWN3ZHflK3ila+6cWluY5
+         jXOA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=list-id:precedence:sender:cc:to:subject:message-id:date:from
+         :mime-version:arc-authentication-results;
+        bh=J83ObD3JOEXc4yjrbfDLGW9CJdF3DitlcDk7ARfdTng=;
+        b=iYlyynALnD+hyMThmrZII7n3Osjo1k6jrZbW8+a0cDOSCihD9Bj2V4rf8iC5Obhtuk
+         fwFi1ocFQlsrseKI6mRvjWUrfcl91bnDpLd346or6LtjEjnd1cv6Gss5UB0RdMpWezcp
+         I4tnOeCQLRsmtrjMMvvd4mwoZKqpfxr3FAx2Mo9VYBoC5zvheHKRed/ie2NRyazDS5bT
+         7DNpqoVrHFrxG1wuw+Rz/awvIeSmMcUNkhcez1K9yWDo64MpI6XVszx/u3OcbDqHL9b3
+         XKX9c+heH3OmRnJ0WeNbTBITNkAkONJlNcvli0+GdZTfoWelVqPemf6HmSyKYtlTaRSv
+         ZBgQ==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: best guess record for domain of linux-kernel-owner@vger.kernel.org designates 209.132.180.67 as permitted sender) smtp.mailfrom=linux-kernel-owner@vger.kernel.org;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=efficios.com
+Return-Path: <linux-kernel-owner@vger.kernel.org>
+Received: from vger.kernel.org (vger.kernel.org. [209.132.180.67])
+        by mx.google.com with ESMTP id m1-v6si2669343pfb.305.2018.08.17.09.27.23;
+        Fri, 17 Aug 2018 09:27:38 -0700 (PDT)
+Received-SPF: pass (google.com: best guess record for domain of linux-kernel-owner@vger.kernel.org designates 209.132.180.67 as permitted sender) client-ip=209.132.180.67;
+Authentication-Results: mx.google.com;
+       spf=pass (google.com: best guess record for domain of linux-kernel-owner@vger.kernel.org designates 209.132.180.67 as permitted sender) smtp.mailfrom=linux-kernel-owner@vger.kernel.org;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=efficios.com
+Received: (majordomo@vger.kernel.org) by vger.kernel.org via listexpand
+        id S1727827AbeHQTaz (ORCPT <rfc822;jeffbagwell0711@gmail.com>
+        + 99 others); Fri, 17 Aug 2018 15:30:55 -0400
+Received: from mail-oi0-f42.google.com ([209.85.218.42]:44083 "EHLO
+        mail-oi0-f42.google.com" rhost-flags-OK-OK-OK-OK) by vger.kernel.org
+        with ESMTP id S1727710AbeHQTaz (ORCPT
+        <rfc822;linux-kernel@vger.kernel.org>);
+        Fri, 17 Aug 2018 15:30:55 -0400
+Received: by mail-oi0-f42.google.com with SMTP id s198-v6so14925781oih.11
+        for <linux-kernel@vger.kernel.org>; Fri, 17 Aug 2018 09:26:55 -0700 (PDT)
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20161025;
+        h=x-gm-message-state:mime-version:from:date:message-id:subject:to:cc;
+        bh=J83ObD3JOEXc4yjrbfDLGW9CJdF3DitlcDk7ARfdTng=;
+        b=pc4ILaz3npvRc5YBV7cOzlXpJ3jzwqXosA4mfGLl8WWsx8s/lFATvfTyJHX7ZNPEYO
+         RLAaYnqezzrejr/MkfrvGtGY0XPElrORfucjVMlSqlqm6P2wPnJY8OIu0TBgXpainmaN
+         tC77Jb60NiP0w4f7UCJ3yYDiZaCIs8xOW2aDBly5SZht+r5xEQ7/MqVVFLMhwb5SOjD/
+         fq+/1JMCZbQF73M+XtLidJZleCj+U1+B3SCIYwKrCZyJB6N6b66IWBNuTLcYD/cBMes4
+         ialvcR7uOOKjKpggSVSPHCxSb1+YzExKezK11ObzDc54ghGXrt8eGxPDLc156BppWNfg
+         MKGg==
+X-Gm-Message-State: AOUpUlHk/raZUsomLDR2/pQYsu+0jgYRMaBH1KQAdDoT7i0+or9js3EK
+        17ZMsk/xxqOECR2stVwp48WCq+6KyQdWi0U50ms=
+X-Received: by 2002:aca:4a49:: with SMTP id x70-v6mr3331749oia.11.1534523215055;
+ Fri, 17 Aug 2018 09:26:55 -0700 (PDT)
+MIME-Version: 1.0
+From:   Francis Deslauriers <francis.deslauriers@efficios.com>
+Date:   Fri, 17 Aug 2018 12:26:43 -0400
+Message-ID: <CADcCL0iOGnDn1wBq4rn80Z1-+uojPo-wUysRsvDzUo+gN_P9ZQ@mail.gmail.com>
+Subject: [CFP] Call For Presentations reminder and registration for Tracing
+ Summit 2018 on Oct 25th in Edinburgh, UK
+To:     info@tracingsummit.org
+Cc:     Mathieu Desnoyers <mathieu.desnoyers@efficios.com>
+Content-Type: text/plain; charset="UTF-8"
+Sender: linux-kernel-owner@vger.kernel.org
+Precedence: bulk
+List-ID: <linux-kernel.vger.kernel.org>
+X-Mailing-List: linux-kernel@vger.kernel.org
+Status: RO
+Content-Length: 1052
+Lines: 26
+
+Hi all,
+
+This is a friendly reminder that the deadline for submitting talk proposals for
+Tracing Summit 2018[1] is coming up soon (Sept 1st). Submit you talk today
+using submission@tracingsummit.org and don't forget to include the following:
+- Talk title,
+- Talk abstract (900 characters maximum),
+- Description of the targeted audience (900 characters maximum),
+- Short biography (900 characters maximum).
+
+The Tracing Summit 2018 will be held in Edinburgh, UK on October 25th, 2018, at
+the Edinburgh International Conference Centre, co-located with the Open Source
+Summit & Embedded Linux Conference 2018.
+
+You can register right now either through the Open Source Summit Europe
+registration page[2] by adding the free Tracing Summit addon or by registering
+specifically for the Tracing Summit using this registration form[3].
+
+Thank you,
+
+On behalf of the Diagnostic and Monitoring Workgroup,
+Francis Deslauriers
+
+[1] https://tracingsummit.org/wiki/TracingSummit2018
+[2] https://www.regonline.com/OSSEU2018
+[3] https://regonline.com/tracingsummit18
+
+From root  Fri Aug 17 17:39:54 2018
+Delivered-To: richard.weiyang@gmail.com
+Received: from pop.gmail.com
+	by master with POP3 (fetchmail-6.3.26)
+	for <root@localhost> (single-drop); Fri, 17 Aug 2018 17:39:54 +0000 (UTC)
+Received: by 2002:a4a:94b3:0:0:0:0:0 with SMTP id k48-v6csp1001432ooi;
+        Fri, 17 Aug 2018 10:39:25 -0700 (PDT)
+X-Google-Smtp-Source: AA+uWPw8F9k05nKzQBo0xYmZmRUHnD+GzYE69vxEnR9Je1WquGVqZeD8hXDCIAo7zUjffrfXFaAQ
+X-Received: by 2002:a37:3390:: with SMTP id z138-v6mr3925849qkz.3.1534527565066;
+        Fri, 17 Aug 2018 10:39:25 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1534527565; cv=none;
+        d=google.com; s=arc-20160816;
+        b=X8iewVG7E3P9tT+23s/22NVOIUX79N84wDdu+WqG3w+2buXHlSqEeEmNI5F4El1c9f
+         xYdHl34pBNHMtMytbzrNYs2kKghnVhFmLPQHTscTYFC2UT6H7Vj9WunNhC3UhlgxjoKn
+         lIL88O7/5PLghkWqR0GjKFBZrc41kqb9W4aHPl0pEhxPsQawDKSrgQIe455RMfl9UKp+
+         H8y+URir+4dCz89GuOGXOVY6O6Brgy+u2C5mssW14kBT9PODEwi19FnqABXdVfH5EfuY
+         xkcT/jJH5ZgH2zR6ZyJ48KrJWAt3cdPS2Sq3lC6h/baGX2YQVOmlL4cTgZLwf1s62Um1
+         zc6Q==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=list-unsubscribe:list-post:list-archive:list-id:precedence
+         :content-transfer-encoding:mime-version:subject:message-id:cc:to
+         :reply-to:from:date:dkim-signature:dkim-signature
+         :arc-authentication-results;
+        bh=L+gLyuOL2Iz6UrlsFvV5zXWdBYUxb0J0YxiwiBtQDg4=;
+        b=KQ/o+ZQCjBFFn6dtjZr0rbT4En0yoRc3KpXFDo1boRDE/2jxSU0SYuEdH1bguAuGsa
+         TJ9cePeDUwZi7IcbJwNRXXBQoCuwUBOFDX2MfUx7EW2vCWoAM5OD3bZDILAm4qfDuTPS
+         qOaNQ2WHk0QQ4SVZZeuhg67GoP11Sb5lMjfUODB+etB/Nu1Rw0vHd+qzFWc33TaEZeYw
+         4P4OZdbeI/C3z2oSa51ESm1evxXrYlOOZxk+HQCTf9Tk53X5ecudml2KiEw6TqlZ/AgW
+         VsIpeRtnQLS+sUw9nJRAwXh43onQZG6DUB6ya1HVDp7n3TDdulPEM2GTVBtVFjgBIGlP
+         DDjQ==
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@github.com header.s=s20150108 header.b=Ndz3YN3H;
+       dkim=pass header.i=@sendgrid.info header.s=smtpapi header.b=w2VC+Y62;
+       spf=pass (google.com: domain of bounces+848413-5825-richard.weiyang=gmail.com@sgmail.github.com designates 167.89.101.201 as permitted sender) smtp.mailfrom="bounces+848413-5825-richard.weiyang=gmail.com@sgmail.github.com";
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=github.com
+Return-Path: <bounces+848413-5825-richard.weiyang=gmail.com@sgmail.github.com>
+Received: from o10.sgmail.github.com (o10.sgmail.github.com. [167.89.101.201])
+        by mx.google.com with ESMTPS id q15-v6si228346qvn.239.2018.08.17.10.39.24
+        for <richard.weiyang@gmail.com>
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Fri, 17 Aug 2018 10:39:25 -0700 (PDT)
+Received-SPF: pass (google.com: domain of bounces+848413-5825-richard.weiyang=gmail.com@sgmail.github.com designates 167.89.101.201 as permitted sender) client-ip=167.89.101.201;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@github.com header.s=s20150108 header.b=Ndz3YN3H;
+       dkim=pass header.i=@sendgrid.info header.s=smtpapi header.b=w2VC+Y62;
+       spf=pass (google.com: domain of bounces+848413-5825-richard.weiyang=gmail.com@sgmail.github.com designates 167.89.101.201 as permitted sender) smtp.mailfrom="bounces+848413-5825-richard.weiyang=gmail.com@sgmail.github.com";
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=github.com
+DKIM-Signature: v=1; a=rsa-sha1; c=relaxed/relaxed; d=github.com; 
+	h=from:reply-to:to:cc:subject:mime-version:content-type:content-transfer-encoding:list-id:list-archive:list-post:list-unsubscribe; 
+	s=s20150108; bh=nsbSFKaJ6PfLipZ5NV+WbpbIXps=; b=Ndz3YN3HWI9fF+pd
+	gNRfdehNmTJzwEXimWVjjZk/qEgipYnP30Ym940JiJLF6lI/QXpGGtstkU0Zqvy8
+	7xm6DqCYlqGFzidzzXz/9hAv9BKmyotvGqiArv65AG1OKIvJZRrdtgD7/xVK5T2F
+	UjeSbG8IRx7hNHIRDWeHAihBDF8=
+DKIM-Signature: v=1; a=rsa-sha1; c=relaxed/relaxed; d=sendgrid.info; 
+	h=from:reply-to:to:cc:subject:mime-version:content-type:content-transfer-encoding:list-id:list-archive:list-post:list-unsubscribe:x-feedback-id; 
+	s=smtpapi; bh=nsbSFKaJ6PfLipZ5NV+WbpbIXps=; b=w2VC+Y62GIXfEqRUtf
+	1rGsCKKnsOj9rrF/9lAPSe0VOLcQRhVpvP2p88rjuuVPwRNlLFtTEl80lnEdHhxf
+	Nw42ih0lfutRwFnzps6Gz1Z4aDYgRxKK7s3V0OEXR+9LruqD/8otQNgf63hc7YUM
+	ycRzd3o06HmNBNSlC1U/1BLHg=
+Received: by filter0719p1las1.sendgrid.net with SMTP id filter0719p1las1-8650-5B77084B-16
+        2018-08-17 17:39:23.823155539 +0000 UTC m=+320389.868805622
+Received: from github-lowworker-56a5eb2.cp1-iad.github.net (unknown [192.30.252.33])
+	by ismtpd0020p1iad2.sendgrid.net (SG) with ESMTP id 2bTI8fWQTny35FGvRYqr9A
+	for <richard.weiyang@gmail.com>; Fri, 17 Aug 2018 17:39:23.737 +0000 (UTC)
+Received: from github.com (localhost [127.0.0.1])
+	by github-lowworker-56a5eb2.cp1-iad.github.net (Postfix) with ESMTP id AD5A2C12F3
+	for <richard.weiyang@gmail.com>; Fri, 17 Aug 2018 10:39:23 -0700 (PDT)
+Date: Fri, 17 Aug 2018 17:39:23 +0000 (UTC)
+From: ottoteixeira <notifications@github.com>
+Reply-To: bitcoinbook/bitcoinbook <reply+012baf1a4ad1d97840a412cf977e23fa947a323d522a926192cf00000001178eca4b92a169ce14f63371@reply.github.com>
+To: bitcoinbook/bitcoinbook <bitcoinbook@noreply.github.com>
+Cc: Subscribed <subscribed@noreply.github.com>
+Message-ID: <bitcoinbook/bitcoinbook/pull/594@github.com>
+Subject: [bitcoinbook/bitcoinbook] Fixed typo: "note than" -> "note that"
+ (#594)
+Mime-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="--==_mimepart_5b77084babebc_4ae93f8e3e0d45c413369b";
+ charset=UTF-8
+Content-Transfer-Encoding: 7bit
+Precedence: list
+X-GitHub-Sender: ottoteixeira
+X-GitHub-Recipient: RichardWeiYang
+X-GitHub-Reason: subscribed
+List-ID: bitcoinbook/bitcoinbook <bitcoinbook.bitcoinbook.github.com>
+List-Archive: https://github.com/bitcoinbook/bitcoinbook
+List-Post: <mailto:reply+012baf1a4ad1d97840a412cf977e23fa947a323d522a926192cf00000001178eca4b92a169ce14f63371@reply.github.com>
+List-Unsubscribe: <mailto:unsub+012baf1a4ad1d97840a412cf977e23fa947a323d522a926192cf00000001178eca4b92a169ce14f63371@reply.github.com>,
+ <https://github.com/notifications/unsubscribe/ASuvGgbmMFyHU_g90P78LwjllA2LCcQOks5uRv_LgaJpZM4WB78d>
+X-Auto-Response-Suppress: All
+X-GitHub-Recipient-Address: richard.weiyang@gmail.com
+X-SG-EID: 2JOFTXxxvZ43+bs6sk8d7vOiwNXlrjBlrAvE1apZ9ueAXZMIQlgcqReawphRfDGFa157eix9bAedj1
+ BvkymNd5XbRol8kJWKO7mVjnWwqH1BKhMt7oXc2JOEZV8e3NmC+VSe3pql99c3gkb7UUIWryrQg5zh
+ NhYtSA/9E/QgSvP6YxwOgdnWdWAAvQnwvTVAk6/jUM++5yUz2P63fmxsvQoFY3MZWng98bviUerM+z
+ s=
+X-Feedback-ID: 848413:6xvVEJqleZlAW7/vhv7PzD/cv5tamo2SWZDKyvugGvg=:6xvVEJqleZlAW7/vhv7PzD/cv5tamo2SWZDKyvugGvg=:SG
+Status: RO
+Content-Length: 5464
+Lines: 183
+
+----==_mimepart_5b77084babebc_4ae93f8e3e0d45c413369b
+Content-Type: text/plain;
+ charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+
+You can view, comment on, or merge this pull request online at:
+
+  https://github.com/bitcoinbook/bitcoinbook/pull/594
+
+-- Commit Summary --
+
+  * Fixed typo: "note than" -> "note that"
+
+-- File Changes --
+
+    M ch07.asciidoc (2)
+
+-- Patch Links --
+
+https://github.com/bitcoinbook/bitcoinbook/pull/594.patch
+https://github.com/bitcoinbook/bitcoinbook/pull/594.diff
+
+-- 
+You are receiving this because you are subscribed to this thread.
+Reply to this email directly or view it on GitHub:
+https://github.com/bitcoinbook/bitcoinbook/pull/594
+
+----==_mimepart_5b77084babebc_4ae93f8e3e0d45c413369b
+Content-Type: text/html;
+ charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+
+
+<hr>
+
+<h4>You can view, comment on, or merge this pull request online at:</h4>
+<p>&nbsp;&nbsp;<a href='https://github.com/bitcoinbook/bitcoinbook/pull/594'>https://github.com/bitcoinbook/bitcoinbook/pull/594</a></p>
+
+<h4>Commit Summary</h4>
+<ul>
+  <li>Fixed typo: &quot;note than&quot; -&gt; &quot;note that&quot;</li>
+</ul>
+
+<h4>File Changes</h4>
+<ul>
+  <li>
+    <strong>M</strong>
+    <a href="https://github.com/bitcoinbook/bitcoinbook/pull/594/files#diff-0">ch07.asciidoc</a>
+    (2)
+  </li>
+</ul>
+
+<h4>Patch Links:</h4>
+<ul>
+  <li><a href='https://github.com/bitcoinbook/bitcoinbook/pull/594.patch'>https://github.com/bitcoinbook/bitcoinbook/pull/594.patch</a></li>
+  <li><a href='https://github.com/bitcoinbook/bitcoinbook/pull/594.diff'>https://github.com/bitcoinbook/bitcoinbook/pull/594.diff</a></li>
+</ul>
+
+<p style="font-size:small;-webkit-text-size-adjust:none;color:#666;">&mdash;<br />You are receiving this because you are subscribed to this thread.<br />Reply to this email directly, <a href="https://github.com/bitcoinbook/bitcoinbook/pull/594">view it on GitHub</a>, or <a href="https://github.com/notifications/unsubscribe-auth/ASuvGpos8H_Kt0lP-ba7TceCBWQF44N_ks5uRv_LgaJpZM4WB78d">mute the thread</a>.<img src="https://github.com/notifications/beacon/ASuvGrAERWY-0EtxYadBRFmfO9PTLzmrks5uRv_LgaJpZM4WB78d.gif" height="1" width="1" alt="" /></p>
+<script type="application/json" data-scope="inboxmarkup">{"api_version":"1.0","publisher":{"api_key":"05dde50f1d1a384dd78767c55493e4bb","name":"GitHub"},"entity":{"external_key":"github/bitcoinbook/bitcoinbook","title":"bitcoinbook/bitcoinbook","subtitle":"GitHub repository","main_image_url":"https://assets-cdn.github.com/images/email/message_cards/header.png","avatar_image_url":"https://assets-cdn.github.com/images/email/message_cards/avatar.png","action":{"name":"Open in GitHub","url":"https://github.com/bitcoinbook/bitcoinbook"}},"updates":{"snippets":[{"icon":"DESCRIPTION","message":"Fixed typo: \"note than\" -\u003e \"note that\" (#594)"}],"action":{"name":"View Pull Request","url":"https://github.com/bitcoinbook/bitcoinbook/pull/594"}}}</script>
+<script type="application/ld+json">[
+{
+"@context": "http://schema.org",
+"@type": "EmailMessage",
+"potentialAction": {
+"@type": "ViewAction",
+"target": "https://github.com/bitcoinbook/bitcoinbook/pull/594",
+"url": "https://github.com/bitcoinbook/bitcoinbook/pull/594",
+"name": "View Pull Request"
+},
+"description": "View this Pull Request on GitHub",
+"publisher": {
+"@type": "Organization",
+"name": "GitHub",
+"url": "https://github.com"
+}
+},
+{
+"@type": "MessageCard",
+"@context": "http://schema.org/extensions",
+"hideOriginalBody": "false",
+"originator": "AF6C5A86-E920-430C-9C59-A73278B5EFEB",
+"title": "Fixed typo: \"note than\" -\u003e \"note that\" (#594)",
+"sections": [
+{
+"text": "",
+"activityTitle": "**ottoteixeira**",
+"activityImage": "https://assets-cdn.github.com/images/email/message_cards/avatar.png",
+"activitySubtitle": "@ottoteixeira",
+"facts": [
+
+]
+},
+{
+"title": "Commit Summary",
+"facts": [
+{
+"name": "b18ee82",
+"value": "Fixed typo: \"note than\" -\u003e \"note that\""
+}
+]
+},
+{
+"title": "File Changes",
+"facts": [
+{
+"name": "Modified",
+"value": "[ch07.asciidoc](https://github.com/bitcoinbook/bitcoinbook/pull/594/files#diff-0) (2 changes)"
+}
+]
+}
+],
+"potentialAction": [
+{
+"name": "Add a comment",
+"@type": "ActionCard",
+"inputs": [
+{
+"isMultiLine": true,
+"@type": "TextInput",
+"id": "IssueComment",
+"isRequired": false
+}
+],
+"actions": [
+{
+"name": "Comment",
+"@type": "HttpPOST",
+"target": "https://api.github.com",
+"body": "{\n\"commandName\": \"IssueComment\",\n\"repositoryFullName\": \"bitcoinbook/bitcoinbook\",\n\"issueId\": 594,\n\"IssueComment\": \"{{IssueComment.value}}\"\n}"
+}
+]
+},
+{
+"name": "Close pull request",
+"@type": "HttpPOST",
+"target": "https://api.github.com",
+"body": "{\n\"commandName\": \"PullRequestClose\",\n\"repositoryFullName\": \"bitcoinbook/bitcoinbook\",\n\"pullRequestId\": 594\n}"
+},
+{
+"targets": [
+{
+"os": "default",
+"uri": "https://github.com/bitcoinbook/bitcoinbook/pull/594"
+}
+],
+"@type": "OpenUri",
+"name": "View on GitHub"
+},
+{
+"targets": [
+{
+"os": "default",
+"uri": "https://github.com/bitcoinbook/bitcoinbook/pull/594.patch"
+}
+],
+"@type": "OpenUri",
+"name": "View patch"
+},
+{
+"targets": [
+{
+"os": "default",
+"uri": "https://github.com/bitcoinbook/bitcoinbook/pull/594.diff"
+}
+],
+"@type": "OpenUri",
+"name": "View diff"
+},
+{
+"name": "Unsubscribe",
+"@type": "HttpPOST",
+"target": "https://api.github.com",
+"body": "{\n\"commandName\": \"MuteNotification\",\n\"threadId\": 369606429\n}"
+}
+],
+"themeColor": "26292E"
+}
+]</script>
+
+----==_mimepart_5b77084babebc_4ae93f8e3e0d45c413369b--
+
