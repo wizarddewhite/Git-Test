@@ -10,6 +10,12 @@ message_ids = {}
 # a dictionary of {in-reply-id, thread}
 in_reply_ids = {}
 
+def dup_message_id(message):
+    if message['message-id'] in message_ids:
+        return True
+    else:
+        return False
+
 def put_to_thread(message):
     if message['in-reply-to'] in message_ids:
         # is it reply to some message?
@@ -35,6 +41,8 @@ def threadify(mbox_name):
     mbox.lock()
     #for message in mbox:
     for idx, message in mbox.iteritems():
+        if dup_message_id(message):
+            continue
         put_to_thread(message)
     mbox.flush()
     mbox.close()
