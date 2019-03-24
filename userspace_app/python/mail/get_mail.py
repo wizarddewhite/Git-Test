@@ -72,8 +72,9 @@ def threadify(mbox_name):
     mbox.flush()
     mbox.close()
 
+    print "Total %d threads" % len(threads)
     for t in threads:
-        print "=====Thread: %d msgs", len(t)
+        print("=====Thread: %d msgs" % (len(t)))
         for msg in t:
             datetime = parse(msg['date'])
             print datetime.date(), msg['from'], msg['subject']
