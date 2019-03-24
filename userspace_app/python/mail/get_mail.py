@@ -9,6 +9,8 @@ threads = []
 message_ids = {}
 # a dictionary of {in-reply-id, thread}
 in_reply_ids = {}
+# a dictionary of {references, thread}
+references = {}
 
 def dup_message_id(message):
     if message['message-id'] in message_ids:
@@ -16,7 +18,18 @@ def dup_message_id(message):
     else:
         return False
 
+def search_reference(message):
+    if len(references) == 0:
+        return None
+    if message['references'] == None:
+        return None
+    for ref in message['references'].split():
+        if ref in references:
+            return references[ref]
+    return None
+
 def put_to_thread(message):
+    new_thread = False
     if message['in-reply-to'] in message_ids:
         # is it reply to some message?
         thread = message_ids[message['in-reply-to']]
@@ -28,13 +41,25 @@ def put_to_thread(message):
         # add the message to thread
         thread.add(message)
     else:
-        thread = {message}
-        #add thread to threads
-        threads.append(thread)
+        # last try on references
+        thread = search_reference(message)
+        if thread:
+            thread.add(message)
+        else:
+            new_thread = True
+            thread = {message}
+            #add thread to threads
+            threads.append(thread)
 
     # add message-id to dictionary
     in_reply_ids[message['in-reply-to']] = thread
     message_ids[message['message-id']] = thread
+
+    # if this is a new thread and has references,
+    # record this in case some broken thread
+    if new_thread and message['references']:
+        for ref in message['references'].split():
+            references[ref] = thread
 
 def threadify(mbox_name):
     mbox = mailbox.mbox(mbox_name)
