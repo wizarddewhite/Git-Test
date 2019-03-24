@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import mailbox
 from dateutil.parser import parse
 
-# a set of threads, each thread is a set of its messages
+# a set of threads, each thread is a list of its messages
 threads = []
 # a dictionary of {message-id, thread}
 message_ids = {}
@@ -34,20 +34,20 @@ def put_to_thread(message):
         # is it reply to some message?
         thread = message_ids[message['in-reply-to']]
         # add the message to thread
-        thread.add(message)
+        thread.append(message)
     elif message['in-reply-to'] and message['in-reply-to'] in in_reply_ids:
         # is it reply to the same message as others?
         thread = in_reply_ids[message['in-reply-to']]
         # add the message to thread
-        thread.add(message)
+        thread.append(message)
     else:
         # last try on references
         thread = search_reference(message)
         if thread:
-            thread.add(message)
+            thread.append(message)
         else:
             new_thread = True
-            thread = {message}
+            thread = [message]
             #add thread to threads
             threads.append(thread)
 
