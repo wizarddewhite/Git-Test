@@ -2,15 +2,27 @@
 from datetime import datetime, timedelta
 import mailbox
 from dateutil.parser import parse
+import re
 
-# a set of threads, each thread is a list of its messages
-threads = []
 # a dictionary of {message-id, thread}
 message_ids = {}
 # a dictionary of {in-reply-id, thread}
 in_reply_ids = {}
 # a dictionary of {references, thread}
 references = {}
+
+# a set of threads, each thread is a list of its messages
+threads = []
+
+# a list of subjects
+# subject:
+#   [0] title
+#   [1] rounds
+#   [2] replies
+#   [3] from
+subjects = []
+# a dictionary of {title, subject}
+titles = {}
 
 def dup_message_id(message):
     if message['message-id'] in message_ids:
@@ -75,12 +87,57 @@ def threadify(mbox_name, start, end):
     mbox.flush()
     mbox.close()
 
+    return
+
     print "Total %d threads" % len(threads)
     for t in threads:
         print("=====Thread: %d msgs" % (len(t)))
         for msg in t:
             datetime = parse(msg['date'])
             print datetime.date(), msg['from'], msg['subject']
+
+def is_patch(thread):
+    raw_title = thread[0]['subject']
+    return re.search('patch', raw_title, re.IGNORECASE)
+
+def get_title(thread):
+    raw_title = thread[0]['subject']
+
+    # strip 'Re'
+    raw_title = re.sub('re:', '', raw_title, flags=re.IGNORECASE)
+    # strip 'Patch'
+    raw_title = re.sub('\[.*?\]', '', raw_title)
+    return raw_title.lstrip()
+
+def get_replies(thread):
+    replies = 0
+    for msg in thread:
+        raw_title = msg['subject']
+
+        # strip 'Re'
+        if re.search('re:', raw_title, re.IGNORECASE):
+            replies += 1
+    return replies
+
+def get_subjects(only_patch):
+    for t in threads:
+        # only get patch thread
+        if only_patch and not is_patch(t):
+            continue
+
+        title = get_title(t)
+        replies = get_replies(t)
+        if title in titles:
+            subject = titles[title]
+            subject[1] += 1
+            subject[2] += replies
+        else:
+            subject = [title, 1, replies, t[0]['from']]
+            titles[title] = subject
+            subjects.append(subject)
+
+    for s in subjects:
+        print s
 
 def iterate_mailbox():
     mbox = mailbox.mbox('example.mbox')
@@ -97,5 +154,6 @@ if __name__ == "__main__":
     #start = datetime.now() - timedelta(weeks=2)
     #end = datetime.now()
     start = parse("2018-08-15")
-    end = parse("2018-08-18")
+    end = datetime.now()
     threadify('example.mbox', start, end)
+    get_subjects(True)
