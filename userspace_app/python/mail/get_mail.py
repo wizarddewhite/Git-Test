@@ -25,6 +25,17 @@ subjects = []
 # a dictionary of {title, subject}
 titles = {}
 
+# a dictionary of {participants, #messages}
+participants = {}
+# a dictionary of {companies, #messages}
+company_list = [
+        'intel', 'redhat', 'ibm', 'arm', 'huawei',
+        'google', 'kernel', 'oracle', 'linuxfoundation',
+        'amd', 'bitdefender', 'linaro', 'amazon', 'nvidia',
+        'infradead', 'microsoft', 'openvz', 'mellanox',
+               ]
+companies = {}
+
 def dup_message_id(message):
     if message['message-id'] in message_ids:
         return True
@@ -74,6 +85,23 @@ def put_to_thread(message):
         for ref in message['references'].split():
             references[ref] = thread
 
+def put_to_participants(mail_from):
+    #mail_from = mail_from.lower()
+    if mail_from in participants:
+        #print "old parti", mail_from, participants[mail_from]
+        participants[mail_from] = participants[mail_from] + 1
+    else:
+        participants[mail_from] = 1
+
+def put_to_companies(mail_from):
+    for c in company_list:
+        if re.search(c, mail_from, re.IGNORECASE):
+            if c in companies:
+                companies[c] = companies[c] + 1
+            else:
+                companies[c] = 1
+            break
+
 def threadify(mbox_name, start, end):
     mbox = mailbox.mbox(mbox_name)
     mbox.lock()
@@ -84,7 +112,10 @@ def threadify(mbox_name, start, end):
         date = parse(re.sub('\(.*?\)', '', message['date'])).replace(tzinfo=None)
         if date < start or date > end:
             continue
-        put_to_thread(message)
+        if re.search('patch', message['subject'], re.IGNORECASE):
+            put_to_thread(message)
+            put_to_participants(message['from'])
+            put_to_companies(message['from'])
     mbox.flush()
     mbox.close()
 
@@ -148,7 +179,24 @@ def sort_subjects_by_replies(subject):
     return subject[2]
 
 def show_subjects():
-    print "Total %d subjects" % len(subjects)
+    total_messages = float(0)
+    for _, t in participants.iteritems():
+        total_messages += t
+
+    print "Total %d discussions in %d subjects" % (total_messages, len(subjects))
+    print "Top 10 individual participants:"
+    print "==============================="
+    for p, t in sorted(participants.iteritems(),
+                       key=lambda (p,t): (t,p),
+                       reverse=True)[:10]:
+        print "    %5.02f%% %s: %d" % (t * 100/total_messages, p, t)
+    print "Top 10 company participants:"
+    print "============================"
+    for c, t in sorted(companies.iteritems(),
+                       key=lambda (c,t): (t,c),
+                       reverse=True)[:10]:
+        print "    %5.02f%% %10s: %d" % (t * 100/total_messages, c, t)
+
     for s in subjects:
         print "{:14}: {}".format('Title', s[0])
         print "    {:10}: {}".format('From', s[3])
