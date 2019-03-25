@@ -2071,7 +2071,8 @@ Cc: mst@redhat.com,
 	imammedo@redhat.com,
 	xiaoguangrong.eric@gmail.com,
 	Wei Yang <richardw.yang@linux.intel.com>
-Subject: [PATCH 0/4] nvdimm: clean up
+Subject: [PATCH 0/4] Tracing
+ Summit 2018 on Oct 25th in Edinburgh, UK
 Date: Wed, 27 Feb 2019 15:50:57 +0800
 Message-Id: <20190227075101.6263-1-richardw.yang@linux.intel.com>
 X-Mailer: git-send-email 2.19.1
