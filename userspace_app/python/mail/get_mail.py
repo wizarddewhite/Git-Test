@@ -107,6 +107,8 @@ def get_title(thread):
     raw_title = re.sub('re:', '', raw_title, flags=re.IGNORECASE)
     # strip 'Patch'
     raw_title = re.sub('\[.*?\]', '', raw_title)
+    # strip 'new line'
+    raw_title = re.sub("\n|\r", "", raw_title)
     return raw_title.lstrip()
 
 def get_replies(thread):
@@ -126,6 +128,7 @@ def get_subjects(only_patch):
             continue
 
         title = get_title(t)
+
         replies = get_replies(t)
         if title in titles:
             subject = titles[title]
@@ -162,6 +165,8 @@ def iterate_mailbox():
 
 if __name__ == "__main__":
     #iterate_mailbox()
+
+    # arg[1] is mailbox file
     #start = datetime.now() - timedelta(weeks=2)
     #end = datetime.now()
     start = parse("2018-08-15")
