@@ -136,8 +136,19 @@ def get_subjects(only_patch):
             titles[title] = subject
             subjects.append(subject)
 
+    return
     for s in subjects:
         print s
+
+def sort_subjects_by_replies(subject):
+    return subject[2]
+
+def show_subjects():
+    for s in subjects:
+        print "{:14}: {}".format('Title', s[0])
+        print "    {:10}: {}".format('From', s[3])
+        print "    {:10}: {}".format('Replies', s[2])
+        print "    {:10}: {}".format('Rounds', s[1])
 
 def iterate_mailbox():
     mbox = mailbox.mbox('example.mbox')
@@ -157,3 +168,6 @@ if __name__ == "__main__":
     end = datetime.now()
     threadify('example.mbox', start, end)
     get_subjects(True)
+
+    subjects.sort(key=sort_subjects_by_replies, reverse=True)
+    show_subjects()
