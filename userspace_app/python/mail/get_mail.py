@@ -81,7 +81,7 @@ def threadify(mbox_name, start, end):
     for idx, message in mbox.iteritems():
         if dup_message_id(message):
             continue
-        date = parse(message['date']).replace(tzinfo=None)
+        date = parse(re.sub('\(.*?\)', '', message['date'])).replace(tzinfo=None)
         if date < start or date > end:
             continue
         put_to_thread(message)
