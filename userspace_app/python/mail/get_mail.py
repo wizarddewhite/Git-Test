@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import mailbox
 from dateutil.parser import parse
 import re
+import argparse
 
 # a dictionary of {message-id, thread}
 message_ids = {}
@@ -147,6 +148,7 @@ def sort_subjects_by_replies(subject):
     return subject[2]
 
 def show_subjects():
+    print "Total %d subjects" % len(subjects)
     for s in subjects:
         print "{:14}: {}".format('Title', s[0])
         print "    {:10}: {}".format('From', s[3])
@@ -166,12 +168,24 @@ def iterate_mailbox():
 if __name__ == "__main__":
     #iterate_mailbox()
 
-    # arg[1] is mailbox file
-    #start = datetime.now() - timedelta(weeks=2)
-    #end = datetime.now()
-    start = parse("2018-08-15")
+    parser = argparse.ArgumentParser(description='Processing mailbox')
+    parser.add_argument('--mailbox', metavar='path', required=True,
+                        help='the file of mailbox')
+    parser.add_argument('--start', metavar='path', required=False,
+                        help='start date')
+    parser.add_argument('--end', metavar='path', required=False,
+                        help='end date')
+    args = parser.parse_args()
+
+    start = datetime.now() - timedelta(weeks=2)
+    if args.start:
+        start = parse(args.start)
     end = datetime.now()
-    threadify('example.mbox', start, end)
+    if args.end:
+        end = parse(args.end)
+
+    #start = parse("2018-08-15")
+    threadify(args.mailbox, start, end)
     get_subjects(True)
 
     subjects.sort(key=sort_subjects_by_replies, reverse=True)
