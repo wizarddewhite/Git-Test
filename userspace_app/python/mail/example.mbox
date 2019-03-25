@@ -1808,3 +1808,1290 @@ Content-Transfer-Encoding: 7bit
 
 ----==_mimepart_5b77084babebc_4ae93f8e3e0d45c413369b--
 
+From richard  Tue Mar 12 09:27:04 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Tue, 12 Mar 2019 09:27:04 +0800 (CST)
+Received: from fmsmga004.fm.intel.com (fmsmga004.fm.intel.com [10.253.24.48])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id 0BA8058046F
+	for <richardw.yang@linux.intel.com>; Mon, 11 Mar 2019 18:25:37 -0700 (PDT)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,468,1544515200"; 
+   d="scan'208";a="151438682"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga004.fm.intel.com with ESMTP; 11 Mar 2019 18:25:35 -0700
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH v2 0/3] nvdimm: clean up
+Date: Tue, 12 Mar 2019 09:24:54 +0800
+Message-Id: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 395
+Lines: 16
+
+Here are three trivial cleanup on argument/variable.
+
+---
+v2:
+  * remove the last one which breaks hotplug
+
+Wei Yang (3):
+  nvdimm: fix typo in nvdimm_build_nvdimm_devices argument
+  nvdimm: use *function* directly instead of allocating it again
+  nvdimm: use NVDIMM_ACPI_IO_LEN for the proper IO size
+
+ hw/acpi/nvdimm.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+-- 
+2.19.1
+
+From richard  Tue Mar 12 09:27:05 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Tue, 12 Mar 2019 09:27:05 +0800 (CST)
+Received: from fmsmga002.fm.intel.com (fmsmga002.fm.intel.com [10.253.24.26])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id A891358048A
+	for <richardw.yang@linux.intel.com>; Mon, 11 Mar 2019 18:25:38 -0700 (PDT)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,468,1544515200"; 
+   d="scan'208,223";a="150785731"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga002.fm.intel.com with ESMTP; 11 Mar 2019 18:25:37 -0700
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH v2 1/3] nvdimm: fix typo in nvdimm_build_nvdimm_devices argument
+Date: Tue, 12 Mar 2019 09:24:55 +0800
+Message-Id: <20190312012457.8092-2-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+References: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 1301
+Lines: 32
+
+>From dsm_dma_arrea to dsm_dma_area.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/acpi/nvdimm.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index e53b2cb681..39af8cdba8 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -1260,7 +1260,7 @@ static void nvdimm_build_nvdimm_devices(Aml *root_dev, uint32_t ram_slots)
+ }
+ 
+ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
+-                              BIOSLinker *linker, GArray *dsm_dma_arrea,
++                              BIOSLinker *linker, GArray *dsm_dma_area,
+                               uint32_t ram_slots)
+ {
+     Aml *ssdt, *sb_scope, *dev;
+@@ -1307,7 +1307,7 @@ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
+                                                NVDIMM_ACPI_MEM_ADDR);
+ 
+     bios_linker_loader_alloc(linker,
+-                             NVDIMM_DSM_MEM_FILE, dsm_dma_arrea,
++                             NVDIMM_DSM_MEM_FILE, dsm_dma_area,
+                              sizeof(NvdimmDsmIn), false /* high memory */);
+     bios_linker_loader_add_pointer(linker,
+         ACPI_BUILD_TABLE_FILE, mem_addr_offset, sizeof(uint32_t),
+-- 
+2.19.1
+
+From richard  Tue Mar 12 09:27:05 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Tue, 12 Mar 2019 09:27:05 +0800 (CST)
+Received: from fmsmga002.fm.intel.com (fmsmga002.fm.intel.com [10.253.24.26])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id 0CD2558046F
+	for <richardw.yang@linux.intel.com>; Mon, 11 Mar 2019 18:25:40 -0700 (PDT)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,468,1544515200"; 
+   d="scan'208";a="150785736"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga002.fm.intel.com with ESMTP; 11 Mar 2019 18:25:38 -0700
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH v2 2/3] nvdimm: use *function* directly instead of allocating it again
+Date: Tue, 12 Mar 2019 09:24:56 +0800
+Message-Id: <20190312012457.8092-3-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+References: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 960
+Lines: 26
+
+At the beginning or nvdimm_build_common_dsm(), variable *function* is
+already allocated for Arg2.
+
+This patch reuse variable *function* instead of allocating it again.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/acpi/nvdimm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index 39af8cdba8..e63a1ef15d 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -1086,7 +1086,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
+      */
+     aml_append(method, aml_store(handle, aml_name(NVDIMM_DSM_HANDLE)));
+     aml_append(method, aml_store(aml_arg(1), aml_name(NVDIMM_DSM_REVISION)));
+-    aml_append(method, aml_store(aml_arg(2), aml_name(NVDIMM_DSM_FUNCTION)));
++    aml_append(method, aml_store(function, aml_name(NVDIMM_DSM_FUNCTION)));
+ 
+     /*
+      * The fourth parameter (Arg3) of _DSM is a package which contains
+-- 
+2.19.1
+
+From richard  Tue Mar 12 09:27:06 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Tue, 12 Mar 2019 09:27:06 +0800 (CST)
+Received: from fmsmga002.fm.intel.com (fmsmga002.fm.intel.com [10.253.24.26])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id BCE0858046F
+	for <richardw.yang@linux.intel.com>; Mon, 11 Mar 2019 18:25:41 -0700 (PDT)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,468,1544515200"; 
+   d="scan'208";a="150785739"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga002.fm.intel.com with ESMTP; 11 Mar 2019 18:25:40 -0700
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH v2 3/3] nvdimm: use NVDIMM_ACPI_IO_LEN for the proper IO size
+Date: Tue, 12 Mar 2019 09:24:57 +0800
+Message-Id: <20190312012457.8092-4-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+References: <20190312012457.8092-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 840
+Lines: 24
+
+The IO range is defined to 4 bytes with NVDIMM_ACPI_IO_LEN, so it is
+more proper to use this macro instead of calculating it by sizeof.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/acpi/nvdimm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index e63a1ef15d..2457c1aa44 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -992,7 +992,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
+     field = aml_field(NVDIMM_DSM_IOPORT, AML_DWORD_ACC, AML_NOLOCK,
+                       AML_PRESERVE);
+     aml_append(field, aml_named_field(NVDIMM_DSM_NOTIFY,
+-               sizeof(uint32_t) * BITS_PER_BYTE));
++               NVDIMM_ACPI_IO_LEN * BITS_PER_BYTE));
+     aml_append(method, field);
+ 
+     /*
+-- 
+2.19.1
+
+From richard  Wed Feb 27 15:52:20 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Wed, 27 Feb 2019 15:52:20 +0800 (CST)
+Received: from fmsmga002.fm.intel.com (fmsmga002.fm.intel.com [10.253.24.26])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id 5D919580472
+	for <richardw.yang@linux.intel.com>; Tue, 26 Feb 2019 23:51:56 -0800 (PST)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,418,1544515200"; 
+   d="scan'208";a="146921428"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga002.fm.intel.com with ESMTP; 26 Feb 2019 23:51:54 -0800
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH 0/4] nvdimm: clean up
+Date: Wed, 27 Feb 2019 15:50:57 +0800
+Message-Id: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 557
+Lines: 18
+
+Here are 4 cleanup patches for nvdimm.
+
+The first three are trivial clean on argument/variable.
+The last one move setup place of the FIT table.
+
+Wei Yang (4):
+  nvdimm: fix typo in nvdimm_build_nvdimm_devices argument
+  nvdimm: use *function* directly instead of allocating it again
+  nvdimm: use NVDIMM_ACPI_IO_LEN for the proper IO size
+  nvdimm: build FIT in nvdimm_build_acpi
+
+ hw/acpi/nvdimm.c        | 14 +++++---------
+ hw/i386/pc.c            |  5 -----
+ include/hw/mem/nvdimm.h |  1 -
+ 3 files changed, 5 insertions(+), 15 deletions(-)
+
+-- 
+2.19.1
+
+From richard  Wed Feb 27 15:52:21 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Wed, 27 Feb 2019 15:52:21 +0800 (CST)
+Received: from fmsmga001.fm.intel.com (fmsmga001.fm.intel.com [10.253.24.23])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id B5321580472
+	for <richardw.yang@linux.intel.com>; Tue, 26 Feb 2019 23:51:57 -0800 (PST)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,418,1544515200"; 
+   d="scan'208,223";a="150364894"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga001.fm.intel.com with ESMTP; 26 Feb 2019 23:51:56 -0800
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH 1/4] nvdimm: fix typo in nvdimm_build_nvdimm_devices argument
+Date: Wed, 27 Feb 2019 15:50:58 +0800
+Message-Id: <20190227075101.6263-2-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 1252
+Lines: 31
+
+>From dsm_dma_arrea to dsm_dma_area.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+---
+ hw/acpi/nvdimm.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index e53b2cb681..39af8cdba8 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -1260,7 +1260,7 @@ static void nvdimm_build_nvdimm_devices(Aml *root_dev, uint32_t ram_slots)
+ }
+ 
+ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
+-                              BIOSLinker *linker, GArray *dsm_dma_arrea,
++                              BIOSLinker *linker, GArray *dsm_dma_area,
+                               uint32_t ram_slots)
+ {
+     Aml *ssdt, *sb_scope, *dev;
+@@ -1307,7 +1307,7 @@ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
+                                                NVDIMM_ACPI_MEM_ADDR);
+ 
+     bios_linker_loader_alloc(linker,
+-                             NVDIMM_DSM_MEM_FILE, dsm_dma_arrea,
++                             NVDIMM_DSM_MEM_FILE, dsm_dma_area,
+                              sizeof(NvdimmDsmIn), false /* high memory */);
+     bios_linker_loader_add_pointer(linker,
+         ACPI_BUILD_TABLE_FILE, mem_addr_offset, sizeof(uint32_t),
+-- 
+2.19.1
+
+From richard  Thu Mar  7 00:01:12 2019
+Return-Path: <imammedo@redhat.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Thu, 07 Mar 2019 00:01:12 +0800 (CST)
+Received: from orsmga006.jf.intel.com (orsmga006.jf.intel.com [10.7.209.51])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id 657815804A9
+	for <richardw.yang@linux.intel.com>; Wed,  6 Mar 2019 08:00:49 -0800 (PST)
+Received: from fmsmga103.fm.intel.com ([10.1.193.90])
+  by orsmga006-1.jf.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:00:49 -0800
+Received-SPF: None (mtab.intel.com: no sender authenticity
+  information available from domain of imammedo@redhat.com)
+  identity=pra; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com"; x-conformance=sidf_compatible
+Received-SPF: Pass (mtab.intel.com: domain of imammedo@redhat.com
+  designates 209.132.183.28 as permitted sender)
+  identity=mailfrom; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Received-SPF: Pass (mtab.intel.com: domain of
+  postmaster@mx1.redhat.com designates 209.132.183.28 as
+  permitted sender) identity=helo; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="postmaster@mx1.redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Authentication-Results: mtab.intel.com; dkim=none (message not signed) header.i=none; spf=None smtp.pra=imammedo@redhat.com; spf=Pass smtp.mailfrom=imammedo@redhat.com; spf=Pass smtp.helo=postmaster@mx1.redhat.com; dmarc=pass (p=none dis=none) d=redhat.com
+IronPort-PHdr: =?us-ascii?q?9a23=3AFWwzUxAvj7W3saCEUZNiUyQJP3N1i/DPJgcQr6Af?=
+ =?us-ascii?q?oPdwSPv+osbcNUDSrc9gkEXOFd2Cra4d06yO6ujJYi8p2d65qncMcZhBBVcuqP?=
+ =?us-ascii?q?49uEgeOvODElDxN/XwbiY3T4xoXV5h+GynYwAOQJ6tL1LdrWev4jEMBx7xKRR6?=
+ =?us-ascii?q?JvjvGo7Vks+7y/2+94fcbglVmDaxe69+IAirpgjNq8cahpdvJLwswRXTuHtIfO?=
+ =?us-ascii?q?pWxWJsJV2Nmhv3+9m98p1+/SlOovwt78FPX7n0cKQ+VrxYES8pM3sp683xtBnM?=
+ =?us-ascii?q?VhWA630BWWgLiBVIAgzF7BbnXpfttybxq+Rw1DWGMcDwULs5Qiqp4bt1RxD0iS?=
+ =?us-ascii?q?cHLz85/3/Risxsl6JQvRatqwViz4LIfI2ZMfxzdb7fc9wHX2pMRshfWSxfDI2h?=
+ =?us-ascii?q?bIUADeQBMulEoIfyvFYOsRmzCBOwCO/z1jNEmHn71rA63eQ7FgHG2RQtEdEBsH?=
+ =?us-ascii?q?TTttX+KaAcXvqwzKnN0zrMcvRW2Sng44XPcxAhpOuDXbd1ccXP1EYvEBjIjk+O?=
+ =?us-ascii?q?poP4PzOazPgNv3KH4OpnUOKikmgqoBxyrDi33soglJXFi4YPxlzZ+yh13pw5Kc?=
+ =?us-ascii?q?C7RUN1e9KoDphduieHPIVsWMwiWXtnuCMix70Gp5G7eC8KxYwixx/QdvCLaZKI?=
+ =?us-ascii?q?7Qz+W+aROzh4mGhpd664hxa36USgy+v8Wdeo0FtSsCZJjt3BumoQ2xHd9MSLUO?=
+ =?us-ascii?q?Zx80Sv1DqVyQze6flIIUUumqraL54hzKQwlp0WsUnbHy/2nV/5jKqTdko65+eo?=
+ =?us-ascii?q?7P/qYq/4qZCBN497kB3+Pr4ylcy4BOQ0KhIOUHSD+eSgyL3j+lX0QK9LjvIqkq?=
+ =?us-ascii?q?nWqoraKtkVp6KjAw5ayIAj6xmkAjei0dQYm2QHLV1fdBKGiYjpJ0/BIPTiAfij?=
+ =?us-ascii?q?hFSslWQj+/eTAbDgSqTEKHeLxK3gdrZ08UJDjhs6y99345NSF6FHIfTvV0u3v9?=
+ =?us-ascii?q?vdWEwXKQuxlsfoD88184obXG+DBbHRZKLXuFqN6+4oC/OBaI8cpHD2LP1ztK2m?=
+ =?us-ascii?q?tmMwhVJIJfrh5pAQcn3tW60+exzIM0qpuc8IFCIxhiR7SeXrjFOYVjsKPSSoUq?=
+ =?us-ascii?q?487y19A4WjX96aGtKdxYeZ1SL+JaV4I3hcAwnWQ23le4WNR7EHbyfAepY8wAxB?=
+ =?us-ascii?q?bqCoTsoa7T/rtAL+zOM5fO/Eo2sCuJ7j3cQz7OrWx0g/?=
+X-IronPort-Anti-Spam-Filtered: true
+X-IronPort-Anti-Spam-Result: =?us-ascii?q?A0AOAQB57X9chxy3hNFkHAEBAQQBAQcEA?=
+ =?us-ascii?q?QGBZYN7J40BjHmJPIlVhw0NKwGEQAKEMRsGAQQ0EgEBAwEBAQIBAwEBARMBAQE?=
+ =?us-ascii?q?IDQkIKS+COikBgmcBAgIBOj8FCwsOEyUPSAYTgyKBaQUIBaxEiimBL4spF4FAP?=
+ =?us-ascii?q?4MBgSKKYgKRNZJaCZJ0JYpsiEMtnRqBXoF3TSMVgyeCFg4JE44MPgECMAGBIAE?=
+ =?us-ascii?q?BjHEBAQ?=
+X-IPAS-Result: =?us-ascii?q?A0AOAQB57X9chxy3hNFkHAEBAQQBAQcEAQGBZYN7J40BjHm?=
+ =?us-ascii?q?JPIlVhw0NKwGEQAKEMRsGAQQ0EgEBAwEBAQIBAwEBARMBAQEIDQkIKS+COikBg?=
+ =?us-ascii?q?mcBAgIBOj8FCwsOEyUPSAYTgyKBaQUIBaxEiimBL4spF4FAP4MBgSKKYgKRNZJ?=
+ =?us-ascii?q?aCZJ0JYpsiEMtnRqBXoF3TSMVgyeCFg4JE44MPgECMAGBIAEBjHEBAQ?=
+X-IronPort-AV: E=Sophos;i="5.58,448,1544515200"; 
+   d="scan'208";a="66088637"
+X-Amp-Result: SKIPPED(no attachment in message)
+X-Amp-File-Uploaded: False
+Received: from mx1.redhat.com ([209.132.183.28])
+  by mtab.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:00:48 -0800
+Received: from smtp.corp.redhat.com (int-mx03.intmail.prod.int.phx2.redhat.com [10.5.11.13])
+	(using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by mx1.redhat.com (Postfix) with ESMTPS id 0BDD68764B;
+	Wed,  6 Mar 2019 16:00:48 +0000 (UTC)
+Received: from Igors-MacBook-Pro.local (ovpn-112-17.ams2.redhat.com [10.36.112.17])
+	by smtp.corp.redhat.com (Postfix) with ESMTP id 63F1160C1B;
+	Wed,  6 Mar 2019 16:00:43 +0000 (UTC)
+Date: Wed, 6 Mar 2019 17:00:36 +0100
+From: Igor Mammedov <imammedo@redhat.com>
+To: Wei Yang <richardw.yang@linux.intel.com>
+Cc: qemu-devel@nongnu.org, xiaoguangrong.eric@gmail.com, mst@redhat.com
+Subject: Re: [Qemu-devel] [PATCH 1/4] nvdimm: fix typo in
+ nvdimm_build_nvdimm_devices argument
+Message-ID: <20190306170041.051a2104@Igors-MacBook-Pro.local>
+In-Reply-To: <20190227075101.6263-2-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+	<20190227075101.6263-2-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+X-Scanned-By: MIMEDefang 2.79 on 10.5.11.13
+X-Greylist: Sender IP whitelisted, not delayed by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.26]); Wed, 06 Mar 2019 16:00:48 +0000 (UTC)
+Status: RO
+Content-Length: 1433
+Lines: 35
+
+On Wed, 27 Feb 2019 15:50:58 +0800
+Wei Yang <richardw.yang@linux.intel.com> wrote:
+
+> From dsm_dma_arrea to dsm_dma_area.
+> 
+> Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+
+> ---
+>  hw/acpi/nvdimm.c | 4 ++--
+>  1 file changed, 2 insertions(+), 2 deletions(-)
+> 
+> diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+> index e53b2cb681..39af8cdba8 100644
+> --- a/hw/acpi/nvdimm.c
+> +++ b/hw/acpi/nvdimm.c
+> @@ -1260,7 +1260,7 @@ static void nvdimm_build_nvdimm_devices(Aml *root_dev, uint32_t ram_slots)
+>  }
+>  
+>  static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
+> -                              BIOSLinker *linker, GArray *dsm_dma_arrea,
+> +                              BIOSLinker *linker, GArray *dsm_dma_area,
+>                                uint32_t ram_slots)
+>  {
+>      Aml *ssdt, *sb_scope, *dev;
+> @@ -1307,7 +1307,7 @@ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
+>                                                 NVDIMM_ACPI_MEM_ADDR);
+>  
+>      bios_linker_loader_alloc(linker,
+> -                             NVDIMM_DSM_MEM_FILE, dsm_dma_arrea,
+> +                             NVDIMM_DSM_MEM_FILE, dsm_dma_area,
+>                               sizeof(NvdimmDsmIn), false /* high memory */);
+>      bios_linker_loader_add_pointer(linker,
+>          ACPI_BUILD_TABLE_FILE, mem_addr_offset, sizeof(uint32_t),
+
+From richard  Wed Feb 27 15:52:22 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Wed, 27 Feb 2019 15:52:22 +0800 (CST)
+Received: from fmsmga001.fm.intel.com (fmsmga001.fm.intel.com [10.253.24.23])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id 25540580261
+	for <richardw.yang@linux.intel.com>; Tue, 26 Feb 2019 23:51:59 -0800 (PST)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,418,1544515200"; 
+   d="scan'208";a="150364898"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga001.fm.intel.com with ESMTP; 26 Feb 2019 23:51:58 -0800
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH 2/4] nvdimm: use *function* directly instead of allocating it again
+Date: Wed, 27 Feb 2019 15:50:59 +0800
+Message-Id: <20190227075101.6263-3-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 911
+Lines: 25
+
+At the beginning or nvdimm_build_common_dsm(), variable *function* is
+already allocated for Arg2.
+
+This patch reuse variable *function* instead of allocating it again.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+---
+ hw/acpi/nvdimm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index 39af8cdba8..e63a1ef15d 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -1086,7 +1086,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
+      */
+     aml_append(method, aml_store(handle, aml_name(NVDIMM_DSM_HANDLE)));
+     aml_append(method, aml_store(aml_arg(1), aml_name(NVDIMM_DSM_REVISION)));
+-    aml_append(method, aml_store(aml_arg(2), aml_name(NVDIMM_DSM_FUNCTION)));
++    aml_append(method, aml_store(function, aml_name(NVDIMM_DSM_FUNCTION)));
+ 
+     /*
+      * The fourth parameter (Arg3) of _DSM is a package which contains
+-- 
+2.19.1
+
+From richard  Thu Mar  7 00:03:16 2019
+Return-Path: <imammedo@redhat.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Thu, 07 Mar 2019 00:03:16 +0800 (CST)
+Received: from FMSMGA003.fm.intel.com (fmsmga003.fm.intel.com [10.253.24.29])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id B7C1E5805B4
+	for <richardw.yang@linux.intel.com>; Wed,  6 Mar 2019 08:02:34 -0800 (PST)
+Received: from fmsmga103.fm.intel.com ([10.1.193.90])
+  by FMSMGA003-1.fm.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:02:34 -0800
+Received-SPF: None (mtab.intel.com: no sender authenticity
+  information available from domain of imammedo@redhat.com)
+  identity=pra; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com"; x-conformance=sidf_compatible
+Received-SPF: Pass (mtab.intel.com: domain of imammedo@redhat.com
+  designates 209.132.183.28 as permitted sender)
+  identity=mailfrom; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Received-SPF: Pass (mtab.intel.com: domain of
+  postmaster@mx1.redhat.com designates 209.132.183.28 as
+  permitted sender) identity=helo; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="postmaster@mx1.redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Authentication-Results: mtab.intel.com; dkim=none (message not signed) header.i=none; spf=None smtp.pra=imammedo@redhat.com; spf=Pass smtp.mailfrom=imammedo@redhat.com; spf=Pass smtp.helo=postmaster@mx1.redhat.com; dmarc=pass (p=none dis=none) d=redhat.com
+IronPort-PHdr: =?us-ascii?q?9a23=3An9yw/hFXd+Fw0LeZKBer1J1GYnF86YWxBRYc798d?=
+ =?us-ascii?q?s5kLTJ78osmwAkXT6L1XgUPTWs2DsrQY0rKQ6/mocFdDyK7JiGoFfp1IWk1Nou?=
+ =?us-ascii?q?QttCtkPvS4D1bmJuXhdS0wEZcKflZk+3amLRodQ56mNBXdrXKo8DEdBAj0OxZr?=
+ =?us-ascii?q?KeTpAI7SiNm82/yv95HJbAhEmSaxbaluIBmrsA7cqtQYjYx+J6gr1xDHuGFIe+?=
+ =?us-ascii?q?NYxWNpIVKcgRPx7dqu8ZBg7ipdpesv+9ZPXqvmcas4S6dYDCk9PGAu+MLrrxjD?=
+ =?us-ascii?q?QhCR6XYaT24bjwBHAwnB7BH9Q5fxri73vfdz1SWGIcH7S60/VC+85Kl3VhDnlC?=
+ =?us-ascii?q?YHNyY48G7JjMxwkLlbqw+lqxBm3oLYfJ2ZOP94c6jAf90VWHBBU95fWSJBHI2y?=
+ =?us-ascii?q?cogBAOgPPelXs4bzqEADrQe8CAS2GO/j1iNEimHw0KYn0+ohCwbG3Ak4EtwNv3?=
+ =?us-ascii?q?TUq8/1P7oVX++vyanIyCvMYO5R2Tfj9YPFdREhofSWUrJ1dMre11QgFwTeg1WK?=
+ =?us-ascii?q?t4PqIjOV2f4Rs2SB8+VgUuevhnchpgpsoTav3t8hhpfVio8R0FzI6Ct0zJgvKd?=
+ =?us-ascii?q?GlS0N2b8SoHIVTuiycKoB4WNktQ3tytyY/0rAGuYC0fCwNyJk/wh7eZOGLf5KS?=
+ =?us-ascii?q?4h39SemRIS13hG5/dL2jgBay9FCsyuz6VsaqzFZHtjRJnsXIu3wXyhDe5NaLRu?=
+ =?us-ascii?q?Fg8kqi1zuDzR7f5+JcLUAxj6XbKpohwrAqlpoUtETOBi72mEDsg6+Tc0Ur5PWn?=
+ =?us-ascii?q?6+P8b7X8uJCTKo90hRviMqg0hsO/BuE4PhAUX2eH4eS8yKHj/UrhTbVQj/05jq?=
+ =?us-ascii?q?nZv4rAJcsGqK+1GQ9U3Zwl6xawFDqm1NUYnX8aLFNKYh6Hjo7pO03QL/D8F/uw?=
+ =?us-ascii?q?n1OskDI4j8zBa4LsA938J37M2OP7fL194lRQ10wixNZQz5ZVDKwRZvP1RkL18t?=
+ =?us-ascii?q?ffC0lqHRazxrPGB9JnnqYXXGeCDqiHePfTtFaN4+8jJMGWaYMVsSq7IP8gsa29?=
+ =?us-ascii?q?xUQlkEMQKPH6laAcb2q1S7E/ex3AMCjcx+wZGGJPhTIQCenjiVmMSzlWPizgRa?=
+ =?us-ascii?q?8w5jgnTomhCNWaH9z/sPm6xC6+W6ZuSCVeEFnVSyXyeomEUutKYyWXcJc4z240?=
+ =?us-ascii?q?EIO5Qopk7imA8Q/3z70+cLjR6nRer5/v1NFpoebUkENr+A=3D=3D?=
+X-IronPort-Anti-Spam-Filtered: true
+X-IronPort-Anti-Spam-Result: =?us-ascii?q?A0AOAQDV7n9chxy3hNFkHAEBAQQBAQcEA?=
+ =?us-ascii?q?QGBZYN7J40BjHmJPJBiDSsBhEAChDEbBgEENBIBAQMBAQECAQMBAQETAQEBCA0?=
+ =?us-ascii?q?JCCkvgjopAYJnAQICATo/BQsLDhMlD0gGE4MigWkFCAWsPoopgS+LKReBQD+DA?=
+ =?us-ascii?q?YEihEqGGAKKEocjkloJknQlimyIQ51HgV6Bd00jFYMnghYOCY4fPgECMAGBIAE?=
+ =?us-ascii?q?BiiSCTQEB?=
+X-IPAS-Result: =?us-ascii?q?A0AOAQDV7n9chxy3hNFkHAEBAQQBAQcEAQGBZYN7J40BjHm?=
+ =?us-ascii?q?JPJBiDSsBhEAChDEbBgEENBIBAQMBAQECAQMBAQETAQEBCA0JCCkvgjopAYJnA?=
+ =?us-ascii?q?QICATo/BQsLDhMlD0gGE4MigWkFCAWsPoopgS+LKReBQD+DAYEihEqGGAKKEoc?=
+ =?us-ascii?q?jkloJknQlimyIQ51HgV6Bd00jFYMnghYOCY4fPgECMAGBIAEBiiSCTQEB?=
+X-IronPort-AV: E=Sophos;i="5.58,448,1544515200"; 
+   d="scan'208";a="66089278"
+X-Amp-Result: SKIPPED(no attachment in message)
+X-Amp-File-Uploaded: False
+Received: from mx1.redhat.com ([209.132.183.28])
+  by mtab.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:02:33 -0800
+Received: from smtp.corp.redhat.com (int-mx08.intmail.prod.int.phx2.redhat.com [10.5.11.23])
+	(using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by mx1.redhat.com (Postfix) with ESMTPS id 86647811DB;
+	Wed,  6 Mar 2019 16:02:33 +0000 (UTC)
+Received: from Igors-MacBook-Pro.local (ovpn-112-17.ams2.redhat.com [10.36.112.17])
+	by smtp.corp.redhat.com (Postfix) with ESMTP id B5B2634D4F;
+	Wed,  6 Mar 2019 16:02:29 +0000 (UTC)
+Date: Wed, 6 Mar 2019 17:02:27 +0100
+From: Igor Mammedov <imammedo@redhat.com>
+To: Wei Yang <richardw.yang@linux.intel.com>
+Cc: qemu-devel@nongnu.org, mst@redhat.com, xiaoguangrong.eric@gmail.com
+Subject: Re: [PATCH 2/4] nvdimm: use *function* directly instead of
+ allocating it again
+Message-ID: <20190306170227.1268caa2@Igors-MacBook-Pro.local>
+In-Reply-To: <20190227075101.6263-3-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+	<20190227075101.6263-3-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+X-Scanned-By: MIMEDefang 2.84 on 10.5.11.23
+X-Greylist: Sender IP whitelisted, not delayed by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.27]); Wed, 06 Mar 2019 16:02:33 +0000 (UTC)
+Status: RO
+Content-Length: 1081
+Lines: 29
+
+On Wed, 27 Feb 2019 15:50:59 +0800
+Wei Yang <richardw.yang@linux.intel.com> wrote:
+
+> At the beginning or nvdimm_build_common_dsm(), variable *function* is
+> already allocated for Arg2.
+> 
+> This patch reuse variable *function* instead of allocating it again.
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+
+> 
+> Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+> ---
+>  hw/acpi/nvdimm.c | 2 +-
+>  1 file changed, 1 insertion(+), 1 deletion(-)
+> 
+> diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+> index 39af8cdba8..e63a1ef15d 100644
+> --- a/hw/acpi/nvdimm.c
+> +++ b/hw/acpi/nvdimm.c
+> @@ -1086,7 +1086,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
+>       */
+>      aml_append(method, aml_store(handle, aml_name(NVDIMM_DSM_HANDLE)));
+>      aml_append(method, aml_store(aml_arg(1), aml_name(NVDIMM_DSM_REVISION)));
+> -    aml_append(method, aml_store(aml_arg(2), aml_name(NVDIMM_DSM_FUNCTION)));
+> +    aml_append(method, aml_store(function, aml_name(NVDIMM_DSM_FUNCTION)));
+>  
+>      /*
+>       * The fourth parameter (Arg3) of _DSM is a package which contains
+
+From richard  Wed Feb 27 15:52:22 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Wed, 27 Feb 2019 15:52:22 +0800 (CST)
+Received: from fmsmga001.fm.intel.com (fmsmga001.fm.intel.com [10.253.24.23])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id E567158073B
+	for <richardw.yang@linux.intel.com>; Tue, 26 Feb 2019 23:52:00 -0800 (PST)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,418,1544515200"; 
+   d="scan'208";a="150364900"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga001.fm.intel.com with ESMTP; 26 Feb 2019 23:51:59 -0800
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH 3/4] nvdimm: use NVDIMM_ACPI_IO_LEN for the proper IO size
+Date: Wed, 27 Feb 2019 15:51:00 +0800
+Message-Id: <20190227075101.6263-4-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 791
+Lines: 23
+
+The IO range is defined to 4 bytes with NVDIMM_ACPI_IO_LEN, so it is
+more proper to use this macro instead of calculating it by sizeof.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+---
+ hw/acpi/nvdimm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index e63a1ef15d..2457c1aa44 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -992,7 +992,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
+     field = aml_field(NVDIMM_DSM_IOPORT, AML_DWORD_ACC, AML_NOLOCK,
+                       AML_PRESERVE);
+     aml_append(field, aml_named_field(NVDIMM_DSM_NOTIFY,
+-               sizeof(uint32_t) * BITS_PER_BYTE));
++               NVDIMM_ACPI_IO_LEN * BITS_PER_BYTE));
+     aml_append(method, field);
+ 
+     /*
+-- 
+2.19.1
+
+From richard  Thu Mar  7 00:11:27 2019
+Return-Path: <imammedo@redhat.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Thu, 07 Mar 2019 00:11:27 +0800 (CST)
+Received: from orsmga005.jf.intel.com (orsmga005.jf.intel.com [10.7.209.41])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id 94C265805B4
+	for <richardw.yang@linux.intel.com>; Wed,  6 Mar 2019 08:10:48 -0800 (PST)
+Received: from fmsmga103.fm.intel.com ([10.1.193.90])
+  by orsmga005-1.jf.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:10:48 -0800
+Received-SPF: None (mtab.intel.com: no sender authenticity
+  information available from domain of imammedo@redhat.com)
+  identity=pra; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com"; x-conformance=sidf_compatible
+Received-SPF: Pass (mtab.intel.com: domain of imammedo@redhat.com
+  designates 209.132.183.28 as permitted sender)
+  identity=mailfrom; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Received-SPF: Pass (mtab.intel.com: domain of
+  postmaster@mx1.redhat.com designates 209.132.183.28 as
+  permitted sender) identity=helo; client-ip=209.132.183.28;
+  receiver=mtab.intel.com; envelope-from="imammedo@redhat.com";
+  x-sender="postmaster@mx1.redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Authentication-Results: mtab.intel.com; dkim=none (message not signed) header.i=none; spf=None smtp.pra=imammedo@redhat.com; spf=Pass smtp.mailfrom=imammedo@redhat.com; spf=Pass smtp.helo=postmaster@mx1.redhat.com; dmarc=pass (p=none dis=none) d=redhat.com
+IronPort-PHdr: =?us-ascii?q?9a23=3AMiXeJhc6LQ5sl3DZuXKjtYRtlGMj4u6mDksu8pMi?=
+ =?us-ascii?q?zoh2WeGdxcu/YR7h7PlgxGXEQZ/co6odzbaP6+a4ACQp2tWoiDg6aptCVhsI24?=
+ =?us-ascii?q?09vjcLJ4q7M3D9N+PgdCcgHc5PBxdP9nC/NlVJSo6lPwWB6nK94iQPFRrhKAF7?=
+ =?us-ascii?q?Ovr6GpLIj8Swyuu+54Dfbx9HiTagfb9+Ngm6oRjMvcQKnIVuLbo8xAHUqXVSYe?=
+ =?us-ascii?q?RWwm1oJVOXnxni48q74YBu/SdNtf8/7sBMSar1cbg2QrxeFzQmLns65Nb3uhnZ?=
+ =?us-ascii?q?TAuA/WUTX2MLmRdVGQfF7RX6XpDssivms+d2xSeXMdHqQb0yRD+v9LlgRgP2hy?=
+ =?us-ascii?q?gbNj456GDXhdJ2jKJHuxKquhhzz5fJbI2JKPZye6XQds4YS2VcRMZcTyJPDIOi?=
+ =?us-ascii?q?YYUSDOQOP+hYoIbhqFUBtha+GQuhCfnzxjNUmnP6w6s32PkhHwHc2wwgGsoDvn?=
+ =?us-ascii?q?fbrNXyLqcZTOe7w7PNzTXGcfxZxDD96JbVeR0moPGMWKh/cc/UyUYxCgzFiU6d?=
+ =?us-ascii?q?qZb7MDyI1uQCqXSb4/B8WuKojm4qsgd8qSWsyMc0koTFmJ4Zx1Te+Slkzos5O8?=
+ =?us-ascii?q?e0RFN4bNOqCpdcqSKXOo1rSc04WW5oojw1yrgetJ67YicKzJMnygbaa/2IboSE?=
+ =?us-ascii?q?+AjjW/iMLjd4nn1lZKiziAq18Uil0uH8V8+030hWriddjNXAqnQA2wbO5sWJVP?=
+ =?us-ascii?q?dx5Fqt1DWB2gzJ9O1JIlg4la/BJJ4gxr4wmIATsUPGHiLumUX2ibWZdkAh+ue2?=
+ =?us-ascii?q?9uvnZa7rpoWCOIBpigHxKLgultajDuQ/NwgCR3Kb9vik1L3/4U35R61Hjuc3kq?=
+ =?us-ascii?q?bFsJDVP94bqbO3AgNP0ocs8RC/Dzi93dQcnHkHKk9FeR2dg4joPVHOPO73DfOl?=
+ =?us-ascii?q?j1uwlzdrwqOOArq0PZjMZknKlripKax84E5V0gYsi8FW4Z18DrAHPeK1W0ntud?=
+ =?us-ascii?q?ieBRg8ZV+a2eHiXfRy0ZlWfGuKB6KVN72a5V6N7+cqLuWLTJUYtDb0N74u4Pu4?=
+ =?us-ascii?q?3ixxokMUYaT8hchfU3u/BPkzZhzBOSO90OdEKn8Du08FdMKvjVSDVTBJYHPrBf?=
+ =?us-ascii?q?Am6z07AZ7gBoDGFNn03O6xmRyjF5gTXVhoT0iWGC6yJZ+JV/cFdGSZJcozymVZ?=
+ =?us-ascii?q?B4jkcJco0FSVjCG/y7djKbOKqCgI7NT52dR17vGVnhY3p2V5?=
+X-IronPort-Anti-Spam-Filtered: true
+X-IronPort-Anti-Spam-Result: =?us-ascii?q?A0AOAQD8739chxy3hNFkHAEBAQQBAQcEA?=
+ =?us-ascii?q?QGBZYN7J40BjHmJPIlVhw0NKwGEQAKEMRsGAQQ0EgEBAwEBAQIBAwEBARMBAQE?=
+ =?us-ascii?q?IDQkIKS+COikBgmcBAgIBOj8FCwsOEyUPSAYTgyKBaQUIBaxHiimBL4spF4FAP?=
+ =?us-ascii?q?4MBgSKESoYYApE1kloJknQlimyIQy2dGoFegXdNIxWDJ4ITAw4Jjh8+AQIwAYE?=
+ =?us-ascii?q?gAQGKJIJNAQE?=
+X-IPAS-Result: =?us-ascii?q?A0AOAQD8739chxy3hNFkHAEBAQQBAQcEAQGBZYN7J40BjHm?=
+ =?us-ascii?q?JPIlVhw0NKwGEQAKEMRsGAQQ0EgEBAwEBAQIBAwEBARMBAQEIDQkIKS+COikBg?=
+ =?us-ascii?q?mcBAgIBOj8FCwsOEyUPSAYTgyKBaQUIBaxHiimBL4spF4FAP4MBgSKESoYYApE?=
+ =?us-ascii?q?1kloJknQlimyIQy2dGoFegXdNIxWDJ4ITAw4Jjh8+AQIwAYEgAQGKJIJNAQE?=
+X-IronPort-AV: E=Sophos;i="5.58,448,1544515200"; 
+   d="scan'208";a="66091003"
+X-Amp-Result: SKIPPED(no attachment in message)
+X-Amp-File-Uploaded: False
+Received: from mx1.redhat.com ([209.132.183.28])
+  by mtab.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:10:47 -0800
+Received: from smtp.corp.redhat.com (int-mx05.intmail.prod.int.phx2.redhat.com [10.5.11.15])
+	(using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by mx1.redhat.com (Postfix) with ESMTPS id 3FF1B3005219;
+	Wed,  6 Mar 2019 16:10:47 +0000 (UTC)
+Received: from Igors-MacBook-Pro.local (ovpn-112-17.ams2.redhat.com [10.36.112.17])
+	by smtp.corp.redhat.com (Postfix) with ESMTP id 85DBF5D786;
+	Wed,  6 Mar 2019 16:10:43 +0000 (UTC)
+Date: Wed, 6 Mar 2019 17:10:41 +0100
+From: Igor Mammedov <imammedo@redhat.com>
+To: Wei Yang <richardw.yang@linux.intel.com>
+Cc: qemu-devel@nongnu.org, mst@redhat.com, xiaoguangrong.eric@gmail.com
+Subject: Re: [PATCH 3/4] nvdimm: use NVDIMM_ACPI_IO_LEN for the proper IO
+ size
+Message-ID: <20190306171041.0bb86044@Igors-MacBook-Pro.local>
+In-Reply-To: <20190227075101.6263-4-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+	<20190227075101.6263-4-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+X-Scanned-By: MIMEDefang 2.79 on 10.5.11.15
+X-Greylist: Sender IP whitelisted, not delayed by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.47]); Wed, 06 Mar 2019 16:10:47 +0000 (UTC)
+Status: RO
+Content-Length: 957
+Lines: 27
+
+On Wed, 27 Feb 2019 15:51:00 +0800
+Wei Yang <richardw.yang@linux.intel.com> wrote:
+
+> The IO range is defined to 4 bytes with NVDIMM_ACPI_IO_LEN, so it is
+> more proper to use this macro instead of calculating it by sizeof.
+> 
+> Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+
+> ---
+>  hw/acpi/nvdimm.c | 2 +-
+>  1 file changed, 1 insertion(+), 1 deletion(-)
+> 
+> diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+> index e63a1ef15d..2457c1aa44 100644
+> --- a/hw/acpi/nvdimm.c
+> +++ b/hw/acpi/nvdimm.c
+> @@ -992,7 +992,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
+>      field = aml_field(NVDIMM_DSM_IOPORT, AML_DWORD_ACC, AML_NOLOCK,
+>                        AML_PRESERVE);
+>      aml_append(field, aml_named_field(NVDIMM_DSM_NOTIFY,
+> -               sizeof(uint32_t) * BITS_PER_BYTE));
+> +               NVDIMM_ACPI_IO_LEN * BITS_PER_BYTE));
+>      aml_append(method, field);
+>  
+>      /*
+
+From richard  Wed Feb 27 15:52:23 2019
+Return-Path: <richardw.yang@linux.intel.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Wed, 27 Feb 2019 15:52:23 +0800 (CST)
+Received: from fmsmga001.fm.intel.com (fmsmga001.fm.intel.com [10.253.24.23])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id C4B91580472
+	for <richardw.yang@linux.intel.com>; Tue, 26 Feb 2019 23:52:02 -0800 (PST)
+X-ExtLoop1: 1
+X-IronPort-AV: E=Sophos;i="5.58,418,1544515200"; 
+   d="scan'208";a="150364910"
+Received: from richard.sh.intel.com (HELO localhost) ([10.239.159.54])
+  by fmsmga001.fm.intel.com with ESMTP; 26 Feb 2019 23:52:01 -0800
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: qemu-devel@nongnu.org
+Cc: mst@redhat.com,
+	imammedo@redhat.com,
+	xiaoguangrong.eric@gmail.com,
+	Wei Yang <richardw.yang@linux.intel.com>
+Subject: [PATCH 4/4] nvdimm: build FIT in nvdimm_build_acpi
+Date: Wed, 27 Feb 2019 15:51:01 +0800
+Message-Id: <20190227075101.6263-5-richardw.yang@linux.intel.com>
+X-Mailer: git-send-email 2.19.1
+In-Reply-To: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Status: RO
+Content-Length: 2642
+Lines: 85
+
+Currently we initialize nvdimm device like below:
+
+    device_set_realized
+        dc->realize
+	nvdimm_plug
+	    nvdimm_build_fit_buffer
+    acpi_build
+        nvdimm_build_acpi
+
+This shows nvdimm's acpi stuff is prepared in two places:
+
+    * device plug stage
+    * acpi_build stage
+
+It would be more proper to build fit buffer in nvdimm_build_acpi, which
+consolidate all acpi related initialization together.
+
+This patch moves FIT build in nvdimm_build_acpi.
+
+Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+---
+ hw/acpi/nvdimm.c        | 6 +-----
+ hw/i386/pc.c            | 5 -----
+ include/hw/mem/nvdimm.h | 1 -
+ 3 files changed, 1 insertion(+), 11 deletions(-)
+
+diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+index 2457c1aa44..6fc0c65ee0 100644
+--- a/hw/acpi/nvdimm.c
++++ b/hw/acpi/nvdimm.c
+@@ -425,11 +425,6 @@ static void nvdimm_build_fit_buffer(AcpiNVDIMMState *state)
+     fit_buf->dirty = true;
+ }
+ 
+-void nvdimm_plug(AcpiNVDIMMState *state)
+-{
+-    nvdimm_build_fit_buffer(state);
+-}
+-
+ static void nvdimm_build_nfit(AcpiNVDIMMState *state, GArray *table_offsets,
+                               GArray *table_data, BIOSLinker *linker)
+ {
+@@ -1338,6 +1333,7 @@ void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
+         return;
+     }
+ 
++    nvdimm_build_fit_buffer(state);
+     nvdimm_build_nfit(state, table_offsets, table_data, linker);
+     g_slist_free(device_list);
+ }
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 64d9e756fa..686b610c50 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -2099,17 +2099,12 @@ static void pc_memory_plug(HotplugHandler *hotplug_dev,
+ {
+     Error *local_err = NULL;
+     PCMachineState *pcms = PC_MACHINE(hotplug_dev);
+-    bool is_nvdimm = object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM);
+ 
+     pc_dimm_plug(PC_DIMM(dev), MACHINE(pcms), &local_err);
+     if (local_err) {
+         goto out;
+     }
+ 
+-    if (is_nvdimm) {
+-        nvdimm_plug(&pcms->acpi_nvdimm_state);
+-    }
+-
+     hotplug_handler_plug(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &error_abort);
+ out:
+     error_propagate(errp, local_err);
+diff --git a/include/hw/mem/nvdimm.h b/include/hw/mem/nvdimm.h
+index c5c9b3c7f8..30869b4834 100644
+--- a/include/hw/mem/nvdimm.h
++++ b/include/hw/mem/nvdimm.h
+@@ -148,6 +148,5 @@ void nvdimm_init_acpi_state(AcpiNVDIMMState *state, MemoryRegion *io,
+ void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
+                        BIOSLinker *linker, AcpiNVDIMMState *state,
+                        uint32_t ram_slots);
+-void nvdimm_plug(AcpiNVDIMMState *state);
+ void nvdimm_acpi_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev);
+ #endif
+-- 
+2.19.1
+
+From richard  Thu Mar  7 00:15:33 2019
+Return-Path: <imammedo@redhat.com>
+X-Original-To: richardw.yang@linux.intel.com
+Delivered-To: richardw.yang@linux.intel.com
+Received: from linux.intel.com [10.54.29.200]
+	by richard with IMAP (fetchmail-6.3.26)
+	for <richard@localhost> (single-drop); Thu, 07 Mar 2019 00:15:33 +0800 (CST)
+Received: from FMSMGA003.fm.intel.com (fmsmga003.fm.intel.com [10.253.24.29])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by linux.intel.com (Postfix) with ESMTPS id B97B35805B4
+	for <richardw.yang@linux.intel.com>; Wed,  6 Mar 2019 08:14:14 -0800 (PST)
+Received: from fmsmga101.fm.intel.com ([10.1.193.65])
+  by FMSMGA003-1.fm.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:14:14 -0800
+Received-SPF: None (mga01b.intel.com: no sender authenticity
+  information available from domain of imammedo@redhat.com)
+  identity=pra; client-ip=209.132.183.28;
+  receiver=mga01b.intel.com;
+  envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com"; x-conformance=sidf_compatible
+Received-SPF: Pass (mga01b.intel.com: domain of
+  imammedo@redhat.com designates 209.132.183.28 as permitted
+  sender) identity=mailfrom; client-ip=209.132.183.28;
+  receiver=mga01b.intel.com;
+  envelope-from="imammedo@redhat.com";
+  x-sender="imammedo@redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Received-SPF: Pass (mga01b.intel.com: domain of
+  postmaster@mx1.redhat.com designates 209.132.183.28 as
+  permitted sender) identity=helo; client-ip=209.132.183.28;
+  receiver=mga01b.intel.com;
+  envelope-from="imammedo@redhat.com";
+  x-sender="postmaster@mx1.redhat.com";
+  x-conformance=sidf_compatible; x-record-type="v=spf1"
+Authentication-Results: mga01b.intel.com; dkim=none (message not signed) header.i=none; spf=None smtp.pra=imammedo@redhat.com; spf=Pass smtp.mailfrom=imammedo@redhat.com; spf=Pass smtp.helo=postmaster@mx1.redhat.com; dmarc=pass (p=none dis=none) d=redhat.com
+IronPort-PHdr: =?us-ascii?q?9a23=3AONJ/WRavN1MnmOOokUGe6Lr/LSx+4OfEezUN459i?=
+ =?us-ascii?q?sYplN5qZoMm/bnLW6fgltlLVR4KTs6sC17OO9fi5EUU7or+5+EgYd5JNUxJXwe?=
+ =?us-ascii?q?43pCcHRPC/NEvgMfTxZDY7FskRHHVs/nW8LFQHUJ2mPw6arXK99yMdFQviPgRp?=
+ =?us-ascii?q?OOv1BpTSj8Oq3Oyu5pHfeQpFiCehbb9oMBm6sBjau9ULj4dlNqs/0AbCrGFSe+?=
+ =?us-ascii?q?RRy2NoJFaTkAj568yt4pNt8Dletuw4+cJYXqr0Y6o3TbpDDDQ7KG81/9HktQPC?=
+ =?us-ascii?q?TQSU+HQRVHgdnwdSDAjE6BH6WYrxsjf/u+Fg1iSWIdH6QLYpUjm58axlVAHnhz?=
+ =?us-ascii?q?sGNz4h8WHYlMpwjL5AoBm8oxBz2pPYbJ2JOPZ7eK7WYNEUSndbXstJWSJPAp2y?=
+ =?us-ascii?q?YZYMAeUDM+ZXoJXyqVQVoBuiBwShHv/jxiNUinPo26AxzuQvERvB3AwlB98As3?=
+ =?us-ascii?q?vUrNLvNKwPVu661qzIzTDdYPxL3jf99pXDfxcgofGJR71wdM/RxlcyGAPClViQ?=
+ =?us-ascii?q?s5LqMC6V1usXr2iX9fZvVeWqi2M+rQx6vzuhxt80h4XXmo4YzkrI+Th3zYorP9?=
+ =?us-ascii?q?G0VU12bNC+HJdOtCyXMZZ9TNk4TGFyoik6z6ULuZ6lcygOz5Qq3xvfavOaf4SS?=
+ =?us-ascii?q?+BLsSvueITdii3J5Yr6wmxGy8U24xu39UMm7zkpKozJbntXQsn0BzQHf58aZRv?=
+ =?us-ascii?q?dn40us2jiC2xrN5uxHOUw0kLDUK58lwr4+jJoTtkHDEzf3mEXzlqCWc0Ak9fa1?=
+ =?us-ascii?q?5OTgebjmvIGTOJJ0ig7kLqQigNCwAeM9MgQWRWiU5fy81KH//U3+WLhKlPw2nb?=
+ =?us-ascii?q?XZsJ/AP8QUu6C4DxVV04k57Ra/ACyr0NAZnXkBMVJEdwiLj4nvO1HSPv/4Ce2z?=
+ =?us-ascii?q?jEirkDdulLj6OejeD5SFH3HFn/+1Z7d260dGxBV13NlZ6LpQC7ccMLTyXFP8sJ?=
+ =?us-ascii?q?rTCRpvYCKuxOOyKdp6zMs7UGeKD6OeLuuGsFqB4+ciL+6kfoIZuD/hbfMi4qi9?=
+ =?us-ascii?q?3jcChVYBcPzxjtMsY3eiE6Ejeh3BOCu+spI6CW4P+zEGYqnvgVyGXyRUYi/oDb?=
+ =?us-ascii?q?gx6jEyFMStCoKRH9nx0ozE5z+yG9htXk4DEkqFSC26bYiIW/4QLimVJ505y2FW?=
+ =?us-ascii?q?Zf2aU4YkkCqWmkr6xr5gd7SG/z1B84ju2Nh8+6vYkhRgrDE=3D?=
+X-IronPort-Anti-Spam-Filtered: true
+X-IronPort-Anti-Spam-Result: =?us-ascii?q?A0AeAACs8H9chxy3hNFkHAEBAQQBAQcEA?=
+ =?us-ascii?q?QGBUwUBAQsBg3onjQGMeYk8iVWFEoF7DSsBhEAChDEbBgEEMgcNAQEDAQEBAgE?=
+ =?us-ascii?q?DAQEBEwEBAQgNCQgpL4I6KQGCZwECAgEnEzoFBQsLDhMlD0gGE4MigWkFCAWsG?=
+ =?us-ascii?q?TOKKYEvAYsoF4FAP4ERgXCBIopiApE1kloJknQlimyIQy2dGoFOCIF/TSMVgye?=
+ =?us-ascii?q?CFg4Jjh8+AQIwAYEgAQGMcQEB?=
+X-IPAS-Result: =?us-ascii?q?A0AeAACs8H9chxy3hNFkHAEBAQQBAQcEAQGBUwUBAQsBg3o?=
+ =?us-ascii?q?njQGMeYk8iVWFEoF7DSsBhEAChDEbBgEEMgcNAQEDAQEBAgEDAQEBEwEBAQgNC?=
+ =?us-ascii?q?QgpL4I6KQGCZwECAgEnEzoFBQsLDhMlD0gGE4MigWkFCAWsGTOKKYEvAYsoF4F?=
+ =?us-ascii?q?AP4ERgXCBIopiApE1kloJknQlimyIQy2dGoFOCIF/TSMVgyeCFg4Jjh8+AQIwA?=
+ =?us-ascii?q?YEgAQGMcQEB?=
+X-IronPort-AV: E=Sophos;i="5.58,448,1544515200"; 
+   d="scan'208";a="78050637"
+X-Amp-Result: SKIPPED(no attachment in message)
+X-Amp-File-Uploaded: False
+Received: from mx1.redhat.com ([209.132.183.28])
+  by mga01b.intel.com with ESMTP/TLS/DHE-RSA-AES256-GCM-SHA384; 06 Mar 2019 08:14:13 -0800
+Received: from smtp.corp.redhat.com (int-mx05.intmail.prod.int.phx2.redhat.com [10.5.11.15])
+	(using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by mx1.redhat.com (Postfix) with ESMTPS id 6E682300B916;
+	Wed,  6 Mar 2019 16:14:13 +0000 (UTC)
+Received: from Igors-MacBook-Pro.local (ovpn-112-17.ams2.redhat.com [10.36.112.17])
+	by smtp.corp.redhat.com (Postfix) with ESMTP id 961CA5D732;
+	Wed,  6 Mar 2019 16:14:09 +0000 (UTC)
+Date: Wed, 6 Mar 2019 17:14:06 +0100
+From: Igor Mammedov <imammedo@redhat.com>
+To: Wei Yang <richardw.yang@linux.intel.com>
+Cc: qemu-devel@nongnu.org, mst@redhat.com, xiaoguangrong.eric@gmail.com
+Subject: Re: [PATCH 4/4] nvdimm: build FIT in nvdimm_build_acpi
+Message-ID: <20190306171406.6e67d7ca@Igors-MacBook-Pro.local>
+In-Reply-To: <20190227075101.6263-5-richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+	<20190227075101.6263-5-richardw.yang@linux.intel.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+X-Scanned-By: MIMEDefang 2.79 on 10.5.11.15
+X-Greylist: Sender IP whitelisted, not delayed by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.49]); Wed, 06 Mar 2019 16:14:13 +0000 (UTC)
+Status: RO
+X-Status: AF
+Content-Length: 2920
+Lines: 89
+
+On Wed, 27 Feb 2019 15:51:01 +0800
+Wei Yang <richardw.yang@linux.intel.com> wrote:
+
+> Currently we initialize nvdimm device like below:
+> 
+>     device_set_realized
+>         dc->realize
+> 	nvdimm_plug
+> 	    nvdimm_build_fit_buffer
+>     acpi_build
+>         nvdimm_build_acpi
+> 
+> This shows nvdimm's acpi stuff is prepared in two places:
+> 
+>     * device plug stage
+>     * acpi_build stage
+> 
+> It would be more proper to build fit buffer in nvdimm_build_acpi, which
+> consolidate all acpi related initialization together.
+> 
+> This patch moves FIT build in nvdimm_build_acpi.
+
+Does hotplug work after this change?
+
+> 
+> Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+> ---
+>  hw/acpi/nvdimm.c        | 6 +-----
+>  hw/i386/pc.c            | 5 -----
+>  include/hw/mem/nvdimm.h | 1 -
+>  3 files changed, 1 insertion(+), 11 deletions(-)
+> 
+> diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+> index 2457c1aa44..6fc0c65ee0 100644
+> --- a/hw/acpi/nvdimm.c
+> +++ b/hw/acpi/nvdimm.c
+> @@ -425,11 +425,6 @@ static void nvdimm_build_fit_buffer(AcpiNVDIMMState *state)
+>      fit_buf->dirty = true;
+>  }
+>  
+> -void nvdimm_plug(AcpiNVDIMMState *state)
+> -{
+> -    nvdimm_build_fit_buffer(state);
+> -}
+> -
+>  static void nvdimm_build_nfit(AcpiNVDIMMState *state, GArray *table_offsets,
+>                                GArray *table_data, BIOSLinker *linker)
+>  {
+> @@ -1338,6 +1333,7 @@ void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
+>          return;
+>      }
+>  
+> +    nvdimm_build_fit_buffer(state);
+>      nvdimm_build_nfit(state, table_offsets, table_data, linker);
+>      g_slist_free(device_list);
+>  }
+> diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+> index 64d9e756fa..686b610c50 100644
+> --- a/hw/i386/pc.c
+> +++ b/hw/i386/pc.c
+> @@ -2099,17 +2099,12 @@ static void pc_memory_plug(HotplugHandler *hotplug_dev,
+>  {
+>      Error *local_err = NULL;
+>      PCMachineState *pcms = PC_MACHINE(hotplug_dev);
+> -    bool is_nvdimm = object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM);
+>  
+>      pc_dimm_plug(PC_DIMM(dev), MACHINE(pcms), &local_err);
+>      if (local_err) {
+>          goto out;
+>      }
+>  
+> -    if (is_nvdimm) {
+> -        nvdimm_plug(&pcms->acpi_nvdimm_state);
+> -    }
+> -
+>      hotplug_handler_plug(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &error_abort);
+>  out:
+>      error_propagate(errp, local_err);
+> diff --git a/include/hw/mem/nvdimm.h b/include/hw/mem/nvdimm.h
+> index c5c9b3c7f8..30869b4834 100644
+> --- a/include/hw/mem/nvdimm.h
+> +++ b/include/hw/mem/nvdimm.h
+> @@ -148,6 +148,5 @@ void nvdimm_init_acpi_state(AcpiNVDIMMState *state, MemoryRegion *io,
+>  void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
+>                         BIOSLinker *linker, AcpiNVDIMMState *state,
+>                         uint32_t ram_slots);
+> -void nvdimm_plug(AcpiNVDIMMState *state);
+>  void nvdimm_acpi_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev);
+>  #endif
+
+From richardw.yang@linux.intel.com Thu Mar  7 11:41:56 2019
+Date: Thu, 7 Mar 2019 11:41:56 +0800
+From: Wei Yang <richardw.yang@linux.intel.com>
+To: Igor Mammedov <imammedo@redhat.com>
+Cc: Wei Yang <richardw.yang@linux.intel.com>, qemu-devel@nongnu.org,
+	mst@redhat.com, xiaoguangrong.eric@gmail.com
+Subject: Re: [PATCH 4/4] nvdimm: build FIT in nvdimm_build_acpi
+Message-ID: <20190307034156.GA11080@richard>
+Reply-To: Wei Yang <richardw.yang@linux.intel.com>
+References: <20190227075101.6263-1-richardw.yang@linux.intel.com>
+ <20190227075101.6263-5-richardw.yang@linux.intel.com>
+ <20190306171406.6e67d7ca@Igors-MacBook-Pro.local>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+Content-Disposition: inline
+In-Reply-To: <20190306171406.6e67d7ca@Igors-MacBook-Pro.local>
+User-Agent: Mutt/1.10.1 (2018-07-13)
+Status: RO
+Content-Length: 3144
+Lines: 97
+
+On Wed, Mar 06, 2019 at 05:14:06PM +0100, Igor Mammedov wrote:
+>On Wed, 27 Feb 2019 15:51:01 +0800
+>Wei Yang <richardw.yang@linux.intel.com> wrote:
+>
+>> Currently we initialize nvdimm device like below:
+>> 
+>>     device_set_realized
+>>         dc->realize
+>> 	nvdimm_plug
+>> 	    nvdimm_build_fit_buffer
+>>     acpi_build
+>>         nvdimm_build_acpi
+>> 
+>> This shows nvdimm's acpi stuff is prepared in two places:
+>> 
+>>     * device plug stage
+>>     * acpi_build stage
+>> 
+>> It would be more proper to build fit buffer in nvdimm_build_acpi, which
+>> consolidate all acpi related initialization together.
+>> 
+>> This patch moves FIT build in nvdimm_build_acpi.
+>
+>Does hotplug work after this change?
+>
+
+Looks no. I missed to test this case.
+
+>> 
+>> Signed-off-by: Wei Yang <richardw.yang@linux.intel.com>
+>> ---
+>>  hw/acpi/nvdimm.c        | 6 +-----
+>>  hw/i386/pc.c            | 5 -----
+>>  include/hw/mem/nvdimm.h | 1 -
+>>  3 files changed, 1 insertion(+), 11 deletions(-)
+>> 
+>> diff --git a/hw/acpi/nvdimm.c b/hw/acpi/nvdimm.c
+>> index 2457c1aa44..6fc0c65ee0 100644
+>> --- a/hw/acpi/nvdimm.c
+>> +++ b/hw/acpi/nvdimm.c
+>> @@ -425,11 +425,6 @@ static void nvdimm_build_fit_buffer(AcpiNVDIMMState *state)
+>>      fit_buf->dirty = true;
+>>  }
+>>  
+>> -void nvdimm_plug(AcpiNVDIMMState *state)
+>> -{
+>> -    nvdimm_build_fit_buffer(state);
+>> -}
+>> -
+>>  static void nvdimm_build_nfit(AcpiNVDIMMState *state, GArray *table_offsets,
+>>                                GArray *table_data, BIOSLinker *linker)
+>>  {
+>> @@ -1338,6 +1333,7 @@ void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
+>>          return;
+>>      }
+>>  
+>> +    nvdimm_build_fit_buffer(state);
+>>      nvdimm_build_nfit(state, table_offsets, table_data, linker);
+>>      g_slist_free(device_list);
+>>  }
+>> diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+>> index 64d9e756fa..686b610c50 100644
+>> --- a/hw/i386/pc.c
+>> +++ b/hw/i386/pc.c
+>> @@ -2099,17 +2099,12 @@ static void pc_memory_plug(HotplugHandler *hotplug_dev,
+>>  {
+>>      Error *local_err = NULL;
+>>      PCMachineState *pcms = PC_MACHINE(hotplug_dev);
+>> -    bool is_nvdimm = object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM);
+>>  
+>>      pc_dimm_plug(PC_DIMM(dev), MACHINE(pcms), &local_err);
+>>      if (local_err) {
+>>          goto out;
+>>      }
+>>  
+>> -    if (is_nvdimm) {
+>> -        nvdimm_plug(&pcms->acpi_nvdimm_state);
+>> -    }
+>> -
+>>      hotplug_handler_plug(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &error_abort);
+>>  out:
+>>      error_propagate(errp, local_err);
+>> diff --git a/include/hw/mem/nvdimm.h b/include/hw/mem/nvdimm.h
+>> index c5c9b3c7f8..30869b4834 100644
+>> --- a/include/hw/mem/nvdimm.h
+>> +++ b/include/hw/mem/nvdimm.h
+>> @@ -148,6 +148,5 @@ void nvdimm_init_acpi_state(AcpiNVDIMMState *state, MemoryRegion *io,
+>>  void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
+>>                         BIOSLinker *linker, AcpiNVDIMMState *state,
+>>                         uint32_t ram_slots);
+>> -void nvdimm_plug(AcpiNVDIMMState *state);
+>>  void nvdimm_acpi_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev);
+>>  #endif
+
+-- 
+Wei Yang
+Help you, Help me
+
