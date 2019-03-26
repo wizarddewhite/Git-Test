@@ -325,860 +325,144 @@ void migrate_compress_threads_create(void)
 
 1. migration_thread()
 ================================================================================
-static void *migration_thread(void *opaque)
-{
-    MigrationState *s = opaque;
-    /* Used by the bandwidth calcs, updated later */
-    int64_t initial_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-    int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
-    int64_t initial_bytes = 0;
-    int64_t max_size = 0;
-    int64_t start_time = initial_time;
-    int64_t end_time;
-    bool old_vm_running = false;
-    bool entered_postcopy = false;
-    /* The active state we expect to be in; ACTIVE or POSTCOPY_ACTIVE */
-    enum MigrationStatus current_active_state = MIGRATION_STATUS_ACTIVE;
 
-    rcu_register_thread();
-
-    qemu_savevm_state_header(s->file);
-
-    if (migrate_postcopy_ram()) {
-        /* Now tell the dest that it should open its end so it can reply */
-        qemu_savevm_send_open_return_path(s->file);
-
-        /* And do a ping that will make stuff easier to debug */
-        qemu_savevm_send_ping(s->file, 1);
-
-        /*
-         * Tell the destination that we *might* want to do postcopy later;
-         * if the other end can't do postcopy it should fail now, nice and
-         * early.
-         */
-        qemu_savevm_send_postcopy_advise(s->file);
-    }
-
-    qemu_savevm_state_begin(s->file, &s->params);
-
-    s->setup_time = qemu_clock_get_ms(QEMU_CLOCK_HOST) - setup_start;
-    current_active_state = MIGRATION_STATUS_ACTIVE;
-    migrate_set_state(&s->state, MIGRATION_STATUS_SETUP,
-                      MIGRATION_STATUS_ACTIVE);
-
-    trace_migration_thread_setup_complete();
-
-    while (s->state == MIGRATION_STATUS_ACTIVE ||
-           s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE) {
-        int64_t current_time;
-        uint64_t pending_size;
-
-        if (!qemu_file_rate_limit(s->file)) {
-            uint64_t pend_post, pend_nonpost;
-
-            qemu_savevm_state_pending(s->file, max_size, &pend_nonpost,
-                                      &pend_post);
-            pending_size = pend_nonpost + pend_post;
-            trace_migrate_pending(pending_size, max_size,
-                                  pend_post, pend_nonpost);
-            if (pending_size && pending_size >= max_size) {
-                /* Still a significant amount to transfer */
-
-                if (migrate_postcopy_ram() &&
-                    s->state != MIGRATION_STATUS_POSTCOPY_ACTIVE &&
-                    pend_nonpost <= max_size &&
-                    atomic_read(&s->start_postcopy)) {
-
-                    if (!postcopy_start(s, &old_vm_running)) {
-                        current_active_state = MIGRATION_STATUS_POSTCOPY_ACTIVE;
-                        entered_postcopy = true;
-                    }
-
-                    continue;
-                }
-                /* Just another iteration step */
-                qemu_savevm_state_iterate(s->file, entered_postcopy);
-            } else {
-                trace_migration_thread_low_pending(pending_size);
-                migration_completion(s, current_active_state,
-                                     &old_vm_running, &start_time);
-                break;
-            }
-        }
-
-        if (qemu_file_get_error(s->file)) {
-            migrate_set_state(&s->state, current_active_state,
-                              MIGRATION_STATUS_FAILED);
-            trace_migration_thread_file_err();
-            break;
-        }
-        current_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-        if (current_time >= initial_time + BUFFER_DELAY) {
-            uint64_t transferred_bytes = qemu_ftell(s->file) - initial_bytes;
-            uint64_t time_spent = current_time - initial_time;
-            double bandwidth = (double)transferred_bytes / time_spent;
-            max_size = bandwidth * migrate_max_downtime() / 1000000;
-
-            s->mbps = (((double) transferred_bytes * 8.0) /
-                    ((double) time_spent / 1000.0)) / 1000.0 / 1000.0;
-
-            trace_migrate_transferred(transferred_bytes, time_spent,
-                                      bandwidth, max_size);
-            /* if we haven't sent anything, we don't want to recalculate
-               10000 is a small enough number for our purposes */
-            if (s->dirty_bytes_rate && transferred_bytes > 10000) {
-                s->expected_downtime = s->dirty_bytes_rate / bandwidth;
-            }
-
-            qemu_file_reset_rate_limit(s->file);
-            initial_time = current_time;
-            initial_bytes = qemu_ftell(s->file);
-        }
-        if (qemu_file_rate_limit(s->file)) {
-            /* usleep expects microseconds */
-            g_usleep((initial_time + BUFFER_DELAY - current_time)*1000);
-        }
-    }
-
-    trace_migration_thread_after_loop();
-    /* If we enabled cpu throttling for auto-converge, turn it off. */
-    cpu_throttle_stop();
-    end_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-
-    qemu_mutex_lock_iothread();
-    qemu_savevm_state_cleanup();
-    if (s->state == MIGRATION_STATUS_COMPLETED) {
-        uint64_t transferred_bytes = qemu_ftell(s->file);
-        s->total_time = end_time - s->total_time;
-        if (!entered_postcopy) {
-            s->downtime = end_time - start_time;
-        }
-        if (s->total_time) {
-            s->mbps = (((double) transferred_bytes * 8.0) /
-                       ((double) s->total_time)) / 1000;
-        }
-        runstate_set(RUN_STATE_POSTMIGRATE);
-    } else {
-        if (old_vm_running && !entered_postcopy) {
-            vm_start();
-        }
-    }
-    qemu_bh_schedule(s->cleanup_bh);
-    qemu_mutex_unlock_iothread();
-
-    rcu_unregister_thread();
-    return NULL;
-}
-
-1.1 initial_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+1.1 qemu_savevm_state_header
 ================================================================================
 
-1.2 setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+1.1.1 qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
 ================================================================================
 
-1.3 qemu_savevm_state_header()
+1.1.2 qemu_put_be32(f, QEMU_VM_FILE_VERSION);
 ================================================================================
-void qemu_savevm_state_header(QEMUFile *f)
-{
-    trace_savevm_state_header();
-    qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
-    qemu_put_be32(f, QEMU_VM_FILE_VERSION);
-
-    if (!savevm_state.skip_configuration) {
-        qemu_put_byte(f, QEMU_VM_CONFIGURATION);
-        vmstate_save_state(f, &vmstate_configuration, &savevm_state, 0);
-    }
-
-}
-
-1.3.1 vmstate_save_state(vmstate_configuration, savevm_state)
-================================================================================
-void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
-                        void *opaque, QJSON *vmdesc)
-{
-    VMStateField *field = vmsd->fields;
-
-    if (vmsd->pre_save) {
-        vmsd->pre_save(opaque);
-    }
-
-    if (vmdesc) {
-        json_prop_str(vmdesc, "vmsd_name", vmsd->name);
-        json_prop_int(vmdesc, "version", vmsd->version_id);
-        json_start_array(vmdesc, "fields");
-    }
-
-    while (field->name) {
-        if (!field->field_exists ||
-            field->field_exists(opaque, vmsd->version_id)) {
-            void *base_addr = vmstate_base_addr(opaque, field, false);
-            int i, n_elems = vmstate_n_elems(opaque, field);
-            int size = vmstate_size(opaque, field);
-            int64_t old_offset, written_bytes;
-            QJSON *vmdesc_loop = vmdesc;
-
-            for (i = 0; i < n_elems; i++) {
-                void *addr = base_addr + size * i;
-
-                vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems);
-                old_offset = qemu_ftell_fast(f);
-
-                if (field->flags & VMS_ARRAY_OF_POINTER) {
-                    addr = *(void **)addr;
-                }
-                if (field->flags & VMS_STRUCT) {
-                    vmstate_save_state(f, field->vmsd, addr, vmdesc_loop);
-                } else {
-                    field->info->put(f, addr, size);
-                }
-
-                written_bytes = qemu_ftell_fast(f) - old_offset;
-                vmsd_desc_field_end(vmsd, vmdesc_loop, field, written_bytes, i);
-
-                /* Compressed arrays only care about the first element */
-                if (vmdesc_loop && vmsd_can_compress(field)) {
-                    vmdesc_loop = NULL;
-                }
-            }
-        } else {
-            if (field->flags & VMS_MUST_EXIST) {
-                error_report("Output state validation failed: %s/%s",
-                        vmsd->name, field->name);
-                assert(!(field->flags & VMS_MUST_EXIST));
-            }
-        }
-        field++;
-    }
-
-    if (vmdesc) {
-        json_end_array(vmdesc);
-    }
-
-    vmstate_subsection_save(f, vmsd, opaque, vmdesc);
-}
-
-1.3.1.1 vmsd->pre_save(), configuration_pre_save
-================================================================================
-static void configuration_pre_save(void *opaque)
-{
-    SaveState *state = opaque;
-    const char *current_name = MACHINE_GET_CLASS(current_machine)->name;
-
-    state->len = strlen(current_name);
-    state->name = current_name;
-}
-
-1.4 qemu_savevm_state_begin()
-================================================================================
-void qemu_savevm_state_begin(QEMUFile *f,
-                             const MigrationParams *params)
-{
-    SaveStateEntry *se;
-    int ret;
-
-    trace_savevm_state_begin();
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops || !se->ops->set_params) {
-            continue;
-        }
-        se->ops->set_params(params, se->opaque);
-    }
-
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops || !se->ops->save_live_setup) {
-            continue;
-        }
-        if (se->ops && se->ops->is_active) {
-            if (!se->ops->is_active(se->opaque)) {
-                continue;
-            }
-        }
-        save_section_header(f, se, QEMU_VM_SECTION_START);
-
-        ret = se->ops->save_live_setup(f, se->opaque);
-        save_section_footer(f, se);
-        if (ret < 0) {
-            qemu_file_set_error(f, ret);
-            break;
-        }
-    }
-}
-
-1.4.1 se->ops->set_params()
+    
+1.1.3 qemu_put_be32(f, QEMU_VM_CONFIGURATION);
 ================================================================================
 
-1.4.2 se->ops->is_active()
+1.1.4 vmstate_save_state(f, &vmstate_configuration, &savevm_state, 0);
 ================================================================================
 
-1.4.3 save_section_header()
-================================================================================
-static void save_section_header(QEMUFile *f, SaveStateEntry *se,
-                                uint8_t section_type)
-{
-    qemu_put_byte(f, section_type);
-    qemu_put_be32(f, se->section_id);
-
-    if (section_type == QEMU_VM_SECTION_FULL ||
-        section_type == QEMU_VM_SECTION_START) {
-        /* ID string */
-        size_t len = strlen(se->idstr);
-        qemu_put_byte(f, len);
-        qemu_put_buffer(f, (uint8_t *)se->idstr, len);
-
-        qemu_put_be32(f, se->instance_id);
-        qemu_put_be32(f, se->version_id);
-    }
-}
-
-1.4.4 se->ops->save_live_setup()
+1.2 qemu_savevm_send_open_return_path(s->to_dst_file);
 ================================================================================
 
-1.4.5 save_section_footer()
-================================================================================
-static void save_section_footer(QEMUFile *f, SaveStateEntry *se)
-{
-    if (!skip_section_footers) {
-        qemu_put_byte(f, QEMU_VM_SECTION_FOOTER);
-        qemu_put_be32(f, se->section_id);
-    }
-}
-
-1.5 migrate_set_state(SETUP, ACTIVE)
+1.3 qemu_savevm_send_ping(s->to_dst_file, 1);
 ================================================================================
 
-1.6 qemu_file_rate_limit()
-================================================================================
-int qemu_file_rate_limit(QEMUFile *f)
-{
-    if (qemu_file_get_error(f)) {
-        return 1;
-    }
-    if (f->xfer_limit > 0 && f->bytes_xfer > f->xfer_limit) {
-        return 1;
-    }
-    return 0;
-}
-
-1.7 qemu_savevm_state_pending()
-================================================================================
-void qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size,
-                               uint64_t *res_non_postcopiable,
-                               uint64_t *res_postcopiable)
-{
-    SaveStateEntry *se;
-
-    *res_non_postcopiable = 0;
-    *res_postcopiable = 0;
-
-
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops || !se->ops->save_live_pending) {
-            continue;
-        }
-        if (se->ops && se->ops->is_active) {
-            if (!se->ops->is_active(se->opaque)) {
-                continue;
-            }
-        }
-        se->ops->save_live_pending(f, se->opaque, max_size,
-                                   res_non_postcopiable, res_postcopiable);
-    }
-}
-
-1.7.1 se->ops->is_active()
+1.4 qemu_savevm_state_setup(s->to_dst_file);
 ================================================================================
 
-1.7.2 se->ops->save_live_pending()
+1.4.1 save_section_header(f, se, QEMU_VM_SECTION_START)
 ================================================================================
 
-1.8 qemu_savevm_state_iterate()
-================================================================================
-int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy)
-{
-    SaveStateEntry *se;
-    int ret = 1;
-
-    trace_savevm_state_iterate();
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops || !se->ops->save_live_iterate) {
-            continue;
-        }
-        if (se->ops && se->ops->is_active) {
-            if (!se->ops->is_active(se->opaque)) {
-                continue;
-            }
-        }
-        /*
-         * In the postcopy phase, any device that doesn't know how to
-         * do postcopy should have saved it's state in the _complete
-         * call that's already run, it might get confused if we call
-         * iterate afterwards.
-         */
-        if (postcopy && !se->ops->save_live_complete_postcopy) {
-            continue;
-        }
-        if (qemu_file_rate_limit(f)) {
-            return 0;
-        }
-        trace_savevm_section_start(se->idstr, se->section_id);
-
-        save_section_header(f, se, QEMU_VM_SECTION_PART);
-
-        ret = se->ops->save_live_iterate(f, se->opaque);
-        trace_savevm_section_end(se->idstr, se->section_id, ret);
-        save_section_footer(f, se);
-
-        if (ret < 0) {
-            qemu_file_set_error(f, ret);
-        }
-        if (ret <= 0) {
-            /* Do not proceed to the next vmstate before this one reported
-               completion of the current stage. This serializes the migration
-               and reduces the probability that a faster changing state is
-               synchronized over and over again. */
-            break;
-        }
-    }
-    return ret;
-}
-
-1.8.1 save_section_header()
+1.4.2 se->ops->save_setup(f, se->opaque)
 ================================================================================
 
-1.8.2 se->ops->save_live_iterate()
+1.4.3 save_section_footer(f, se)
 ================================================================================
 
-1.8.3 save_section_footer()
+1.4.4 precopy_notify(PRECOPY_NOTIFY_SETUP, &local_err)
 ================================================================================
 
-1.9 migration_completion()
-================================================================================
-static void migration_completion(MigrationState *s, int current_active_state,
-                                 bool *old_vm_running,
-                                 int64_t *start_time)
-{
-    int ret;
-
-    if (s->state == MIGRATION_STATUS_ACTIVE) {
-        qemu_mutex_lock_iothread();
-        *start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-        qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER);
-        *old_vm_running = runstate_is_running();
-        ret = global_state_store();
-
-        if (!ret) {
-            ret = vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
-            if (ret >= 0) {
-                ret = bdrv_inactivate_all();
-            }
-            if (ret >= 0) {
-                qemu_file_set_rate_limit(s->file, INT64_MAX);
-                qemu_savevm_state_complete_precopy(s->file, false);
-            }
-        }
-        qemu_mutex_unlock_iothread();
-
-        if (ret < 0) {
-            goto fail;
-        }
-    } else if (s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE) {
-        trace_migration_completion_postcopy_end();
-
-        qemu_savevm_state_complete_postcopy(s->file);
-        trace_migration_completion_postcopy_end_after_complete();
-    }
-
-    /*
-     * If rp was opened we must clean up the thread before
-     * cleaning everything else up (since if there are no failures
-     * it will wait for the destination to send it's status in
-     * a SHUT command).
-     * Postcopy opens rp if enabled (even if it's not avtivated)
-     */
-    if (migrate_postcopy_ram()) {
-        int rp_error;
-        trace_migration_completion_postcopy_end_before_rp();
-        rp_error = await_return_path_close_on_source(s);
-        trace_migration_completion_postcopy_end_after_rp(rp_error);
-        if (rp_error) {
-            goto fail;
-        }
-    }
-
-    if (qemu_file_get_error(s->file)) {
-        trace_migration_completion_file_err();
-        goto fail;
-    }
-
-    migrate_set_state(&s->state, current_active_state,
-                      MIGRATION_STATUS_COMPLETED);
-    return;
-
-fail:
-    migrate_set_state(&s->state, current_active_state,
-                      MIGRATION_STATUS_FAILED);
-}
-
-1.9.1 global_state_store()
-================================================================================
-int global_state_store(void)
-{
-    if (!runstate_store((char *)global_state.runstate,
-                        sizeof(global_state.runstate))) {
-        error_report("runstate name too big: %s", global_state.runstate);
-        trace_migrate_state_too_big();
-        return -EINVAL;
-    }
-    return 0;
-}
-
-1.9.1.1 runstate_store()
-================================================================================
-bool runstate_store(char *str, size_t size)
-{
-    const char *state = RunState_lookup[current_run_state];
-    size_t len = strlen(state) + 1;
-
-    if (len > size) {
-        return false;
-    }
-    memcpy(str, state, len);
-    return true;
-}
-
-1.9.2 vm_stop_force_state()
+1.5 migrate_set_state(&s->state, MIGRATION_STATUS_SETUP, MIGRATION_STATUS_ACTIVE);
 ================================================================================
 
-1.9.3 qemu_savevm_state_complete_precopy()
-================================================================================
-void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
-{
-    QJSON *vmdesc;
-    int vmdesc_len;
-    SaveStateEntry *se;
-    int ret;
-    bool in_postcopy = migration_in_postcopy(migrate_get_current());
-
-    trace_savevm_state_complete_precopy();
-
-    cpu_synchronize_all_states();
-
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops ||
-            (in_postcopy && se->ops->save_live_complete_postcopy) ||
-            (in_postcopy && !iterable_only) ||
-            !se->ops->save_live_complete_precopy) {
-            continue;
-        }
-
-        if (se->ops && se->ops->is_active) {
-            if (!se->ops->is_active(se->opaque)) {
-                continue;
-            }
-        }
-        trace_savevm_section_start(se->idstr, se->section_id);
-
-        save_section_header(f, se, QEMU_VM_SECTION_END);
-
-        ret = se->ops->save_live_complete_precopy(f, se->opaque);
-        trace_savevm_section_end(se->idstr, se->section_id, ret);
-        save_section_footer(f, se);
-        if (ret < 0) {
-            qemu_file_set_error(f, ret);
-            return;
-        }
-    }
-
-    if (iterable_only) {
-        return;
-    }
-
-    vmdesc = qjson_new();
-    json_prop_int(vmdesc, "page_size", TARGET_PAGE_SIZE);
-    json_start_array(vmdesc, "devices");
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-
-        if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
-            continue;
-        }
-        if (se->vmsd && !vmstate_save_needed(se->vmsd, se->opaque)) {
-            trace_savevm_section_skip(se->idstr, se->section_id);
-            continue;
-        }
-
-        trace_savevm_section_start(se->idstr, se->section_id);
-
-        json_start_object(vmdesc, NULL);
-        json_prop_str(vmdesc, "name", se->idstr);
-        json_prop_int(vmdesc, "instance_id", se->instance_id);
-
-        save_section_header(f, se, QEMU_VM_SECTION_FULL);
-
-        vmstate_save(f, se, vmdesc);
-
-        json_end_object(vmdesc);
-        trace_savevm_section_end(se->idstr, se->section_id, 0);
-        save_section_footer(f, se);
-    }
-
-    if (!in_postcopy) {
-        /* Postcopy stream will still be going */
-        qemu_put_byte(f, QEMU_VM_EOF);
-    }
-
-    json_end_array(vmdesc);
-    qjson_finish(vmdesc);
-    vmdesc_len = strlen(qjson_get_str(vmdesc));
-
-    if (should_send_vmdesc()) {
-        qemu_put_byte(f, QEMU_VM_VMDESCRIPTION);
-        qemu_put_be32(f, vmdesc_len);
-        qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
-    }
-    object_unref(OBJECT(vmdesc));
-
-    qemu_fflush(f);
-}
-
-1.9.3.1 save_section_header(SECTION_END)
+1.6 migration_iteration_run
 ================================================================================
 
-1.9.3.2 se->ops->save_live_complete_precopy()
+1.6.1 qemu_savevm_state_pending()
 ================================================================================
 
-1.9.3.3 save_section_footer()
+1.6.1.1 se->ops->save_live_pending()
 ================================================================================
 
-1.9.3.4 qjson_new()
+1.6.2 qemu_savevm_state_iterate()
 ================================================================================
 
-1.9.3.4 json_start_array()
-================================================================================
-1.9.3.4 json_start_object()
-================================================================================
-1.9.3.4 save_section_header(SECTION_FULL)
+1.6.2.1 save_section_header(f, se, QEMU_VM_SECTION_PART)
 ================================================================================
 
-1.9.3.5 vmstate_save()
-================================================================================
-static void vmstate_save(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
-{
-    trace_vmstate_save(se->idstr, se->vmsd ? se->vmsd->name : "(old)");
-    if (!se->vmsd) {
-        vmstate_save_old_style(f, se, vmdesc);
-        return;
-    }
-    vmstate_save_state(f, se->vmsd, se->opaque, vmdesc);
-}
-
-1.9.3.6 json_end_object()
-================================================================================
-1.9.3.6 save_section_footer()
-================================================================================
-1.9.3.6 json_end_array()
+1.6.2.2 se->ops->save_live_iterate(f, se->opaque)
 ================================================================================
 
-1.10 qemu_file_reset_rate_limit()
-================================================================================
-void qemu_file_reset_rate_limit(QEMUFile *f)
-{
-    f->bytes_xfer = 0;
-}
-
-1.11 qemu_savevm_state_cleanup()
-================================================================================
-void qemu_savevm_state_cleanup(void)
-{
-    SaveStateEntry *se;
-
-    trace_savevm_state_cleanup();
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (se->ops && se->ops->cleanup) {
-            se->ops->cleanup(se->opaque);
-        }
-    }
-}
-
-1.11.1 se->ops->cleanup()
+1.6.2.3 save_section_footer(f, se)
 ================================================================================
 
-1.12 runstate_set(RUN_STATE_POSTMIGRATE);
+1.6.3 migration_completion()
 ================================================================================
 
-1.13 qemu_bh_schedule();
-================================================================================
-void qemu_bh_schedule(QEMUBH *bh)
-{
-    AioContext *ctx;
-
-    ctx = bh->ctx;
-    bh->idle = 0;
-    /* The memory barrier implicit in atomic_xchg makes sure that:
-     * 1. idle & any writes needed by the callback are done before the
-     *    locations are read in the aio_bh_poll.
-     * 2. ctx is loaded before scheduled is set and the callback has a chance
-     *    to execute.
-     */
-    if (atomic_xchg(&bh->scheduled, 1) == 0) {
-        aio_notify(ctx);
-    }
-}
-
-1.1.4 tcp_start_outgoing_migration()
+1.6.3.1 qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER, NULL);
 ================================================================================
 
-1. vmstate_save()
+1.6.3.2 vm_stop_force_state(RUN_STATE_FINISH_MIGRATE)
 ================================================================================
-static void vmstate_save(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
-{
-    trace_vmstate_save(se->idstr, se->vmsd ? se->vmsd->name : "(old)");
-    if (!se->vmsd) {
-        vmstate_save_old_style(f, se, vmdesc);
-        return;
-    }
-    vmstate_save_state(f, se->vmsd, se->opaque, vmdesc);
-}
 
-1.1 vmstate_save_old_style(), when se->vmsd is NULL
-===============================================================================
-static void vmstate_save_old_style(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
-{
-    int64_t old_offset, size;
+1.6.3.3 qemu_savevm_state_complete_precopy(s->to_dst_file, false, inactivate);
+================================================================================
 
-    old_offset = qemu_ftell_fast(f);
-    se->ops->save_state(f, se->opaque);
-    size = qemu_ftell_fast(f) - old_offset;
+1.6.3.3.1 cpu_synchronize_all_states();
+================================================================================
 
-    if (vmdesc) {
-        json_prop_int(vmdesc, "size", size);
-        json_start_array(vmdesc, "fields");
-        json_start_object(vmdesc, NULL);
-        json_prop_str(vmdesc, "name", "data");
-        json_prop_int(vmdesc, "size", size);
-        json_prop_str(vmdesc, "type", "buffer");
-        json_end_object(vmdesc);
-        json_end_array(vmdesc);
-    }
-}
+1.6.3.3.2 save_section_header(f, se, QEMU_VM_SECTION_END);
+================================================================================
 
-1.1.1 se->ops->save_state()
-===============================================================================
+1.6.3.3.3 se->ops->save_live_complete_precopy(f, se->opaque)
+================================================================================
 
-1.2 vmstate_save_state(), new style
-===============================================================================
-void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
-                        void *opaque, QJSON *vmdesc)
-{
-    VMStateField *field = vmsd->fields;
+1.6.3.3.4 save_section_footer(f, se);
+================================================================================
 
-    if (vmsd->pre_save) {
-        vmsd->pre_save(opaque);
-    }
+1.6.3.3.5 save_section_header(f, se, QEMU_VM_SECTION_FULL);
+================================================================================
 
-    if (vmdesc) {
-        json_prop_str(vmdesc, "vmsd_name", vmsd->name);
-        json_prop_int(vmdesc, "version", vmsd->version_id);
-        json_start_array(vmdesc, "fields");
-    }
+1.6.3.3.6 vmstate_save(f, se, vmdesc)
+================================================================================
 
-    while (field->name) {
-        if (!field->field_exists ||
-            field->field_exists(opaque, vmsd->version_id)) {
-            void *base_addr = vmstate_base_addr(opaque, field, false);
-            int i, n_elems = vmstate_n_elems(opaque, field);
-            int size = vmstate_size(opaque, field);
-            int64_t old_offset, written_bytes;
-            QJSON *vmdesc_loop = vmdesc;
+1.6.3.3.7 save_section_footer(f, se);
+================================================================================
 
-            for (i = 0; i < n_elems; i++) {
-                void *addr = base_addr + size * i;
+1.6.3.3.8 qemu_put_xx, vmdesc
+================================================================================
+qemu_put_byte(f, QEMU_VM_VMDESCRIPTION);
+qemu_put_be32(f, vmdesc_len);
+qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 
-                vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems);
-                old_offset = qemu_ftell_fast(f);
+1.7 migration_detect_error
+================================================================================
 
-                if (field->flags & VMS_ARRAY_OF_POINTER) {
-                    addr = *(void **)addr;
-                }
-                if (field->flags & VMS_STRUCT) {
-                    vmstate_save_state(f, field->vmsd, addr, vmdesc_loop);
-                } else {
-                    field->info->put(f, addr, size);
-                }
+1.8 migration_update_counters
+================================================================================
 
-                written_bytes = qemu_ftell_fast(f) - old_offset;
-                vmsd_desc_field_end(vmsd, vmdesc_loop, field, written_bytes, i);
+1.9 migration_iteration_finish
+================================================================================
 
-                /* Compressed arrays only care about the first element */
-                if (vmdesc_loop && vmsd_can_compress(field)) {
-                    vmdesc_loop = NULL;
-                }
-            }
-        } else {
-            if (field->flags & VMS_MUST_EXIST) {
-                error_report("Output state validation failed: %s/%s",
-                        vmsd->name, field->name);
-                assert(!(field->flags & VMS_MUST_EXIST));
-            }
-        }
-        field++;
-    }
+1. process_incoming_migration_co()
+================================================================================
 
-    if (vmdesc) {
-        json_end_array(vmdesc);
-    }
+1. vmstate_save(f, vmsd, opaque, vmdesc_id) -> vmstate_save_state_v()
+================================================================================
 
-    vmstate_subsection_save(f, vmsd, opaque, vmdesc);
-}
+1.1 vmsd->pre_save()
+================================================================================
 
-1.2.1 vmsd->pre_save()
-===============================================================================
-1.2.2 vmsd_desc_field_start()
-===============================================================================
-1.2.3 field->info->put()()
-===============================================================================
-1.2.4 vmsd_desc_field_end()
-===============================================================================
-1.2.5 vmstate_subsection_save()
-===============================================================================
-static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
-                                    void *opaque, QJSON *vmdesc)
-{
-    const VMStateDescription **sub = vmsd->subsections;
-    bool subsection_found = false;
+1.2 vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems)
+================================================================================
 
-    while (sub && *sub && (*sub)->needed) {
-        if ((*sub)->needed(opaque)) {
-            const VMStateDescription *vmsd = *sub;
-            uint8_t len;
+1.3 vmstate_info_nullptr.put() 
+================================================================================
 
-            if (vmdesc) {
-                /* Only create subsection array when we have any */
-                if (!subsection_found) {
-                    json_start_array(vmdesc, "subsections");
-                    subsection_found = true;
-                }
+1.4 vmstate_save_state(f, field->vmsd, curr_elem, vmdesc_loop)
+================================================================================
 
-                json_start_object(vmdesc, NULL);
-            }
+1.5 vmstate_save_state_v(f, field->vmsd, curr_elem, vmdesc_loop, field->struct_version_id)
+================================================================================
 
-            qemu_put_byte(f, QEMU_VM_SUBSECTION);
-            len = strlen(vmsd->name);
-            qemu_put_byte(f, len);
-            qemu_put_buffer(f, (uint8_t *)vmsd->name, len);
-            qemu_put_be32(f, vmsd->version_id);
-            vmstate_save_state(f, vmsd, opaque, vmdesc);
+1.6 field->info->put(f, curr_elem, size, field, vmdesc_loop)
+================================================================================
 
-            if (vmdesc) {
-                json_end_object(vmdesc);
-            }
-        }
-        sub++;
-    }
+1.7 vmstate_subsection_save()
+================================================================================
 
-    if (vmdesc && subsection_found) {
-        json_end_array(vmdesc);
-    }
-}
+1.1 vmsd->post_save()
+================================================================================
 
 0. data structure
 ================================================================================
@@ -1186,11 +470,62 @@ static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
 0.1 MigrationState(current_migration)
 ================================================================================
 
+    TYPE_DEVICE
+    +---------------------------------+ 
+    |class_size                       | = sizeof(DeviceClass)
+    |class_init                       | = device_class_init
+    |                                 |
+    |instance_size                    | = sizeof(Object)
+    |instance_init                    | = device_initfn
+    |instance_finalize                | = device_finalize
+    |                                 |
+    |realize                          | = 
+    +---------------------------------+ 
+
+
+    TYPE_MIGRATION
+    +---------------------------------+
+    |class_size                       | = sizeof(MigrationClass)
+    |class_init                       | = migration_class_init
+    |                                 |
+    |instance_size                    | = sizeof(MigrationState)
+    |instance_init                    | = migration_instance_init
+    |instance_finalize                | = migration_instance_finalize
+    |                                 |
+    |realize                          | = 
+    +---------------------------------+
 
     current_migration(MigrationState)
     +---------------------------------+
-    |state                            |
+    |parameters                       |
+    |    (MigrationParams)            |
+    |    +----------------------------+
+    |    |has_tls_creds               | = all default to true
+    |    |   (bool)                   |
+    |    |tls_creds                   |
+    |    |   (char*)                  |
+    |    |has_tls_hostname            |
+    |    |   (bool)                   |
+    |    |tls_hostname                |
+    |    |   (char*)                  |
+    |    |has_announce_initial        |
+    |    |   (bool)                   |
+    |    |announce_initial            |
+    |    |   (uint64_t)               |
+    |    |         .                  |
+    |    |         .                  |
+    |    |         .                  |
+    |    |         .                  |
+    +----+----------------------------+
+    |send_configuration               |
+    |send_section_footer              |
+    |only_migratable                  | only allow for migratable device
+    |    (bool)                       |
+    +---------------------------------+
+    |state                            | = MIGRATION_STATUS_NONE(start with)
     |    (int)                        |
+    |vm_was_running                   |
+    |    (bool)                       |
     +---------------------------------+
     |file                             | tcp socket fd
     |    (QEMUFile *)                 |
@@ -1198,45 +533,43 @@ static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
     |thread                           | migration_thread
     |    (QemuThread)                 |
     +---------------------------------+
-    |parameters[]                     |
-    |    (int)                        |
-    |params                           |
-    |    (MigrationParams)            |
+    |threshold_size                   | if remaining data is smaller, last round
+    |    (int64_t)                    |
+    |                                 |
+    |start_time                       | = assigned in migrate_init()
+    |setup_time                       | = time used in setup stage migration_thread
+    |iteration_start_time             | = init at every round
+    |expected_downtime                | = remaining ram / bandwidth
+    |downtime_start                   | = assigned in migration_completion()
+    |downtime                         | = end_time - s->downtime_start
+    |total_time                       | = end_time - s->start_time
+    |    (int64_t)                    |
+    |                                 |
+    |iteration_initial_bytes          | = init at every round
+    |iteration_initial_pages          | = init at every round
+    |    (int64_t)                    |
+    |mbps                             | = migration_total_bytes() / time_spent
+    |pages_per_second                 | = ram_get_total_transferred_pages() / time_spent
+    |    (double)                     |
+    |                                 |
+    +---------------------------------+
+    |rp_state                         | related to return path
     |    +----------------------------+
-    |    |blk                         |
-    |    |shared                      |
-    |    |   (bool)                   |
+    |    |from_dst_file               |
+    |    |    (QEMUFile *)            |
+    |    |rp_thread                   |
+    |    |rp_sem                      |
+    |    |                            |
     +----+----------------------------+
-    |mbps                             |
-    |xfer_limit                       |
-    |bytes_xfer                       |
-    |    (size_t)                     |
     |                                 |
-    |expected_downtime                |
-    |setup_time                       |
-    |downtime                         |
-    |total_time                       |
-    |    (int64_t)                    |
-    |                                 |
-    |                                 |
-    |dirty_pages_rate                 |
-    |dirty_bytes_rate                 |
-    |dirty_sync_count                 |
-    |    (int64_t)                    |
-    +---------------------------------+
-    |src_page_req_mutex               |
-    |    (QemuMutex)                  |
-    |src_page_requests                |
-    |    (MigrationSrcPageRequest)    |
-    |last_req_rb                      |
-    |    (RAMBlock *)                 |
-    +---------------------------------+
     |                                 |
     +---------------------------------+
-    |                                 |
-    +---------------------------------+
-    |                                 |
-    +---------------------------------+
+
+0.1.1 state change
+================================================================================
+  MIGRATION_STATUS_NONE        migration_object_init / migration_instance_init / migrate_init  ?
+  MIGRATION_STATUS_SETUP       migrate_init
+  MIGRATION_STATUS_ACTIVE      migration_thread
 
 0.2 SaveStateEntry
 ================================================================================
