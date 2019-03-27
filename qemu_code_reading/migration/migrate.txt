@@ -368,7 +368,7 @@ void migrate_compress_threads_create(void)
 1.6 migration_iteration_run
 ================================================================================
 
-1.6.1 qemu_savevm_state_pending()
+1.6.1 qemu_savevm_state_pending(f, &pend_pre, &pend_compat, &pend_post)
 ================================================================================
 
 1.6.1.1 se->ops->save_live_pending()
@@ -464,10 +464,10 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 1.1 vmsd->post_save()
 ================================================================================
 
-1. main()
+1. register SaveStateEntry
 ================================================================================
 
-1.1 blk_mig_init()
+1.1 main(),blk_mig_init()
 ================================================================================
 
 1.1.1 QSIMPLEQ_INIT(&block_mig_state.bmds_list);
@@ -478,24 +478,73 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 ================================================================================
 1.1.4 register_savevm_live(NULL, "block", 0, 1, savevm_block_handlers, block_mig_state)
 ================================================================================
+1.1.4.1 savevm_state_handler_insert(se), insert to savevm_state.handlers
+================================================================================
 
 1.2 ram_mig_init()
 ================================================================================
-
 1.2.1 qemu_mutex_init(&XBZRLE.lock);
 ================================================================================
-
 1.2.2 register_savevm_live(NULL, "ram", 0, 4, &savevm_ram_handlers, &ram_state);
 ================================================================================
 
 1.3 dirty_bitmap_mig_init()
 ================================================================================
-
 1.3.1 QSIMPLEQ_INIT(&dirty_bitmap_mig_state.dbms_list);
 ================================================================================
-
 1.3.2 register_savevm_live(NULL, "dirty-bitmap", 0, 1, &savevm_dirty_bitmap_handlers, &dirty_bitmap_mig_state);
 ================================================================================
+
+0. call flow for migration_thread
+================================================================================
+
+     migration_thread()
+       qemu_savevm_state_header
+           qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
+           qemu_put_be32(f, QEMU_VM_FILE_VERSION);
+           qemu_put_be32(f, QEMU_VM_CONFIGURATION);
+           vmstate_save_state(f, &vmstate_configuration, &savevm_state, 0);
+       qemu_savevm_send_open_return_path(s->to_dst_file);
+       qemu_savevm_send_ping(s->to_dst_file, 1);
+           qemu_savevm_command_send(f, MIG_CMD_PING, , (uint8_t *)&buf)
+
+       ; iterate savevm_state and call save_setup
+       qemu_savevm_state_setup(s->to_dst_file);
+           save_section_header(f, se, QEMU_VM_SECTION_START)
+           se->ops->save_setup(f, se->opaque)
+           save_section_footer(f, se)
+           precopy_notify(PRECOPY_NOTIFY_SETUP, &local_err)
+       migrate_set_state(&s->state, MIGRATION_STATUS_SETUP, MIGRATION_STATUS_ACTIVE);
+       migration_iteration_run
+
+           ; iterate savevm_state and call save_live_pending
+           qemu_savevm_state_pending(pend_pre/compat/post)
+               se->ops->save_live_pending()
+
+           ; iterate savevm_state and call save_live_iterate
+           qemu_savevm_state_iterate()
+               save_section_header(f, se, QEMU_VM_SECTION_PART)
+               se->ops->save_live_iterate(f, se->opaque)
+               save_section_footer(f, se)
+           migration_completion()
+               qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER, NULL);
+               vm_stop_force_state(RUN_STATE_FINISH_MIGRATE)
+
+               qemu_savevm_state_complete_precopy(s->to_dst_file, false, inactivate);
+                   ; iterate savevm_state and call save_live_complete_precopy
+                   cpu_synchronize_all_states();
+                   save_section_header(f, se, QEMU_VM_SECTION_END);
+                   se->ops->save_live_complete_precopy(f, se->opaque)
+                   save_section_footer(f, se);
+
+                   ; iterate savevm_state and call vmstate_save
+                   save_section_header(f, se, QEMU_VM_SECTION_FULL);
+                   vmstate_save(f, se, vmdesc)
+                   save_section_footer(f, se);
+       migration_detect_error
+       migration_update_counters
+       migration_iteration_finish
+    
 
 0. data structure
 ================================================================================
@@ -607,7 +656,7 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 0.2 SaveState
 ================================================================================
 
-    SaveState
+    SaveState(savevm_state)
     +--------------------------------------+
     |global_section_id                     |
     |     (int)                            |
@@ -637,7 +686,6 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     |vmsd                         |         |vmsd                         |      |vmsd                                |
     |     = NULL                  |         |     = NULL                  |      |     = NULL                         |
     +-----------------------------+         +-----------------------------+      +------------------------------------+
-
 
 
 0.2.1 RAMState
