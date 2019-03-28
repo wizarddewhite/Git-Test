@@ -249,6 +249,8 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 
 0. call flow for hmp_migrate()
 ================================================================================
+; https://wiki.qemu.org/Features/Migration/Troubleshooting
+; a page for trouble shooting
 
      hmp_migrate(), invoked from handle_hmp_command()
          qmp_migrate()
