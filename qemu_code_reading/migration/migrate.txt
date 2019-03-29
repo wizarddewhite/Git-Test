@@ -1,3 +1,8 @@
+1. Reference
+================================================================================
+https://www.linux-kvm.org/page/Migration
+https://wiki.qemu.org/Features/Migration/Troubleshooting
+
 1. hmp_migrate(), invoked from handle_hmp_command()
 ================================================================================
 
