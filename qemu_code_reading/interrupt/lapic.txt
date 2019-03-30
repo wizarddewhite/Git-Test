@@ -209,7 +209,7 @@ kvm_init
 x86_cpu_realizefn
     x86_cpu_apic_create
         apic_common_initfn
-	set apic->id with cpu->apic_id
+        set apic->id with cpu->apic_id
     qemu_init_vcpu
         qemu_kvm_start_vcpu
             qemu_kvm_cpu_thread_fn
@@ -218,10 +218,10 @@ x86_cpu_realizefn
                         kvm_vm_ioctl(s, KVM_CREATE_VCPU, (void *)vcpu_id)
     x86_cpu_apic_realize
         object_property_set_bool(cpu->apic_state, realized)
-	    apic_common_realize
+            apic_common_realize
                 kvm_apic_realize
-	// only one memory region installed
-	memory_region_add_subregion_overlap(&apic->io_memory)
+        // only one memory region installed
+        memory_region_add_subregion_overlap(&apic->io_memory)
 
 3.1.2.2 kernel side
 ================================================================================
