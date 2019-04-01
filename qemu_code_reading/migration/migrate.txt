@@ -189,31 +189,17 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 1. process_incoming_migration_co()
 ================================================================================
 
-1. vmstate_save(f, vmsd, opaque, vmdesc_id) -> vmstate_save_state_v()
+1. vmstate_save(f, se, vmdesc)
 ================================================================================
 
-1.1 vmsd->pre_save()
+1.1 vmstate_save_state(f, se->vmsd, se->opaque, vmdesc)
+================================================================================
+; vmstate_save_state_v(f, se->vmsd, se->opaque, vmdesc, se->vmsd->version_id)
+
+1.1.1 vmsd->pre_save(se->opaque)
 ================================================================================
 
-1.2 vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems)
-================================================================================
-
-1.3 vmstate_info_nullptr.put() 
-================================================================================
-
-1.4 vmstate_save_state(f, field->vmsd, curr_elem, vmdesc_loop)
-================================================================================
-
-1.5 vmstate_save_state_v(f, field->vmsd, curr_elem, vmdesc_loop, field->struct_version_id)
-================================================================================
-
-1.6 field->info->put(f, curr_elem, size, field, vmdesc_loop)
-================================================================================
-
-1.7 vmstate_subsection_save()
-================================================================================
-
-1.1 vmsd->post_save()
+1.1.2 vmstate_subsection_save()
 ================================================================================
 
 1. register SaveStateEntry
@@ -552,43 +538,57 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     |    |instance_id                      |
     |    |    (int)                        |
     +----+---------------------------------+
-    |vmsd                                  | -------> VMStateDescription
-    |    (VMStateDescription *)            |          +--------------------------------------+
-    +--------------------------------------+          |name                                  |  "configuration"
-    |                                      |          |    (char *)                          |
-    |                                      |          +--------------------------------------+
-    +--------------------------------------+          |version_id                            |
-                                                      |minimum_version_id                    |
-                                                      |minimum_version_id_old                |
-                                                      |    (int)                             |
-                                                      +--------------------------------------+
-                                                      |pre_load                              |
-                                                      |post_load                             |  configuration_post_load
-                                                      |    int (*) ()                        |
-                                                      |pre_save                              |  configuration_pre_save
-                                                      |    void (*)()                        |
-                                                      |needed                                |
-                                                      |    bool (*)()                        |
-                                                      +--------------------------------------+
-                                                      |fields                                |
-                                                      |    (VMStateField *)                  |
-                                                      |    +---------------------------------+
-                                                      |    |name                             |
-                                                      |    |offset                           |
-                                                      |    |size                             |
-                                                      |    |start                            |
-                                                      |    |                                 |
-                                                      |    |info                             |
-                                                      |    |    (VMStateInfo *)              |
-                                                      |    |    +----------------------------+
-                                                      |    |    |name                        |
-                                                      |    |    |get                         |
-                                                      |    |    |put                         |
-                                                      |    |    |                            |
-                                                      +----+----+----------------------------+
-                                                      |                                      |
-                                                      |                                      |
-                                                      +--------------------------------------+
-                                                      |subsections                           |
-                                                      |    (VMStateDescription **)           |
-                                                      +--------------------------------------+
+    |vmsd                                  |
+    |    (VMStateDescription *)            |
+    |     +--------------------------------+
+    |     |name                            |
+    |     |    (char *)                    |
+    |     +--------------------------------+
+    |     |version_id                      |
+    |     |minimum_version_id              |
+    |     |minimum_version_id_old          |
+    |     |    (int)                       |
+    |     +--------------------------------+
+    |     |unmigratable                    |
+    |     |    (int)                       |
+    |     +--------------------------------+
+    |     |priority                        |
+    |     |    (MigrationPriority)         |
+    |     +--------------------------------+
+    |     |load_state_old                  |
+    |     |pre_load                        |
+    |     |post_load                       |  configuration_post_load
+    |     |pre_save                        |  configuration_pre_save
+    |     |post_save                       |
+    |     |needed                          |
+    |     |    bool (*)()                  |
+    |     +--------------------------------+
+    |     |fields                          |
+    |     |    (VMStateField *)            |
+    |     |    +---------------------------+
+    |     |    |flags                      | POINTER, ARRARY, V/STRUCT, VARRAY_INT32, BUFFER, ARRAY_OF_POINTER
+    |     |    |    (VMStateFlags)         | VARRAY_UINT8/16/32, VBUFFER, MULTIPLY/_ELEMENTS, MUST_EXIST, ALLOC
+    |     |    |                           |
+    |     |    |name                       |
+    |     |    |offset                     |
+    |     |    |size                       |
+    |     |    |start                      |
+    |     |    |                           |
+    |     |    |num                        |
+    |     |    |num_offset                 |
+    |     |    |size_offset                |
+    |     |    |                           |
+    |     |    |version_id                 |
+    |     |    |struct_version_id          |
+    |     |    |field_exists               |
+    |     |    |                           |
+    |     |    |info                       |
+    |     |    |    (VMStateInfo *)        |
+    |     |    |    +----------------------+
+    |     |    |    |name                  |
+    |     |    |    |get                   |
+    |     |    |    |put                   |
+    |     +----+----+----------------------+
+    |     |subsections                     |
+    |     |    (VMStateDescription **)     |
+    +-----+--------------------------------+
