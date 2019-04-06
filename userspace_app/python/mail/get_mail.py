@@ -189,13 +189,13 @@ def show_subjects():
     for p, t in sorted(participants.iteritems(),
                        key=lambda (p,t): (t,p),
                        reverse=True)[:10]:
-        print "    %5.02f%% %s: %d" % (t * 100/total_messages, p, t)
+        print "    %4d(%5.02f%%) %s" % (t, t * 100/total_messages, p)
     print "Top 10 company participants:"
     print "============================"
     for c, t in sorted(companies.iteritems(),
                        key=lambda (c,t): (t,c),
                        reverse=True)[:10]:
-        print "    %5.02f%% %10s: %d" % (t * 100/total_messages, c, t)
+        print "    %5d(%5.02f%%) %-10s" % (t, t * 100/total_messages, c)
 
     for s in subjects:
         print "{:14}: {}".format('Title', s[0])
