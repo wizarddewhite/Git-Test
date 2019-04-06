@@ -28,12 +28,6 @@ titles = {}
 # a dictionary of {participants, #messages}
 participants = {}
 # a dictionary of {companies, #messages}
-company_list = [
-        'intel', 'redhat', 'ibm', 'arm', 'huawei',
-        'google', 'kernel', 'oracle', 'linuxfoundation',
-        'amd', 'bitdefender', 'linaro', 'amazon', 'nvidia',
-        'infradead', 'microsoft', 'openvz', 'mellanox',
-               ]
 companies = {}
 
 def dup_message_id(message):
@@ -93,14 +87,18 @@ def put_to_participants(mail_from):
     else:
         participants[mail_from] = 1
 
+def email_to_company(email):
+    raw_email = re.search('<.*?>', email)
+    if raw_email:
+        email = email[raw_email.start() + 1:raw_email.end() - 1]
+    return email.split('@')[1].split('.')[-2]
+
 def put_to_companies(mail_from):
-    for c in company_list:
-        if re.search(c, mail_from, re.IGNORECASE):
-            if c in companies:
-                companies[c] = companies[c] + 1
-            else:
-                companies[c] = 1
-            break
+    c = email_to_company(mail_from)
+    if c in companies:
+        companies[c] = companies[c] + 1
+    else:
+        companies[c] = 1
 
 def threadify(mbox_name, start, end):
     mbox = mailbox.mbox(mbox_name)
