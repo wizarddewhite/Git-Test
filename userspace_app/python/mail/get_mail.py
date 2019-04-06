@@ -219,9 +219,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Processing mailbox')
     parser.add_argument('--mailbox', metavar='path', required=True,
                         help='the file of mailbox')
-    parser.add_argument('--start', metavar='path', required=False,
+    parser.add_argument('--start', metavar='date', required=False,
                         help='start date')
-    parser.add_argument('--end', metavar='path', required=False,
+    parser.add_argument('--end', metavar='date', required=False,
                         help='end date')
     args = parser.parse_args()
 
