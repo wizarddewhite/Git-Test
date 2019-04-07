@@ -21,7 +21,7 @@ threads = []
 #   [1] rounds
 #   [2] replies
 #   [3] from
-#   [3] files
+#   [4] files
 subjects = []
 # a dictionary of {title, subject}
 titles = {}
@@ -190,8 +190,7 @@ def get_subjects(only_patch):
             subject[1] += 1
             subject[2] += replies
         else:
-            get_files(t)
-            subject = [title, 1, replies, t[0]['from']]
+            subject = [title, 1, replies, t[0]['from'], get_files(t)]
             titles[title] = subject
             subjects.append(subject)
 
@@ -231,6 +230,7 @@ def show_subjects():
         print "    {:10}: {}".format('From', s[3])
         print "    {:10}: {}".format('Replies', s[2])
         print "    {:10}: {}".format('Rounds', s[1])
+        print "    {:10}: {}".format('Files',  s[4])
 
 def iterate_mailbox():
     mbox = mailbox.mbox('example.mbox')
