@@ -178,8 +178,13 @@ def sort_subjects_by_replies(subject):
 
 def show_subjects():
     total_messages = float(0)
+
     for _, t in participants.iteritems():
         total_messages += t
+
+    if total_messages == 0:
+        print "No subject extracted"
+        return
 
     print "Total %d discussions in %d subjects" % (total_messages, len(subjects))
     print "Top 10 individual participants:"
