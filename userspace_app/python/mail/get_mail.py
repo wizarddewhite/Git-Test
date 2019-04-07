@@ -21,6 +21,7 @@ threads = []
 #   [1] rounds
 #   [2] replies
 #   [3] from
+#   [3] files
 subjects = []
 # a dictionary of {title, subject}
 titles = {}
@@ -107,6 +108,7 @@ def threadify(mbox_name, start, end):
     for idx, message in mbox.iteritems():
         if dup_message_id(message):
             continue
+
         date = parse(re.sub('\(.*?\)', '', message['date'])).replace(tzinfo=None)
         if date < start or date > end:
             continue
@@ -129,6 +131,25 @@ def threadify(mbox_name, start, end):
 def is_patch(thread):
     raw_title = thread[0]['subject']
     return re.search('patch', raw_title, re.IGNORECASE)
+
+def get_files(message):
+    files = []
+    if message.is_multipart():
+        content = ''.join(part.get_payload(decode=True) for part in message.get_payload())
+    else:
+        content = message.get_payload(decode=True)
+    content_in_line = content.splitlines()
+
+    for i, l in enumerate(content_in_line):
+        if re.search('file changed', l):
+            num = int(l.split()[0])
+            while num:
+                files.append(content_in_line[i-num].split()[0])
+                num -= 1
+            break
+
+    return files
+
 
 def get_title(thread):
     raw_title = thread[0]['subject']
@@ -158,13 +179,14 @@ def get_subjects(only_patch):
             continue
 
         title = get_title(t)
-
         replies = get_replies(t)
+
         if title in titles:
             subject = titles[title]
             subject[1] += 1
             subject[2] += replies
         else:
+            get_files(t[0])
             subject = [title, 1, replies, t[0]['from']]
             titles[title] = subject
             subjects.append(subject)
