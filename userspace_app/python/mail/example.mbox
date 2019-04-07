@@ -1160,7 +1160,8 @@ Reviewed-by: Biju Das <biju.das@bp.renesas.com>
 This patch applies on top of renesas-drivers-2018-07-31-v4.18-rc7
 
  drivers/iommu/ipmmu-vmsa.c | 5 +++++
- 1 file changed, 5 insertions(+)
+ drivers/iommu/ipmmu-fake.c | 5 +++++
+ 2 file changed, 5 insertions(+)
 
 diff --git a/drivers/iommu/ipmmu-vmsa.c b/drivers/iommu/ipmmu-vmsa.c
 index 51af2c5..cf5cfcf 100644
