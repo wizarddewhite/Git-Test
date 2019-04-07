@@ -132,21 +132,25 @@ def is_patch(thread):
     raw_title = thread[0]['subject']
     return re.search('patch', raw_title, re.IGNORECASE)
 
-def get_files(message):
-    files = []
-    if message.is_multipart():
-        content = ''.join(part.get_payload(decode=True) for part in message.get_payload())
-    else:
-        content = message.get_payload(decode=True)
-    content_in_line = content.splitlines()
+def get_files(thread):
+    files = set()
+    for message in thread:
+        if re.search('re:', message['subject'], re.IGNORECASE):
+            continue
 
-    for i, l in enumerate(content_in_line):
-        if re.search('file changed', l):
-            num = int(l.split()[0])
-            while num:
-                files.append(content_in_line[i-num].split()[0])
-                num -= 1
-            break
+        if message.is_multipart():
+            content = ''.join(part.get_payload(decode=True) for part in message.get_payload())
+        else:
+            content = message.get_payload(decode=True)
+        content_in_line = content.splitlines()
+
+        for i, l in enumerate(content_in_line):
+            if re.search('file changed', l):
+                num = int(l.split()[0])
+                while num:
+                    files.add(content_in_line[i-num].split()[0])
+                    num -= 1
+                break
 
     return files
 
@@ -186,7 +190,7 @@ def get_subjects(only_patch):
             subject[1] += 1
             subject[2] += replies
         else:
-            get_files(t[0])
+            get_files(t)
             subject = [title, 1, replies, t[0]['from']]
             titles[title] = subject
             subjects.append(subject)
