@@ -1,0 +1,142 @@
+From 4f8151a8b2269a315258da20f6615a490ac2b190 Mon Sep 17 00:00:00 2001
+From: Chao Gao <chao.gao@intel.com>
+Date: Mon, 11 Mar 2019 03:04:03 +0800
+Subject: [PATCH] Add extirq TP for kvm perf to check EXTERNAL_INTERRUPT VMexit
+
+---
+ arch/x86/kvm/trace.h                | 19 +++++++++++
+ arch/x86/kvm/vmx/vmx.c              |  3 ++
+ arch/x86/kvm/x86.c                  |  1 +
+ tools/perf/arch/x86/util/kvm-stat.c | 49 +++++++++++++++++++++++++++++
+ 4 files changed, 72 insertions(+)
+
+diff --git a/arch/x86/kvm/trace.h b/arch/x86/kvm/trace.h
+index 6432d08c7de7..6424fe29b5c4 100644
+--- a/arch/x86/kvm/trace.h
++++ b/arch/x86/kvm/trace.h
+@@ -1462,6 +1462,25 @@ TRACE_EVENT(kvm_hv_send_ipi_ex,
+ 		  __entry->vector, __entry->format,
+ 		  __entry->valid_bank_mask)
+ );
++
++/*
++* Tracepoint for external irq.
++*/
++TRACE_EVENT(kvm_extirq,
++	TP_PROTO(unsigned int vector),
++	TP_ARGS(vector),
++
++	TP_STRUCT__entry(
++		__field(unsigned int,	vector)
++	),
++
++	TP_fast_assign(
++		__entry->vector		= vector;
++	),
++
++	TP_printk("Ext irq %u causing vmexit", __entry->vector)
++);
++
+ #endif /* _TRACE_KVM_H */
+ 
+ #undef TRACE_INCLUDE_PATH
+diff --git a/arch/x86/kvm/vmx/vmx.c b/arch/x86/kvm/vmx/vmx.c
+index 30a6bcd735ec..65131a82aa1b 100644
+--- a/arch/x86/kvm/vmx/vmx.c
++++ b/arch/x86/kvm/vmx/vmx.c
+@@ -6143,6 +6143,9 @@ static void vmx_handle_external_intr(struct kvm_vcpu *vcpu)
+ 		vector =  exit_intr_info & INTR_INFO_VECTOR_MASK;
+ 		desc = (gate_desc *)vmx->host_idt_base + vector;
+ 		entry = gate_offset(desc);
++
++		trace_kvm_extirq(vector);
++
+ 		asm volatile(
+ #ifdef CONFIG_X86_64
+ 			"mov %%" _ASM_SP ", %[sp]\n\t"
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 941f932373d0..583abf181202 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -9846,3 +9846,4 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_pml_full);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_pi_irte_update);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_avic_unaccelerated_access);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_avic_incomplete_ipi);
++EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_extirq);
+diff --git a/tools/perf/arch/x86/util/kvm-stat.c b/tools/perf/arch/x86/util/kvm-stat.c
+index 67e4c537d3c3..4bacc1dcfb5a 100644
+--- a/tools/perf/arch/x86/util/kvm-stat.c
++++ b/tools/perf/arch/x86/util/kvm-stat.c
+@@ -246,6 +246,53 @@ static struct kvm_events_ops eptmis_events = {
+ 	.name = "MISCONFIG GPA"
+ };
+ 
++//kvm:kvm_extirq
++
++/*
++* For the extirq events from vm-exit, we treat:
++* the time of extirq: kvm_extirq() -> kvm_entry
++*/
++static void extirq_event_get_key(struct perf_evsel *evsel, struct perf_sample *sample,
++		                               struct event_key *key)
++{
++	key->key  = perf_evsel__intval(evsel, sample, "vector");
++	key->info = 0;
++}
++
++static bool extirq_event_begin(struct perf_evsel *evsel,
++				struct perf_sample *sample, struct event_key *key)
++{
++	/* extirq begin event in kernel. */
++	if (!strcmp(evsel->name, "kvm:kvm_extirq")) {
++		extirq_event_get_key(evsel, sample, key);
++		return true;
++	}
++
++	return false;
++}
++
++static bool extirq_event_end(struct perf_evsel *evsel, struct perf_sample *sample __maybe_unused,
++		                struct event_key *key __maybe_unused)
++{
++	/* extirq end event in kernel. */
++	if (kvm_entry_event(evsel))
++		return true;
++
++	return false;
++}
++
++static void extirq_event_decode_key(struct perf_kvm_stat *kvm __maybe_unused,
++					struct event_key *key, char *decode)
++{
++	scnprintf(decode, decode_str_len, "%u",(unsigned int)key->key);
++}
++
++static struct kvm_events_ops extirq_events = {
++	.is_begin_event = extirq_event_begin,
++	.is_end_event = extirq_event_end,
++	.decode_key = extirq_event_decode_key,
++	.name = "EXT IRQ"
++};
+ 
+ const char *kvm_events_tp[] = {
+ 	"kvm:kvm_entry",
+@@ -254,6 +301,7 @@ const char *kvm_events_tp[] = {
+ 	"kvm:kvm_pio",
+ 	"kvm:kvm_msr",
+ 	"kvm:kvm_fast_mmio",
++	"kvm:kvm_extirq",
+ 	NULL,
+ };
+ 
+@@ -263,6 +311,7 @@ struct kvm_reg_events_ops kvm_reg_events_ops[] = {
+ 	{ .name = "ioport", .ops = &ioport_events },
+ 	{ .name = "msr", .ops = &msr_events },
+ 	{ .name = "eptmis", .ops = &eptmis_events },
++	{ .name = "extirq", .ops = &extirq_events },
+ 	{ NULL, NULL },
+ };
+ 
+-- 
+2.19.1
+
