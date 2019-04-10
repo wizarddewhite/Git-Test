@@ -1,0 +1,6 @@
+sudo ~/git/qemu/x86_64-softmmu/qemu-system-x86_64 -m 4G,slots=4,maxmem=128G -smp 4,maxcpus=16 --enable-kvm \
+	-drive file=/home/richard/guest/fedora29.img,format=raw \
+	-drive file=/home/richard/guest/project.img,format=raw \
+ `for i in {1..28}; do echo  "--device pci-bridge,chassis_nr=$i"; done`  \
+`for i in {1..24}; do printf --  " --device pci-bridge,bus=pci.1,addr=%x.0,chassis_nr=$i" $i ; done`
+
