@@ -192,32 +192,35 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 1. vmstate_save(f, se, vmdesc)
 ================================================================================
 
-1.1 vmstate_save_state(f, se->vmsd, se->opaque, vmdesc)
+1.1 vmstate_save_old_style(f, se, vmdesc)
+================================================================================
+
+1.2 vmstate_save_state(f, se->vmsd, se->opaque, vmdesc)
 ================================================================================
 ; vmstate_save_state_v(f, se->vmsd, se->opaque, vmdesc, se->vmsd->version_id)
 
-1.1.1 vmsd->pre_save(se->opaque)
+1.2.1 vmsd->pre_save(se->opaque)
 ================================================================================
 
-1.1.2 vmsd_desc_field_start
+1.2.2 vmsd_desc_field_start
 ================================================================================
 
-1.1.3 vmstate_save_state(f, field->vmsd, curr_elem, vmdesc_loop)
+1.2.3 vmstate_save_state(f, field->vmsd, curr_elem, vmdesc_loop)
 ================================================================================
 
-1.1.4 vmstate_save_state_v(f, field->vmsd, curr_elem, vmdesc_loop, field->struct_version_id)
+1.2.4 vmstate_save_state_v(f, field->vmsd, curr_elem, vmdesc_loop, field->struct_version_id)
 ================================================================================
 
-1.1.5 field->info->put(f, curr_elem, size, field, vmdesc_loop)
+1.2.5 field->info->put(f, curr_elem, size, field, vmdesc_loop)
 ================================================================================
 
-1.1.6 vmsd_desc_field_end
+1.2.6 vmsd_desc_field_end
 ================================================================================
 
-1.1.7 vmstate_subsection_save()
+1.2.7 vmstate_subsection_save()
 ================================================================================
 
-1.1.7.1 vmstate_save_state(f, vmsdsub, se->opaque, vmdesc)
+1.2.7.1 vmstate_save_state(f, vmsdsub, se->opaque, vmdesc)
 ================================================================================
 
 1. register SaveStateEntry
@@ -272,6 +275,7 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
                  migration_channel_connect(s, ioc, NULL, NULL)
              fd_start_outgoing_migration()
                  migration_channel_connect(s, ioc, NULL, NULL)
+                     migrate_fd_connect(s, NULL)
              rdma_start_outgoing_migration()
                  migrate_fd_connect(s, NULL)
                      migration_thread()
@@ -281,6 +285,7 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 ================================================================================
 
      migration_thread()
+
        qemu_savevm_state_header
            qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
            qemu_put_be32(f, QEMU_VM_FILE_VERSION);
@@ -296,6 +301,7 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
            se->ops->save_setup(f, se->opaque)
            save_section_footer(f, se)
            precopy_notify(PRECOPY_NOTIFY_SETUP, &local_err)
+
        migrate_set_state(&s->state, MIGRATION_STATUS_SETUP, MIGRATION_STATUS_ACTIVE);
        migration_iteration_run
 
@@ -323,10 +329,24 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
                    save_section_header(f, se, QEMU_VM_SECTION_FULL);
                    vmstate_save(f, se, vmdesc)
                    save_section_footer(f, se);
+
        migration_detect_error
        migration_update_counters
        migration_iteration_finish
     
+0. call flow for vmstate_save
+================================================================================
+
+     vmstate_save(f, se, vmdesc)
+         vmstate_save_state(f, se->vmsd, se->opaque, vmdesc)
+             vmsd->pre_save(se->opaque)
+             vmsd_desc_field_start
+             vmstate_save_state(f, field->vmsd, curr_elem, vmdesc_loop)
+             vmstate_save_state_v(f, field->vmsd, curr_elem, vmdesc_loop, field->struct_version_id)
+             field->info->put(f, curr_elem, size, field, vmdesc_loop)
+             vmsd_desc_field_end
+             vmstate_subsection_save()
+                 vmstate_save_state(f, vmsdsub, se->opaque, vmdesc)
 
 0. data structure
 ================================================================================
@@ -455,8 +475,11 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     |handlers                              |
     |     (list of SaveStateEntry)         |
     +--------------------------------------+
-
-
+                      |
+                      |
+    ------------+-----+----------------------------------+-------------------------------------------+---
+                |                                        |                                           |
+                |                                        |                                           |
     SaveStateEntry                          SaveStateEntry                       SaveStateEntry                 
     +-----------------------------+         +-----------------------------+      +------------------------------------+
     |idstr                        |         |idstr                        |      |idstr                               |
