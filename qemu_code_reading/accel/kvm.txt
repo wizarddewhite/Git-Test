@@ -1,81 +1,100 @@
+1. TYPE_KVM_ACCEL
+================================================================================
+   TYPE_OBJECT
+   +-------------------------------+ 
+   |class_init                     | = object_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   +-------------------------------+ 
+
+
+   TYPE_ACCEL
+   +-------------------------------+ 
+   |class_size                     | = sizeof(AccelClass)
+   |class_init                     | = kvm_accel_class_init
+   |                               |
+   |instance_size                  | = sizeof(AccelState)
+   |instance_init                  | = NULL
+   |                               |
+   +-------------------------------+ 
+
+2. AccelClass
+================================================================================
+   AccelClass
+   +-------------------------------+ 
+   |parent_class                   |
+   |    (ObjectClass)              |
+   +-------------------------------+ 
+   |name/opt_name                  |
+   |    (char *)                   |
+   |available                      |
+   |init_machine                   | = kvm_init
+   |setup_post                     |
+   |                               |
+   |                               |
+   +-------------------------------+ 
+
+3. KVMState
+================================================================================
+
+   KVMState
+   +-------------------------------+ 
+   |parent_obj                     |
+   |    (AccelState)               |
+   +-------------------------------+ 
+   |fd                             | = qemu_open("/dev/kvm")
+   |vmfd                           | = ioctl(KVM_CREATE_VM)
+   |nr_slots                       | = ioctl(KVM_CAP_NR_MEMSLOTS)
+   |coalesced_mmio                 | = ioctl(KVM_CAP_COALESCED_MMIO)
+   |coalesced_pio                  | = ioctl(KVM_CAP_COALESCED_PIO)
+   |    (int)                      |
+   |                               |
+   |memory_listener                |
+   |    (KVMMemoryListener)        |
+   |    +--------------------------+
+   |    |listener                  |
+   |    |   (MemoryListener)       |
+   |    |   +----------------------+
+   |    |   |region_add            | = kvm_region_add
+   |    |   |region_del            | = kvm_region_del
+   |    |   |log_start             | = kvm_log_start
+   |    |   |log_stop              | = kvm_log_stop
+   |    |   |log_sync              | = kvm_log_sync
+   |    |   |                      |
+   |    |   |                      |
+   |    |   |eventfd_add           | = kvm_mem_ioeventfd_add
+   |    |   |eventfd_del           | = kvm_mem_ioeventfd_del
+   |    |   |coalesced_io_add      | = kvm_coalesce_mmio_region
+   |    |   |coalesced_io_del      | = kvm_uncoalesce_mmio_region
+   |    |   |                      |
+   |    |   +----------------------+
+   |    |slots                     |
+   |    |   (KVMSlot*)             |
+   |    |                          |
+   |    +--------------------------+
+   |                               |
+   |sigmask_len                    | = 8
+   |                               |
+   |kvm_parked_vcpus               |
+   |    (QLIST)                    |
+   |                               |
+   |                               |
+   |                               |
+   |                               |
+   |memcrypt_handle                |
+   |memcrypt_encrypt_data          |
+   |                               |
+   +-------------------------------+ 
+
+
 1. main()
 ================================================================================
 
 1.1 configure_accelerator()
 ================================================================================
-int configure_accelerator(MachineState *ms)
-{
-    const char *p;
-    char buf[10];
-    int ret;
-    bool accel_initialised = false;
-    bool init_failed = false;
-    AccelClass *acc = NULL;
-
-    p = qemu_opt_get(qemu_get_machine_opts(), "accel");
-    if (p == NULL) {
-        /* Use the default "accelerator", tcg */
-        p = "tcg";
-    }
-
-    while (!accel_initialised && *p != '\0') {
-        if (*p == ':') {
-            p++;
-        }
-        p = get_opt_name(buf, sizeof(buf), p, ':');
-        acc = accel_find(buf);
-        if (!acc) {
-            fprintf(stderr, "\"%s\" accelerator not found.\n", buf);
-            continue;
-        }
-        if (acc->available && !acc->available()) {
-            printf("%s not supported for this target\n",
-                   acc->name);
-            continue;
-        }
-        ret = accel_init_machine(acc, ms);
-        if (ret < 0) {
-            init_failed = true;
-            fprintf(stderr, "failed to initialize %s: %s\n",
-                    acc->name,
-                    strerror(-ret));
-        } else {
-            accel_initialised = true;
-        }
-    }
-
-    if (!accel_initialised) {
-        if (!init_failed) {
-            fprintf(stderr, "No accelerator found!\n");
-        }
-        exit(1);
-    }
-
-    if (init_failed) {
-        fprintf(stderr, "Back to %s accelerator.\n", acc->name);
-    }
-
-    return !accel_initialised;
-}
 
 1.1.1 accel_init_machine(), new the accelerator
 ================================================================================
-static int accel_init_machine(AccelClass *acc, MachineState *ms)
-{
-    ObjectClass *oc = OBJECT_CLASS(acc);
-    const char *cname = object_class_get_name(oc);
-    AccelState *accel = ACCEL(object_new(cname));
-    int ret;
-    ms->accelerator = accel;
-    *(acc->allowed) = true;
-    ret = acc->init_machine(ms);
-    if (ret < 0) {
-        ms->accelerator = NULL;
-        *(acc->allowed) = false;
-        object_unref(OBJECT(accel));
-    }
-    return ret;
-}
 
 1.1.1.1 acc->init_machine(), kvm_init()
 ================================================================================

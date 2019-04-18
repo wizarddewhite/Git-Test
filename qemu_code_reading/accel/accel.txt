@@ -1,0 +1,58 @@
+1. TYPE_ACCEL
+================================================================================
+   TYPE_OBJECT
+   +-------------------------------+ 
+   |class_init                     | = object_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   +-------------------------------+ 
+
+
+   TYPE_ACCEL
+   +-------------------------------+ 
+   |class_size                     | = sizeof(AccelClass)
+   |class_init                     | = NULL
+   |                               |
+   |instance_size                  | = sizeof(AccelState)
+   |instance_init                  | = NULL
+   |                               |
+   +-------------------------------+ 
+
+2. AccelClass
+================================================================================
+   AccelClass
+   +-------------------------------+ 
+   |parent_class                   |
+   |    (ObjectClass)              |
+   +-------------------------------+ 
+   |name/opt_name                  |
+   |    (char *)                   |
+   |available                      |
+   |init_machine                   |
+   |setup_post                     |
+   |                               |
+   |                               |
+   +-------------------------------+ 
+
+3. AccelState
+================================================================================
+
+   AccelState
+   +-------------------------------+ 
+   |parent_obj                     |
+   |    (Object)                   |
+   +-------------------------------+ 
+
+4. call flow
+================================================================================
+
+main()
+    configure_accelerator(current_machine, argv[0]);
+        AccelClass *acc;
+        acc->available()
+        accel_init_machine(acc, ms)
+            AccelState *accel = object_new(acc); 
+            acc->init_machine(ms)
+            ms->accelerator = accel
+    accel_setup_post(current_machine);
+        acc->setup_post(ms, accel);
