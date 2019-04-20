@@ -340,13 +340,20 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
      vmstate_save(f, se, vmdesc)
          vmstate_save_state(f, se->vmsd, se->opaque, vmdesc)
              vmsd->pre_save(se->opaque)
+
+             ; iterate on fields
+             ; iterate on elements of this field
              vmsd_desc_field_start
              vmstate_save_state(f, field->vmsd, curr_elem, vmdesc_loop)
              vmstate_save_state_v(f, field->vmsd, curr_elem, vmdesc_loop, field->struct_version_id)
              field->info->put(f, curr_elem, size, field, vmdesc_loop)
              vmsd_desc_field_end
+
+             ; go into subsection
              vmstate_subsection_save()
                  vmstate_save_state(f, vmsdsub, se->opaque, vmdesc)
+
+             vmsd->pre_save(se->opaque)
 
 0. data structure
 ================================================================================
