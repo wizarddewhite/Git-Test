@@ -575,9 +575,6 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     |    |load_cleanup                     |
     |    |resume_prepare                   |
     +----+---------------------------------+
-    |opaque                                |
-    |    (void *)                          |
-    +--------------------------------------+
     |compat                                |
     |    (CompatEntry*)                    |
     |    +---------------------------------+
@@ -586,6 +583,9 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     |    |instance_id                      |
     |    |    (int)                        |
     +----+---------------------------------+
+    |opaque                                |
+    |    (void *)                          |
+    +--------------------------------------+
     |vmsd                                  |
     |    (VMStateDescription *)            |
     |     +--------------------------------+
@@ -643,3 +643,48 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     |     |subsections                     |
     |     |    (VMStateDescription **)     |
     +-----+--------------------------------+
+
+0.4 VMStateDescription
+================================================================================
+
+    SaveStateEntry
+    +--------------------------------------+
+    |opaque                                |
+    |    (void *)                      ----|--->+-+----+----+----+----+----+----+----+----+----+------------------+
+    |                                      |    | |elem|elem|elem|elem|elem|elem|elem|elem|elem|                  |
+    |                                      |    +-+----+----+----+----+----+----+----+----+----+------------------+
+    |                                      |      ^                                                  ^
+    |                                      |      |                                                  |                                                                               
+    |                                      |      |                                                  |                                                                               
+    |                                      |      |        field                                     |        field                                                                  
+    +--------------------------------------+      +----------------+                                 +----------------+                                                              
+    |vmsd                                  |                       |                                                  |
+    |    (VMStateDescription *)        ----|--->+--------------------------------+                 +--------------------------------+
+    +--------------------------------------+    |fields            |             |                 |fields            |             |
+    |subsections                           |    |(VMStateField *)  |             |                 |(VMStateField *)  |             |
+    |    (VMStateDescription **)           |    |    +---------------------------+                 |    +---------------------------+
+    +--------------------------------------+    |    |name         |             |                 |    |name         |             |
+                                                |    |offset   ----+             |                 |    |offset   ----+             |
+                                                |    |start                      |                 |    |start                      |
+                                                |    |                           |                 |    |                           |
+                                                |    |size                       |  => size        |    |size                       |  => size
+                                                |    |size_offset                |                 |    |size_offset                |
+                                                |    |                           |                 |    |                           |
+                                                |    |num                        |  => n_elems     |    |num                        |  => n_elems
+                                                |    |num_offset                 |                 |    |num_offset                 |
+                                                |    |                           |                 |    |                           |
+                                                |    |version_id                 |                 |    |version_id                 |
+                                                |    |struct_version_id          |                 |    |struct_version_id          |
+                                                |    |field_exists               |                 |    |field_exists               |
+                                                |    |                           |                 |    |                           |
+                                                |    |vmsd                       |                 |    |vmsd                       |
+                                                |    |    (VMStateDescription*)  |                 |    |    (VMStateDescription*)  |
+                                                |    |                           |                 |    |                           |
+                                                |    |info                       |                 |    |info                       |
+                                                |    |    (VMStateInfo *)        |                 |    |    (VMStateInfo *)        |
+                                                |    |    +----------------------+                 |    |    +----------------------+
+                                                |    |    |name                  |                 |    |    |name                  |
+                                                |    |    |get                   |                 |    |    |get                   |
+                                                |    |    |put                   |                 |    |    |put                   |
+                                                +----+----+----------------------+                 +----+----+----------------------+
+
