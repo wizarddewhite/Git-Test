@@ -688,3 +688,115 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
                                                 |    |    |put                   |                 |    |    |put                   |
                                                 +----+----+----------------------+                 +----+----+----------------------+
 
+0.4.1 VMSTATE_UINT8
+================================================================================
+
+VMSTATE_UINT8(id, APICCommonState)
+
+#define VMSTATE_UINT8(_f, _s)                                         \
+    VMSTATE_UINT8_V(_f, _s, 0)
+
+    VMSTATE_UINT8_V(id, APICCommonState, 0)
+
+#define VMSTATE_UINT8_V(_f, _s, _v)                                   \
+    VMSTATE_SINGLE(_f, _s, _v, vmstate_info_uint8, uint8_t)
+
+    VMSTATE_SINGLE(id, APICCommonState, 0, vmstate_info_uint8, uint8_t)
+
+#define VMSTATE_SINGLE(_field, _state, _version, _info, _type)        \
+    VMSTATE_SINGLE_TEST(_field, _state, NULL, _version, _info, _type)
+
+    VMSTATE_SINGLE_TEST(id, APICCommon, NULL, 0, vmstate_info_uint8, uint8_t)
+
+#define VMSTATE_SINGLE_TEST(_field, _state, _test, _version, _info, _type) { \
+    .name         = (stringify(_field)),                             \
+    .version_id   = (_version),                                      \
+    .field_exists = (_test),                                         \
+    .size         = sizeof(_type),                                   \
+    .info         = &(_info),                                        \
+    .flags        = VMS_SINGLE,                                      \
+    .offset       = vmstate_offset_value(_state, _field, _type),     \
+}
+
+{
+    .name         = "id",
+    .version_id   = 0,
+    .field_exists = NULL,
+    .size         = 1,
+    .info         = &vmstate_info_uint8,
+    .flags        = VMS_SINGLE,
+    .offset       = offsetof(APICCommonState, id),
+}
+
+0.4.2 VMSTATE_UINT8
+================================================================================
+VMSTATE_UINT8(id, APICCommonState)
+
+#define VMSTATE_UINT8(_f, _s)                                         \
+    VMSTATE_UINT8_V(_f, _s, 0)
+
+    VMSTATE_UINT8_V(id, APICCommonState, 0)
+
+#define VMSTATE_UINT8_V(_f, _s, _v)                                   \
+    VMSTATE_SINGLE(_f, _s, _v, vmstate_info_uint8, uint8_t)
+
+    VMSTATE_SINGLE(id, APICCommonState, 0, vmstate_info_uint8, uint8_t)
+
+#define VMSTATE_SINGLE(_field, _state, _version, _info, _type)        \
+    VMSTATE_SINGLE_TEST(_field, _state, NULL, _version, _info, _type)
+
+    VMSTATE_SINGLE_TEST(id, APICCommonState, NULL, 0, vmstate_info_uint8, uint8_t)
+
+#define VMSTATE_SINGLE_TEST(_field, _state, _test, _version, _info, _type) { \
+    .name         = (stringify(_field)),                             \
+    .version_id   = (_version),                                      \
+    .field_exists = (_test),                                         \
+    .size         = sizeof(_type),                                   \
+    .info         = &(_info),                                        \
+    .flags        = VMS_SINGLE,                                      \
+    .offset       = vmstate_offset_value(_state, _field, _type),     \
+}
+
+{
+    .name         = "id",
+    .version_id   = 0
+    .field_exists = NULL,
+    .size         = 1,
+    .info         = &vmstate_info_uint8,
+    .flags        = VMS_SINGLE,
+    .offset       = offsetof(APICCommonState, id),
+}
+
+0.4.3 VMSTATE_UINT32_ARRAY
+================================================================================
+VMSTATE_UINT32_ARRAY(tmr, APICCommonState, 8)
+
+#define VMSTATE_UINT32_ARRAY(_f, _s, _n)                              \
+    VMSTATE_UINT32_ARRAY_V(_f, _s, _n, 0)
+
+    VMSTATE_UINT32_ARRAY_V(tmr, APICCommonState, 8, 0)
+
+#define VMSTATE_UINT32_ARRAY_V(_f, _s, _n, _v)                        \
+    VMSTATE_ARRAY(_f, _s, _n, _v, vmstate_info_uint32, uint32_t)
+
+    VMSTATE_ARRAY(tmr, APICCommonState, 8, 0, vmstate_info_uint32, uint32_t)
+
+#define VMSTATE_ARRAY(_field, _state, _num, _version, _info, _type) {\
+    .name       = (stringify(_field)),                               \
+    .version_id = (_version),                                        \
+    .num        = (_num),                                            \
+    .info       = &(_info),                                          \
+    .size       = sizeof(_type),                                     \
+    .flags      = VMS_ARRAY,                                         \
+    .offset     = vmstate_offset_array(_state, _field, _type, _num), \
+}
+
+{
+    .name       = "tmr",
+    .version_id = 0,
+    .num        = 8,
+    .info       = &vmstate_info_uint32,
+    .size       = 4,
+    .flags      = VMS_ARRAY,
+    .offset     = offsetof(APICCommonState, tmr),
+}
