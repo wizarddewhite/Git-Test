@@ -283,10 +283,18 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
 ================================================================================
 1.6.2 qemu_loadvm_section_start_full
 ================================================================================
+1.6.2.1 section_id = qemu_get_be32
+================================================================================
+1.6.2.2 vmstate_load
+================================================================================
 
 1.6.3 QEMU_VM_SECTION_PART | QEMU_VM_SECTION_END
 ================================================================================
 1.6.3 qemu_loadvm_section_part_end
+================================================================================
+1.6.3.1 section_id = qemu_get_be32
+================================================================================
+1.6.3.2 vmstate_load
 ================================================================================
 
 1.6.4 QEMU_VM_COMMAND
@@ -472,7 +480,7 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
              vmstate_subsection_save()
                  vmstate_save_state(f, vmsdsub, se->opaque, vmdesc)
 
-             vmsd->pre_save(se->opaque)
+             vmsd->post_save(se->opaque)
 
 
 0. call flow for incoming
@@ -517,8 +525,12 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
              section_type = qemu_get_byte(f)
              QEMU_VM_SECTION_START | QEMU_VM_SECTION_FULL
              qemu_loadvm_section_start_full
+                 section_id = qemu_get_be32
+                 vmstate_load
              QEMU_VM_SECTION_PART | QEMU_VM_SECTION_END
              qemu_loadvm_section_part_end
+                 section_id = qemu_get_be32
+                 vmstate_load
              QEMU_VM_COMMAND
              loadvm_process_command
              QEMU_VM_EOF
@@ -526,6 +538,27 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
              se->ops->load_cleanup
          cpu_synchronize_all_post_init
              cpu_synchronize_post_init(cpu);
+
+0. call flow for vmstate_load
+================================================================================
+
+     vmstate_load(f, se)
+         if (!se->vmsd)
+             se->ops->load_state()
+         vmstate_load_state(f, se->vmsd, se->opaque, se->load_version_id)
+             vmsd->pre_load(se->opaque)
+
+             ; iterate on fields
+             ; iterate on elements of this field
+             vmstate_load_state(f, field->vmsd, curr_elem, field->vmsd->version_id)
+             vmstate_load_state(f, field->vmsd, curr_elem, field->struct_version_id)
+             field->info->get(f, curr_elem, size, field)
+
+             ; go into subsection
+             vmstate_subsection_save()
+                 vmstate_save_state(f, vmsdsub, se->opaque, vmdesc)
+
+             vmsd->pre_save(se->opaque)
 
 0. data structure
 ================================================================================
