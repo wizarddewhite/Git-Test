@@ -146,7 +146,10 @@ def get_files(thread):
 
         for i, l in enumerate(content_in_line):
             if re.search('file changed', l):
-                num = int(l.split()[0])
+                try:
+                    num = int(l.split()[0])
+                except ValueError:
+                    continue;
                 while num:
                     files.add(content_in_line[i-num].split()[0])
                     num -= 1
