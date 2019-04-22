@@ -145,7 +145,7 @@ def get_files(thread):
         content_in_line = content.splitlines()
 
         for i, l in enumerate(content_in_line):
-            if re.search('file changed', l):
+            if re.search('files? changed', l):
                 try:
                     num = int(l.split()[0])
                 except ValueError:
