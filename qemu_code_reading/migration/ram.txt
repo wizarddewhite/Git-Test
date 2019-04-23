@@ -1,0 +1,102 @@
+1. savevm_ram_handlers
+================================================================================
+static SaveVMHandlers savevm_ram_handlers = {
+    .save_setup = ram_save_setup,
+    .save_live_iterate = ram_save_iterate,
+    .save_live_complete_postcopy = ram_save_complete,
+    .save_live_complete_precopy = ram_save_complete,
+    .has_postcopy = ram_has_postcopy,
+    .save_live_pending = ram_save_pending,
+    .load_state = ram_load,
+    .save_cleanup = ram_save_cleanup,
+    .load_setup = ram_load_setup,
+    .load_cleanup = ram_load_cleanup,
+    .resume_prepare = ram_resume_prepare,
+};
+
+2. save_setup/load_setup
+================================================================================
+
+2.1 ram_save_setup
+================================================================================
+2.1.1 compress_threads_save_setup
+================================================================================
+2.1.2 migration_in_colo_state
+================================================================================
+2.1.3 ram_init_all
+================================================================================
+2.1.3.1 ram_state_init, create RAMState
+================================================================================
+2.1.3.2 xbzrle_init
+================================================================================
+2.1.3.3 ram_init_bitmaps
+================================================================================
+
+
+
+0. data structure
+================================================================================
+
+0.1 RAMState
+================================================================================
+
+    RAMState
+    +--------------------------------------+
+    |f                                     | = s->to_dst_file
+    |    (QEMUFile *)                      |
+    |last_seen_block                       |
+    |last_sent_block                       |
+    |last_req_rb                           |
+    |    (RAMBlock *)                      |
+    |last_page                             |
+    |    (ram_addr_t)                      |
+    |last_version                          |
+    |    (uint32_t)                        |
+    |ram_bulk_stage                        |
+    |fpo_enabled                           |
+    |    (bool)                            |
+    |dirty_rate_high_cnt                   |
+    |time_last_bitmap_sync                 |
+    |bytes_xfer_prev                       |
+    |num_dirty_pages_period                |
+    |xbzrle_cache_miss_prev                |
+    |    (uint64_t)                        |
+    |compress_thread_busy_prev             |
+    |compressed_size_prev                  |
+    |compress_pages_prev                   |
+    |    (uint64_t)                        |
+    |target_page_count_prev                |
+    |target_page_count                     |
+    |migration_dirty_pages                 | = ram_bytes_total() >> TARGET_PAGE_BITS
+    |    (uint64_t)                        |
+    |src_page_requests                     |
+    |    (list of RAMSrcPageRequest)       |
+    +--------------------------------------+
+
+0.2 XBZRLE
+================================================================================
+
+    XBZRLE
+    +--------------------------+
+    |encoded_buf               | -> TARGET_PAGE_SIZE
+    |decoded_buf               |
+    |current_buf               | -> TARGET_PAGE_SIZE
+    |zero_target_page          | -> TARGET_PAGE_SIZE
+    |    (uint8_t*)            |
+    |cache                     |
+    |    (PageCache*)          |
+    |    +---------------------+
+    |    |page_size            | = TARGET_PAGE_SIZE
+    |    |max_num_items        | = s->parameters.xbzrle_cache_size/page_size
+    |    |num_items            | = 0
+    |    |page_cache           |
+    |    |    (CacheItem*)     |
+    |    |    +----------------+
+    |    |    |it_addr         |
+    |    |    |it_age          |
+    |    |    |   (uint64_t)   |
+    |    |    |it_data         |
+    |    |    |   (uint8_t*)   |
+    |    |    |                |
+    +----+----+----------------+
+

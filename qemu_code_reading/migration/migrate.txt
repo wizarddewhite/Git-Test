@@ -705,43 +705,6 @@ qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     +-----------------------------+         +-----------------------------+      +------------------------------------+
 
 
-0.2.1 RAMState
-================================================================================
-
-    RAMState
-    +--------------------------------------+
-    |f                                     | = s->to_dst_file
-    |    (QEMUFile *)                      |
-    |last_seen_block                       |
-    |last_sent_block                       |
-    |last_req_rb                           |
-    |    (RAMBlock *)                      |
-    |last_page                             |
-    |    (ram_addr_t)                      |
-    |last_version                          |
-    |    (uint32_t)                        |
-    |ram_bulk_stage                        |
-    |fpo_enabled                           |
-    |    (bool)                            |
-    |dirty_rate_high_cnt                   |
-    |time_last_bitmap_sync                 |
-    |bytes_xfer_prev                       |
-    |num_dirty_pages_period                |
-    |xbzrle_cache_miss_prev                |
-    |    (uint64_t)                        |
-    |compress_thread_busy_prev             |
-    |compressed_size_prev                  |
-    |compress_pages_prev                   |
-    |    (uint64_t)                        |
-    |target_page_count_prev                |
-    |target_page_count                     |
-    |migration_dirty_pages                 |
-    |    (uint64_t)                        |
-    |src_page_requests                     |
-    |    (list of RAMSrcPageRequest)       |
-    +--------------------------------------+
-
-
 
 0.3 SaveStateEntry
 ================================================================================
