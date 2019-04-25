@@ -31,14 +31,147 @@ static SaveVMHandlers savevm_ram_handlers = {
 ================================================================================
 2.1.3.3 ram_init_bitmaps
 ================================================================================
-2.1.3.3.1 ram_list_init_bitmaps
+2.1.3.3.1 ram_list_init_bitmaps, create RAMBlock->bmap and all set to 1
 ================================================================================
 2.1.3.3.2 memory_global_dirty_log_start
 ================================================================================
+2.1.3.3.2.1 MEMORY_LISTENER_CALL_GLOBAL(log_global_start, Forward);
+================================================================================
+2.1.3.3.2.2 memory_region_transaction_commit(), Refresh DIRTY_MEMORY_MIGRATION bit
+================================================================================
+2.1.3.3.2.2.1 MEMORY_LISTENER_UPDATE_REGION(frnew, as, Forward, log_start, );
+================================================================================
+2.1.3.3.2.2.2 MEMORY_LISTENER_UPDATE_REGION(frnew, as, Forward, log_stop, );
+================================================================================
 2.1.3.3.3 migration_bitmap_sync_precopy
 ================================================================================
+2.1.4 qemu_put_be64(f, ram_bytes_total_common(true) | RAM_SAVE_FLAG_MEM_SIZE);
+================================================================================
+2.1.5 qemu_put_byte(f, strlen(block->idstr));
+================================================================================
+2.1.6 qemu_put_buffer(f, (uint8_t *)block->idstr, strlen(block->idstr));
+================================================================================
+2.1.7 qemu_put_be64(f, block->used_length);
+================================================================================
+2.1.8 ram_control_before_iterate(f, RAM_CONTROL_SETUP);
+================================================================================
+2.1.8.1 f->hooks->before_ram_iterate
+================================================================================
+2.1.9 ram_control_after_iterate(f, RAM_CONTROL_SETUP);
+================================================================================
+2.1.9.1 f->hooks->after_ram_iterate
+================================================================================
+2.1.10 multifd_send_sync_main();
+================================================================================
+2.1.11 qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
+================================================================================
+2.1.12 qemu_fflush(f);
+================================================================================
 
+3. ram_save_pending
+================================================================================
+3.1 migration_bitmap_sync_precopy, if remaining_size < max_size
+================================================================================
 
+3. ram_save_iterate
+================================================================================
+3.1 ram_find_and_save_block
+================================================================================
+3.2 multifd_send_sync_main
+================================================================================
+
+4. ram_save_complete
+================================================================================
+4.1 migration_bitmap_sync_precopy
+================================================================================
+4.2 ram_find_and_save_block
+================================================================================
+4.3 flush_compressed_data
+================================================================================
+4.4 multifd_send_sync_main
+================================================================================
+
+3. migration_bitmap_sync_precopy
+================================================================================
+3.1 migration_bitmap_sync, sync from ram_list.dirty_memory to RAMBlock->bmap
+================================================================================
+3.1.1 memory_global_dirty_log_sync
+================================================================================
+3.1.1.1 memory_region_sync_dirty_bitmap(NULL);
+================================================================================
+3.1.1.1.1 listener->log_sync(listener, &mrs)
+================================================================================
+3.1.2 migration_bitmap_sync_range; called on each RAMBlock
+================================================================================
+3.1.2.1 cpu_physical_memory_sync_dirty_bitmap
+================================================================================
+3.1.3 ram_bytes_remaining(); = ram_state->migration_dirty_pages
+================================================================================
+3.1.4 migrate_auto_converge()
+================================================================================
+3.1.5 blk_mig_bulk_active()
+================================================================================
+3.1.6 mig_throttle_guest_down()
+================================================================================
+3.1.7 migration_update_rates()
+================================================================================
+
+4. ram_find_and_save_block
+================================================================================
+4.1 pss.block = rs->last_seen_block
+================================================================================
+4.2 pss.page = rs->last_page
+================================================================================
+4.3 found = get_queued_page(rs, &pss)
+================================================================================
+4.3.1 block = unqueue_page(rs, &offset)
+================================================================================
+4.4 found = find_dirty_block(rs, &pss, &again)
+================================================================================
+4.4.1 pss->page = migration_bitmap_find_dirty(rs, pss->block, pss->page)
+================================================================================
+4.5 pages = ram_save_host_page(rs, &pss, last_stage)
+================================================================================
+4.5.1 migration_bitmap_clear_dirty; clear the bit in RAMBlock->bmap
+================================================================================
+4.5.2 ram_save_target_page
+================================================================================
+4.5.2.1 control_save_page
+================================================================================
+4.5.2.2 save_compress_page
+================================================================================
+4.5.2.2.1 flush_compressed_data
+================================================================================
+4.5.2.2.2 compress_page_with_multi_thread
+================================================================================
+4.5.2.3 save_zero_page
+================================================================================
+4.5.2.4 ram_save_multifd_page
+================================================================================
+4.5.2.5 ram_save_page
+================================================================================
+4.6 rs->last_seen_block = pss.block 
+================================================================================
+4.7 rs->last_page = pss.page
+================================================================================
+
+4. dirty bitmap, ram_list.dirty_memory RAMBlock->bmap
+================================================================================
+RAMBlock->bmap is created in ram_list_init_bitmaps and set all to 1
+ram_list.dirty_memory is created in dirty_memory_extend and set all to 1
+
+memory_region_get_dirty()
+    cpu_physical_memory_get_dirty
+memory_region_set_dirty()
+    cpu_physical_memory_set_dirty_range
+cpu_physical_memory_clear_dirty_range
+
+;sync from kvm dirty log to qemu's
+kvm_get_dirty_pages_log_range
+    cpu_physical_memory_set_dirty_lebitmap()
+
+;sync from ram_list.dirty_memory to RAMBlock->bmap
+cpu_physical_memory_sync_dirty_bitmap
 
 0. data structure
 ================================================================================
@@ -50,22 +183,23 @@ static SaveVMHandlers savevm_ram_handlers = {
     +--------------------------------------+
     |f                                     | = s->to_dst_file
     |    (QEMUFile *)                      |
-    |last_seen_block                       |
+    |last_seen_block                       | last RAMBlock we sent
     |last_sent_block                       |
     |last_req_rb                           |
     |    (RAMBlock *)                      |
-    |last_page                             |
+    |last_page                             | last page we sent
     |    (ram_addr_t)                      |
     |last_version                          |
     |    (uint32_t)                        |
-    |ram_bulk_stage                        |
+    |ram_bulk_stage                        | init to true, means in the first round
     |fpo_enabled                           |
     |    (bool)                            |
     |dirty_rate_high_cnt                   |
-    |time_last_bitmap_sync                 |
     |bytes_xfer_prev                       |
-    |num_dirty_pages_period                |
+    |num_dirty_pages_period                | = real dirty pages
     |xbzrle_cache_miss_prev                |
+    |    (uint64_t)                        |
+    |time_last_bitmap_sync                 |
     |    (uint64_t)                        |
     |compress_thread_busy_prev             |
     |compressed_size_prev                  |
@@ -75,8 +209,35 @@ static SaveVMHandlers savevm_ram_handlers = {
     |target_page_count                     |
     |migration_dirty_pages                 | = ram_bytes_total() >> TARGET_PAGE_BITS
     |    (uint64_t)                        |
+    |                                      |
+    |                                      |
+    |                                      |
     |src_page_requests                     |
     |    (list of RAMSrcPageRequest)       |
+    +--------------------------------------+
+
+0.1 MigrationStats
+================================================================================
+
+    MigrationStats
+    +--------------------------------------+
+    |transferred                           |
+    |remaining                             |  = ram_bytes_remaining()
+    |                                      |    = ram_state->migration_dirty_pages
+    |                                      |
+    |total;                                |
+    |duplicate;                            |
+    |skipped;                              |
+    |normal;                               |
+    |normal_bytes;                         |
+    |dirty_pages_rate;                     |  = num_dirty_pages_period / time
+    |mbps;                                 |
+    |dirty_sync_count;                     |
+    |postcopy_requests;                    |
+    |page_size;                            |
+    |multifd_bytes;                        |
+    |pages_per_second;                     |
+    |                                      |
     +--------------------------------------+
 
 0.2 XBZRLE
@@ -106,3 +267,61 @@ static SaveVMHandlers savevm_ram_handlers = {
     |    |    |                |
     +----+----+----------------+
 
+0.3 ram_list/RAMBlock
+================================================================================
+
+    ram_list(RAMList)
+    +-------------------------------+
+    |version                        | increase 1 on each RAMBlock
+    |                               |
+    |                               |
+    |dirty_memory[DIRTY_MEMORY_NUM] | = VGA|CODE|MIGRATION
+    |    (struct DirtyMemoryBlocks) |
+    |    +--------------------------+
+    |    |rcu                       |
+    |    |                          |
+    |    |blocks[]                  | dirty_memory_extend()
+    |    |   (unsigned long*)       | each block cover DIRTY_MEMORY_BLOCK_SIZE pages
+    |    |                          |
+    |    +--------------------------+
+    |                               |
+    |                               |
+    +-------------------------------+
+
+    
+    RAMBlock                     
+    +---------------------------+
+    |next                       |
+    |    QLIST_ENTRY(RAMBlock)  |
+    +---------------------------+
+    |used_length                |
+    |offset                     | is BITS_PER_LONG << TARGET_PAGE_BITS aligned
+    |max_length                 | is HOST_PAGE_ALIGN
+    |    (ram_addr_t)           |
+    +---------------------------+
+    |fd                         |
+    |    (int)                  |
+    +---------------------------+
+    |host                       |
+    |    (uint8_t *)            |
+    +---------------------------+
+    |mr                         |
+    |    (struct MemoryRegion *)|
+    +---------------------------+
+    |bmap                       |  dirty bitmap
+    |unsentmap                  |  unsent bitmap only in postcopy
+    |receivedmap                |  receive bitmap only in postcopy
+    |    (unsigned long*)       |
+    +---------------------------+
+
+
+    ram_list.dirty_memory[]
+    +----------------------+---------------+--------------+----------------+
+    |                      |               |              |                |
+    +----------------------+---------------+--------------+----------------+
+    ^                      ^               ^              ^
+    |                      |               |              |
+    RAMBlock.bmap                          RAMBlock.bmap
+    +----------------------+               +--------------+
+    |                      |               |              |
+    +----------------------+               +--------------+
