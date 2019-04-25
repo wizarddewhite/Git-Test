@@ -65,10 +65,11 @@ expect {
 
 send_user "migration done on source\n"
 
-send -i $dest "ls /etc/hosts\r"
+#send -i $dest "ls /etc/hosts\r"
+send -i $dest "shutdown now\r"
 expect {
-	-i $dest "hosts" {
-		send_user "\ndestination response!\n"
+	-i $dest eof {
+		send_user "\ndestination power off successfully!\n"
 	}
 	-i $dest timeout {
 		send_user "\nError: destination no response!\n"
