@@ -71,6 +71,7 @@ alias ib="sudo make install"
 alias im="sudo make modules_install"
 alias ia="im && ib"
 alias rb="sudo reboot"
+alias stn="sudo shutdown now"
 
 alias x11="x11vnc -display :0 -shared -forever"
 
