@@ -6,6 +6,9 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"net/http"
+	"encoding/json"
+	//"fmt"
 )
 
 /**
@@ -53,9 +56,53 @@ func next4() string {
 	return n4.Format("2006/01/02")
 }
 
-func H4Notify(uname, to, hash string) {
+var myClient = &http.Client{Timeout: 10 * time.Second}
 
-	Templ := `
+type Holiday struct {
+    Code int
+		Data int
+}
+
+func getJson(url string, target interface{}) error {
+    r, err := myClient.Get(url)
+    if err != nil {
+        return err
+    }
+    defer r.Body.Close()
+
+    return json.NewDecoder(r.Body).Decode(target)
+}
+
+func is_holiday() bool {
+	now := time.Now()
+	weekday := int(now.Weekday())
+	n4 := now.AddDate(0, 0, 4-weekday)
+	//fmt.Println(n4.Format("20060102"))
+	holiday := new(Holiday)
+	getJson("http://api.goseek.cn/Tools/holiday?date="+n4.Format("20060102"), holiday)
+	//fmt.Printf("%d\n", holiday.Data)
+	if holiday.Data == 1 || holiday.Data == 2 {
+		return true
+	}	else {
+		return false
+	}
+}
+
+func H4Notify(uname, to, hash string) {
+	holiday := is_holiday()
+	Templ := ``
+	if holiday {
+		Templ += `
+欢度假期，本期活动取消。
+
+有关Hacking Thursday活动的介绍：
+http://www.shlug.org/about/#hacking-thursday
+
+SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片以及信息发布
+`
+
+	} else {
+	Templ += `
 店名：JAcafe花园咖啡
 点评：http://www.dianping.com/shop/2019466
 地址：静安区南京西路1649号静安公园内(近静安公园)
@@ -71,11 +118,16 @@ http://www.shlug.org/about/#hacking-thursday
 
 SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片以及信息发布
 `
+}
 
 	var body bytes.Buffer
 	t, _ := template.New("cm").Parse(Templ)
 	t.Execute(&body, &ConfimrMail{uname, hash})
-	send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 at JAcafe花园咖啡", body.String(), "text")
+	if holiday {
+		send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 暂停一次", body.String(), "text")
+	} else {
+		send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 at JAcafe花园咖啡", body.String(), "text")
+	}
 }
 
 func main() {
