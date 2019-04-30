@@ -1,0 +1,281 @@
+From 8b8d6d2cc2ddd09db4e4a42bd7b81c08c04b37e1 Mon Sep 17 00:00:00 2001
+From: Wei Yang <richardw.yang@linux.intel.com>
+Date: Fri, 12 Apr 2019 11:27:27 +0800
+Subject: [PATCH] kvm-test: add a module
+
+---
+ arch/x86/include/asm/kvm_host.h |   1 +
+ arch/x86/kvm/Makefile           |   1 +
+ arch/x86/kvm/kvm-test.c         |  70 ++++++++++++++++
+ arch/x86/kvm/mmu.c              | 143 ++++++++++++++++++++++++++++++++
+ virt/kvm/kvm_main.c             |   2 +
+ 5 files changed, 217 insertions(+)
+ create mode 100644 arch/x86/kvm/kvm-test.c
+
+diff --git a/arch/x86/include/asm/kvm_host.h b/arch/x86/include/asm/kvm_host.h
+index a64fae1ec620..bc8f8e2dd077 100644
+--- a/arch/x86/include/asm/kvm_host.h
++++ b/arch/x86/include/asm/kvm_host.h
+@@ -1232,6 +1232,7 @@ static inline int kvm_arch_flush_remote_tlb(struct kvm *kvm)
+ 
+ int kvm_mmu_module_init(void);
+ void kvm_mmu_module_exit(void);
++void kvm_walk_ept(struct kvm *kvm, bool use_acc);
+ 
+ void kvm_mmu_destroy(struct kvm_vcpu *vcpu);
+ int kvm_mmu_create(struct kvm_vcpu *vcpu);
+diff --git a/arch/x86/kvm/Makefile b/arch/x86/kvm/Makefile
+index 31ecf7a76d5a..133e5caae9c8 100644
+--- a/arch/x86/kvm/Makefile
++++ b/arch/x86/kvm/Makefile
+@@ -17,4 +17,5 @@ kvm-amd-y		+= svm.o pmu_amd.o
+ 
+ obj-$(CONFIG_KVM)	+= kvm.o
+ obj-$(CONFIG_KVM_INTEL)	+= kvm-intel.o
++obj-m			+= kvm-test.o
+ obj-$(CONFIG_KVM_AMD)	+= kvm-amd.o
+diff --git a/arch/x86/kvm/kvm-test.c b/arch/x86/kvm/kvm-test.c
+new file mode 100644
+index 000000000000..596eb6a2fd22
+--- /dev/null
++++ b/arch/x86/kvm/kvm-test.c
+@@ -0,0 +1,70 @@
++#include <linux/frame.h>
++#include <linux/highmem.h>
++#include <linux/hrtimer.h>
++#include <linux/kernel.h>
++#include <linux/kvm_host.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/mod_devicetable.h>
++#include <linux/mm.h>
++#include <linux/sched.h>
++#include <linux/sched/smt.h>
++#include <linux/slab.h>
++#include <linux/tboot.h>
++#include <linux/trace_events.h>
++
++MODULE_AUTHOR("Intel");
++MODULE_LICENSE("GPL");
++
++bool use_acc = false;
++module_param(use_acc, bool, 0444);
++
++static void test_exit(void)
++{
++	return;
++}
++module_exit(test_exit);
++
++struct hrtimer timer;
++unsigned int times = 10;
++static enum hrtimer_restart kvm_walk_ept_func(struct hrtimer *data)
++{
++	struct kvm *kvm = NULL;
++
++	spin_lock(&kvm_lock);
++	if (list_empty(&vm_list)) {
++		pr_err("No VM yet!\n");
++		goto NO_VM;
++	}
++
++	list_for_each_entry(kvm, &vm_list, vm_list) {
++		break;
++	}
++
++	pr_err("[%d]kvm_test on kvm: %p\n", times, kvm);
++
++	kvm_get_kvm(kvm);
++
++	kvm_walk_ept(kvm, use_acc);
++
++	kvm_put_kvm(kvm);
++NO_VM:
++	spin_unlock(&kvm_lock);
++
++	if (--times) {
++		hrtimer_add_expires_ns(&timer, 1000000000 / 10);
++		return HRTIMER_RESTART;
++	} else
++		return HRTIMER_NORESTART;
++}
++static int __init test_init(void)
++{
++	ktime_t now, exp;
++	hrtimer_init(&timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
++	timer.function = kvm_walk_ept_func;
++	now = ktime_get();
++	exp = ktime_add_ns(now, 1000000000 / 10);
++	hrtimer_start(&timer, exp, HRTIMER_MODE_ABS_PINNED);
++	return 0;
++}
++module_init(test_init);
+diff --git a/arch/x86/kvm/mmu.c b/arch/x86/kvm/mmu.c
+index eee455a8a612..b09ae1eba406 100644
+--- a/arch/x86/kvm/mmu.c
++++ b/arch/x86/kvm/mmu.c
+@@ -6067,3 +6067,146 @@ void kvm_mmu_module_exit(void)
+ 	unregister_shrinker(&mmu_shrinker);
+ 	mmu_audit_disable();
+ }
++
++#define PT64_LVL_SIZE(level) \
++	(1ULL << (PAGE_SHIFT + (((level) - 1) * PT64_LEVEL_BITS)))
++
++void kvm_walk_ept_entry(struct kvm_shadow_walk_iterator *iter, int root_level,
++			unsigned long *bitmap, struct kvm *kvm)
++{
++	int index, level;
++	u64 shadow_addr, addr;
++
++	if (!shadow_walk_okay(iter))
++		return;
++
++	addr = iter->addr;
++	shadow_addr = iter->shadow_addr;
++	level = iter->level;
++	for (index = 0; index < 512; index++) {
++		u64 pte;
++
++		iter->addr = addr + index * PT64_LVL_SIZE(level);
++		iter->sptep = ((u64 *)__va(shadow_addr)) + index;
++
++		/* walk to next */
++		if (!is_shadow_present_pte(*iter->sptep))
++			continue;
++
++		pte = *iter->sptep;
++
++		/* print self */
++		if (pte)
++			pr_err("%*c [%03d] %016llx -> %016llx(%p)\n",
++				(root_level - level)*3, ' ', index,
++				iter->addr, pte, iter->sptep);
++
++		if (is_last_spte(pte, level) && (pte & VMX_EPT_DIRTY_BIT)) {
++			set_bit(iter->addr >> PAGE_SHIFT, bitmap);
++			pte &= ~VMX_EPT_DIRTY_BIT;
++			mmu_spte_update(iter->sptep, pte);
++			//kvm_flush_remote_tlbs_with_address(kvm,
++			//		iter->addr >> PAGE_SHIFT, 1);
++		}
++
++		shadow_walk_next(iter);
++		kvm_walk_ept_entry(iter, root_level, bitmap, kvm);
++		iter->level = level;
++	}
++}
++
++void kvm_walk_ept_entry2(struct kvm_shadow_walk_iterator *iter, int root_level,
++			 unsigned long *dirty_pages, struct kvm *kvm,
++			 bool use_acc)
++{
++	int index, level;
++	u64 shadow_addr, addr;
++
++	if (!shadow_walk_okay(iter))
++		return;
++
++	addr = iter->addr;
++	shadow_addr = iter->shadow_addr;
++	level = iter->level;
++	for (index = 0; index < 512; index++) {
++		u64 pte, clear_bit = VMX_EPT_ACCESS_BIT;
++		bool is_dirty = false;
++
++		iter->addr = addr + index * PT64_LVL_SIZE(level);
++		iter->sptep = ((u64 *)__va(shadow_addr)) + index;
++
++		/* walk to next */
++		if (!is_shadow_present_pte(*iter->sptep))
++			continue;
++
++		pte = *iter->sptep;
++
++		/* skip entry in case not ACCESSED */
++		if (use_acc && !(pte & VMX_EPT_ACCESS_BIT))
++			continue;
++
++		/* print self */
++		if (0)
++			pr_err("%*c [%03d] %016llx -> %016llx(%p)\n",
++				(root_level - level)*3, ' ', index,
++				iter->addr, pte, iter->sptep);
++
++		is_dirty = is_last_spte(pte, level) && (pte & VMX_EPT_DIRTY_BIT);
++		if (is_dirty) {
++			*dirty_pages += 1;
++			clear_bit |= VMX_EPT_DIRTY_BIT;
++			//kvm_flush_remote_tlbs_with_address(kvm,
++			//		iter->addr >> PAGE_SHIFT, 1);
++		}
++
++		if (is_dirty || use_acc) {
++			pte &= ~clear_bit;
++			mmu_spte_update(iter->sptep, pte);
++		}
++
++		shadow_walk_next(iter);
++		kvm_walk_ept_entry2(iter, root_level, dirty_pages, kvm, use_acc);
++		iter->level = level;
++	}
++}
++void kvm_walk_ept(struct kvm *kvm, bool use_acc)
++{
++	struct kvm_shadow_walk_iterator iterator;
++	struct kvm_vcpu *vcpu;
++	int root_level;
++	gfn_t max_gfn;
++	unsigned int bitmap_sz;
++	unsigned long *bitmap = NULL;
++	unsigned long dirty_pages;
++	cycles_t start, end;
++
++	vcpu = kvm_get_vcpu(kvm, 0);
++	root_level = vcpu->arch.mmu->shadow_root_level;
++	max_gfn = kvm->memslots[0]->memslots[0].base_gfn +
++		  kvm->memslots[0]->memslots[0].npages;
++	bitmap_sz = BITS_TO_LONGS(max_gfn) * sizeof(long);
++	//pr_err("Highest gfn is %llx\n", max_gfn);
++
++	bitmap = kvzalloc(bitmap_sz, GFP_KERNEL);
++	if (!bitmap) {
++		pr_err("No enough memory for bitmap\n");
++		return;
++	}
++
++	dirty_pages = 0;
++	shadow_walk_init(&iterator, vcpu, 0);
++	//pr_err("root level: %d\n", iterator.level);
++	//pr_err("shadow_add: %llx\n", iterator.shadow_addr);
++	start = get_cycles();
++	//kvm_walk_ept_entry(&iterator, root_level, bitmap, kvm);
++	kvm_walk_ept_entry2(&iterator, root_level, &dirty_pages, kvm, use_acc);
++	spin_lock(&kvm->mmu_lock);
++	kvm_flush_remote_tlbs(kvm);
++	spin_unlock(&kvm->mmu_lock);
++	end = get_cycles();
++	//pr_err("bitmap weight: %d\n", bitmap_weight(bitmap, max_gfn));
++	pr_err("dirty_pages: %ld\n", dirty_pages);
++	pr_err("time used: %llu cycles\n", end - start);
++	kvfree(bitmap);
++}
++EXPORT_SYMBOL_GPL(kvm_walk_ept);
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 55fe8e20d8fd..64cfad6831d7 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -98,8 +98,10 @@ EXPORT_SYMBOL_GPL(halt_poll_ns_shrink);
+  */
+ 
+ DEFINE_SPINLOCK(kvm_lock);
++EXPORT_SYMBOL_GPL(kvm_lock);
+ static DEFINE_RAW_SPINLOCK(kvm_count_lock);
+ LIST_HEAD(vm_list);
++EXPORT_SYMBOL_GPL(vm_list);
+ 
+ static cpumask_var_t cpus_hardware_enabled;
+ static int kvm_usage_count;
+-- 
+2.19.1
+
