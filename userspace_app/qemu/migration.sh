@@ -40,3 +40,17 @@ cont
 # free page opt
 
 -object iothread,id=iothread1 --device virtio-balloon,free-page-hint=true,iothread=iothread1
+
+# set migration capability
+migrate_set_capability postcopy-ram on
+; https://wiki.qemu.org/Features/AutoconvergeLiveMigration
+migrate_set_capability auto-converge on
+
+# post copy
+https://wiki.qemu.org/Features/PostCopyLiveMigration
+
+migrate_set_capability postcopy-ram on
+migrate -d tcp:0:4444
+migrate_start_postcopy   # after first round of sync
+
+
