@@ -36,7 +36,6 @@ expect -i $guest -indices -re {CPU\(s\): *([0-9]{1,4})}
 set cpus $expect_out(1,string)
 puts -nonewline "\n### Original online CPUs:"
 puts $cpus
-incr $cpus
 
 expect -i $guest "\[$user"
 sleep 1
@@ -65,6 +64,13 @@ expect {
 		send_user "\nError: destination no response!\n"
 		exit -1
 	}
+}
+
+set cpus [expr {$cpus + 1}]
+if {$cpus == $new_cpus} {
+	puts "CPU hot-add successfully"
+} else {
+	puts "CPU hot-add met some issue"
 }
 
 exit 0
