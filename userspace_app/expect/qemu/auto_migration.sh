@@ -44,26 +44,34 @@ expect {
 #interact -i $source
 
 spawn telnet localhost 55555
-set telnet $spawn_id
+set source_telnet $spawn_id
+spawn telnet localhost 55556
+set dest_telnet $spawn_id
+
 #The script expects
-expect -i $telnet -nocase "qemu"
+expect -i $source_telnet -nocase "qemu"
 
 send_user "start migration \n"
 
-send -i $telnet "migrate -d tcp:0:4444\r"
+# setup capability for both side
+send -i $source_telnet "migrate_set_capability multifd on\r"
+send -i $dest_telnet "migrate_set_capability multifd on\r"
+
+send -i $source_telnet "migrate -d tcp:0:4444\r"
 sleep 10
-send -i $telnet "info migrate\r"
+send -i $source_telnet "info migrate\r"
 
 expect {
-	-i $telnet "Migration status: active" {
-		send -i $telnet "info migrate\r"
+	-i $source_telnet "Migration status: active" {
+		send -i $source_telnet "info migrate\r"
 		sleep 10
 		exp_continue
 	}
-	-i $telnet "Migration status: completed"
+	-i $source_telnet "Migration status: completed"
 }
 
 send_user "migration done on source\n"
+#interact -i $dest
 
 #send -i $dest "ls /etc/hosts\r"
 send -i $dest "shutdown now\r"
