@@ -56,7 +56,7 @@ send -i $telnet "info migrate\r"
 
 expect {
 	-i $telnet "Migration status: active" {
-		send "info migrate\r"
+		send -i $telnet "info migrate\r"
 		sleep 10
 		exp_continue
 	}
