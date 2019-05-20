@@ -56,9 +56,10 @@ send_user "start migration \n"
 # setup capability for both side
 send -i $source_telnet "migrate_set_capability multifd on\r"
 send -i $dest_telnet "migrate_set_capability multifd on\r"
+sleep 5
 
 send -i $source_telnet "migrate -d tcp:0:4444\r"
-sleep 10
+sleep 5
 send -i $source_telnet "info migrate\r"
 
 expect {
