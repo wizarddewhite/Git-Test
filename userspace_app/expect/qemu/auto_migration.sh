@@ -68,7 +68,11 @@ expect {
 		sleep 10
 		exp_continue
 	}
-	-i $source_telnet "Migration status: completed"
+	-i $source_telnet "Migration status: completed" {}
+	-i $source_telnet eof {
+		send_user "\nsource vm terminated unexpectedly!\n"
+		exit -1
+	}
 }
 
 send_user "migration done on source\n"
