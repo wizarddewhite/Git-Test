@@ -155,6 +155,57 @@ static SaveVMHandlers savevm_ram_handlers = {
 4.7 rs->last_page = pss.page
 ================================================================================
 
+5. ram_load_setup
+================================================================================
+5.1 compress_threads_load_setup
+================================================================================
+5.2 xbzrle_load_setup
+================================================================================
+5.3 ramblock_recv_map_init; create RAMBlock->receivedmap
+================================================================================
+
+6. ram_load
+================================================================================
+
+7. send <-> receive
+================================================================================
+
+
+                 source                                destination
+       
+            +------------------------+             +-------------------------+
+            |                        |             |                         |
+  SETUP     | ram_save_setup         |             |  ram_load_setup         |
+            |                        |             |                         |
+            +------------------------+             +-------------------------+
+       
+            sync dirty bit to                      Setup RAMBlock->receivedmap
+	    RAMBlock->bmap
+       
+       
+            +------------------------+             +-------------------------+
+            |                        |             |                         |
+  ITER      | ram_save_pending       |             |  ram_load               |
+            | ram_save_iterate       |             |                         |
+            |                        |             |                         |
+            +------------------------+             +-------------------------+
+       
+            sync dirty bit                         Receive page
+	    and send page
+       
+       
+            +------------------------+             +-------------------------+
+            |                        |             |                         |
+  COMP      | ram_save_pending       |             |  ram_load               |
+            | ram_save_complete      |             |                         |
+            |                        |             |                         |
+            +------------------------+             +-------------------------+
+       
+            sync dirty bit                         Receive page
+	    and send page
+       
+
+
 4. dirty bitmap, ram_list.dirty_memory RAMBlock->bmap
 ================================================================================
 RAMBlock->bmap is created in ram_list_init_bitmaps and set all to 1
@@ -428,3 +479,30 @@ cpu_physical_memory_sync_dirty_bitmap
     |    +--------------------------+
     |                               |
     +-------------------------------+
+
+0.5 multifd_recv_state
+================================================================================
+; multifd_load_setup()
+
+    multifd_recv_state
+    +-------------------------------+
+    |count                          |  number of created threads
+    |    (int)                      |  = migrate_multifd_channels()
+    |packet_num                     |  global
+    |    (uint64_t)                 |
+    |sem_sync                       |
+    |    (QemuSemaphore)            |
+    |                               |
+    |params                         |  [migrate_multifd_channels()]  each channel has one MultiFDRecvParams
+    |    (MultiFDRecvParams*)       |
+    |                               |      MultiFDRecvParams           MultiFDRecvParams           MultiFDRecvParams  
+    +-------------------------------+      +-------------------+       +-------------------+       +-------------------+
+                                           |page               |       |page               |       |page               |
+                                           | (MultiFDPages_t)  |       | (MultiFDPages_t)  |       | (MultiFDPages_t)  |
+                                           |packet             |       |packet             |       |packet             |
+                                           | (MultiFDPacket_t) |       | (MultiFDPacket_t) |       | (MultiFDPacket_t) |
+                                           |                   |       |                   |       |                   |
+                                           |                   |       |                   |       |                   |
+                                           +-------------------+       +-------------------+       +-------------------+
+
+
