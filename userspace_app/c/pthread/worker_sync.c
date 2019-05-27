@@ -137,7 +137,7 @@ int main (int argc, char *argv[])
 		int current_jobs;
 
 		/* Approximate random jobs */
-		current_jobs = rand() % workers;
+		current_jobs = rand() % workers + 1;
 		printf("Try to deliver %d jobs\n", current_jobs);
 
 		/* Place holder for tasks */
@@ -145,14 +145,14 @@ int main (int argc, char *argv[])
 
 		/* Deliver jobs */
 		for (i = 0; i < current_jobs; i++) {
-			deliver_job();
 			available_workers--;
+			deliver_job();
 		}
 
 		/* Wait until all worker finish */
 		pthread_mutex_lock(&mut);
-		while (available_workers != workers)
-			pthread_cond_wait(&cond, &mut);
+		pthread_cond_wait(&cond, &mut);
+		printf("... all work done\n");
 		pthread_mutex_unlock(&mut);
 		sleep(period);
 	}
