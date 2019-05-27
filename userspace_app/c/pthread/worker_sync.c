@@ -154,6 +154,7 @@ int main (int argc, char *argv[])
 		while (available_workers != workers)
 			pthread_cond_wait(&cond, &mut);
 		pthread_mutex_unlock(&mut);
+		sleep(period);
 	}
 
 	for (i = 0; i < workers; i++)
