@@ -1,26 +1,26 @@
-From 6d5daf34ebfd945398fe23c2b2ede46c15173181 Mon Sep 17 00:00:00 2001
+From 3100992e0034c40f38cb0653760abca4e808a37d Mon Sep 17 00:00:00 2001
 From: Wei Yang <richardw.yang@linux.intel.com>
 Date: Fri, 12 Apr 2019 11:27:27 +0800
-Subject: [PATCH] kvm-test: a module to do ept walk
+Subject: [PATCH] kvm-test: add a module to walk ept
 
 ---
  arch/x86/include/asm/kvm_host.h |   1 +
  arch/x86/kvm/Makefile           |   1 +
- arch/x86/kvm/kvm-test.c         |  70 ++++++++++++++
- arch/x86/kvm/mmu.c              | 161 ++++++++++++++++++++++++++++++++
+ arch/x86/kvm/kvm-test.c         |  91 ++++++++++++++++
+ arch/x86/kvm/mmu.c              | 188 ++++++++++++++++++++++++++++++++
  virt/kvm/kvm_main.c             |   2 +
- 5 files changed, 235 insertions(+)
+ 5 files changed, 283 insertions(+)
  create mode 100644 arch/x86/kvm/kvm-test.c
 
 diff --git a/arch/x86/include/asm/kvm_host.h b/arch/x86/include/asm/kvm_host.h
-index 60a284bfc8e1..35fb69846ca5 100644
+index 60a284bfc8e1..959b6a3b8dec 100644
 --- a/arch/x86/include/asm/kvm_host.h
 +++ b/arch/x86/include/asm/kvm_host.h
 @@ -1233,6 +1233,7 @@ static inline int kvm_arch_flush_remote_tlb(struct kvm *kvm)
  
  int kvm_mmu_module_init(void);
  void kvm_mmu_module_exit(void);
-+void kvm_walk_ept(struct kvm *kvm, bool use_acc);
++void kvm_walk_ept(struct kvm *kvm, bool use_acc, int times, int walk_size);
  
  void kvm_mmu_destroy(struct kvm_vcpu *vcpu);
  int kvm_mmu_create(struct kvm_vcpu *vcpu);
@@ -36,10 +36,10 @@ index 31ecf7a76d5a..133e5caae9c8 100644
  obj-$(CONFIG_KVM_AMD)	+= kvm-amd.o
 diff --git a/arch/x86/kvm/kvm-test.c b/arch/x86/kvm/kvm-test.c
 new file mode 100644
-index 000000000000..596eb6a2fd22
+index 000000000000..b80f9c1a9473
 --- /dev/null
 +++ b/arch/x86/kvm/kvm-test.c
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,91 @@
 +#include <linux/frame.h>
 +#include <linux/highmem.h>
 +#include <linux/hrtimer.h>
@@ -60,6 +60,8 @@ index 000000000000..596eb6a2fd22
 +
 +bool use_acc = false;
 +module_param(use_acc, bool, 0444);
++int walk_size = 1;
++module_param(walk_size, int, 0444);
 +
 +static void test_exit(void)
 +{
@@ -83,11 +85,9 @@ index 000000000000..596eb6a2fd22
 +		break;
 +	}
 +
-+	pr_err("[%d]kvm_test on kvm: %p\n", times, kvm);
-+
 +	kvm_get_kvm(kvm);
 +
-+	kvm_walk_ept(kvm, use_acc);
++	kvm_walk_ept(kvm, use_acc, times, walk_size);
 +
 +	kvm_put_kvm(kvm);
 +NO_VM:
@@ -107,14 +107,35 @@ index 000000000000..596eb6a2fd22
 +	now = ktime_get();
 +	exp = ktime_add_ns(now, 1000000000 / 10);
 +	hrtimer_start(&timer, exp, HRTIMER_MODE_ABS_PINNED);
++#if 0
++	struct kvm *kvm = NULL;
++
++	spin_lock(&kvm_lock);
++	if (list_empty(&vm_list)) {
++		pr_err("No VM yet!\n");
++		goto NO_VM;
++	}
++
++	list_for_each_entry(kvm, &vm_list, vm_list) {
++		break;
++	}
++
++	for (; times > 0; times--) {
++	kvm_get_kvm(kvm);
++	kvm_walk_ept(kvm, use_acc, times, walk_size);
++	kvm_put_kvm(kvm);
++	}
++NO_VM:
++	spin_unlock(&kvm_lock);
++#endif
 +	return 0;
 +}
 +module_init(test_init);
 diff --git a/arch/x86/kvm/mmu.c b/arch/x86/kvm/mmu.c
-index d9c7b45d231f..a71568d66c33 100644
+index d9c7b45d231f..04c517072195 100644
 --- a/arch/x86/kvm/mmu.c
 +++ b/arch/x86/kvm/mmu.c
-@@ -6067,3 +6067,164 @@ void kvm_mmu_module_exit(void)
+@@ -6067,3 +6067,191 @@ void kvm_mmu_module_exit(void)
  	unregister_shrinker(&mmu_shrinker);
  	mmu_audit_disable();
  }
@@ -166,23 +187,28 @@ index d9c7b45d231f..a71568d66c33 100644
 +	}
 +}
 +
-+void kvm_walk_ept_entry2(struct kvm_shadow_walk_iterator *iter, int root_level,
++int walked_acc, walked_dirty, walked_no_dirty;
++int kvm_walk_ept_entry2(struct kvm_shadow_walk_iterator *iter, int root_level,
 +			 unsigned long *dirty_pages, struct kvm *kvm,
-+			 bool use_acc, int *valid_entries, int *touch_entries)
++			 bool use_acc, int *valid_entries, int *touch_entries,
++			 int times, int target_entries)
 +{
 +	int index, level;
++	bool has_dirty = false;
 +	u64 shadow_addr, addr;
 +
 +	if (!shadow_walk_okay(iter))
-+		return;
++		return 0;
 +
 +	addr = iter->addr;
 +	shadow_addr = iter->shadow_addr;
 +	level = iter->level;
-+	touch_entries[level - 1] += 512;
++	walked_acc++;
 +	for (index = 0; index < 512; index++) {
 +		u64 pte, clear_bit = VMX_EPT_ACCESS_BIT;
 +		bool is_dirty = false;
++
++		touch_entries[level - 1] += 1;
 +
 +		iter->addr = addr + index * PT64_LVL_SIZE(level);
 +		iter->sptep = ((u64 *)__va(shadow_addr)) + index;
@@ -204,8 +230,10 @@ index d9c7b45d231f..a71568d66c33 100644
 +				(root_level - level)*3, ' ', index,
 +				iter->addr, pte, iter->sptep);
 +
++
 +		is_dirty = is_last_spte(pte, level) && (pte & VMX_EPT_DIRTY_BIT);
 +		if (is_dirty) {
++			has_dirty = true;
 +			*dirty_pages += 1;
 +			clear_bit |= VMX_EPT_DIRTY_BIT;
 +			//kvm_flush_remote_tlbs_with_address(kvm,
@@ -218,23 +246,38 @@ index d9c7b45d231f..a71568d66c33 100644
 +		}
 +
 +		shadow_walk_next(iter);
-+		kvm_walk_ept_entry2(iter, root_level, dirty_pages, kvm,
-+				    use_acc, valid_entries, touch_entries);
++		if (kvm_walk_ept_entry2(iter, root_level, dirty_pages, kvm,
++				    use_acc, valid_entries, touch_entries,
++				    times, target_entries))
++			return -1;
 +		iter->level = level;
 +	}
++
++	if (has_dirty)
++		walked_dirty++;
++	else
++		walked_no_dirty++;
++
++	//if ((touch_entries[0] + touch_entries[1] +
++	//	touch_entries[2] + touch_entries[3]) >= target_entries)
++	//	return -1;
++	//else
++		return 0;
 +}
-+void kvm_walk_ept(struct kvm *kvm, bool use_acc)
++void kvm_walk_ept(struct kvm *kvm, bool use_acc, int times, int walk_size)
 +{
 +	struct kvm_shadow_walk_iterator iterator;
 +	struct kvm_vcpu *vcpu;
 +	int root_level;
 +	int valid_entries[4] = {0};
 +	int touch_entries[4] = {0};
++	int target_entries = walk_size * 512;
 +	gfn_t max_gfn;
 +	unsigned int bitmap_sz;
 +	unsigned long *bitmap = NULL;
 +	unsigned long dirty_pages;
 +	cycles_t start, end;
++	walked_acc = walked_dirty = walked_no_dirty = 0;
 +
 +	vcpu = kvm_get_vcpu(kvm, 0);
 +	root_level = vcpu->arch.mmu->shadow_root_level;
@@ -253,15 +296,19 @@ index d9c7b45d231f..a71568d66c33 100644
 +	shadow_walk_init(&iterator, vcpu, 0);
 +	//pr_err("root level: %d\n", iterator.level);
 +	//pr_err("shadow_add: %llx\n", iterator.shadow_addr);
++	local_irq_disable();
 +	start = get_cycles();
 +	//kvm_walk_ept_entry(&iterator, root_level, bitmap, kvm);
 +	kvm_walk_ept_entry2(&iterator, root_level, &dirty_pages, kvm,
-+			    use_acc, valid_entries, touch_entries);
++			    use_acc, valid_entries, touch_entries, times,
++			    target_entries);
++	end = get_cycles();
 +	spin_lock(&kvm->mmu_lock);
 +	kvm_flush_remote_tlbs(kvm);
 +	spin_unlock(&kvm->mmu_lock);
-+	end = get_cycles();
++	local_irq_enable();
 +	//pr_err("bitmap weight: %d\n", bitmap_weight(bitmap, max_gfn));
++	pr_err("[%d]kvm_test on kvm: %p\n", times, kvm);
 +	pr_err("dirty_pages: %ld\n", dirty_pages);
 +	pr_err("time used: %llu cycles\n", end - start);
 +	pr_err("Valid Entries: %d %d %d %d\n",
@@ -276,6 +323,7 @@ index d9c7b45d231f..a71568d66c33 100644
 +		touch_entries[1],
 +		touch_entries[0]
 +		);
++	pr_err("walked trunks %03d %03d %03d\n", walked_acc, walked_dirty, walked_no_dirty);
 +	kvfree(bitmap);
 +}
 +EXPORT_SYMBOL_GPL(kvm_walk_ept);
