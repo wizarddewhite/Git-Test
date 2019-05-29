@@ -9,6 +9,15 @@ BEGIN {
 		te[x]=0;
 	}
 	round=-1;
+
+	while ((getline line < "/proc/cpuinfo") > 0) {
+		if (line ~ /MHz/) {
+			#print line
+			split(line, resArr, " ")
+			cpu_mhz=resArr[4]
+			break
+		}
+	}
 }
 
 NR <=3 && /dirty_pages/ { 
@@ -49,6 +58,11 @@ END {
 	printf "Total Cycles :"
 	for (x = 0; x <10; x++) {
 		printf "%10d", cycles[x]
+	}
+	printf "\n"
+	printf "Time in ms   :"
+	for (x = 0; x <10; x++) {
+		printf "%10d", cycles[x] / cpu_mhz / 1000
 	}
 	printf "\n"
 	printf "ACCed Entries:"
