@@ -52,7 +52,10 @@ END {
 	#printf "Average Walk Cycles: %15.3f\n", cycles / round
 	printf "Total D Pages:"
 	for (x = 0; x <10; x++) {
-		printf "%10d", dirty_pages[x]
+		if (dirty_pages[x] > 1024)
+			printf "%9dM", (dirty_pages[x] * 4) / 1024
+		else
+			printf "%9dK", dirty_pages[x] * 4
 	}
 	printf "\n"
 	printf "Total Cycles :"
