@@ -437,7 +437,7 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |lane                                             |
     |     (struct nd_percpu_lan)                      |
     +-------------------------------------------------+  
-    |provider_data                                    | = ndr_desc->provider_data
+    |provider_data                                    | = ndr_desc->provider_data = nfit_spa
     |     (void *)                                    |
     |ndr_start                                        | = ndr_desc->res->start
     |ndr_size                                         | = ndr_desc->res:size
@@ -672,6 +672,43 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
                 |                                                 |
                 |                                                 |
                 +-------------------------------------------------+  
+
+0.6 system hierachy
+================================================================================
+
+
+                                                                          nd_btt
+                                                                          nd_pfn
+                                                                          nd_dax
+                                                                              |
+                                                                              |
+                                                                              v
+                                                                          nd_namespace_pmem
+                                                                          nd_namespace_io
+                                                                          nd_namespace_blk
+                                                                              |
+                                                                              |
+                                                                              v
+ Kernel                    nvdimm_bus               nvdimm                nd_regioin
+ Data                       .nd_desc                 .provider_data        .provider_data --+
+                              |                       |                                     |
+                              |                       |                                     |
+ ............................................................................................
+                              |                                                             |
+                              v                       |                                     |
+ Hardware                  nvdimm_bus_descriptor                          nd_region_desc    |
+ Abstract                   .provider_name =          |                    .provider_data <-+
+                                "ACPI.NFIT"                                  |
+                                                      |                      |
+                                                                             |
+ ............................................................................................
+                                                      |                      |
+        +---------------------------------------------|----------------------|---------+
+        |                                             v                      v         |
+ ACPI   | acpi_nfit_desc                            nfit_mem              nfit_spa     |     
+ Data   |                                                                              |
+        |                                                                              |
+        +------------------------------------------------------------------------------+
 
 0.6 nd_dax
 ================================================================================
