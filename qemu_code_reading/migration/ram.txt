@@ -293,6 +293,9 @@ cpu_physical_memory_sync_dirty_bitmap
 
 0.2 XBZRLE
 ================================================================================
+; XOR Based Zero Run Length Encoding
+; https://github.com/qemu/qemu/blob/master/docs/xbzrle.txt
+; https://en.wikipedia.org/wiki/LEB128
 
     XBZRLE
     +--------------------------+
@@ -306,8 +309,9 @@ cpu_physical_memory_sync_dirty_bitmap
     |    +---------------------+
     |    |page_size            | = TARGET_PAGE_SIZE
     |    |max_num_items        | = s->parameters.xbzrle_cache_size/page_size
+    |    |                     |   must be power of 2
     |    |num_items            | = 0
-    |    |page_cache           |
+    |    |page_cache           | [max_num_items]
     |    |    (CacheItem*)     |
     |    |    +----------------+
     |    |    |it_addr         | = -1
