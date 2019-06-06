@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 int uleb128_encode_small(uint8_t *out, uint32_t n)
 {
@@ -155,9 +156,47 @@ void leb128_encode_decode()
 	printf("result decoded to: %x\n", val);
 }
 
+void show_xbzrle(uint8_t *buf, int len)
+{
+	bool is_zrun = true;
+	int i;
+
+	for (i = 0; i < len; is_zrun = !is_zrun) {
+		uint32_t val, j;
+
+		i += uleb128_decode_small(buf + i, &val);
+
+		printf("%d %szeros ", val, is_zrun?"":"non-");
+
+		if (!is_zrun) {
+			for (j = 0; j < val; j++)
+				printf("%x ", *(buf + i + j));
+			i += val;
+		}
+
+		printf("\n");
+
+	}
+}
+
+void xbzrle_test()
+{
+	uint8_t old_buf[8] =
+		{0x12, 0x27, 0x33, 0x45, 0x52, 0x60, 0x71, 0x86};
+	uint8_t new_buf[8] =
+		{0x13, 0x28, 0x33, 0x45, 0x52, 0x60, 0x71, 0x88};
+	uint8_t dst[8];
+	int len;
+
+	len = xbzrle_encode_buffer(old_buf, new_buf, 8, dst, 8);
+	show_xbzrle(dst, len);
+}
+
 int main()
 {
-	leb128_encode_decode();
+	//leb128_encode_decode();
+
+	xbzrle_test();
 
 	return 0;
 }
