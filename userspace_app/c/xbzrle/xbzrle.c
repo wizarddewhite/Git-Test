@@ -134,7 +134,30 @@ int xbzrle_encode_buffer(uint8_t *old_buf, uint8_t *new_buf, int slen,
     return d;
 }
 
+void leb128_encode_decode()
+{
+	uint8_t con[2] = {0};
+	uint32_t val;
+
+	uleb128_encode_small(con, 0);
+	printf("     0 encoded to:%x %x\n", con[1], con[0]);
+	uleb128_decode_small(con, &val);
+	printf("result decoded to: %d\n", val);
+
+	uleb128_encode_small(con, 10);
+	printf("    10 encoded to:%x %x\n", con[1], con[0]);
+	uleb128_decode_small(con, &val);
+	printf("result decoded to: %d\n", val);
+
+	uleb128_encode_small(con, 0x1010);
+	printf("0x1010 encoded to:%x %x\n", con[1], con[0]);
+	uleb128_decode_small(con, &val);
+	printf("result decoded to: %x\n", val);
+}
+
 int main()
 {
+	leb128_encode_decode();
+
 	return 0;
 }
