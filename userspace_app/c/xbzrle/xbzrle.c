@@ -33,6 +33,79 @@ int uleb128_decode_small(const uint8_t *in, uint32_t *n)
     }
 }
 
+int get_length(uint8_t *old_buf, uint8_t *new_buf, int off, int slen,
+		bool zrun)
+{
+	uint32_t len = 0;
+	long res;
+
+	res = (slen - off) % sizeof(long);
+
+	/* first unaligned bytes */
+	while (res) {
+		uint8_t xor = old_buf[off] ^ new_buf[off];
+
+		if (!(zrun ^ !!xor))
+			break;
+		len++;
+		off++;
+		res--;
+	}
+
+	if (res)
+		return len;
+
+	/* word at a time for speed, use of 32-bit long okay */
+	while (off < slen) {
+		/* truncation to 32-bit long okay */
+                unsigned long mask = (unsigned long)0x0101010101010101ULL;
+		long old = *(long*)(old_buf + off);
+		long new = *(long*)(new_buf + off);
+		long xor = old ^ new;
+
+		if (zrun && !(zrun ^ !!xor))
+			break;
+		else if (!zrun && ((xor - mask) & ~xor & (mask << 7)))
+			break;
+
+		len += sizeof(long);
+		off += sizeof(long);
+	}
+
+	/* go over the rest */
+	while (off < slen) {
+		uint8_t xor = old_buf[off] ^ new_buf[off];
+
+		if (!(zrun ^ !!xor))
+			break;
+
+		len++;
+		off++;
+	}
+
+
+	return len;
+}
+
+int xbzrle_encode_buffer2(uint8_t *old_buf, uint8_t *new_buf, int slen,
+                         uint8_t *dst, int dlen)
+{
+	bool zrun = true;
+	int len, off = 0, d = 0;
+
+	for (off = 0; off < slen; off += len, zrun = !zrun) {
+		len = get_length(old_buf, new_buf, off, slen, zrun);
+
+		d += uleb128_encode_small(dst + d, len);
+		if (!zrun) {
+			memcpy(dst + d, new_buf + off, len);
+			d += len;
+		}
+	}
+
+	return d;
+}
+
 int xbzrle_encode_buffer(uint8_t *old_buf, uint8_t *new_buf, int slen,
                          uint8_t *dst, int dlen)
 {
@@ -184,7 +257,7 @@ void xbzrle_test()
 	uint8_t old_buf[8] =
 		{0x12, 0x27, 0x33, 0x45, 0x52, 0x60, 0x71, 0x86};
 	uint8_t new_buf[8] =
-		{0x13, 0x28, 0x33, 0x45, 0x52, 0x60, 0x71, 0x88};
+		{0x12, 0x28, 0x33, 0x45, 0x52, 0x60, 0x72, 0x88};
 	uint8_t dst[8];
 	int len;
 
@@ -192,11 +265,25 @@ void xbzrle_test()
 	show_xbzrle(dst, len);
 }
 
+void xbzrle2_test()
+{
+	uint8_t old_buf[8] =
+		{0x12, 0x27, 0x33, 0x45, 0x52, 0x60, 0x71, 0x86};
+	uint8_t new_buf[8] =
+		{0x12, 0x28, 0x33, 0x45, 0x52, 0x60, 0x72, 0x88};
+	uint8_t dst[8];
+	int len;
+
+	len = xbzrle_encode_buffer2(old_buf, new_buf, 8, dst, 8);
+	show_xbzrle(dst, len);
+}
+
 int main()
 {
 	//leb128_encode_decode();
 
-	xbzrle_test();
+	//xbzrle_test();
+	xbzrle2_test();
 
 	return 0;
 }
