@@ -91,19 +91,38 @@ int xbzrle_encode_buffer2(uint8_t *old_buf, uint8_t *new_buf, int slen,
                          uint8_t *dst, int dlen)
 {
 	bool zrun = true;
-	int len, off = 0, d = 0;
+	int len, src_off = 0, dst_off = 0;
 
-	for (off = 0; off < slen; off += len, zrun = !zrun) {
-		len = get_length(old_buf, new_buf, off, slen, zrun);
+	assert(!(((uintptr_t)old_buf | (uintptr_t)new_buf | slen) %
+		sizeof(long)));
 
-		d += uleb128_encode_small(dst + d, len);
+	for (src_off = 0; src_off < slen; src_off += len, zrun = !zrun) {
+		/* overflow */
+		if (dst_off + 2 > dlen)
+			return -1;
+
+		len = get_length(old_buf, new_buf, src_off, slen, zrun);
+
+		if (zrun) {
+			/* buffer unchanged */
+			if (len == slen)
+				return 0;
+			/* skip last zero run */
+			if (src_off + len == slen)
+				return dst_off;
+		}
+
+		dst_off += uleb128_encode_small(dst + dst_off, len);
 		if (!zrun) {
-			memcpy(dst + d, new_buf + off, len);
-			d += len;
+			/* overflow */
+			if (dst_off + len > dlen)
+				return -1;
+			memcpy(dst + dst_off, new_buf + src_off, len);
+			dst_off += len;
 		}
 	}
 
-	return d;
+	return dst_off;
 }
 
 int xbzrle_encode_buffer(uint8_t *old_buf, uint8_t *new_buf, int slen,
@@ -270,11 +289,13 @@ void xbzrle2_test()
 	uint8_t old_buf[8] =
 		{0x12, 0x27, 0x33, 0x45, 0x52, 0x60, 0x71, 0x86};
 	uint8_t new_buf[8] =
-		{0x12, 0x28, 0x33, 0x45, 0x52, 0x60, 0x72, 0x88};
+		{0x13, 0x27, 0x33, 0x45, 0x52, 0x60, 0x71, 0x86};
+		//{0x12, 0x28, 0x33, 0x45, 0x52, 0x60, 0x72, 0x88};
 	uint8_t dst[8];
 	int len;
 
 	len = xbzrle_encode_buffer2(old_buf, new_buf, 8, dst, 8);
+	printf("encoded length is %d\n", len);
 	show_xbzrle(dst, len);
 }
 
