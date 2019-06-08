@@ -43,12 +43,11 @@ int get_length(uint8_t *old_buf, uint8_t *new_buf, int off, int slen,
 
 	/* first unaligned bytes */
 	while (res) {
-		uint8_t xor = old_buf[off] ^ new_buf[off];
+		uint8_t xor = old_buf[off + len] ^ new_buf[off + len];
 
 		if (!(zrun ^ !!xor))
 			break;
 		len++;
-		off++;
 		res--;
 	}
 
@@ -56,11 +55,11 @@ int get_length(uint8_t *old_buf, uint8_t *new_buf, int off, int slen,
 		return len;
 
 	/* word at a time for speed, use of 32-bit long okay */
-	while (off < slen) {
+	while (off + len < slen) {
 		/* truncation to 32-bit long okay */
                 unsigned long mask = (unsigned long)0x0101010101010101ULL;
-		long old = *(long*)(old_buf + off);
-		long new = *(long*)(new_buf + off);
+		long old = *(long*)(old_buf + off + len);
+		long new = *(long*)(new_buf + off + len);
 		long xor = old ^ new;
 
 		if (!(zrun ^ !!xor))
@@ -69,18 +68,16 @@ int get_length(uint8_t *old_buf, uint8_t *new_buf, int off, int slen,
 			break;
 
 		len += sizeof(long);
-		off += sizeof(long);
 	}
 
 	/* go over the rest */
-	while (off < slen) {
-		uint8_t xor = old_buf[off] ^ new_buf[off];
+	while (off + len < slen) {
+		uint8_t xor = old_buf[off + len] ^ new_buf[off + len];
 
 		if (!(zrun ^ !!xor))
 			break;
 
 		len++;
-		off++;
 	}
 
 
