@@ -63,9 +63,9 @@ int get_length(uint8_t *old_buf, uint8_t *new_buf, int off, int slen,
 		long new = *(long*)(new_buf + off);
 		long xor = old ^ new;
 
-		if (zrun && !(zrun ^ !!xor))
+		if (!(zrun ^ !!xor))
 			break;
-		else if (!zrun && ((xor - mask) & ~xor & (mask << 7)))
+		if (!zrun && ((xor - mask) & ~xor & (mask << 7)))
 			break;
 
 		len += sizeof(long);
