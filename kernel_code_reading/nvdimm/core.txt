@@ -763,163 +763,112 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
 
 
 
-0.7 dax_pmem
-================================================================================
-; created in dax_pmem_probe()
-
-    dax_pmem                                          nd_dax
-    +----------------------------------------+        +--------------+
-    |dev                                     |        |nd_pfn        |
-    |     (struct device*)               ----|--------|--> dev       |
-    +----------------------------------------+        +--------------+             
-    |ref                                 <---|------------------------------------+
-    |     (struct percpu_ref)                |                                    |
-    |     +----------------------------------+                                    |
-    |     |count                             |                                    |
-    |     |  (atomic_long_t)                 |                                    |
-    |     |percpu_count_ptr                  |                                    |
-    |     |  (unsigned long)                 |                                    |
-    |     |release/confirm_switch            |                                    |
-    |     |  (percpu_ref_func_t)             |                                    |
-    |     |force_atomit                      |                                    |
-    |     |                                  |                                    |
-    |     |rcu                               |                                    |
-    |     |  (struct rcu_head)               |                                    |
-    +-----+----------------------------------+                                    |
-    |cmp                                     |                                    |
-    |     (struct completion)                |                                    |
-    +----------------------------------------+                                    |
-    |pgmap                                   | setup in nvdimm_setup_pfn          |
-    |     (struct dev_pagemap)               |                                    |
-    |     +----------------------------------+                                    |
-    |     |dev                               | = dax_pmem.dev                     |
-    |     |   (struct device*)               |                                    |
-    |     |ref                               | -----------------------------------+
-    |     |   (struct percpu_ref*)           |
-    |     |res                               |
-    |     |   (struct resource)              |
-    |     |   +------------------------------+
-    |     |   |start                         |  nsio->res.start + start_pad
-    |     |   |end                           |  nsio->res.start + size - end_trunc
-    |     |   +------------------------------+
-    |     |page_free                         |
-    |     |   (dev_page_free_t)              |
-    |     |kill                              | = dax_pmem_percpu_kill
-    |     |   ()                             |
-    |     |                                  |
-    |     |altmap                            |
-    |     |   (struct vmem_altmap)           |
-    |     |   +------------------------------+
-    |     |   |base_pfn                      | = PFN_SECTION_ALIGN_DOWN
-    |     |   |                              |   (nsio->res.start + start_pad)
-    |     |   |reserve                       | = PHYS_PFN(SZ_8K)
-    |     |   |                              |
-    |     |   |   (const unsigned long)      |
-    |     |   |free                          | = PHYS_PFN(offset - SZ_8K);
-    |     |   |align                         |
-    |     |   |alloc                         |
-    |     |   |   (unsigned long)            |
-    |     |   +------------------------------+
-    |     |                                  |
-    +-----+----------------------------------+  
-
 0.8 dax_region
 ================================================================================
-
-    dax_region
-    +-------------------------------------------------+  
-    |id                                               |
-    |   (int)                                         |
-    |dev                                              |  = nd_pfn
-    |   (struct device*)                              |
-    |ida                                              |
-    |   (struct ida)                                  |
-    |res                                              |
-    |   (struct resource)                             |
-    |   +---------------------------------------------+
-    |   |start                                        |  nsio->res.start + start_pad + dataoff
-    |   |end                                          |  nsio->res.start + size - end_trunc
-    |   +---------------------------------------------+
-    |                                                 |
-    |                                                 |
-    |base                                             |  remapped addr
-    |   (void *)                                      |
-    |                                                 |
-    |                                                 |
-    |                                                 |
-    +-------------------------------------------------+  
 
 0.9 dev_dax
 ================================================================================
 
-
-                                                                                                dax_pmem                                          nd_dax
-                                                                                                +----------------------------------------+        +--------------+
-                                                                                                |dev                                     |        |nd_pfn        |
-                                                                                                |     (struct device*)               ----|--------|--> dev       |
-                                                                                                +----------------------------------------+        +--------------+             
-                                                                                                |ref                                 <---|------------------------------------+
-                                                                                                |     (struct percpu_ref)                |                                    |
-                                                                                                |     +----------------------------------+                                    |
-                                                                                                |     |count                             |                                    |
-                                                                                                |     |  (atomic_long_t)                 |                                    |
-                                                                                                |     |percpu_count_ptr                  |                                    |
-                                                                                                |     |  (unsigned long)                 |                                    |
-    dev_dax                                                                                     |     |release/confirm_switch            |                                    |
-    +-------------------------------------+<----------------------------+                       |     |  (percpu_ref_func_t)             |                                    |
-    |id                                   |                             |                       |     |force_atomit                      |                                    |
-    |   (int)                             |                             |                       |     |                                  |                                    |
-    |dev                                  |                             |                       |     |rcu                               |                                    |
-    |   (struct device)                   |                             |                       |     |  (struct rcu_head)               |                                    |
-    |   +---------------------------------+                             |                       +-----+----------------------------------+                                    |
-    |   |devt                             |  dax_dev.inode->i_rdev      |                       |cmp                                     |                                    |
-    |   |class                            |  dax_class                  |                       |     (struct completion)                |                                    |
-    |   |groups                           |  dax_attribute_groups       |                       +----------------------------------------+                                    |
-    |   |parent                           |  dax_region->dev = nd_pfn   |                       |pgmap                                   | setup in nvdimm_setup_pfn          |
-    |   |                                 |                             |                       |     (struct dev_pagemap)               |                                    |
-    |   +---------------------------------+                             |                       |     +----------------------------------+                                    |
-    |                                     |                             |                       |     |dev                               |                                    |
-    |num_resources                        |                             |                       |     |   (struct device*)               |                                    |
-    |res[]                                |  copy from dax_region.res   |                       |     |ref                               | -----------------------------------+
-    |   (struct resource)                 |                             |                       |     |   (struct percpu_ref*)           |
-    |                                     |                             |                       |     |res                               |
-    |dax_dev                              |                             |                       |     |   (struct resource)              |
-    |   (struct dax_device*)              |                             |                       |     |   +------------------------------+
-    |   +---------------------------------+                             |                       |     |   |start                         |  nsio->res.start + start_pad
-    |   |private                      ----| ----------------------------+                       |     |   |end                           |  nsio->res.start + size - end_trunc
-    |   |   (void*)                       |                                                     |     |   +------------------------------+
-    |   |inode                            |                                                     |     |page_free                         |
-    |   |   (struct inode)                |                                                     |     |   (dev_page_free_t)              |
-    |   |   +-----------------------------+                                                     |     |kill                              | = dax_pmem_percpu_kill
-    |   |   |i_cdev                       |                                                     |     |   ()                             |
-    |   |   |   ops                       |  dax_fops                                           |     |                                  |
-    |   |   |                             |                                                     |     |altmap                            |
-    |   |   +-----------------------------+                                                     |     |   (struct vmem_altmap)           |
-    |   |cdev                             |                                                     |     |   +------------------------------+
-    |   |   (struct cdev)                 |                                                     |     |   |base_pfn                      | = PFN_SECTION_ALIGN_DOWN(nsio->res.start + start_pad)
-    |   |                                 |                                                     |     |   |                              |
-    |   |host                             |                                                     |     |   |reserve                       | = base_pfn + 8K
-    |   |   (char*)                       |                                                     |     |   |                              |
-    |   |ops                              |                                                     |     |   |   (const unsigned long)      |
-    |   |   (struct dax_operations*)      |                                                     |     |   |free/align/alloc              |
-    |   +---------------------------------+                                                     |     |   |   (unsigned long)            |
-    |region                           ----|------> dax_region                                   |     |   +------------------------------+
-    |   (struct dax_region*)              |        +---------------------------+                |     |                                  |
-    +-------------------------------------+        |id                         |                +-----+----------------------------------+  
-                                                   |   (int)                   |                                                      |
-                                                   |dev                        |  = nd_pfn                                            |
-                                                   |   (struct device*)        |                                                      |
-                                                   |ida                        |                                                      |
-                                                   |   (struct ida)            |                                                      |
-                                                   |res                        |                                                      |
-                                                   |   (struct resource)       |                                                      |
-                                                   |   +-----------------------+                                                      |
-                                                   |   |start                  |  nsio->res.start + start_pad + dataoff               |
-                                                   |   |end                    |  nsio->res.start + size - end_trunc                  |
-                                                   |   +-----------------------+                                                      |
-                                                   |                           |                                                      |
-                                                   |                           |                                                      |
-                                                   |base                       |  devm_memremap_pages(nd_pfn, &dax_pmem->pgmap) <-----+
-                                                   |   (void *)                |
-                                                   |                           |
-                                                   +---------------------------+  
+    dev_dax
+    +-------------------------------------+<----------------------------+
+    |id                                   |                             |
+    |   (int)                             |                             |
+    |dev                                  |                             |
+    |   (struct device)                   |                             |
+    |   +---------------------------------+                             |
+    |   |devt                             |  dax_dev.inode->i_rdev      |
+    |   |class                            |  dax_class                  |
+    |   |/ bus                            |  dax_bus_type               |
+    |   |groups                           |  dax_attribute_groups       |
+    |   |parent                           |  dax_region->dev = nd_pfn   |
+    |   |                                 |                             |
+    |   |kobj->name                       |  = "dax0.0"                 |
+    |   +---------------------------------+                             |
+    |                                     |                             |
+    |dax_dev                              |                             |
+    |   (struct dax_device*)              |                             |
+    |   +---------------------------------+                             |
+    |   |private                      ----| ----------------------------+
+    |   |   (void*)                       |
+    |   |inode                            |      
+    |   |   (struct inode)                |      
+    |   |   +-----------------------------+      
+    |   |   |i_cdev                   ----|-----+
+    |   |   |   (struct cdev*)            |     |
+    |   |   +-----------------------------+     |
+    |   |cdev                             |<----+
+    |   |   (struct cdev)                 |  /dev/dax0.0
+    |   |   +-----------------------------+
+    |   |   |ops                          |  dax_fops
+    |   |   |                             |
+    |   |   +-----------------------------+
+    |   |                                 |
+    |   |host                             |
+    |   |   (char*)                       |
+    |   |ops                              |
+    |   |   (struct dax_operations*)      |
+    |   +---------------------------------+
+    |                                     |
+    |region                               |
+    |   (struct dax_region*)              |
+    |   +---------------------------------+
+    |   |id                               |
+    |   |   (int)                         |
+    |   |dev                              | = nd_pfn.dev
+    |   |   (struct device*)              |
+    |   |ida                              |
+    |   |   (struct ida)                  |
+    |   |res                              |
+    |   |   (struct resource)             |
+    |   |   +-----------------------------+
+    |   |   |start                        | nsio->res.start + start_pad + dataoff
+    |   |   |end                          | nsio->res.start + size - end_trunc
+    |   |   +-----------------------------+
+    |   |                                 |
+    +---+---------------------------------+
+    |ref                              <---|------------------------------------+
+    |     (struct percpu_ref)             |                                    |
+    |     +-------------------------------+                                    |
+    |     |count                          |                                    |
+    |     |  (atomic_long_t)              |                                    |
+    |     |percpu_count_ptr               |                                    |
+    |     |  (unsigned long)              |                                    |
+    |     |release                        | = dev_dax_percpu_release           |
+    |     |confirm_switch                 |                                    |
+    |     |  (percpu_ref_func_t)          |                                    |
+    |     |force_atomit                   |                                    |
+    |     |                               |                                    |
+    |     |rcu                            |                                    |
+    |     |  (struct rcu_head)            |                                    |
+    +-----+-------------------------------+                                    |
+    |pgmap                                | setup in nvdimm_setup_pfn          |
+    |     (struct dev_pagemap)            |                                    |
+    |     +-------------------------------+                                    |
+    |     |dev                            | = nd_pfn.dev                       |
+    |     |   (struct device*)            |                                    |
+    |     |ref                            | -----------------------------------+
+    |     |   (struct percpu_ref*)        |
+    |     |res                            |
+    |     |   (struct resource)           |
+    |     |   +---------------------------+
+    |     |   |start                      |  nsio->res.start + start_pad
+    |     |   |end                        |  nsio->res.start + size - end_trunc
+    |     |   +---------------------------+
+    |     |page_free                      |
+    |     |   (dev_page_free_t)           |
+    |     |kill                           | = dax_pmem_percpu_kill
+    |     |   ()                          |
+    |     |                               |
+    |     |altmap                         |
+    |     |   (struct vmem_altmap)        |
+    |     |   +---------------------------+
+    |     |   |base_pfn                   | = PFN_SECTION_ALIGN_DOWN(nsio->res.start + start_pad)
+    |     |   |reserve                    | = PHYS_PFN(SZ_8K)
+    |     |   |   (const unsigned long)   |
+    |     |   |free                       | = PHYS_PFN(offset - SZ_8K);
+    |     |   |align                      |
+    |     |   |alloc                      |
+    |     |   |   (unsigned long)         |
+    |     |   +---------------------------+
+    |     |                               |
+    +-----+-------------------------------+
