@@ -790,22 +790,22 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |   +---------------------------------+                             |
     |   |private                      ----| ----------------------------+
     |   |   (void*)                       |
-    |   |inode                            |      
-    |   |   (struct inode)                |      
-    |   |   +-----------------------------+      
+    |   |inode                            | handled in alloc_dax()
+    |   |   (struct inode)                | and created by dax_superblock
+    |   |   +-----------------------------+
     |   |   |i_cdev                   ----|-----+
     |   |   |   (struct cdev*)            |     |
     |   |   +-----------------------------+     |
     |   |cdev                             |<----+
     |   |   (struct cdev)                 |  /dev/dax0.0
     |   |   +-----------------------------+
-    |   |   |ops                          |  dax_fops
-    |   |   |                             |
+    |   |   |ops                          |  = dax_fops
+    |   |   |dev  (dev_t)                 |
     |   |   +-----------------------------+
     |   |                                 |
     |   |host                             |
     |   |   (char*)                       |
-    |   |ops                              |
+    |   |ops                              |  = NULL
     |   |   (struct dax_operations*)      |
     |   +---------------------------------+
     |                                     |
