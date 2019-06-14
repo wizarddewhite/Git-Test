@@ -742,8 +742,8 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |     |    |mode                                  | = nd_pfn->mode
     |     |    |align                                 | = nd_pfn->align
     |     |    |   (__le32)                           |
-    |     |    |dataoff                               | meta data
     |     |    |npfns                                 | number of pfn
+    |     |    |dataoff                               | meta data
     |     |    |   (__le64)                           |
     |     |    |start_pad                             |
     |     |    |end_trunc                             |
@@ -754,14 +754,20 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
 
 
 
-      |< start_pad >|<    dataoff      >|              |< end_trunc >|
-      v             v 8k |page |dax_res v              v             v
-      |--------------------------------------------------------------|
-      ^                                                              ^
-      |                                                              |
-  nsio->res.start                                               nsio->res.end
+             |< start_pad >|<    dataoff         >|           |< end_trunc >|
+  nd_pfn_sb  v             v reserve|[page struct]v           v             v
+             |--------------------------------------------------------------|
+             ^                                                              ^
+             |                                                              |
+  nsio     res.start                                               nsio->res.end
 
+                           ^        ^            ^
+  dev_pagemap              | reserve|  free      |
+                           | in page|  in page   |
+                    base_pfn
 
+dataoff should be PMD_SIZE aligned if it has page structure. The reason is in
+vmemmap_populate_hugepages().
 
 0.8 dax_region
 ================================================================================
@@ -859,6 +865,8 @@ lrwxrwxrwx 1 root root 0 10月 10 00:01 region0 -> ../../../devices/LNXSYSTM:00/
     |     |kill                           | = dax_pmem_percpu_kill
     |     |   ()                          |
     |     |                               |
+    |     |altmap_valid                   | indicate altmap is valid or not
+    |     |   (bool)                      |
     |     |altmap                         |
     |     |   (struct vmem_altmap)        |
     |     |   +---------------------------+
