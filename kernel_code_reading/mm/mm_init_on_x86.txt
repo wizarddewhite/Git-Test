@@ -1173,7 +1173,10 @@ In this section, I extract the code path for each part.
         build_all_zonelists()                   setup zone order
         mm_init()
             mem_init()
-                free_all_bootmem()              link page structure to zone
+                memblock_free_all()             link page structure to zone
+                register_page_bootmem_info()    mark pages for pgdat and section
+                    register_page_bootmem_info_node()
+                        register_page_bootmem_info_section()
 ```
 
 0.0.6 sparse
