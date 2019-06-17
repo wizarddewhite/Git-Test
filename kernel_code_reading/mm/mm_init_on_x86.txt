@@ -1126,9 +1126,12 @@ In this section, I extract the code path for each part.
     /* store and sort e820 table to kernel area */
     start_kernel()
         setup_arch()
-            setup_memory_map(), 
-                default_machine_specific_memory_setup(), store and sort e820 table
-                e820_print_map()
+            e820__memory_setup(), 
+                e820__memory_setup_default(), store and sort e820 table
+                e820__print_table()
+            e820__reserve_setup_data();
+            e820__finish_early_params();
+            e820_add_kernel_range();
 ```
 
 0.0.3 memblock
@@ -1137,8 +1140,11 @@ In this section, I extract the code path for each part.
 ```
     start_kernel()
         setup_arch()
-            memblock_x86_fill()
+            e820__memory_setup()
             memblock_set_current_limit()
+            e820__memblock_setup()
+                memblock_add()
+                memblock_dump_all()
 ```
 
 0.0.4 percpu_init
@@ -1168,4 +1174,21 @@ In this section, I extract the code path for each part.
         mm_init()
             mem_init()
                 free_all_bootmem()              link page structure to zone
+```
+
+0.0.6 sparse
+================================================================================
+
+```
+    start_kernel()
+        setup_arch()
+            e820__memblock_setup()
+            init_mem_mapping()
+            initmem_init()
+            x86_init.paging.pagetable_init() -> paging_init()
+                sparse_memory_present_with_active_regions(MAX_NUMNODES);
+                    memory_present()            mark present in mem_section
+                sparse_init()
+                    sparse_init_nid()           setup memmap/usermap
+                zone_sizes_init()               init pgdat
 ```
