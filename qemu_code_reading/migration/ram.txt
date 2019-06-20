@@ -134,7 +134,7 @@ static SaveVMHandlers savevm_ram_handlers = {
 ================================================================================
 4.5.1 migration_bitmap_clear_dirty; clear the bit in RAMBlock->bmap
 ================================================================================
-4.5.2 ram_save_target_page
+4.5.2 ram_save_target_page, main function sync page
 ================================================================================
 4.5.2.1 control_save_page
 ================================================================================
@@ -275,19 +275,88 @@ cpu_physical_memory_sync_dirty_bitmap
     |transferred                           |
     |remaining                             |  = ram_bytes_remaining()
     |                                      |    = ram_state->migration_dirty_pages
-    |                                      |
     |total;                                |
     |duplicate;                            |
     |skipped;                              |
     |normal;                               |
     |normal_bytes;                         |
+    |pages_per_second;                     |
     |dirty_pages_rate;                     |  = num_dirty_pages_period / time
     |mbps;                                 |
     |dirty_sync_count;                     |
     |postcopy_requests;                    |
     |page_size;                            |
     |multifd_bytes;                        |
-    |pages_per_second;                     |
+    +--------------------------------------+
+
+0.1 MigrationState / MigrationIncomingState
+================================================================================
+
+    MigrationState
+    +--------------------------------------+
+    |parent_obj                            |
+    |   (DeviceState)                      |
+    |parameters                            |
+    |   (MigrationParameters)              |
+    |enabled_capabilities                  |
+    |   [MIGRATION_CAPABILITY__MAX]        |
+    |threshold_size                        |  the final stage happens
+    |    (int64_t)                         |
+    |state                                 |
+    |   (int)                              |
+    |                                      |
+    |vm_was_running                        |
+    |migration_thread_running              |
+    |start_postcopy                        |
+    |postcopy_after_devices                |
+    |block_inactive                        |
+    |must_remove_block_options             |
+    |store_global_state                    |
+    |send_configuration                    |
+    |send_section_footer                   |
+    |decompress_error_check                |
+    |   (bool)                             |
+    |to_dst_file                           |
+    |from_dst_file                         |
+    |   (QEMUFile*)                        |
+    |                                      |
+    |setup_time                            |
+    |start_time                            |
+    |total_time                            |
+    |downtime_start                        |
+    |downtime                              |
+    |expected_downtime                     |
+    |iteration_start_time                  |
+    |    (int64_t)                         |
+    |                                      |
+    |iteration_initial_bytes/pages         |
+    |    (uint64_t)                        |
+    |bytes_xfer                            |
+    |    (size_t)                          |
+    |mbs                                   |
+    |    (double)                          |
+    +--------------------------------------+
+
+    MigrationIncomingState
+    +--------------------------------------+
+    |state                                 |
+    |   (int)                              |
+    |                                      |
+    |from_src_file                         |
+    |to_src_file                           |
+    |   (QEMUFile*)                        |
+    |                                      |
+    |have_listen_thread                    |
+    |have_colo_incoming_thread             |
+    |have_fault_thread                     |
+    |fault_thread_quit                     |
+    |   (bool)                             |
+    |                                      |
+    |largest_page_size                     |
+    |                                      |
+    |postcopy_tmp_page                     |
+    |postcopy_tmp_zero_page                |
+    |                                      |
     |                                      |
     +--------------------------------------+
 
@@ -381,7 +450,9 @@ cpu_physical_memory_sync_dirty_bitmap
     |                      |               |              |
     +----------------------+               +--------------+
 
-0.4 multifd_send_state
+0.4 multifd
+================================================================================
+0.4.1 multifd_send_state
 ================================================================================
 ; multifd_save_setup
 
@@ -484,7 +555,7 @@ cpu_physical_memory_sync_dirty_bitmap
     |                               |
     +-------------------------------+
 
-0.5 multifd_recv_state
+0.4.2 multifd_recv_state
 ================================================================================
 ; multifd_load_setup()
 
