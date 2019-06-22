@@ -49,7 +49,8 @@ migrate_set_capability auto-converge on
 # post copy
 https://wiki.qemu.org/Features/PostCopyLiveMigration
 
-migrate_set_capability postcopy-ram on
+migrate_set_capability postcopy-ram on # both source and destination
+migrate_set_capability postcopy-blocktime on # both source and destination
 migrate -d tcp:0:4444
 migrate_start_postcopy   # after first round of sync
 
