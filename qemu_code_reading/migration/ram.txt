@@ -291,6 +291,7 @@ cpu_physical_memory_sync_dirty_bitmap
 
 0.1 MigrationState / MigrationIncomingState
 ================================================================================
+created in migration_object_init
 
     MigrationState
     +--------------------------------------+

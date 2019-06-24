@@ -1,0 +1,93 @@
+1. usage
+================================================================================
+migrate_set_capability postcopy-ram on # both source and destination
+migrate_set_capability postcopy-blocktime on # both source and destination
+migrate -d tcp:0:4444
+migrate_start_postcopy   # after first round of sync
+
+2. migrate_set_capability postcopy-ram
+================================================================================
+hmp_migrate_set_capability
+        s->enabled_capabilities[MIGRATION_CAPABILITY_POSTCOPY_RAM] = true
+
+2.1 migrate_postcopy_ram() will return true
+================================================================================
+; this is one place to check the difference of code flow
+; for example
+;     do ping, open return path
+;     build unsentmap
+
+2.2 migrate_postcopy() will return true
+================================================================================
+return migrate_postcopy_ram() || migrate_dirty_bitmaps();
+
+3. migrate_start_postcopy
+================================================================================
+hmp_migrate_start_postcopy
+   qmp_migrate_start_postcopy
+       atomic_set(&s->start_postcopy, true);
+
+4. postcopy_start(), a little similar with migration_completion()
+================================================================================
+4.1 migrate_set_state(MIGRATION_STATUS_ACTIVE, MIGRATION_STATUS_POSTCOPY_ACTIVE)
+================================================================================
+
+
+4.2 qemu_mutex_lock_iothread();
+================================================================================
+4.3 qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER, NULL);
+================================================================================
+4.4 global_state_store();
+================================================================================
+4.5 vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
+================================================================================
+4.6 migration_maybe_pause(ms, &cur_state, MIGRATION_STATUS_POSTCOPY_ACTIVE);
+================================================================================
+4.7 bdrv_inactivate_all();
+================================================================================
+4.8 qemu_savevm_state_complete_precopy(ms->to_dst_file, true, false);
+================================================================================
+
+4.9 ram_postcopy_send_discard_bitmap()
+================================================================================
+4.9.1 migration_bitmap_sync(), should be the last sync
+================================================================================
+4.9.2 postcopy_each_ram_send_discard(), tell destination to discard page
+================================================================================
+4.9.2.1 postcopy_discard_send_init()
+================================================================================
+4.9.2.2 postcopy_send_discard_bm_ram()
+================================================================================
+4.9.2.2.1 postcopy_discard_send_range()
+================================================================================
+4.9.2.2.1.1 qemu_savevm_send_postcopy_ram_discard()
+================================================================================
+4.9.2.3 postcopy_discard_send_finish()
+================================================================================
+
+
+4.10 qemu_savevm_send_postcopy_listen(fb); prepare migrate device state
+================================================================================
+4.10.1 qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_LISTEN, 0, NULL);
+================================================================================
+4.11 qemu_savevm_state_complete_precopy(fb, false, false);
+================================================================================
+4.12 qemu_savevm_send_postcopy_run(fb);
+================================================================================
+4.12.1 qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_RUN, 0, NULL);
+================================================================================
+4.13 qemu_savevm_send_packaged(ms->to_dst_file, bioc->data, bioc->usage)
+================================================================================
+4.14 ms->postcopy_after_devices = true;    device state migration done
+================================================================================
+
+
+4.15 ms->downtime =  qemu_clock_get_ms(QEMU_CLOCK_REALTIME) - time_at_stop;
+================================================================================
+4.16 qemu_mutex_unlock_iothread();
+================================================================================
+
+
+4.17 ram_postcopy_migrated_memory_release(ms), release mem.
+================================================================================
+; is this necessary on source?
