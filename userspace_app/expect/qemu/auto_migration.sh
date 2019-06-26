@@ -42,6 +42,8 @@ expect {
 }
 
 #interact -i $source
+#send -i $source "cd git/linux\r"
+#send -i $source "make clean && make -j4 bzImage\r"
 
 spawn telnet localhost 55555
 set source_telnet $spawn_id
