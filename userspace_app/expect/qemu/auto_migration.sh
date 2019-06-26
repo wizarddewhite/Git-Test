@@ -62,6 +62,24 @@ send -i $source_telnet "migrate -d tcp:0:4444\r"
 sleep 5
 send -i $source_telnet "info migrate\r"
 
+# check dirty sync count
+expect {
+	-i $source_telnet -indices -re {dirty sync count: *([0-9]{1,4})} {
+		set sync_count $expect_out(1,string)
+		puts -nonewline "\n### current dirty sync count :"
+		puts $sync_count
+		sleep 3
+		send -i $source_telnet "info migrate\r"
+		if {$sync_count <= 1} {
+			exp_continue
+		}
+	}
+	-i $source_telnet eof {
+		send_user "\nsource vm terminated unexpectedly!\n"
+		exit -1
+	}
+}
+
 expect {
 	-i $source_telnet "Migration status: active" {
 		send -i $source_telnet "info migrate\r"
