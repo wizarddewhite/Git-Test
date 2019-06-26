@@ -1,3 +1,7 @@
+# bridge network
+
+## config bridge on host
+
 #RHEL, physical device behind bridge
 # /etc/sysconfig/network-scripts/ifcfg-br0
 DEVICE=br0
@@ -21,9 +25,18 @@ BRIDGE=br0
 NM_CONTROLLED=no
 IPADDR=0.0.0.0
 
+## or create bridge manually
+sudo brctl addbr br0
+
+## create tap interface
 ip tuntap add tap0 mode tap
 sudo ifconfig tap0 0.0.0.0 up
 sudo brctl addif br0 tap0
 
+# specify the device type
+
+## rtl8139
 -netdev tap,id=tapnet,ifname=tap0,script=no -device rtl8139,netdev=tapnet
 
+## virtio-net
+-netdev tap,id=tapnet,ifname=tap0,script=no -device virtio-net-pci,netdev=tapnet
