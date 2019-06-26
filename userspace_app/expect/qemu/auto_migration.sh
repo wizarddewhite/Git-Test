@@ -42,8 +42,11 @@ expect {
 }
 
 #interact -i $source
-#send -i $source "cd git/linux\r"
-#send -i $source "make clean && make -j4 bzImage\r"
+set has_workload 1
+if {$has_workload == 1} {
+	send -i $source "cd git/linux\r"
+	send -i $source "make clean && make -j4 bzImage\r"
+}
 
 spawn telnet localhost 55555
 set source_telnet $spawn_id
@@ -116,18 +119,20 @@ expect {
 }
 
 send_user "migration done on source\n"
-#interact -i $dest
+if {$has_workload == 1} {
+	interact -i $dest
+} else {
+	#send -i $dest "ls /etc/hosts\r"
+	send -i $dest "shutdown now\r"
+	expect {
+		-i $dest eof {
+			send_user "\ndestination power off successfully!\n"
+		}
+		-i $dest timeout {
+			send_user "\nError: destination no response!\n"
+			exit -1
+		}
+	}
 
-#send -i $dest "ls /etc/hosts\r"
-send -i $dest "shutdown now\r"
-expect {
-	-i $dest eof {
-		send_user "\ndestination power off successfully!\n"
-	}
-	-i $dest timeout {
-		send_user "\nError: destination no response!\n"
-		exit -1
-	}
+	exit 0
 }
-
-exit 0
