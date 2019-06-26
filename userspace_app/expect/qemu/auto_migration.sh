@@ -66,6 +66,14 @@ send_user "start migration \n"
 #send -i $source_telnet "migrate_set_capability xbzrle on\r"
 #send -i $dest_telnet "migrate_set_capability xbzrle on\r"
 
+set use_postcopy 1
+if {$use_postcopy == 1} {
+	send -i $source_telnet "migrate_set_capability postcopy-ram on\r"
+	send -i $source_telnet "migrate_set_capability postcopy-blocktime on\r"
+	send -i $dest_telnet "migrate_set_capability postcopy-ram on\r"
+	send -i $dest_telnet "migrate_set_capability postcopy-blocktime on\r"
+}
+
 sleep 5
 
 send -i $source_telnet "migrate -d tcp:0:4444\r"
@@ -82,6 +90,10 @@ expect {
 		send -i $source_telnet "info migrate\r"
 		if {$sync_count <= 1} {
 			exp_continue
+		} else {
+			if {$use_postcopy == 1} {
+				send -i $source_telnet "migrate_start_postcopy\r"
+			}
 		}
 	}
 	-i $source_telnet eof {
