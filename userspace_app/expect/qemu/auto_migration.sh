@@ -60,6 +60,9 @@ send_user "start migration \n"
 #send -i $source_telnet "migrate_set_parameter multifd-channels 2\r"
 #send -i $dest_telnet "migrate_set_capability multifd on\r"
 #send -i $dest_telnet "migrate_set_parameter multifd-channels 2\r"
+
+#send -i $source_telnet "migrate_set_speed 0\r"
+
 sleep 5
 
 send -i $source_telnet "migrate -d tcp:0:4444\r"
