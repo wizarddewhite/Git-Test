@@ -42,6 +42,16 @@ sudo brctl addif br0 tap0
 ## virtio-net
 -netdev tap,id=tapnet,ifname=tap0,script=no -device virtio-net-pci,netdev=tapnet
 
-# configure guest ip same as bridge subnet
+# configure guest ip same as bridge subnet(in guest)
+# after this guest could access host and vice versa
 ifconfig ens2 192.168.122.100 up
 route add default gw 192.168.122.1
+
+# configure host to be a router(in host)
+# after this guest could access the real world
+echo 1 > /proc/sys/net/ipv4/ip_forward
+iptables -t nat -A POSTROUTING  -o wlan0 -j MASQUERADE
+iptables -A FORWARD -i wlan0 -j ACCEPT
+
+# setup guest dns server(in guest)
+vi /etc/resolv.conf
