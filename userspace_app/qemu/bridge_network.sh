@@ -27,9 +27,10 @@ IPADDR=0.0.0.0
 
 ## or create bridge manually
 sudo brctl addbr br0
+sudo ifconfig br0 192.168.122.1 up
 
 ## create tap interface
-ip tuntap add tap0 mode tap
+sudo ip tuntap add tap0 mode tap
 sudo ifconfig tap0 0.0.0.0 up
 sudo brctl addif br0 tap0
 
@@ -40,3 +41,7 @@ sudo brctl addif br0 tap0
 
 ## virtio-net
 -netdev tap,id=tapnet,ifname=tap0,script=no -device virtio-net-pci,netdev=tapnet
+
+# configure guest ip same as bridge subnet
+ifconfig ens2 192.168.122.100 up
+route add default gw 192.168.122.1
