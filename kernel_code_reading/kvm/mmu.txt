@@ -278,8 +278,23 @@ static inline void kvm_mmu_load_cr3(struct kvm_vcpu *vcpu)
     |    |                                             |
     |    +---------------------------------------------+
     |                                                  |
-    |memslots[KVM_MEM_SLOTS_NUM]                       |
-    |     (struct kvm_memory_slot)                     |
+    |memslots[KVM_ADDRESS_SPACE_NUM]                   |
+    |     (struct kvm_memslots*)                       |
+    |    +---------------------------------------------+
+    |    |generation (u64)                             |
+    |    |used_slots (int)                             |
+    |    |id_to_index[KVM_MEM_SLOTS_NUM]               |
+    |    |     (short)                                 |
+    |    |kvm_memory_slot[KVM_MEM_SLOTS_NUM]           |
+    |    |     (struct kvm_memory_slot)                |
+    |    |     +---------------------------------------+
+    |    |     |id              (short)                |
+    |    |     |base_gfn        (gfn_t)                |
+    |    |     |userspace_addr  (unsigned long)        |
+    |    |     |dirty_bitmap    (unsigned long*)       |
+    |    |     |                                       |
+    |    +-----+---------------------------------------+
+    |                                                  |
     |                                                  |
     |created_vcpus                                     |
     |     (int)                                        |
