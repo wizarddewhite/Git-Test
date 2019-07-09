@@ -52,7 +52,13 @@ hmp_migrate_start_postcopy
 ================================================================================
 4.9.1 migration_bitmap_sync(), should be the last sync
 ================================================================================
-4.9.2 postcopy_each_ram_send_discard(), tell destination to discard page
+4.9.2 postcopy_chunk_hostpages(), Deal with TPS != HPS
+================================================================================
+4.9.2.1 postcopy_chunk_hostpages_pass(ms, true, block, pds);
+================================================================================
+4.9.2.2 postcopy_chunk_hostpages_pass(ms, false, block, pds);
+================================================================================
+4.9.3 postcopy_each_ram_send_discard(), tell destination to discard page
 ================================================================================
 4.9.2.1 postcopy_discard_send_init()
 ================================================================================
