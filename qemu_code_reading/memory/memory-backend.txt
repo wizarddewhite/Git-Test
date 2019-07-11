@@ -1,0 +1,67 @@
+1.  user_creatable_add_type(type, id, pdict, v, errp);
+================================================================================
+1.1 object_new("memory-backend-file")
+================================================================================
+1.1.1 host_memory_backend_init
+================================================================================
+1.2 object_property_set(obj, v, e->key, &local_err);
+================================================================================
+1.3 user_creatable_complete(USER_CREATABLE(obj), &local_err);
+================================================================================
+1.3.1 ucc->complete()   host_memory_backend_memory_complete
+================================================================================
+1.3.1.1 bc->alloc(), ram/file/memfd_backend_memory_alloc
+================================================================================
+
+
+0. memory-backend-ram
+================================================================================
+
+
+       +------------------+                                       +----------------------+
+       |                  |                                       |                      |
+       |   ObjectClass    |  ------------------------------       |   Object             |
+       |     class_init   |                                       |                      |
+       |                  |                                       |                      |
+       +------------------+                                       +----------------------+
+                 |                                                            |
+                 |                                                            |
+                 |                                                            |
+                 v                                                            v
+  +--------------------------+                                       +----------------------+
+  |                          |                                       |                      |
+  |HostMemoryBackendClass    |  ------------------------------------ |   HostMemoryBackend  |
+  |    class_init            |  host_memory_backend_class_init       |      instance_init   |  host_memory_backend_init 
+  |                          |                                       |                      |
+  |  +-----------------------+                                       |                      |
+  |  |UserCreatableClass     |                                       |                      |
+  |  |    complete           |  host_memory_backend_memory_complete  |                      |
+  +--+-----------------------+                                       +---+------------------+
+          |                                                              |
+          |                                                              |
+          |                                                              |
+          |                                                              |
+          |     TYPE_MEMORY_BACKEND_RAM                                  |
+          |     +-----------------------+                                |      +----------------------+
+          |     |                       |                                |      |                      |
+          +---  |HostMemoryBackendClass |                                +---   |HostMemoryBackend     |
+          |     |     class_init        |  ram_backend_class_init        |      |      instance_init   |
+          |     |     bc                |  ram_backend_memory_alloc      |      |                      |
+          |     +-----------------------+                                |      +----------------------+
+          |                                                              |     
+          |     TYPE_MEMORY_BACKEND_FILE                                 |     
+          |     +-----------------------+                                |      +----------------------+
+          |     |                       |                                |      |                      |
+          +---  |HostMemoryBackendClass |                                +---   |HostMemoryBackendFile |
+          |     |     class_init        |  file_backend_class_init       |      |      instance_init   |
+          |     |     bc                |  file_backend_memory_alloc     |      |                      |
+          |     +-----------------------+                                |      +----------------------+
+          |                                                              |
+          |     TYPE_MEMORY_BACKEND_RAM                                  |
+          |     +-----------------------+                                |      +----------------------+
+          |     |                       |                                |      |                      |
+          +---  |HostMemoryBackendClass |                                +---   |HostMemoryBackendMemfd|
+                |     class_init        |  memfd_backend_class_init             |      instance_init   |   memfd_backend_instance_init
+                |     bc                |  memfd_backend_memory_alloc           |                      |
+                +-----------------------+                                       +----------------------+
+
