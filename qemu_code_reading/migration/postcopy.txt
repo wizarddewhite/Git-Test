@@ -21,6 +21,20 @@ hmp_migrate_set_capability
 ================================================================================
 return migrate_postcopy_ram() || migrate_dirty_bitmaps();
 
+3. migration_thread
+================================================================================
+3.1 qemu_savevm_send_postcopy_advise(), send MIG_CMD_POSTCOPY_ADVISE
+================================================================================
+; done before setup
+3.1.1 qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_ADVISE, 16, (uint8_t *)tmp);
+================================================================================
+; with postcopy ram
+3.1.1 qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_ADVISE, 0, NULL);
+================================================================================
+; other
+3.2 qemu_savevm_state_setup(s->to_dst_file);
+================================================================================
+
 3. migrate_start_postcopy
 ================================================================================
 hmp_migrate_start_postcopy
@@ -72,9 +86,9 @@ hmp_migrate_start_postcopy
 ================================================================================
 
 
-4.10 qemu_savevm_send_postcopy_listen(fb); prepare migrate device state
+4.10 qemu_savevm_send_postcopy_listen(fb)
 ================================================================================
-4.10.1 qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_LISTEN, 0, NULL);
+4.10.1 qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_LISTEN), destination will start postcopy_ram_listen_thread
 ================================================================================
 4.11 qemu_savevm_state_complete_precopy(fb, false, false);
 ================================================================================
@@ -97,3 +111,52 @@ hmp_migrate_start_postcopy
 4.17 ram_postcopy_migrated_memory_release(ms), release mem.
 ================================================================================
 ; is this necessary on source?
+
+
+5. init_range
+================================================================================
+
+0. incoming_postcopy_state
+================================================================================
+postcopy_state_get/postcopy_state_set
+
+   incoming_postcopy_state(PostcopyState)
+   +---------------------------+
+   |POSTCOPY_INCOMING_NONE     |
+   |POSTCOPY_INCOMING_ADVISE   | ----------------+
+   |POSTCOPY_INCOMING_DISCARD  |                 |
+   |POSTCOPY_INCOMING_LISTENING| --+             +-- advise
+   |                           |   +-- running   |
+   |POSTCOPY_INCOMING_RUNNING  | --+-------------+
+   |POSTCOPY_INCOMING_END      |
+   +---------------------------+
+
+
+                 NONE
+
+                  |
+                  |     CMD_POSTCOPY_ADVISE
+                  |
+
+               ADVISE
+
+             /    |
+           /      |
+       DISCARD    |
+           \      |
+             \    |
+               \
+
+               LISTEN
+
+                  |
+                  |
+
+               RUNNING
+
+                  |
+                  |
+
+	         END
+
+
