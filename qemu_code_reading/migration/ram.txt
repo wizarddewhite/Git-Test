@@ -95,12 +95,18 @@ static SaveVMHandlers savevm_ram_handlers = {
 ================================================================================
 3.1 migration_bitmap_sync, sync from ram_list.dirty_memory to RAMBlock->bmap
 ================================================================================
+
 3.1.1 memory_global_dirty_log_sync
 ================================================================================
 3.1.1.1 memory_region_sync_dirty_bitmap(NULL);
 ================================================================================
 3.1.1.1.1 listener->log_sync(listener, &mrs)
 ================================================================================
+3.1.1.1.1 kvm_log_sync
+================================================================================
+3.1.1.1.1.1 kvm_physical_sync_dirty_bitmap
+================================================================================
+
 3.1.2 migration_bitmap_sync_range; called on each RAMBlock
 ================================================================================
 3.1.2.1 cpu_physical_memory_sync_dirty_bitmap
@@ -206,23 +212,41 @@ static SaveVMHandlers savevm_ram_handlers = {
        
 
 
-4. dirty bitmap, ram_list.dirty_memory RAMBlock->bmap
+4. dirty bitmap, ram_list.dirty_memory RAMBlock->bmap kvm_dirty_log.dirty_bitmap
 ================================================================================
-RAMBlock->bmap is created in ram_list_init_bitmaps and set all to 1
-ram_list.dirty_memory is created in dirty_memory_extend and set all to 1
+kvm_dirty_log.dirty_bitmap is created in kvm_physical_sync_dirty_bitmap
+
+ram_list.dirty_memory      is created in dirty_memory_extend and set all to 1
+RAMBlock->bmap             is created in ram_list_init_bitmaps and set all to 1
+
+;sync from kvm dirty log to qemu's
+kvm_physical_sync_dirty_bitmap
+    kvm_get_dirty_pages_log_range
+        cpu_physical_memory_set_dirty_lebitmap()
+
+;sync from ram_list.dirty_memory to RAMBlock->bmap
+cpu_physical_memory_sync_dirty_bitmap
+
+
+Bitmap sync flow for migration_bitmap_sync()
+
+
+       kvm_dirty_log.dirty_bitmap (temporary, retrieved from kvm KVM_GET_DIRTY_LOG)
+                   |
+                   |
+		   v
+         ram_list.dirty_memory
+                   |
+                   |
+		   v
+           RAMBlock->bmap
+
 
 memory_region_get_dirty()
     cpu_physical_memory_get_dirty
 memory_region_set_dirty()
     cpu_physical_memory_set_dirty_range
 cpu_physical_memory_clear_dirty_range
-
-;sync from kvm dirty log to qemu's
-kvm_get_dirty_pages_log_range
-    cpu_physical_memory_set_dirty_lebitmap()
-
-;sync from ram_list.dirty_memory to RAMBlock->bmap
-cpu_physical_memory_sync_dirty_bitmap
 
 0. data structure
 ================================================================================
