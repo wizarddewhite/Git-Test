@@ -100,9 +100,7 @@ static SaveVMHandlers savevm_ram_handlers = {
 ================================================================================
 3.1.1.1 memory_region_sync_dirty_bitmap(NULL);
 ================================================================================
-3.1.1.1.1 listener->log_sync(listener, &mrs)
-================================================================================
-3.1.1.1.1 kvm_log_sync
+3.1.1.1.1 listener->log_sync(listener, &mrs) -> kvm_log_sync
 ================================================================================
 3.1.1.1.1.1 kvm_physical_sync_dirty_bitmap
 ================================================================================
@@ -192,8 +190,8 @@ static SaveVMHandlers savevm_ram_handlers = {
             +------------------------+             +-------------------------+
             |                        |             |                         |
   ITER      | ram_save_pending       |             |  ram_load               |
-            | ram_save_iterate       |             |                         |
-            |                        |             |                         |
+            | ram_save_iterate       |             |      ram_load_precopy   |
+            |                        |             |      ram_load_postcopy  |
             +------------------------+             +-------------------------+
        
             sync dirty bit                         Receive page
@@ -203,8 +201,8 @@ static SaveVMHandlers savevm_ram_handlers = {
             +------------------------+             +-------------------------+
             |                        |             |                         |
   COMP      | ram_save_pending       |             |  ram_load               |
-            | ram_save_complete      |             |                         |
-            |                        |             |                         |
+            | ram_save_complete      |             |      ram_load_precopy   |
+            |                        |             |      ram_load_postcopy  |
             +------------------------+             +-------------------------+
        
             sync dirty bit                         Receive page
@@ -231,7 +229,7 @@ cpu_physical_memory_sync_dirty_bitmap
 Bitmap sync flow for migration_bitmap_sync()
 
 
-       kvm_dirty_log.dirty_bitmap (temporary, retrieved from kvm KVM_GET_DIRTY_LOG)
+       kvm_dirty_log.dirty_bitmap (temporary, retrieved from KVM_GET_DIRTY_LOG)
                    |
                    |
 		   v
