@@ -3,6 +3,7 @@
 
 set has_workload 1
 set use_postcopy 1
+set after_bulk 1
 
 set timeout 200
 set index 0
@@ -92,7 +93,7 @@ expect {
 		puts $sync_count
 		sleep 3
 		send -i $source_telnet "info migrate\r"
-		if {$sync_count <= 1} {
+		if {$sync_count <= 1 && $after_bulk == 1} {
 			exp_continue
 		} else {
 			if {$use_postcopy == 1} {
