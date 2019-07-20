@@ -1,6 +1,9 @@
 #!/usr/bin/expect
 # expect -f qemu_guest.sh command_file user passwd
 
+set has_workload 1
+set use_postcopy 1
+
 set timeout 200
 set index 0
 
@@ -42,7 +45,6 @@ expect {
 }
 
 #interact -i $source
-set has_workload 1
 if {$has_workload == 1} {
 	send -i $source "cd git/linux\r"
 	send -i $source "make clean && make -j4 bzImage\r"
@@ -69,7 +71,6 @@ send_user "start migration \n"
 #send -i $source_telnet "migrate_set_capability xbzrle on\r"
 #send -i $dest_telnet "migrate_set_capability xbzrle on\r"
 
-set use_postcopy 1
 if {$use_postcopy == 1} {
 	send -i $source_telnet "migrate_set_capability postcopy-ram on\r"
 	send -i $source_telnet "migrate_set_capability postcopy-blocktime on\r"
