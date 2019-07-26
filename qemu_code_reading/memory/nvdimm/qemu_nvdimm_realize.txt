@@ -159,9 +159,50 @@ main()
     
 
 
+0.2 TYPE_NVDIMM
+================================================================================
 	    
 
+   TYPE_OBJECT
+   +-------------------------------+
+   |class_init                     | = object_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   +-------------------------------+
 
+   TYPE_DEVICE
+   +-------------------------------+
+   |class_size                     | = sizeof(DeviceClass)
+   |class_init                     | = device_class_init
+   |                               |
+   |instance_size                  | = sizeof(Object)
+   |instance_init                  | = device_initfn
+   |instance_finalize              | = device_finalize
+   |                               |
+   |realize                        | = pc_dimm_realize
+   +-------------------------------+
 
+   TYPE_PC_DIMM
+   +-------------------------------+
+   |class_size                     | = sizeof(PCDIMMDeviceClass)
+   |class_init                     | = pc_dimm_class_init
+   |                               |
+   |instance_size                  | = sizeof(PCDIMMDevice)
+   |instance_init                  | = pc_dimm_init
+   |instance_finalize              | = NULL
+   |                               |
+   |realize                        | = NULL
+   +-------------------------------+
 
+   TYPE_NVDIMM
+   +-------------------------------+
+   |class_size                     | = sizeof(NVDIMMClass)
+   |class_init                     | = nvdimm_class_init
+   |                               |
+   |instance_size                  | = sizeof(NVDIMMDevice)
+   |instance_init                  | = nvdimm_init
+   |instance_finalize              | = nvdimm_finalize
+   |                               |
+   |realize                        | = NULL
+   +-------------------------------+
 
