@@ -603,4 +603,29 @@ created in migration_object_init
                                            |                   |       |                   |       |                   |
                                            +-------------------+       +-------------------+       +-------------------+
 
+0.5 compress
+================================================================================
+
+comp_done_cond(QemuCond)
+comp_done_lock(QemuMutex)
+
+
+    comp_param(struct CompressParam)
+    +-------------------------------+
+    |done                           |
+    |quit                           |
+    |   (bool)                      |
+    |                               |
+    |mutex                          |
+    |cond                           |
+    |                               |
+    |block                          |
+    |   (RAMBlock*)                 |
+    |offset                         |
+    |   (ram_addr_t)                |
+    |file                           |
+    |   (QEMUFile*)                 |
+    |originbuf                      |
+    |   (uint8_t [TARGET_PAGE_SIZE])|
+    +-------------------------------+
 
