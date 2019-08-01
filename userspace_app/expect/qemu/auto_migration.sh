@@ -4,6 +4,7 @@
 set has_workload 1
 set use_postcopy 1
 set after_bulk 1
+set use_compress 0
 
 set timeout 200
 set index 0
@@ -71,6 +72,13 @@ send_user "start migration \n"
 
 #send -i $source_telnet "migrate_set_capability xbzrle on\r"
 #send -i $dest_telnet "migrate_set_capability xbzrle on\r"
+
+if {$use_compress == 1} {
+	send -i $source_telnet "migrate_set_capability compress on\r"
+	send -i $dest_telnet "migrate_set_capability compress on\r"
+	send -i $source_telnet "migrate_set_parameter compress-threads 1\r"
+	send -i $dest_telnet "migrate_set_parameter compress-threads 1\r"
+}
 
 if {$use_postcopy == 1} {
 	send -i $source_telnet "migrate_set_capability postcopy-ram on\r"
