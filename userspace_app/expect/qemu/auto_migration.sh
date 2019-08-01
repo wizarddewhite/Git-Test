@@ -113,6 +113,10 @@ expect {
 		send_user "\nsource vm terminated unexpectedly!\n"
 		exit -1
 	}
+	-i $source_telnet "Migration status: failed" {
+		send_user "\nsource vm migration failed!\n"
+		exit -1
+	}
 }
 
 expect {
@@ -122,6 +126,10 @@ expect {
 		exp_continue
 	}
 	-i $source_telnet "Migration status: completed" {}
+	-i $source_telnet "Migration status: failed" {
+		send_user "\nsource vm migration failed!\n"
+		exit -1
+	}
 	-i $source_telnet eof {
 		send_user "\nsource vm terminated unexpectedly!\n"
 		exit -1
