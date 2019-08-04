@@ -1,0 +1,88 @@
+1. usage
+================================================================================
+An example in 
+http://man7.org/linux/man-pages/man2/userfaultfd.2.html
+
+    // open userfaultfd
+    ufd = syscall(__NR_userfaultfd, O_CLOEXEC);
+
+    // register a fault range
+    reg_struct.range.start = (uintptr_t)testarea;
+    reg_struct.range.len = pagesize;
+    reg_struct.mode = UFFDIO_REGISTER_MODE_MISSING;
+    ioctl(ufd, UFFDIO_REGISTER, &reg_struct)
+
+    // get fault event
+    poll(ufd)
+    read(ufd, &msg, sizeof(msg));
+
+    // fill the faulted page
+    uffdio_copy.src = (unsigned long) page;
+    uffdio_copy.dst = (unsigned long) msg.arg.pagefault.address &
+                                       ~(page_size - 1);
+    uffdio_copy.len = page_size;
+    uffdio_copy.mode = 0;
+    uffdio_copy.copy = 0;
+    ioctl(uffd, UFFDIO_COPY, &uffdio_copy)
+
+2.  SYSCALL_DEFINE1(userfaultfd, int, flags)
+================================================================================
+2.1 anon_inode_getfd(userfaultfd_fops)
+================================================================================
+static const struct file_operations userfaultfd_fops = {
+#ifdef CONFIG_PROC_FS
+	.show_fdinfo	= userfaultfd_show_fdinfo,
+#endif
+	.release	= userfaultfd_release,
+	.poll		= userfaultfd_poll,
+	.read		= userfaultfd_read,
+	.unlocked_ioctl = userfaultfd_ioctl,
+	.compat_ioctl	= userfaultfd_ioctl,
+	.llseek		= noop_llseek,
+};
+
+
+3. UFFDIO_REGISTER, userfaultfd_register
+================================================================================
+
+3.1 validate_range(mm, start, len)
+================================================================================
+
+3.2 vma = find_vma_prev(mm, start, &prev)
+================================================================================
+
+3.3 vma_can_userfault()
+================================================================================
+
+3.4 vma_merge()
+================================================================================
+
+0. data struct
+================================================================================
+
+0.1 userfaultfd_ctx
+================================================================================
+   
+    userfaultfd_ctx
+    +---------------------------+
+    |flags                      |
+    |features                   |
+    |    (unsigned long)        |
+    +---------------------------+
+    |mm                         |
+    |    (struct mm_struct*)    |
+    +---------------------------+
+    |mmap_changing              |
+    |    (bool)                 |
+    +---------------------------+
+    |refcount                   |
+    |    (refcount_t)           |
+    +---------------------------+
+    |fault_pending_wqh          |
+    |fault_wqh                  |
+    |fd_wqh                     |
+    |event_wqh                  |
+    |    (wait_queue_head_t)    |
+    |                           |
+    |                           |
+    +---------------------------+
