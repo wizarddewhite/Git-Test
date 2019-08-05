@@ -139,7 +139,11 @@ def get_files(thread):
             continue
 
         if message.is_multipart():
-            content = ''.join(part.get_payload(decode=True) for part in message.get_payload())
+            content = ""
+            for part in message.get_payload():
+                c = part.get_payload(decode=True)
+                if c:
+                    content = ''.join([content, c])
         else:
             content = message.get_payload(decode=True)
         content_in_line = content.splitlines()
