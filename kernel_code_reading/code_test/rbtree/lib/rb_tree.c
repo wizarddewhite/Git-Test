@@ -17,6 +17,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "rbtree_augmented.h"
 
 void dump_rb_tree(struct rb_node *node, int level,
