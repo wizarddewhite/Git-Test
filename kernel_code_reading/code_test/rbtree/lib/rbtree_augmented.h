@@ -148,4 +148,55 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 	return rebalance;
 }
 
+#define RB_DECLARE_CALLBACKS(rbstatic, rbname, rbstruct, rbfield,	\
+			     rbtype, rbaugmented, rbcompute)		\
+static inline void							\
+rbname ## _propagate(struct rb_node *rb, struct rb_node *stop)		\
+{									\
+	while (rb != stop) {						\
+		rbstruct *node = rb_entry(rb, rbstruct, rbfield);	\
+		rbtype augmented = rbcompute(node);			\
+		if (node->rbaugmented == augmented)			\
+			break;						\
+		node->rbaugmented = augmented;				\
+		rb = rb_parent(&node->rbfield);				\
+	}								\
+}									\
+static inline void							\
+rbname ## _copy(struct rb_node *rb_old, struct rb_node *rb_new)		\
+{									\
+	rbstruct *old = rb_entry(rb_old, rbstruct, rbfield);		\
+	rbstruct *new = rb_entry(rb_new, rbstruct, rbfield);		\
+	new->rbaugmented = old->rbaugmented;				\
+}									\
+static void								\
+rbname ## _rotate(struct rb_node *rb_old, struct rb_node *rb_new)	\
+{									\
+	rbstruct *old = rb_entry(rb_old, rbstruct, rbfield);		\
+	rbstruct *new = rb_entry(rb_new, rbstruct, rbfield);		\
+	new->rbaugmented = old->rbaugmented;				\
+	old->rbaugmented = rbcompute(old);				\
+}									\
+rbstatic const struct rb_augment_callbacks rbname = {			\
+	.propagate = rbname ## _propagate,				\
+	.copy = rbname ## _copy,					\
+	.rotate = rbname ## _rotate					\
+};
+
+/*
+ * Fixup the rbtree and update the augmented information when rebalancing.
+ *
+ * On insertion, the user must update the augmented information on the path
+ * leading to the inserted node, then call rb_link_node() as usual and
+ * rb_insert_augmented() instead of the usual rb_insert_color() call.
+ * If rb_insert_augmented() rebalances the rbtree, it will callback into
+ * a user provided function to update the augmented information on the
+ * affected subtrees.
+ */
+static inline void
+rb_insert_augmented(struct rb_node *node, struct rb_root *root,
+		    const struct rb_augment_callbacks *augment)
+{
+	__rb_insert_augmented(node, root, augment->rotate);
+}
 #endif // _RBTREE_AUGMENTED_H 

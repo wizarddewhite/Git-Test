@@ -459,3 +459,9 @@ void rb_erase(struct rb_node *node, struct rb_root *root)
 	if (rebalance)
 		____rb_erase_color(rebalance, root, dummy_rotate);
 }
+
+void __rb_insert_augmented(struct rb_node *node, struct rb_root *root,
+	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
+{
+	__rb_insert(node, root, augment_rotate);
+}

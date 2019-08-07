@@ -96,4 +96,6 @@ typedef void (*dp)(struct rb_node *node, char *prefix, int level);
 void dump_rb_tree(struct rb_node *node, int level,
 		enum child_dir state, dp print);
 
+void __rb_insert_augmented(struct rb_node *node, struct rb_root *root,
+	void (*augment_rotate)(struct rb_node *old, struct rb_node *new));
 #endif	//_RBTREE_H
