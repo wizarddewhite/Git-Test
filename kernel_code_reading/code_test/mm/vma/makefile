@@ -1,5 +1,5 @@
 SOURCES := $(wildcard *.c)
-PROGRAM := $(basename $(SOURCES))
+PROGRAM := main
 OBJS := $(subst .c,.o,$(SOURCES))
 LIB := ../../rbtree/lib/rb_tree.a
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
@@ -11,7 +11,7 @@ LD_FLAGS = -lm
 .PHONY: all clean cscope
 all: $(LIB) $(PROGRAM)
 
-%: %.c
+main: main.c vma.c vma.h
 	gcc $(CFLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
 
 %.o: %.c
