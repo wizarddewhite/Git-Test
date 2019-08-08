@@ -127,4 +127,8 @@ void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 int find_vma_links(struct mm_struct *mm, unsigned long addr,
 		unsigned long end, struct vm_area_struct **pprev,
 		struct rb_node ***rb_link, struct rb_node **rb_parent);
+struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr);
+struct vm_area_struct *
+find_vma_prev(struct mm_struct *mm, unsigned long addr,
+			struct vm_area_struct **pprev);
 #endif 

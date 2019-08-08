@@ -204,3 +204,58 @@ int find_vma_links(struct mm_struct *mm, unsigned long addr,
 	*rb_parent = __rb_parent;
 	return 0;
 }
+
+/* Look up the first VMA which satisfies  addr < vm_end,  NULL if none. */
+struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
+{
+	struct rb_node *rb_node;
+	struct vm_area_struct *vma;
+
+	/* Check the cache first. */
+	//vma = vmacache_find(mm, addr);
+	//if (likely(vma))
+	//	return vma;
+
+	rb_node = mm->mm_rb.rb_node;
+
+	while (rb_node) {
+		struct vm_area_struct *tmp;
+
+		tmp = rb_entry(rb_node, struct vm_area_struct, vm_rb);
+
+		if (tmp->vm_end > addr) {
+			vma = tmp;
+			if (tmp->vm_start <= addr)
+				break;
+			rb_node = rb_node->rb_left;
+		} else
+			rb_node = rb_node->rb_right;
+	}
+
+	//if (vma)
+	//	vmacache_update(addr, vma);
+	return vma;
+}
+
+/*
+ * Same as find_vma, but also return a pointer to the previous VMA in *pprev.
+ */
+struct vm_area_struct *
+find_vma_prev(struct mm_struct *mm, unsigned long addr,
+			struct vm_area_struct **pprev)
+{
+	struct vm_area_struct *vma;
+
+	vma = find_vma(mm, addr);
+	if (vma) {
+		*pprev = vma->vm_prev;
+	} else {
+		struct rb_node *rb_node = mm->mm_rb.rb_node;
+		*pprev = NULL;
+		while (rb_node) {
+			*pprev = rb_entry(rb_node, struct vm_area_struct, vm_rb);
+			rb_node = rb_node->rb_right;
+		}
+	}
+	return vma;
+}
