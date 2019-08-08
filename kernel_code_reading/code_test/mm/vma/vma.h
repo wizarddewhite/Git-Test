@@ -124,6 +124,7 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm);
 void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 			struct vm_area_struct *prev, struct rb_node **rb_link,
 			struct rb_node *rb_parent);
+void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma);
 int find_vma_links(struct mm_struct *mm, unsigned long addr,
 		unsigned long end, struct vm_area_struct **pprev,
 		struct rb_node ***rb_link, struct rb_node **rb_parent);
