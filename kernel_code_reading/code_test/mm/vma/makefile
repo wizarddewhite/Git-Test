@@ -12,7 +12,7 @@ LD_FLAGS = -lm
 all: $(LIB) $(PROGRAM)
 
 main: main.c vma.c vma.h
-	gcc $(CFLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
+	gcc $(CFLAGS) $(LD_FLAGS) $^ $(LIB)
 
 %.o: %.c
 	gcc $(CFLAGS) -c $< -o $@
