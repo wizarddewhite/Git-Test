@@ -1,10 +1,12 @@
 #ifndef _VMA_H_
 #define _VMA_H_
 
+#include <string.h>
 #include "rb_tree.h"
 
 #define	ENOMEM		12	/* Out of memory */
 
+struct mm_struct;
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
 
@@ -27,7 +29,7 @@ struct vm_area_struct {
 
 	/* Second cache line starts here. */
 
-	//struct mm_struct *vm_mm;	/* The address space we belong to. */
+	struct mm_struct *vm_mm;	/* The address space we belong to. */
 	//pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
 	unsigned long vm_flags;		/* Flags, see mm.h. */
 
@@ -71,13 +73,23 @@ struct vm_area_struct {
 	//struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 } /* __randomize_layout */;
 
-
 struct mm_struct {
 	struct vm_area_struct *mmap;		/* list of VMAs */
 	struct rb_root mm_rb;
 	unsigned long highest_vm_end;	/* highest vma end address */
 	int map_count;			/* number of VMAs */
 };
+
+static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
+{
+	//static const struct vm_operations_struct dummy_vm_ops = {};
+
+	memset(vma, 0, sizeof(*vma));
+	vma->vm_mm = mm;
+	//vma->vm_ops = &dummy_vm_ops;
+	//INIT_LIST_HEAD(&vma->anon_vma_chain);
+}
+
 
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
@@ -106,4 +118,10 @@ static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
 	*/
 	return vm_end;
 }
+
+struct mm_struct *mm_alloc(void);
+struct vm_area_struct *vm_area_alloc(struct mm_struct *mm);
+void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
+			struct vm_area_struct *prev, struct rb_node **rb_link,
+			struct rb_node *rb_parent);
 #endif 

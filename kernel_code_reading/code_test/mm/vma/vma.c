@@ -1,11 +1,36 @@
+#include <stdlib.h>
 #include "vma.h"
 #include "rbtree_augmented.h"
 
-struct rb_root mm_rb;
-
-void init()
+struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 {
-	mm_rb = RB_ROOT;
+	struct vm_area_struct *vma;
+
+	vma = malloc(sizeof(struct vm_area_struct));
+	if (vma)
+		vma_init(vma, mm);
+	return vma;
+}
+
+static struct mm_struct *mm_init(struct mm_struct *mm/* , struct task_struct *p,
+	struct user_namespace *user_ns */)
+{
+	mm->mmap = NULL;
+	mm->mm_rb = RB_ROOT;
+	mm->map_count = 0;
+	return mm;
+}
+
+struct mm_struct *mm_alloc(void)
+{
+	struct mm_struct *mm;
+
+	mm = malloc(sizeof(struct mm_struct));
+	if (!mm)
+		return NULL;
+
+	memset(mm, 0, sizeof(*mm));
+	return mm_init(mm/* , current, current_user_ns() */);
 }
 
 #define validate_mm(mm) do { } while (0)
