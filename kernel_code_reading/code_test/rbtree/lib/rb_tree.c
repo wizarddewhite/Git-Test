@@ -63,6 +63,18 @@ struct rb_node *rb_first(const struct rb_root *root)
 	return n;
 }
 
+struct rb_node *rb_last(const struct rb_root *root)
+{
+	struct rb_node	*n;
+
+	n = root->rb_node;
+	if (!n)
+		return NULL;
+	while (n->rb_right)
+		n = n->rb_right;
+	return n;
+}
+
 struct rb_node *rb_next(const struct rb_node *node)
 {
 	struct rb_node *parent;
