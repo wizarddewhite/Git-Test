@@ -4,7 +4,22 @@
 #include <string.h>
 #include "rb_tree.h"
 
+#define PAGE_SHIFT		12
 #define	ENOMEM		12	/* Out of memory */
+
+/*
+ * The type of an index into the pagecache.
+ */
+#define pgoff_t unsigned long
+
+/**
+ * swap - swap values of @a and @b
+ * @a: first value
+ * @b: second value
+ */
+#define swap(a, b) \
+	do { typeof(a) __tmp = (a); (a) = (b); (b) = __tmp; } while (0)
+
 
 struct mm_struct;
 struct vm_area_struct {
