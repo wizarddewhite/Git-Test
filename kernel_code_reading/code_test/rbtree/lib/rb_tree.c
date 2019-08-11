@@ -444,6 +444,12 @@ ____rb_erase_color(struct rb_node *parent, struct rb_root *root,
 	}
 }
 
+void __rb_erase_color(struct rb_node *parent, struct rb_root *root,
+	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
+{
+	____rb_erase_color(parent, root, augment_rotate);
+}
+
 /*
  * Non-augmented rbtree manipulation functions.
  *

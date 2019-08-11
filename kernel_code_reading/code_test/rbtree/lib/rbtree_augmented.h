@@ -148,6 +148,15 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 	return rebalance;
 }
 
+static void
+rb_erase_augmented(struct rb_node *node, struct rb_root *root,
+		   const struct rb_augment_callbacks *augment)
+{
+	struct rb_node *rebalance = __rb_erase_augmented(node, root, augment);
+	if (rebalance)
+		__rb_erase_color(rebalance, root, augment->rotate);
+}
+
 #define RB_DECLARE_CALLBACKS(rbstatic, rbname, rbstruct, rbfield,	\
 			     rbtype, rbaugmented, rbcompute)		\
 static inline void							\
