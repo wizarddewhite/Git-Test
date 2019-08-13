@@ -17,6 +17,7 @@
  */
 #include <stdio.h>
 #include <stdbool.h>
+#include "bit_ops.h"
 
 bool is_power2(int x)
 {
@@ -208,8 +209,17 @@ void test_maxstr1()
 	printf("max continuous 1 of %x is %d\n", 0xff8000ff, maxstr1(0xff8000ff));
 }
 
+void test_last_word_mask()
+{
+	/* test bitmap_set */
+	printf("%lu\n", BITS_PER_LONG - (3 % BITS_PER_LONG));
+	printf("%016lx\n", BITMAP_FIRST_WORD_MASK(3));
+	printf("%016lx\n", BITMAP_LAST_WORD_MASK(3 + 1));
+	printf("%016lx\n", BITMAP_LAST_WORD_MASK(3 + 1) & BITMAP_FIRST_WORD_MASK(3));
+}
+
 int main()
 {
-	test_maxstr1();
+	test_last_word_mask();
 	return 0;
 }
