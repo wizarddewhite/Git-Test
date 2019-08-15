@@ -8,3 +8,6 @@ qemu-system-x86_64 -cpu help
 
 # specify cpuid with + or -
 -cpu host,+movdir64b,-movdiri
+
+# specify phys-bits
+-cpu xxx,phys-bits=46
