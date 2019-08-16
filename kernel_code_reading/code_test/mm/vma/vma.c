@@ -39,8 +39,6 @@ struct mm_struct *mm_alloc(void)
 	return mm_init(mm/* , current, current_user_ns() */);
 }
 
-#define validate_mm(mm) do { } while (0)
-#define validate_mm_rb(root, ignore) do { } while (0)
 
 void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct vm_area_struct *prev, struct rb_node *rb_parent)
@@ -99,6 +97,25 @@ static long vma_compute_subtree_gap(struct vm_area_struct *vma)
 
 RB_DECLARE_CALLBACKS(static, vma_gap_callbacks, struct vm_area_struct, vm_rb,
 		     unsigned long, rb_subtree_gap, vma_compute_subtree_gap)
+
+#define validate_mm(mm) do { } while (0)
+static void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore)
+{
+	struct rb_node *nd;
+
+	for (nd = rb_first(root); nd; nd = rb_next(nd)) {
+		struct vm_area_struct *vma;
+		vma = rb_entry(nd, struct vm_area_struct, vm_rb);
+		if(vma != ignore &&
+		   vma->rb_subtree_gap != vma_compute_subtree_gap(vma)){
+			printf("Error on [0x%08lx - 0x%08lx]\n",
+				vma->vm_start, vma->vm_end);
+			printf("\t rb_subtree_gap is 0x%08lx should be 0x%08lx\n",
+				vma->rb_subtree_gap, vma_compute_subtree_gap(vma));
+			exit(1);
+		}
+	}
+}
 
 /*
  * Update augmented rbtree rb_subtree_gap values after vma->vm_start or
