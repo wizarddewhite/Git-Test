@@ -32,6 +32,10 @@ void vma_link_test()
 	printf("prev is %p\n", prev);
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 
+	printf("\nDump vma tree: \n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
+	printf("\nIterate vma list: \n");
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		printf("0x%08lx - 0x%08lx\n", vma->vm_start, vma->vm_end);
 	}

@@ -3,6 +3,17 @@
 #include "vma.h"
 #include "rbtree_augmented.h"
 
+void vma_print(struct rb_node *node, char *prefix, int level)
+{
+	struct vm_area_struct *this;
+
+	this = rb_entry(node, struct vm_area_struct, vm_rb);
+	printf("%02d %s -[0x%08lx - 0x%08lx](0x%08lx)\n",
+			level, prefix,
+			this->vm_start, this->vm_end,
+			this->rb_subtree_gap);
+}
+
 struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
