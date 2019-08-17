@@ -134,6 +134,7 @@ static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
 	return vm_end;
 }
 
+unsigned long subtree_compute_count;
 void vma_print(struct rb_node *node, char *prefix, int level);
 struct mm_struct *mm_alloc(void);
 struct vm_area_struct *vm_area_alloc(struct mm_struct *mm);
