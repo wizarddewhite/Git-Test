@@ -16,3 +16,11 @@ sudo ~/git/qemu/x86_64-softmmu/qemu-system-x86_64 \
 	-object memory-backend-file,id=mem1,mem-path=/mnt/hugetlbfs,size=4G \
 	-device pc-dimm,id=dimm1,memdev=mem1
 
+# specify numa
+
+-numa node,nodeid=0 -numa node,nodeid=1
+
+# or new way
+
+-object memory-backend-ram,id=mem1,size=2G -object memory-backend-ram,id=mem2,size=2G \
+-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2
