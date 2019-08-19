@@ -5,6 +5,7 @@ set has_workload 1
 set use_postcopy 1
 set after_bulk 1
 set use_compress 0
+set use_multifd 1
 
 set timeout 200
 set index 0
@@ -63,10 +64,12 @@ expect -i $source_telnet -nocase "qemu"
 send_user "start migration \n"
 
 # setup capability for both side
-#send -i $source_telnet "migrate_set_capability multifd on\r"
-#send -i $source_telnet "migrate_set_parameter multifd-channels 2\r"
-#send -i $dest_telnet "migrate_set_capability multifd on\r"
-#send -i $dest_telnet "migrate_set_parameter multifd-channels 2\r"
+if {$use_multifd == 1} {
+	send -i $source_telnet "migrate_set_capability multifd on\r"
+	send -i $source_telnet "migrate_set_parameter multifd-channels 2\r"
+	send -i $dest_telnet "migrate_set_capability multifd on\r"
+	send -i $dest_telnet "migrate_set_parameter multifd-channels 2\r"
+}
 
 #send -i $source_telnet "migrate_set_speed 0\r"
 
