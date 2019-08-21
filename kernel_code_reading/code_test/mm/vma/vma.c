@@ -8,8 +8,8 @@ void vma_print(struct rb_node *node, char *prefix, int level)
 	struct vm_area_struct *this;
 
 	this = rb_entry(node, struct vm_area_struct, vm_rb);
-	printf("%02d %s -[0x%08lx - 0x%08lx](0x%08lx)\n",
-			level, prefix,
+	printf("%02d %s -(%c)[0x%08lx - 0x%08lx](0x%08lx)\n",
+			level, prefix, rb_is_red(node) ? 'R':'B',
 			this->vm_start, this->vm_end,
 			this->rb_subtree_gap);
 }
