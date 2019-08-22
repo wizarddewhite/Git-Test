@@ -169,8 +169,80 @@ void vma_gap_remove_test()
 	printf("\nsubtree gap computed: %lu\n", subtree_compute_count);
 
 }
+
+void vma_gap_remove_test2()
+{
+	struct mm_struct *mm;
+	struct vm_area_struct *vma, *prev;
+	struct rb_node **rb_link, *rb_parent;
+	unsigned long addr, len;
+
+	mm = mm_alloc();
+
+	/* Node a [0x10000, 0x11000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x10000;
+	vma->vm_end   = 0x11000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node n [0x8000, 0x9000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x8000;
+	vma->vm_end   = 0x9000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node b [0x13000, 0x15000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x13000;
+	vma->vm_end   = 0x15000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node vma [0x6000, 0x7000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x6000;
+	vma->vm_end   = 0x7000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node [0x9000, 0x10000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x9000;
+	vma->vm_end   = 0x10000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node [0x11000, 0x13000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x11000;
+	vma->vm_end   = 0x13000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node [0x15000, 0x17000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x15000;
+	vma->vm_end   = 0x17000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	printf("\nDump vma tree: \n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
+	while (mm->mm_rb.rb_node) {
+		vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
+		__vma_unlink_list(mm, vma);
+		vma_rb_erase_ignore(vma, &mm->mm_rb, vma->vm_next);
+		printf("\n\nDump vma tree: after [0x%08lx - 0x%08lx]\n",
+				vma->vm_start, vma->vm_end);
+		dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+	}
+
+}
 int main()
 {
-	vma_gap_remove_test();
+	vma_gap_remove_test2();
 	return 0;
 }
