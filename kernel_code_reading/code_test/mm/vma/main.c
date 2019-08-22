@@ -85,6 +85,7 @@ void vma_gap_test()
 	printf("\nDump vma tree: \n");
 	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
 
+	/* Node vma [0x6000, 0x7000] */
 	vma = vm_area_alloc(mm);
 	vma->vm_start = 0x6000;
 	vma->vm_end   = 0x7000;
@@ -94,6 +95,19 @@ void vma_gap_test()
 	printf("\nDump vma tree: \n");
 	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
 	printf("\nsubtree gap computed: %lu\n", subtree_compute_count);
+
+	/* erase vma [0x6000, 0x7000] */
+	//__vma_unlink_common
+	vma_rb_erase_ignore(vma, &mm->mm_rb, NULL);
+	__vma_unlink_list(mm, vma);
+	printf("\nDump vma tree: Not Consistent\n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
+	/* After update vma->vm_next, rb_subtree_gap is correct */
+	vma_gap_update(vma->vm_next);
+	printf("\nDump vma tree after update next gap: Consistent\n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
 }
 
 int main()

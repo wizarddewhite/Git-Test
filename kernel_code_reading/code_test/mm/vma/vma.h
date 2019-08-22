@@ -149,4 +149,9 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr);
 struct vm_area_struct *
 find_vma_prev(struct mm_struct *mm, unsigned long addr,
 			struct vm_area_struct **pprev);
-#endif 
+void vma_rb_erase_ignore(struct vm_area_struct *vma,
+				struct rb_root *root,
+				struct vm_area_struct *ignore);
+void vma_gap_update(struct vm_area_struct *vma);
+void __vma_unlink_list(struct mm_struct *mm, struct vm_area_struct *vma);
+#endif

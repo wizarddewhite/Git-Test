@@ -135,7 +135,7 @@ static void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore)
  * vma->vm_prev->vm_end values changed, without modifying the vma's position
  * in the rbtree.
  */
-static void vma_gap_update(struct vm_area_struct *vma)
+void vma_gap_update(struct vm_area_struct *vma)
 {
 	/*
 	 * As it turns out, RB_DECLARE_CALLBACKS() already created a callback
@@ -327,9 +327,9 @@ static void __vma_rb_erase(struct vm_area_struct *vma, struct rb_root *root)
 	 */
 	rb_erase_augmented(&vma->vm_rb, root, &vma_gap_callbacks);
 }
-static void vma_rb_erase_ignore(struct vm_area_struct *vma,
-						struct rb_root *root,
-						struct vm_area_struct *ignore)
+void vma_rb_erase_ignore(struct vm_area_struct *vma,
+				struct rb_root *root,
+				struct vm_area_struct *ignore)
 {
 	/*
 	 * All rb_subtree_gap values must be consistent prior to erase,
@@ -339,6 +339,20 @@ static void vma_rb_erase_ignore(struct vm_area_struct *vma,
 	validate_mm_rb(root, ignore);
 
 	__vma_rb_erase(vma, root);
+}
+
+void __vma_unlink_list(struct mm_struct *mm, struct vm_area_struct *vma)
+{
+	struct vm_area_struct *prev, *next;
+
+	next = vma->vm_next;
+	prev = vma->vm_prev;
+	if (prev)
+		prev->vm_next = next;
+	else
+		mm->mmap = next;
+	if (next)
+		next->vm_prev = prev;
 }
 
 static void __vma_unlink_common(struct mm_struct *mm,
