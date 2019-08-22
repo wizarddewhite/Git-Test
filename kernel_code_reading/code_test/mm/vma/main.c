@@ -107,6 +107,7 @@ void vma_gap_test()
 	vma_gap_update(vma->vm_next);
 	printf("\nDump vma tree after update next gap: Consistent\n");
 	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+	printf("\nsubtree gap computed: %lu\n", subtree_compute_count);
 
 }
 
@@ -165,6 +166,7 @@ void vma_gap_remove_test()
 	vma_rb_erase_ignore(vma, &mm->mm_rb, vma->vm_next);
 	printf("\nDump vma tree: Consistent\n");
 	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+	printf("\nsubtree gap computed: %lu\n", subtree_compute_count);
 
 }
 int main()
