@@ -110,8 +110,65 @@ void vma_gap_test()
 
 }
 
+void vma_gap_remove_test()
+{
+	struct mm_struct *mm;
+	struct vm_area_struct *vma, *prev;
+	struct rb_node **rb_link, *rb_parent;
+	unsigned long addr, len;
+
+	mm = mm_alloc();
+
+	/* Node a [0x9000, 0x10000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x9000;
+	vma->vm_end   = 0x10000;
+	find_vma_links(mm, 0x9000, 0x10000, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node n [0x8000, 0x9000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x8000;
+	vma->vm_end   = 0x9000;
+	find_vma_links(mm, 0x8000, 0x9000, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node b [0x10000, 0x11000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x10000;
+	vma->vm_end   = 0x11000;
+	find_vma_links(mm, 0x10000, 0x11000, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+	printf("\nDump vma tree: \n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
+	/* Node vma [0x6000, 0x7000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x6000;
+	vma->vm_end   = 0x7000;
+	find_vma_links(mm, 0x6000, 0x7000, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	printf("\nDump vma tree: \n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+	printf("\nsubtree gap computed: %lu\n", subtree_compute_count);
+
+	/*
+	 * erase vma [0x6000, 0x7000]
+	 *
+	 * Compared with vma_gap_test(), we reorder __vma_unlink_list and
+	 * vma_rb_erase_ignore(). After doing so, there is no need to call
+	 * vma_gap_update() on vma->vm_next again!
+	 */
+	//__vma_unlink_common
+	__vma_unlink_list(mm, vma);
+	vma_rb_erase_ignore(vma, &mm->mm_rb, vma->vm_next);
+	printf("\nDump vma tree: Consistent\n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
+}
 int main()
 {
-	vma_gap_test();
+	vma_gap_remove_test();
 	return 0;
 }
