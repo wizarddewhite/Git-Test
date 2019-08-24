@@ -112,7 +112,7 @@ RB_DECLARE_CALLBACKS(static, vma_gap_callbacks, struct vm_area_struct, vm_rb,
 		     unsigned long, rb_subtree_gap, vma_compute_subtree_gap)
 
 #define validate_mm(mm) do { } while (0)
-static void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore)
+void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore)
 {
 	struct rb_node *nd;
 

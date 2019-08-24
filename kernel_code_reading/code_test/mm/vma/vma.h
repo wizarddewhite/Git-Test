@@ -154,4 +154,5 @@ void vma_rb_erase_ignore(struct vm_area_struct *vma,
 				struct vm_area_struct *ignore);
 void vma_gap_update(struct vm_area_struct *vma);
 void __vma_unlink_list(struct mm_struct *mm, struct vm_area_struct *vma);
+void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore);
 #endif

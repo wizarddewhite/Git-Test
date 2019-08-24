@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+#include <stdlib.h>
 #include "rb_tree.h"
 #include "vma.h"
 
@@ -170,6 +172,7 @@ void vma_gap_remove_test()
 
 }
 
+/* always remove root */
 void vma_gap_remove_test2()
 {
 	struct mm_struct *mm;
@@ -241,8 +244,100 @@ void vma_gap_remove_test2()
 	}
 
 }
+
+/* always remove right child of root if has */
+void vma_gap_remove_test3()
+{
+	struct mm_struct *mm;
+	struct vm_area_struct *vma, *prev;
+	struct rb_node **rb_link, *rb_parent;
+	unsigned long addr, len;
+	int level;
+
+	mm = mm_alloc();
+
+	/* Node a [0x10000, 0x11000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x10000;
+	vma->vm_end   = 0x11000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node n [0x8000, 0x9000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x8000;
+	vma->vm_end   = 0x9000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node b [0x13000, 0x15000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x13000;
+	vma->vm_end   = 0x15000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node vma [0x6000, 0x7000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x6000;
+	vma->vm_end   = 0x7000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node [0x9000, 0x10000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x9000;
+	vma->vm_end   = 0x10000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node [0x11000, 0x13000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x11000;
+	vma->vm_end   = 0x13000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	/* Node [0x15000, 0x17000] */
+	vma = vm_area_alloc(mm);
+	vma->vm_start = 0x15000;
+	vma->vm_end   = 0x17000;
+	find_vma_links(mm, vma->vm_start, vma->vm_end, &prev, &rb_link, &rb_parent);
+	vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	printf("\nDump vma tree: \n");
+	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+
+	srand(time(NULL));
+
+	while (mm->mm_rb.rb_node) {
+		int l, dir;
+		struct rb_node *node;
+
+		level = rand() % 3;
+		node = mm->mm_rb.rb_node;
+		for (l = 0; l < level; l++) {
+			dir = rand() % 2;
+			if (node->rb_right)
+				node = node->rb_right;
+			else
+				break;
+		}
+
+		vma = rb_entry(node, struct vm_area_struct, vm_rb);
+		printf("\n\nTry to remove [0x%08lx - 0x%08lx] next is %p\n",
+				vma->vm_start, vma->vm_end, vma->vm_next);
+		__vma_unlink_list(mm, vma);
+		vma_rb_erase_ignore(vma, &mm->mm_rb, vma->vm_next);
+		validate_mm_rb(&mm->mm_rb, NULL);
+		printf("Dump vma tree: after remove [0x%08lx - 0x%08lx]\n",
+				vma->vm_start, vma->vm_end);
+		dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
+	}
+}
+
 int main()
 {
-	vma_gap_remove_test2();
+	vma_gap_remove_test3();
 	return 0;
 }
