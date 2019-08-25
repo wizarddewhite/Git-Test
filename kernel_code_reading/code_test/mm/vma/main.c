@@ -410,6 +410,11 @@ void vma_gap_remove_failure()
 	printf("vma : [0x%08lx - 0x%08lx]\n", vma->vm_start, vma->vm_end);
 	printf("next: [0x%08lx - 0x%08lx]\n", vma->vm_next->vm_start, vma->vm_next->vm_end);
 	vma_rb_erase_ignore(vma, &mm->mm_rb, vma->vm_next);
+
+	// for this case, vma->vm_left is NULL, we still need to update
+	// vm_next
+	vma_gap_update(vma->vm_next);
+
 	validate_mm_rb(&mm->mm_rb, NULL);
 	printf("\n\nDump vma tree: after [0x%08lx - 0x%08lx]\n",
 			vma->vm_start, vma->vm_end);
