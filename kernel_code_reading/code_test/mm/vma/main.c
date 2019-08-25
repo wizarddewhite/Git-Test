@@ -160,16 +160,18 @@ void vma_gap_remove_test()
 	 * erase vma [0x6000, 0x7000]
 	 *
 	 * Compared with vma_gap_test(), we reorder __vma_unlink_list and
-	 * vma_rb_erase_ignore(). After doing so, there is no need to call
-	 * vma_gap_update() on vma->vm_next again!
+	 * vma_rb_erase_ignore(). After doing so, one time less of
+	 * subtree_compute_count.
 	 */
 	//__vma_unlink_common
+	subtree_compute_count = 0;
 	__vma_unlink_list(mm, vma);
 	vma_rb_erase_ignore(vma, &mm->mm_rb, vma->vm_next);
+	vma_gap_update(vma->vm_next);
 	printf("\nDump vma tree: Consistent\n");
 	dump_rb_tree(mm->mm_rb.rb_node, 0, root_node, vma_print);
 	printf("\nsubtree gap computed: %lu\n", subtree_compute_count);
-
+	validate_mm_rb(&mm->mm_rb, NULL);
 }
 
 /* always remove root */
@@ -423,6 +425,6 @@ void vma_gap_remove_failure()
 
 int main()
 {
-	vma_gap_remove_failure();
+	vma_gap_remove_test();
 	return 0;
 }
