@@ -1,0 +1,30 @@
+There are two (actually three) page size in qemu:
+
+   TARGET_PAGE_SIZE
+   HOST_PAGE_ALIGN
+   REAL_HOST_PAGE_ALIGN
+
+1. #define TARGET_PAGE_SIZE (1 << TARGET_PAGE_BITS)
+================================================================================
+
+for i386, TARGET_PAGE_BITS is 12 defined in
+
+target/i386/cpu-param.h
+
+2. qemu_host_page_size
+================================================================================
+
+main()
+    qemu_host_page_size()
+        if (qemu_host_page_size == 0) {
+            qemu_host_page_size = qemu_real_host_page_size;
+        }
+        if (qemu_host_page_size < TARGET_PAGE_SIZE) {
+            qemu_host_page_size = TARGET_PAGE_SIZE;
+        }
+
+2. qemu_host_page_size
+================================================================================
+init_real_host_page_size
+    qemu_real_host_page_size = getpagesize();
+
