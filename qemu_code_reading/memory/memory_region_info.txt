@@ -1263,6 +1263,38 @@ page_size_init
                                                 +------------------------+
 
 
+0.1.2 RAMBlock
+================================================================================
+; page_size has two different value
+;   * for RAMbackend, page_size is getpagesize(), qemu_ram_alloc_internal().
+;   * for Filebackend, page_size maybe hugepage size, file_ram_alloc()
+
+
+          RAMBlock                                                
+          +---------------------------+                           
+          |next                       |
+          |    QLIST_ENTRY(RAMBlock)  |                           
+          +---------------------------+                           
+          |offset                     |                           
+          |used_length                |                           
+          |max_length                 |                           
+          |    (ram_addr_t)           |                           
+          +---------------------------+                           
+          |page_size                  |                           
+          |    (size_t)               |                           
+          +---------------------------+                           
+          |fd                         |                           
+          |    (int)                  |                           
+          +---------------------------+                           
+          |host                       |  virtual address of a ram 
+          |    (uint8_t *)            |  in host (mmap)           
+          +---------------------------+                           
+          |mr                         |                           
+          |    (struct MemoryRegion *)|                           
+          +---------------------------+                           
+
+
+
 
 0.1.2 MemoryRegion(RAM) <-> RAMBlock/ram_list
 ================================================================================
@@ -1288,6 +1320,9 @@ page_size_init
          |used_length                |                                |used_length                |
          |max_length                 |                                |max_length                 |
          |    (ram_addr_t)           |                                |    (ram_addr_t)           |
+         +---------------------------+                                +---------------------------+
+         |page_size                  |                                |page_size                  |
+         |    (size_t)               |                                | (size_t)                  |
          +---------------------------+                                +---------------------------+
          |fd                         |                                |fd                         |
          |    (int)                  |                                |    (int)                  |
