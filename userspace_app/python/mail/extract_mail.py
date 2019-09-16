@@ -11,6 +11,7 @@ def move_mail(mbox_name, month):
     _, ld = calendar.monthrange(month.year, month.month)
     start = month.replace(day=1)
     end =  month.replace(day=ld)
+    end += timedelta(days=1)
     print "start: ", start
     print "end  : ", end
 
