@@ -1,0 +1,511 @@
+Reverse map is one of the feature in linux kernel, which with given a physical
+page, can return a list of PTEs which point to that page.
+
+This is necessary when we want to know whether it is possible to release a
+page. For more information you could look into [1].
+
+And this evolves instead of get to the point immediately. Generally, it
+experienced the following steps:
+
+    * Process scan
+    * pte_chain
+    * Object-based rmap with anon_vma
+    * Improve anon_vma with anon_vma_chain
+    * Replace same_anon_vma linked list with an interval tree
+    * Reuse anon_vma
+
+1. Process scan
+
+As mentioned in [1], the original implementation just scan all process's page
+table to see whether it contains a particular page.
+
+This works but is really hard working. Scanning the process page table is
+really cost. Then community comes another approach.
+
+2. pte_chain
+
+Also mentioned in [1], community comes up with a solution to put a new field,
+pte_chain, in page structure.
+
+This is a intuitive idea. And really solved the problem in scanning. We just
+need to look at the pte_chain to get page related pte.
+
+While kernel community still not happy with this, since the pte_chain field in
+page structure occupies too much memory. Community wants to reduce the extra
+memory used here.
+
+3. Object-based rmap with anon_vma
+
+Now we seem to be in the modern age, I believe in current implementation you
+still could see the idea left.
+
+Here is some background, described in [2] and [3].
+
+  Generally, there are two type of user-mode page:
+
+    * Anonymous page
+    * file-backed page
+
+  For a file-backed page, [2] says we already have a *long* way to get related
+  page table. This means pte_chain is not necessary for file-backed page.
+
+  For anonymous pages, there is no such *long* way. [3] introduced anon_vma to
+  create it.
+
+I don't catch the exact commit introducing this change, while I believe this
+is before the next version. See next chapter for detail.
+
+There are two charts in [3] to illustrate the concept.
+
+If there is only one single process, the data structure would look like this:
+
+      page
+      +--------------+<---------------------------+
+      |              |                            |
+      |mapping       |----+                       |
+      +--------------+    |                       |
+                          |                       |
+                          |                       |      page table
+      page                |                       |      +----------------+
+      +--------------+<---|-----------------------|---+  |                |
+      |              |    |                       |   |  |                |
+      |mapping       |----+                       +---|--|-- pte1         |
+      +--------------+    |                           |  |                |
+                          |                       +---|--|-- pte2         |
+                          |                       |   |  |                |
+                          |                       |   +--|-- pte3         |
+      page                |                       |      |                |
+      +--------------+<---|-----------------------+      +----------------+
+      |              |    |                                  ^
+      |mapping       |----+                                  |
+      +--------------+    |                                  |
+                          |      vma                         |
+                          +----->+--------------+------------+
+                                 |              |
+                                 |              |
+                                 +--------------+
+
+
+One vma would cover several pages, so there are several pages points to one
+vma. And through this vma, probably should contain page->index, we can locate
+the exact pte for a page.
+
+Things are complicated when the process fork children. If my understanding is
+correct the following chart describe a process tree with three process.
+
+       page
+       +--------------+<--------------------------------+
+       |              |                                 |
+       |mapping       |                                 |
+       +--------------+                                 |
+             |                                          |     page table
+             |                                     +----|---->+----------------+
+             v                                    /     |     |                |
+         anon_vma                               /       |     |                |
+         +-----------+                        /         +-----|-- pte          |
+         |head       |<--+                  /           |     |                |
+         +-----------+   |                /             |     |                |
+            ^            |              /               |     +----------------+
+            |            |            /                 |
+            |  vma       v          /                   |
+            |  +--------------+   /                     |
+            |  |anon_vma_node | /                       |     page table
+            |  +--------------+           +-------------|---->+----------------+
+            |            ^              /               |     |                |
+            |            |            /                 |     |                |
+            |  vma       v          /                   +-----|-- pte          |
+            |  +--------------+   /                     |     |                |
+            |  |anon_vma_node | /                       |     |                |
+            |  +--------------+                         |     +----------------+
+            |            ^                              |
+            |            |                              |
+            |  vma       v                              |     page table
+            |  +--------------+-------------------------|---->+----------------+
+            |  |anon_vma_node |                         |     |                |
+            |  +--------------+                         |     |                |
+            |            ^                              +-----|-- pte          |
+            |            |                                    |                |
+            |            |                                    |                |
+            +------------+                                    +----------------+
+
+
+When process forks, the anonymous page will be mapped in all those process,
+which means each process has a vma related to the page table mapping this
+page. In this version, anon_vma is introduced to link all those vma in the
+process tree.
+
+If my understanding is correct, each vma here represents the same range for
+each process in the same process tree.
+
+The preceding understanding is proven by the code snippet before commit
+5beb49305251e5669852ed541e8e2f2f7696c53e.
+
+    dup_mmap(mm, oldmm)
+        tmp = kmem_cache_alloc()
+        *tmp = *mpnt
+        anon_vma_link(tmp)
+            list_add_tail(&tmp->anon_vma_node, &tmp->anon_vma->head)
+
+Besides vmas for each process, anon_vma also contains *mergable* vmas in the
+same process. You could see this in function anon_vma_prepare().
+
+Every thing seems to be sits in peace.
+
+4. Improve anon_vma with anon_vma_chain
+
+Kernel community still want to improve this. As [4] mentioned, the anon_vma
+list would be huge when there are 1000 child process and each has a vma with 1000
+anonymous pages.
+
+If my understanding is correct, the approach here is to create an anon_vma
+structure for each process (confirmed in the following commit changelog) and
+to link those together instead of the VMA structures. This is done by a new
+data structure anon_vma_chain.
+
+Introduced in commit 5beb49305251e5669852ed541e8e2f2f7696c53e
+"mm: change anon_vma linking to fix multi-process server scalability issue"
+
+This implementation is more complicated, let's take look step by step.
+
+First let's standardize some acronym.
+
+av: anon_vma
+avc: anon_vma_chain
+vma: vm_area_struct
+
+When a process just allocate an anonymous page, the digram show the state.
+
+                  same_anon_vma                 same_vma
+             .......................      *************************
+             .                     .      *                       *
+     av      v                 avc v      v                vma    v
+     +-----------+             +-------------+             +-------------+
+     |           |<------------|anon_vma  vma|------------>|             |
+     |           |             |             |             |             |
+     +-----------+             +-------------+             +-------------+
+             ^                     ^      ^                       ^
+             .                     .      *                       *
+             .......................      *************************
+
+
+In initial version, these . and * are two link lists in avc structure:
+
+   same_anon_vma(.): all VMAs which fall within the area covered by a given
+                     anon_vma structure
+   same_vma(*): all anon_vma structures relevant to a given vma
+
+So if this process allocate another anonymous page in the same area covered by
+this anon_vma but in another vma, the the state looks like this:
+
+
+
+             .......................      *************************
+             .                     .      *                       *
+     av      v                 avc v      v                vma    v
+     +-----------+             +-------------+             +-------------+
+     |           |<------------|anon_vma  vma|------------>|             |
+     |           |             |             |             |             |
+     +-----------+             +-------------+             +-------------+
+             ^                     ^      ^                       ^
+             .                     .      *                       *
+             .                     .      *************************
+             .                     .
+             .                     .
+             .                     .      *************************
+             .                     .      *                       *
+             .                 avc v      v                vma    v
+             .                 +-------------+             +-------------+
+             .                 |anon_vma  vma|------------>|             |
+             .                 |             |             |             |
+             .                 +-------------+             +-------------+
+             .                     ^      ^                       ^
+             .                     .      *                       *
+             .......................      *************************
+
+Looks similar with the previous version, right? Just a little bit FAT.
+
+Now it is time to see what happens after fork.
+
+
+             .......................      *************************
+             .                     .      *                       *
+     av      v                 avc v      v                vma    v
+     +-----------+             +-------------+             +-------------+
+ P   |           |<------------|anon_vma  vma|------------>|             |
+     |           |<----+       |             |             |             |
+     +-----------+      \      +-------------+             +-------------+
+             ^                     ^      ^                       ^
+             .           \         .      *                       *
+             .                     .      *************************
+             .            \        .
+             .                     .
+             .             \       .
+             .                     .
+             .              \      .      *************************
+             .                     .      *                       *
+             .               \ avc v      v                       *
+             .                 +-------------+                    *
+             .                \|anon_vma  vma|\                   *
+             .                 |             |                    *
+             .                 +-------------+  \                 *
+             .                    ^       ^                       *
+             .                    .       *       \               *
+             ......................       *                       *
+                                          *         \             *
+                                          *                       *
+                                          *           \           *
+             .......................      *                       *
+             .                     .      *             \         *
+     av      v                 avc v      v              \ vma    v
+     +-----------+             +-------------+            >+-------------+
+ C1  |           |<------------|anon_vma  vma|------------>|             |
+     |           |             |             |             |             |
+     +-----------+             +-------------+             +-------------+
+             ^                     ^      ^                       ^
+             .                     .      *                       *
+             .......................      *************************
+
+
+If my understanding is correct, for the new vma in child process, it will have
+its own avc and av and it will have its extra avc link the vma with parent av.
+
+Then let's see what happens after another fork.
+
+             .......................      *************************
+             .                     .      *                       *
+     av      v                 avc v      v                vma    v
+     +-----------+             +-------------+            >+-------------+
+ C2  |           |<------------|anon_vma  vma|------------>|             |
+     |           |             |             |             |             |
+     +-----------+             +-------------+           ->+-------------+
+             ^                     ^      ^             /         ^
+             .                     .      *                       *
+             .......................      *           /           *
+                                          *                       *
+                                          *         /             *
+             .......................      *                       *
+             .                     .      *       /               *
+             .                     v      v                       *
+             .                 +-------------+  /                 *
+             .                 |             |                    *
+             .                /|anon_vma  vma|/                   *
+             .                 +-------------+                    *
+             .               /     ^      ^                       *
+             .                     .      *                       *
+             .              /      .      *************************
+             .                     .
+             .             /       .
+             .                     .      ************************
+             .            /        .      *                       *
+     av      v                 avc v      v                vma    v
+     +-----------+<------/     +-------------+             +-------------+
+ P   |           |<------------|anon_vma  vma|------------>|             |
+     |           |<------      |             |             |             |
+     +-----------+       \     +-------------+             +-------------+
+             ^                     ^      ^                       ^
+             .            \        .      *                       *
+             .                     .      *************************
+             .             \       .
+             .                     .
+             .              \      .      *************************
+             .                     .      *                       *
+             .               \ avc v      v                       *
+             .                 +-------------+                    *
+             .                \|anon_vma  vma|\                   *
+             .                 |             |                    *
+             .                 +-------------+  \                 *
+             .                    ^       ^                       *
+             .                    .       *       \               *
+             ......................       *                       *
+                                          *         \             *
+                                          *                       *
+             .......................      *           \           *
+             .                     .      *                       *
+     av      v                 avc v      v             \  vma    v
+     +-----------+             +-------------+           ->+-------------+
+ C1  |           |<------------|anon_vma  vma|------------>|             |
+     |           |             |             |             |             |
+     +-----------+             +-------------+             +-------------+
+             ^                     ^      ^                       ^
+             .                     .      *                       *
+             .......................      *************************
+
+
+Now we can see the anonymous page's vma could be retrieved from
+anon_vma->same_anon_vma list. But in which aspect this design improves from
+the previous one?
+
+I thought the improvement happens after COW. For example, if C1's anonymous
+page COWed, this page's mapping would be set to C1's own av instead of P's.
+This means when we want to check which pte maps the COWed page, we only need
+to iterate C1's av instead of the whole process tree's.
+
+Now lets go one step further. I am curious about what it would look like when
+a child fork.
+
+
+             .......................      *************************
+             .                     .      *                       *
+     av      v                 avc v      v                vma    v
+     +-----------+             +-------------+             +-------------+
+ P   |           |<------------|anon_vma  vma|------------>|     anon_vma| -> points to P's av
+     |           |<----+       |             |             |             |
+     +-----------+     |\      +-------------+             +-------------+
+             ^         |           ^      ^                       ^
+             .         | \         .      *                       *
+             .         |           .      *************************
+             .         |  \        .
+             .         |           .
+             .         |   \       .                        vma
+             .         |           .      *****************>+-------------+<**************************
+             .         |    \      .      *                 |     anon_vma| -> points to C's av      *
+             .         |           .      *              -->|             |<---------+               *
+             .         |     \ avc v      v             /   +-------------+          |               *
+             .         |       +-------------+         /                             |               *
+             .         |      \|anon_vma  vma|---------                              |               *
+             .         |       |             |                                       |               *
+             .         |       +-------------+<*********************************     |               *
+             .         |           ^                                           *     |               *
+             .         |           .                                           *     |               *
+             .         |           .                   ......................  *     |               *
+             .         |           .                   .                    .  *     |               *
+             .         |           .        av         v                avc v  v     |               *
+             .         |           .        +-------------+             +-------------+              *
+             .         |           .    C   |             |<------------|anon_vma  vma|<**************
+             .         |           .        |             |<---+        |             |
+             .         |           .        +-------------+    |        +-------------+
+             .         |           .                   ^       |              ^
+             .         |           .                   .       |              .
+             .         |           .                   .   avc |              .
+             .         |           .                   .   +---------------+  .
+             .         |           .                   ...>|anon_vma       |<..
+             .         |           .                       |               |
+             .         |           .      *****************|            vma|****
+             .         |           .      *                +---------------+   *
+             .         |           .      *                              |     *
+             .         |       avc v      v                              |     *
+             .         |       +-------------+                           |     *
+             .         +-------|anon_vma  vma|\                          |     *
+             .                 |             |  \                        |     *
+             .                 +-------------+    \                      |     *
+             .                     ^      ^         \                    |     *
+             .                     .      *           \                  |     *
+             .......................      *             \                |     *
+                                          *               \              |     *
+                                          *                 \            |     *
+                                          *                   \          |     *
+             .......................      *                     \        |     *
+             .                     .      *                       v      |     *
+     av      v                 avc v      v                         vma  v     v
+     +-----------+             +-------------+                      +-------------+
+ GC  |           |<------------|anon_vma  vma|--------------------->|     anon_vma| -> points to GC's av
+     |           |             |             |                      |             |
+     +-----------+             +-------------+                      +-------------+
+             ^                     ^      ^                                    ^
+             .                     .      *                                    *
+             .......................      **************************************
+
+
+This chart shows one process P forks a C and C forks its child GC. There are
+several interesting things:
+
+    * NO mater how deep child is, its vma->avc is linked to the root process
+      via same_anon_vma
+    * For a child, vma will be linked to each parent process till root. This
+      shows GC's vma->same_vma has total three avc node.
+
+4.1 Page -> vma
+
+After this refactor, we are a little far way from original goal.
+
+Let's look at the ultimate goal of this design:
+
+    given a physical page, can return a list of PTEs which point to that page
+
+Before this improvement, the data stored in page struct is clear. There is
+only one anon_vma for all related anonymous pages in the process tree.
+
+This is still the same, do_anonymous_page() and anon_vma_fork() show this.
+
+  * do_anonymous_page() will get the proper anon_vma and set it to
+    page->mapping.
+  * anon_vma_fork() will create new anon_vma but page->mapping is not changed
+
+The difference happends COW, this is the situation this commit tries to
+improve.
+
+Originally, page->mapping still points to only one anon_vma for the whole
+process tree, since we only have one anon_vma. While this is changed after
+commit 5beb49305251. The trick lies in anon_vma_fork() and do_wp_page().
+
+  * anon_vma_fork() create dedicate anon_vma for this vma and assign this
+    anon_vma to vma->anon_vma
+  * do_wp_page() will call page_add_new_anon_rmap() to set new_page->mapping
+    to this dedicate anon_vma
+
+While I still have one question/confusion. In case one vma's anonymous pages
+are all COWed, it looks there is no need to keep it linked in all parents'
+anon_vma_chains. Have we unlinked it? Or could we do this? 
+
+5. Replace same_anon_vma linked list with an interval tree
+
+This version is a little improvement. The idea is simple, use an interval tree
+replace same_anon_vma link list.
+
+The change is done in commit bf181b9f9d8dfbba58b23441ad60d0bc33806d64
+"mm anon rmap: replace same_anon_vma linked list with an interval tree"
+
+6. Reuse anon_vma
+
+From last chart we can see when process continues to fork, the anon_vma tree
+will be very big. Community is looking to improve this.
+
+Here comes the work:
+
+commit 7a3ef208e662f4b63d43a23f61a64a129c525bbc
+"mm: prevent endless growth of anon_vma hierarchy"
+
+Let's see the change log first:
+
+    Constantly forking task causes unlimited grow of anon_vma chain.  Each
+    next child allocates new level of anon_vmas and links vma to all
+    previous levels because pages might be inherited from any level.
+    
+    This patch adds heuristic which decides to reuse existing anon_vma
+    instead of forking new one.  It adds counter anon_vma->degree which
+    counts linked vmas and directly descending anon_vmas and reuses anon_vma
+    if counter is lower than two.  As a result each anon_vma has either vma
+    or at least two descending anon_vmas.  In such trees half of nodes are
+    leafs with alive vmas, thus count of anon_vmas is no more than two times
+    bigger than count of vmas.
+    
+    This heuristic reuses anon_vmas as few as possible because each reuse
+    adds false aliasing among vmas and rmap walker ought to scan more ptes
+    when it searches where page is might be mapped.
+
+The patch is not big, while it took some time to digest the concept behind it.
+Here I would list some understanding here.
+
+@@ -188,6 +190,8 @@ int anon_vma_prepare(struct vm_area_struct *vma)
+                if (likely(!vma->anon_vma)) {
+                        vma->anon_vma = anon_vma;
+                        anon_vma_chain_link(vma, avc, anon_vma);
++                       /* vma reference or self-parent link for new root */
++                       anon_vma->degree++;
+                        allocated = NULL;
+                        avc = NULL;
+
+I am confused why we need to increase degree here, since anon_vma_alloc() has
+already set degree to 1. Finally with the help of comment, I realized degree
+represents three numbers:
+
+    * VMAs which points to this anon_vma.
+    * child of anon_vmas
+    * LBNL, self-parent root
+
+Actually, I miss the 3rd one originally.
+
+[1]: http://lwn.net/2002/0124/kernel.php3
+[2]: https://lwn.net/Articles/23732/
+[3]: https://lwn.net/Articles/75198/
+[4]: https://lwn.net/Articles/383162/
