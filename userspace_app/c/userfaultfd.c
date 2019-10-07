@@ -117,6 +117,21 @@ fault_handler_thread(void *arg)
     }
 }
 
+void access_map_space(char *addr, unsigned long len)
+{
+    int l;
+    l = 0xf;    /* Ensure that faulting address is not on a page
+                   boundary, in order to test that we correctly
+                   handle that case in fault_handling_thread() */
+    while (l < len) {
+        char c = addr[l];
+        printf("Read address %p in main(): ", addr + l);
+        printf("%c\n", c);
+        l += 1024;
+        usleep(100000);         /* Slow things down a little */
+    }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -182,17 +197,7 @@ main(int argc, char *argv[])
        locations 1024 bytes apart. This will trigger userfaultfd
        events for all pages in the region. */
 
-    int l;
-    l = 0xf;    /* Ensure that faulting address is not on a page
-                   boundary, in order to test that we correctly
-                   handle that case in fault_handling_thread() */
-    while (l < len) {
-        char c = addr[l];
-        printf("Read address %p in main(): ", addr + l);
-        printf("%c\n", c);
-        l += 1024;
-        usleep(100000);         /* Slow things down a little */
-    }
+    access_map_space(addr, len);
 
     exit(EXIT_SUCCESS);
 }
