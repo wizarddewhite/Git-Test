@@ -199,5 +199,11 @@ main(int argc, char *argv[])
 
     access_map_space(addr, len);
 
+    printf("\n\tAccess mapped space again\n\n");
+
+    /* madvise it to unmap space to trigger userfault */
+    madvise(addr, len, MADV_DONTNEED);
+    access_map_space(addr, len);
+
     exit(EXIT_SUCCESS);
 }
