@@ -27,7 +27,7 @@
 #define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
                         } while (0)
 
-static int page_size;
+static int page_size = 0;
 
 static void *
 fault_handler_thread(void *arg)
@@ -147,11 +147,11 @@ main(int argc, char *argv[])
     int ret, flags, fd = -1;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s num-pages [file]\n", argv[0]);
+        fprintf(stderr, "Usage: %s num-pages [file] [pg_size]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    if (argc == 3) {
+    if (argc >= 3) {
 	fd = open(argv[2], O_RDWR);
 	if (fd == -1) {
             fprintf(stderr, "Failed to use file \"%s\" as mapped backend\n", argv[2]);
@@ -159,12 +159,18 @@ main(int argc, char *argv[])
 	}
     }
 
-    page_size = sysconf(_SC_PAGE_SIZE);
-    if (fd != -1) {
-        struct statfs fs;
-        fstatfs(fd, &fs);
-	if (fs.f_type == HUGETLBFS_MAGIC)
-            page_size = fs.f_bsize;
+    if (argc >= 4) {
+	page_size = atol(argv[3]);
+    }
+
+    if (!page_size) {
+        page_size = sysconf(_SC_PAGE_SIZE);
+        if (fd != -1) {
+            struct statfs fs;
+            fstatfs(fd, &fs);
+            if (fs.f_type == HUGETLBFS_MAGIC)
+                page_size = fs.f_bsize;
+        }
     }
     len = strtoul(argv[1], NULL, 0) * page_size;
     printf("Page Size = %x\n", page_size);
