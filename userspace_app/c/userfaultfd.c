@@ -19,7 +19,10 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
+#include <sys/vfs.h>
+#include <sys/statfs.h>
 #include <poll.h>
+#include <linux/magic.h>
 
 #define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
                         } while (0)
@@ -127,7 +130,7 @@ void access_map_space(char *addr, unsigned long len)
         char c = addr[l];
         printf("Read address %p in main(): ", addr + l);
         printf("%c\n", c);
-        l += 1024;
+        l += page_size / 4;
         usleep(100000);         /* Slow things down a little */
     }
 }
@@ -141,16 +144,31 @@ main(int argc, char *argv[])
     pthread_t thr;      /* ID of thread that handles page faults */
     struct uffdio_api uffdio_api;
     struct uffdio_register uffdio_register;
-    int s;
+    int ret, flags, fd = -1;
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s num-pages\n", argv[0]);
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s num-pages [file]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
+    if (argc == 3) {
+	fd = open(argv[2], O_RDWR);
+	if (fd == -1) {
+            fprintf(stderr, "Failed to use file \"%s\" as mapped backend\n", argv[2]);
+	    exit(0);
+	}
+    }
+
     page_size = sysconf(_SC_PAGE_SIZE);
+    if (fd != -1) {
+        struct statfs fs;
+        fstatfs(fd, &fs);
+	if (fs.f_type == HUGETLBFS_MAGIC)
+            page_size = fs.f_bsize;
+    }
     len = strtoul(argv[1], NULL, 0) * page_size;
     printf("Page Size = %x\n", page_size);
+    printf("Range len = %lx\n", len);
 
     /* Create and enable userfaultfd object */
 
@@ -168,8 +186,12 @@ main(int argc, char *argv[])
        actually touch the memory, it will be allocated via
        the userfaultfd. */
 
+    if (fd == -1)
+        flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    else
+        flags = MAP_SHARED;
     addr = mmap(NULL, len, PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                flags, fd, 0);
     if (addr == MAP_FAILED)
         errExit("mmap");
 
@@ -187,9 +209,9 @@ main(int argc, char *argv[])
 
     /* Create a thread that will process the userfaultfd events */
 
-    s = pthread_create(&thr, NULL, fault_handler_thread, (void *) uffd);
-    if (s != 0) {
-        errno = s;
+    ret = pthread_create(&thr, NULL, fault_handler_thread, (void *) uffd);
+    if (ret != 0) {
+        errno = ret;
         errExit("pthread_create");
     }
 
