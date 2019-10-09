@@ -481,8 +481,6 @@ created in migration_object_init
 
     multifd_send_state
     +-------------------------------+
-    |count                          |  number of created threads
-    |    (int)                      |  = migrate_multifd_channels()
     |packet_num                     |  global
     |    (uint64_t)                 |
     |sem_sync                       |
@@ -496,10 +494,12 @@ created in migration_object_init
     |    (MultiFDSendParams*)       |
     |                               |      MultiFDSendParams           MultiFDSendParams           MultiFDSendParams  
     +-------------------------------+      +-------------------+       +-------------------+       +-------------------+
-                                           |page               |       |page               |       |page               |
-                                           | (MultiFDPages_t)  |       | (MultiFDPages_t)  |       | (MultiFDPages_t)  |
+                                           |name               |       |name               |       |name               |
+                                           |  multifdsend_0    |       |  multifdsend_1    |       |  multifdsend_2    |
+                                           |pages              |       |pages              |       |pages              |
+                                           | (MultiFDPages_t*) |       | (MultiFDPages_t*) |       | (MultiFDPages_t*) |
                                            |packet             |       |packet             |       |packet             |
-                                           | (MultiFDPacket_t) |       | (MultiFDPacket_t) |       | (MultiFDPacket_t) |
+                                           | (MultiFDPacket_t*)|       | (MultiFDPacket_t*)|       | (MultiFDPacket_t*)|
                                            |                   |       |                   |       |                   |
                                            |                   |       |                   |       |                   |
                                            +-------------------+       +-------------------+       +-------------------+
@@ -543,7 +543,7 @@ created in migration_object_init
     |    |   |used                  |
     |    |   |   (uint32_t)         |
     |    |   |offset                |  [allocated]
-    |    |   |   (ram_addr_t)       |
+    |    |   |   (ram_addr_t*)      |
     |    |   |iov                   |  [allocated]
     |    |   |   (struct iovec*)    |
     |    |   |   +------------------+
