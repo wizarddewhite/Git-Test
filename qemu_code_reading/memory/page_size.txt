@@ -1,21 +1,35 @@
 There are two (actually three) page size in qemu:
 
-   TARGET_PAGE_SIZE
-   HOST_PAGE_ALIGN
-   REAL_HOST_PAGE_ALIGN
+   target pg size:    TARGET_PAGE_SIZE
+   host pg size:      qemu_host_page_size, HOST_PAGE_ALIGN
+   real host pg size: qemu_real_host_page_size, REAL_HOST_PAGE_ALIGN
 
-1. #define TARGET_PAGE_SIZE (1 << TARGET_PAGE_BITS)
+1. target pg size
 ================================================================================
 
+1.1 #define TARGET_PAGE_SIZE (1 << TARGET_PAGE_BITS)
+================================================================================
 for i386, TARGET_PAGE_BITS is 12 defined in
 
 target/i386/cpu-param.h
 
-2. qemu_host_page_size
+1.2 #define TARGET_PAGE_BITS ({ target_page_bits; })
 ================================================================================
 
+1.2.1 set_preferred_target_page_bits
+================================================================================
+    target_page_bits = bits;
+
+1.2.2 finalize_target_page_bits
+================================================================================
+    target_page_bits = TARGET_PAGE_BITS_MIN;
+
+2. host pg size
+================================================================================
+2.1 qemu_host_page_size
+================================================================================
 main()
-    qemu_host_page_size()
+    page_size_init()
         if (qemu_host_page_size == 0) {
             qemu_host_page_size = qemu_real_host_page_size;
         }
@@ -23,8 +37,20 @@ main()
             qemu_host_page_size = TARGET_PAGE_SIZE;
         }
 
-2. qemu_host_page_size
+2.2 qemu_host_page_mask
+================================================================================
+page_size_init()
+    qemu_host_page_mask = -(intptr_t)qemu_host_page_size;
+
+3. real host pg size
+================================================================================
+3.1 qemu_real_host_page_size
 ================================================================================
 init_real_host_page_size
     qemu_real_host_page_size = getpagesize();
+
+3.2 qemu_real_host_page_mask
+================================================================================
+init_real_host_page_size
+    qemu_real_host_page_mask = -(intptr_t)qemu_real_host_page_size;
 
