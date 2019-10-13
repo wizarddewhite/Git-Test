@@ -74,6 +74,13 @@ alias rb="sudo reboot"
 alias stn="sudo shutdown now"
 
 alias x11="x11vnc -display :0 -shared -forever"
+alias myguest="expect -f ~/guest/qemu_guest ~/guest/qemu_command root 144025shyw"
+alias automig="expect -f ~/guest/auto_migrate ~/guest/qemu_command root 144025shyw"
+alias autocpu="expect -f ~/guest/auto_cpu ~/guest/qemu_rhel root 123456"
+alias get_maintainer="~/git/Git-Test/userspace_app/bash/extract_maintainer_email.sh"
+send_patch() {
+	git send-email `get_maintainer $*` $*
+}
 
 # enable programmable completion features (you don't need to enable
 # this, if it's already enabled in /etc/bash.bashrc and /etc/profile
