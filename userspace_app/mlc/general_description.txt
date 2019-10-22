@@ -1,0 +1,73 @@
+MLC : Intel Memory Latency Checker
+
+is a tool to evaluate bandwidth and latency of memory. More description and
+download could get from:
+
+https://software.intel.com/en-us/articles/intelr-memory-latency-checker
+
+
+1. Usage:
+===============================================================================
+
+1.1 Simple version
+===============================================================================
+./mlc --help
+
+1.2 More detail
+===============================================================================
+After download the mlc package, there is a readme_mlc_vxxx.pfd.
+
+More examples there.
+
+2. Per-thread file format:
+===============================================================================
+Besides command line arguments, mlc can use a input file to specify the test
+behavior. The option is -o.
+
+The detail is in the readme_mlc_vxxx.pfd, Chapter 8 command line parameters.
+Here is a quick explanation from my understanding.
+
+Example:
+
+    0-3 R rand 100000 dram 0
+
+Each line in this file describe the behavior of a set of threads. And each
+column describe a part of it.
+
+cpu list:          0-3
+Traffic Direction: R / W*(use mlc --help to see detail)
+Traffic Pattern:   rand / seq
+Buffer size:       k(default), m, g
+Memory Type:       dram
+                   pmem
+Memory Node:       0 / 1
+or pmem dir:       /mnt/pmem1
+
+3. Example:
+===============================================================================
+
+3.1 Measure latency matrix
+===============================================================================
+mlc --latency_matrix
+
+3.2 Measure bandwidth matrix
+===============================================================================
+mlc --bandwidth_matrix
+
+3.3 Measure idle latency from a specific CPU
+===============================================================================
+mlc --idle_latency -c4 -i4
+
+3.4 Measure idle latency to persistent memory
+===============================================================================
+mlc --idle_latency -c0 -J/mnt/pmem1
+
+3.5 Use Per-thread file
+===============================================================================
+
+mlc --loaded_latency -T -d0 -operthreadfile
+
+-T  throughput thread only
+-d0 delay cycles injected between requests to memory is 0
+-o  use per-thread file
+
