@@ -8,7 +8,7 @@ set use_compress 0
 set use_multifd 1
 
 set timeout 200
-set index 0
+set ret 0
 
 set cmd_file [lindex $argv 0]
 set user [lindex $argv 1]
@@ -50,7 +50,9 @@ expect {
 #interact -i $source
 if {$has_workload == 1} {
 	send -i $source "cd git/linux\r"
-	send -i $source "make clean && make -j4 bzImage\r"
+	send -i $source "make clean && make -j4 mm/\r"
+	send -i $source "ls mm/built-in.a\r"
+	send -i $source "~/check_result.sh $?\r"
 }
 
 spawn telnet localhost 55555
@@ -89,8 +91,6 @@ if {$use_postcopy == 1} {
 	send -i $dest_telnet "migrate_set_capability postcopy-ram on\r"
 	send -i $dest_telnet "migrate_set_capability postcopy-blocktime on\r"
 }
-
-sleep 5
 
 send -i $source_telnet "migrate -d tcp:0:4444\r"
 sleep 5
@@ -141,19 +141,30 @@ expect {
 
 send_user "migration done on source\n"
 if {$has_workload == 1} {
-	interact -i $dest
-} else {
-	#send -i $dest "ls /etc/hosts\r"
-	send -i $dest "shutdown now\r"
 	expect {
-		-i $dest eof {
-			send_user "\ndestination power off successfully!\n"
+		-i $dest "Build succeed" {
+			send_user "\nLooks good!\n"
+		}
+		-i $dest "Build failed" {
+			set ret -1
+			send_user "\nSomething wrong!\n"
 		}
 		-i $dest timeout {
 			send_user "\nError: destination no response!\n"
 			exit -1
 		}
 	}
-
-	exit 0
 }
+
+#send -i $dest "ls /etc/hosts\r"
+send -i $dest "shutdown now\r"
+expect {
+	-i $dest eof {
+		send_user "\ndestination power off successfully!\n"
+	}
+	-i $dest timeout {
+		send_user "\nError: destination no response!\n"
+		exit -1
+	}
+}
+exit $ret
