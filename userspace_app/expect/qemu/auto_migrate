@@ -55,6 +55,9 @@ if {$has_workload == 1} {
 	send -i $source "~/check_result.sh $?\r"
 }
 
+# wait for make clean a while
+sleep 10
+
 spawn telnet localhost 55555
 set source_telnet $spawn_id
 spawn telnet localhost 55556
