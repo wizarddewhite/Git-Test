@@ -1,0 +1,23 @@
+Git Repo
+================================================================================
+https://github.com/axboe/fio.git
+
+
+How it works
+================================================================================
+https://fio.readthedocs.io/en/latest/fio_doc.html#how-fio-works
+
+fio rely on job file to specify the workload, and one job file contains
+
+    global section
+    job section[s]
+
+Job File Format
+================================================================================
+https://fio.readthedocs.io/en/latest/fio_doc.html#job-file-format
+
+[] brackets define the job name
+each line defines a parameter of the job
+
+Refer example/ directory for inspiration.
+
