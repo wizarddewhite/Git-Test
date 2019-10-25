@@ -3,9 +3,10 @@
 
 set has_workload 1
 set use_postcopy 1
-set after_bulk 1
 set use_compress 0
 set use_multifd 1
+set use_xbzrle 1
+set after_bulk 0
 
 set timeout 200
 set ret 0
@@ -78,8 +79,10 @@ if {$use_multifd == 1} {
 
 #send -i $source_telnet "migrate_set_speed 0\r"
 
-#send -i $source_telnet "migrate_set_capability xbzrle on\r"
-#send -i $dest_telnet "migrate_set_capability xbzrle on\r"
+if {$use_xbzrle == 1} {
+	send -i $source_telnet "migrate_set_capability xbzrle on\r"
+	send -i $dest_telnet "migrate_set_capability xbzrle on\r"
+}
 
 if {$use_compress == 1} {
 	send -i $source_telnet "migrate_set_capability compress on\r"
