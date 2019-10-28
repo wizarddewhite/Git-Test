@@ -1,0 +1,58 @@
+#!/usr/bin/expect
+# expect -f bind_cpu telnet_port target_node
+set timeout 20
+
+# command line parameter
+set telnet_port [lindex $argv 0]
+set target_node [lindex $argv 1]
+
+spawn numactl -H
+expect {
+	-indices -re {node *([0-9]{1,5}) cpus: *([0-9 ]+)} {
+		set node $expect_out(1,string)
+		if {$node == $target_node} {
+			puts -nonewline "Node "
+			puts -nonewline $node
+			puts -nonewline ": "
+			set cpus $expect_out(2,string)
+			puts $cpus
+		} else {
+			exp_continue
+		}
+	}
+}
+
+set cpu_list [split $cpus " "]
+set cpu_index 0
+set cpu_num [llength $cpu_list]
+
+#while {$cpu_index < $cpu_num} {
+#	puts [lindex $cpu_list $cpu_index]
+#	incr cpu_index
+#}
+
+spawn telnet localhost $telnet_port
+expect -nocase "qemu"
+send "info cpus\r"
+expect -nocase "qemu"
+sleep 0.1
+
+expect {
+	-indices -re {thread_id=*([0-9]{1,5})} {
+		set vcpu_id $expect_out(1,string)
+		puts -nonewline "\nvcpu thread: "
+		puts -nonewline $vcpu_id
+		puts -nonewline " bind to "
+		puts -nonewline [lindex $cpu_list $cpu_index]
+		exec sudo taskset -cp [lindex $cpu_list $cpu_index] $vcpu_id
+		incr cpu_index
+		if {$cpu_index == $cpu_num} {
+			puts "\nNot enough pcpu to pin"
+			exit -1
+		}
+		exp_continue
+	}
+	-nocase "qemu" {
+		puts "\ndone"
+	}
+}
