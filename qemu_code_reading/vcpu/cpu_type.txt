@@ -1,3 +1,12 @@
+1. cpu_class_init
+================================================================================
+
+2. cpu_common_initfn
+================================================================================
+
+3. cpu_common_realizefn
+================================================================================
+
 0. data type
 ================================================================================
 
@@ -35,9 +44,38 @@
    |instance_finalize              | = cpu_common_finalize
    +-------------------------------+ 
 
-0.2 CPUState
+0.2 CPUClass
 ================================================================================
+   CPUClass
+   +----------------------------------+ 
+   |reset_dump_flags                  |
+   |    (int)                         |
+   |do_unassigned_access              |
+   |    (CPUUnassignedAccess)         |
+   |vmsd                              |
+   |    (VMStateDescription*)         |
+   |gdb_core_xml_file                 |
+   |    (char*)                       |
+   |gdb_num_core_regs                 |
+   |    (int)                         |
+   |gdb_stop_before_watchpoint        |
+   |    (bool)                        |
+   +----------------------------------+ 
+   |parse_features                    |  cpu_common_parse_features
+   |has_work                          |  cpu_common_has_work
+   |reset                             |  cpu_common_reset
+   |get_arch_id                       |  cpu_common_get_arch_id
+   |                                  |
+   |cpu_exec_enter                    |  cpu_common_noop
+   |cpu_exec_exit                     |  cpu_common_noop
+   |cpu_exec_interrupt                |  cpu_common_exec_interrupt
+   |                                  |
+   |                                  |
+   +----------------------------------+ 
 
+0.3 CPUState
+================================================================================
+   CPUState
    +----------------------------------+ 
    |nr_cores                          |
    |nr_threads                        |
