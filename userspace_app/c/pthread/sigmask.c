@@ -29,7 +29,7 @@ main(int argc, char *argv[])
 {
     pthread_t thread;
     sigset_t set;
-    int s;
+    int s, sig;
 
     /* Block SIGQUIT and SIGUSR1; other threads created by main()
      * will inherit a copy of the signal mask. */
@@ -48,5 +48,7 @@ main(int argc, char *argv[])
     /* Main thread carries on to create other threads and/or do
        other work */
 
+    s = sigwait(&set, &sig);
+    printf("Main thread got signal %d\n", sig);
     pause();            /* Dummy pause so we can test program */
 }
