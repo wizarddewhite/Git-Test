@@ -21,8 +21,9 @@ x86_cpu_realizefn
         object_property_set_bool(cpu->apic_state, realized)
 	    apic_common_realize
                 apic_realize
-	// only one memory region installed
-	memory_region_add_subregion_overlap(&apic->io_memory)
+                    // only one memory region installed
+                    memory_region_add_subregion_overlap(&apic->io_memory,
+                                                        apic_io_ops)
 
     TYPE_OBJECT
     +-----------------------------+ 
@@ -58,35 +59,23 @@ x86_cpu_realizefn
 
 
 
-    APICCommonClass TYPE_APIC "apic"                  
-    +-----------------------------+                   
-    |class_init                   | = apic_class_init
-    |                             |                   
-    |instance_size                | = sizeof(APICCommonState)
-    |                             |                   
-    |realize                      | = apic_realize
-    +-----------------------------+                   
-                                                      
-                                                      
-    APICCommonState
-    +-----------------------------+       
-    |io_memory                    |
-    |    ops                      | = apic_io_ops
-    |                             |                                                                            
-    |apicbase                     | = APIC_DEFAULT_ADDRESS
-    |                             |
-    |isr/irr/tmr                  |
-    |lvt                          |
-    |sipi_vector                  |
-    |                             |
-    |cpu                          |
-    |    (X86CPU *)               |
-    |    +------------------------+
-    |    |interrupt_request       |
-    |    |                        |
-    +----+------------------------+
-
-                                                      
+    APICCommonClass TYPE_APIC "apic"                                       APICCommonState
+    +-----------------------------+                                        +-----------------------------+
+    |class_init                   | = apic_class_init                      |io_memory                    |
+    |                             |                                        |    ops                      | = apic_io_ops
+    |instance_size                | = sizeof(APICCommonState)              |                             |
+    |                             |                                        |apicbase                     | = APIC_DEFAULT_ADDRESS
+    |realize                      | = apic_realize                         |                             |
+    +-----------------------------+                                        |isr/irr/tmr                  |
+                                                                           |lvt                          |
+                                                                           |sipi_vector                  |
+                                                                           |                             |
+                                                                           |cpu                          |
+                                                                           |    (X86CPU *)               |
+                                                                           |    +------------------------+
+                                                                           |    |interrupt_request       |
+                                                                           |    |                        |
+                                                                           +----+------------------------+
 
 
 2.1 sent interrupt
@@ -95,30 +84,37 @@ apic_mem_write
     apic_send_msi()
         apic_deliver_irq
             apic_bus_deliver
+    apic_update_irq()
     apic_deliver
         apic_startup
-            cpu_interrupt = tcg_handle_interrupt
-                qemu_cpu_kick
-                    cpu_exit
-                    qemu_cpu_kick_rr_cpu
-        apic_bus_deliver
-            cpu_interrupt
-            apic_set_irq
-                apic_update_irq
-                    cpu_interrupt
+            s->sipi_vector = vector_num;
+            cpu_interrupt(cpu, CPU_INTERRUPT_XXX)
+        apic_bus_deliver()
+            cpu_interrupt()
+                cpu_interrupt_handler -> generic_handle_interrupt
+                    cpu->interrupt_request |= mask;              <--- key here
+                    qemu_cpu_kick()
+                        qemu_cpu_kick_thread()
+            apic_set_irq()
+                apic_update_irq()
+                    cpu_interrupt()
 
 
 2.2 process interrupt, qemu_tcg_cpu_thread_fn
 ================================================================================
 tcg_cpu_exec
     cpu_exec
-        cpu_handle_interrupt
-            cpu_handle_exception()
-                cc->do_interrupt = x86_cpu_do_interrupt
-                    do_interrupt_all
-                        do_interrupt_protected
-            cpu_handle_interrupt()
-                cc->cpu_exec_interrupt = x86_cpu_exec_interrupt
+        cpu_handle_exception()
+            // check on cpu->exception_index
+            cc->do_interrupt = x86_cpu_do_interrupt
+                do_interrupt_all
+                    do_interrupt_protected
+        cpu_handle_interrupt()
+            // check on cpu->interrupt_request
+            setup cpu->exception_index
+              or
+            cc->cpu_exec_interrupt = x86_cpu_exec_interrupt
+                do_interrupt_x86_hardirq()
 
 3. "kvm-apic"
 ================================================================================
@@ -157,33 +153,24 @@ tcg_cpu_exec
 
 
 
-    APICCommonClass TYPE_APIC "kvm-apic"                  
-    +-----------------------------+                   
-    |class_init                   | = kvm_apic_class_init
-    |                             |                   
-    |instance_size                | = sizeof(APICCommonState)
-    |                             |                   
-    |realize                      | = kvm_apic_realize
-    +-----------------------------+                   
+    APICCommonClass TYPE_APIC "kvm-apic"                                   APICCommonState
+    +-----------------------------+                                        +-----------------------------+
+    |class_init                   | = kvm_apic_class_init                  |io_memory                    |
+    |                             |                                        |    ops                      | = kvm_apic_io_ops
+    |instance_size                | = sizeof(APICCommonState)              |                             |
+    |                             |                                        |apicbase                     | = APIC_DEFAULT_ADDRESS
+    |realize                      | = kvm_apic_realize                     |                             |
+    +-----------------------------+                                        |isr/irr/tmr                  |
+                                                                           |lvt                          |
+                                                                           |sipi_vector                  |
+                                                                           |                             |
+                                                                           |cpu                          |
+                                                                           |    (X86CPU *)               |
+                                                                           |    +------------------------+
+                                                                           |    |interrupt_request       |
+                                                                           |    |                        |
+                                                                           +----+------------------------+
 
-
-    APICCommonState
-    +-----------------------------+       
-    |io_memory                    |
-    |    ops                      | = kvm_apic_io_ops
-    |                             |                                                                            
-    |apicbase                     | = APIC_DEFAULT_ADDRESS
-    |                             |
-    |isr/irr/tmr                  |
-    |lvt                          |
-    |sipi_vector                  |
-    |                             |
-    |cpu                          |
-    |    (X86CPU *)               |
-    |    +------------------------+
-    |    |interrupt_request       |
-    |    |                        |
-    +----+------------------------+
 
 3.1 setup flow
 ================================================================================
@@ -220,29 +207,142 @@ x86_cpu_realizefn
         object_property_set_bool(cpu->apic_state, realized)
             apic_common_realize
                 kvm_apic_realize
-        // only one memory region installed
-        memory_region_add_subregion_overlap(&apic->io_memory)
+                    // only one memory region installed
+                    memory_region_add_subregion_overlap(&apic->io_memory,
+                                                        kvm_apic_io_ops)
 
 3.1.2.2 kernel side
 ================================================================================
 
 KVM_CREATE_VCPU
 
-kvm_vm_ioctl_create_vcpu
-    kvm_arch_vcpu_create
-        kvm_x86_ops->vcpu_create = vmx_create_vcpu
-            kvm_vcpu_init
-                kvm_arch_vcpu_init
-                    kvm_create_lapic
+kvm_vm_ioctl_create_vcpu(kvm, arg)
+    kvm_arch_vcpu_create(kvm, id)
+        kvm_x86_ops->vcpu_create(kvm, id) = vmx_create_vcpu
+            vmx = kmem_cache_zalloc(kvm_vcpu_cache)
+            kvm_vcpu_init(vmx->vcpu, kvm, id)
+                vcpu->kvm = kvm
+                vcpu->vcpu_id = id
+                vcpu->run = page_alloc()
+                kvm_arch_vcpu_init(vcpu)
+                    kvm_mmu_create(vcpu)
+                    if (irqchip_in_kernel(vcpu->kvm))
+                    kvm_create_lapic(vcpu, lapic_timer_advance_ns)
+                        vcpu->arch.apic = apic = kzalloc();
+                        apic->regs = get_zeroed_page()
+                        vcpu->arch.apic_base = MSR_IA32_APICBASE_ENABLE
+                        kvm_iodevice_init(&apic->dev, &apic_mmio_ops)
+                    vcpu->arch.mce_banks = kzalloc(KVM_MAX_MCE_BANKS)
+                    vcpu->arch.mcg_cap = KVM_MAX_MCE_BANKS;
 
 
-3.2 sent interrupt
+
+		  Qemu                                                   Kernel
+
+    APICCommonState                                               vcpu->arch.apic
+    +-----------------------------+                               +-----------------------------+
+    |io_memory                    |                               |arch.apic.dev                |
+    |    ops                      | = kvm_apic_io_ops             |    ops                      | = apic_mmio_ops
+    |                             |                               |                             |
+    |apicbase                     | = APIC_DEFAULT_ADDRESS        |arch.apic_base               | = MSR_IA32_APICBASE_ENABLE
+    |                             |                               |                             |
+    |isr/irr/tmr                  |                               |arch.apic.regs               | APIC register page
+    |lvt                          |                               |       isr/irr/tmr           | accessed by vmx microcode
+    |sipi_vector                  |                               |       lvt                   |
+    |                             |                               |       sipi_vector           |
+    |cpu                          |                               +-----------------------------+
+    |    (X86CPU *)               |
+    |    +------------------------+
+    |    |interrupt_request       |
+    |    |                        |
+    +----+------------------------+
+
+
+
+
+3.2 send interrupt
 ================================================================================
+
+3.2.1 from qemu lapic
+================================================================================
+
+Qemu side:
 
 kvm_apic_mem_write()
     kvm_send_msi()
         kvm_irqchip_send_msi(kvm_state, *msg)
             kvm_vm_ioctl(s, KVM_SIGNAL_MSI, &msi)
+              or
             route = kvm_lookup_msi_route(s, msg)
             kvm_set_irq(s, route->kroute.gsi, 1)
                 kvm_vm_ioctl(s, s->irq_set_ioctl, $event)  KVM_IRQ_LINE/_STATUS
+
+Kernel side:
+
+KVM_SIGNAL_MSI
+
+kvm_send_userspace_msi(kvm, &msi)
+    kvm_set_msi(&route, kvm, KVM_USERSPACE_IRQ_SOURCE_ID, 1, false)
+        kvm_set_msi_irq(kvm, e, &irq)
+        kvm_irq_delivery_to_apic(kvm, NULL, &irq, NULL)
+            kvm_irq_delivery_to_apic_fast(kvm, src, irq, &r, dest_map
+              or
+            kvm_apic_set_irq(lowest, irq, dest_map)
+                __apic_accept_irq(apic, delivery_mode, vector, level, mode, dest_map)
+                    kvm_make_request(KVM_REQ_EVENT, vcpu)
+                        set_bit(req & KVM_REQUEST_MASK, (void *)&vcpu->requests);
+                    kvm_vcpu_kick(vcpu)
+
+3.2.1 kvm_mce_inject
+================================================================================
+cpu_x86_inject_mce(cpu, band, status, mcg_status, addr, misc, flags)
+    do_inject_x86_mce(cs, params)
+        banks[2] = params->addr;
+        banks[3] = params->misc;
+        banks[1] = params->status;
+        cenv->mcg_status = params->mcg_status;
+        cpu_interrupt(cs, CPU_INTERRUPT_MCE)
+            cpu->interrupt_request |= mask;                      <--- key here
+
+3.3 process interrupt
+================================================================================
+
+3.3.1 process CPU_INTERRUPT_MCE
+================================================================================
+Qemu side:
+
+kvm_cpu_exec(cpu)
+    kvm_arch_process_async_events
+        kvm_queue_exception(env, EXCP12_MCHK, 0, 0);
+            env->exception_nr = exception_nr;
+    kvm_arch_put_registers(cpu, KVM_PUT_RUNTIME_STATE);
+        kvm_inject_mce_oldstyle(x86_cpu);
+            mce.bank = bank;
+            mce.status = env->mce_banks[bank * 4 + 1];
+            mce.mcg_status = env->mcg_status;
+            mce.addr = env->mce_banks[bank * 4 + 2];
+            mce.misc = env->mce_banks[bank * 4 + 3];
+            kvm_vcpu_ioctl(CPU(cpu), KVM_X86_SET_MCE, &mce);
+
+Kernel side:
+
+KVM_X86_SET_MCE
+
+kvm_vcpu_ioctl_x86_set_mce(vcpu, &mce)
+    kvm_queue_exception(vcpu, MC_VECTOR)
+        kvm_make_request(KVM_REQ_EVENT, vcpu);                    <--- key here
+
+3.3.2 process interrupt from kvm_vm_ioctl
+================================================================================
+
+vcpu_enter_guest()
+    if (kvm_request_pending(vcpu))
+    kvm_check_request(KVM_REQ_EVENT, vcpu)
+    kvm_apic_accept_events()
+    inject_pending_event()
+        kvm_x86_ops->queue_exception(vcpu); = vmx_queue_exception
+            write error_code/info to vmcs
+            vmcs_write32(VM_ENTRY_EXCEPTION_ERROR_CODE, error_code);
+            vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, intr_info);
+        kvm_x86_ops->set_irq(vcpu); = vmx_inject_irq
+            vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, intr_info);
