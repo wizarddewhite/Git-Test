@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <errno.h>
 
+/* example copy from "man pthread_sigmask" */
+
 /* Simple error handling functions */
 
 #define handle_error_en(en, msg) \
