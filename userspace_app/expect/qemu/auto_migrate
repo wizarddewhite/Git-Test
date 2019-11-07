@@ -134,6 +134,11 @@ expect {
 		sleep 10
 		exp_continue
 	}
+	-i $source_telnet "Migration status: postcopy-active" {
+		send -i $source_telnet "info migrate\r"
+		sleep 10
+		exp_continue
+	}
 	-i $source_telnet "Migration status: completed" {}
 	-i $source_telnet "Migration status: failed" {
 		send_user "\nsource vm migration failed!\n"
