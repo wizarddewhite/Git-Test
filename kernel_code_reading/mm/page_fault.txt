@@ -8,774 +8,107 @@ idtentry page_fault		do_page_fault		has_error_code=1
 
 So for PF(page fault), do_page_fault is the handler.
 
-1. do_page_fault()
-================================================================================
-dotraplinkage void notrace
-do_page_fault(struct pt_regs *regs, unsigned long error_code)
-{
-	unsigned long address = read_cr2(); /* Get the faulting address */
-	enum ctx_state prev_state;
-
-	/*
-	 * We must have this function tagged with __kprobes, notrace and call
-	 * read_cr2() before calling anything else. To avoid calling any kind
-	 * of tracing machinery before we've observed the CR2 value.
-	 *
-	 * exception_{enter,exit}() contain all sorts of tracepoints.
-	 */
-
-	prev_state = exception_enter();
-	__do_page_fault(regs, error_code, address);
-	exception_exit(prev_state);
-}
-NOKPROBE_SYMBOL(do_page_fault);
-
-1.1 __do_page_fault()
-================================================================================
-static noinline void
-__do_page_fault(struct pt_regs *regs, unsigned long error_code,
-		unsigned long address)
-{
-	struct vm_area_struct *vma;
-	struct task_struct *tsk;
-	struct mm_struct *mm;
-	int fault, major = 0;
-	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
-
-	tsk = current;
-	mm = tsk->mm;
-
-	/*
-	 * Detect and handle instructions that would cause a page fault for
-	 * both a tracked kernel page and a userspace page.
-	 */
-	if (kmemcheck_active(regs))
-		kmemcheck_hide(regs);
-	prefetchw(&mm->mmap_sem);
-
-	if (unlikely(kmmio_fault(regs, address)))
-		return;
-
-	/*
-	 * We fault-in kernel-space virtual memory on-demand. The
-	 * 'reference' page table is init_mm.pgd.
-	 *
-	 * NOTE! We MUST NOT take any locks for this case. We may
-	 * be in an interrupt or a critical region, and should
-	 * only copy the information from the master page table,
-	 * nothing more.
-	 *
-	 * This verifies that the fault happens in kernel space
-	 * (error_code & 4) == 0, and that the fault was not a
-	 * protection error (error_code & 9) == 0.
-	 */
-	if (unlikely(fault_in_kernel_space(address))) {
-		if (!(error_code & (PF_RSVD | PF_USER | PF_PROT))) {
-			if (vmalloc_fault(address) >= 0)
-				return;
-
-			if (kmemcheck_fault(regs, address, error_code))
-				return;
-		}
-
-		/* Can handle a stale RO->RW TLB: */
-		if (spurious_fault(error_code, address))
-			return;
-
-		/* kprobes don't want to hook the spurious faults: */
-		if (kprobes_fault(regs))
-			return;
-		/*
-		 * Don't take the mm semaphore here. If we fixup a prefetch
-		 * fault we could otherwise deadlock:
-		 */
-		bad_area_nosemaphore(regs, error_code, address);
-
-		return;
-	}
-
-	/* kprobes don't want to hook the spurious faults: */
-	if (unlikely(kprobes_fault(regs)))
-		return;
-
-	if (unlikely(error_code & PF_RSVD))
-		pgtable_bad(regs, error_code, address);
-
-	if (unlikely(smap_violation(error_code, regs))) {
-		bad_area_nosemaphore(regs, error_code, address);
-		return;
-	}
-
-	/*
-	 * If we're in an interrupt, have no user context or are running
-	 * in a region with pagefaults disabled then we must not take the fault
-	 */
-	if (unlikely(faulthandler_disabled() || !mm)) {
-		bad_area_nosemaphore(regs, error_code, address);
-		return;
-	}
-
-	/*
-	 * It's safe to allow irq's after cr2 has been saved and the
-	 * vmalloc fault has been handled.
-	 *
-	 * User-mode registers count as a user access even for any
-	 * potential system fault or CPU buglet:
-	 */
-	if (user_mode(regs)) {
-		local_irq_enable();
-		error_code |= PF_USER;
-		flags |= FAULT_FLAG_USER;
-	} else {
-		if (regs->flags & X86_EFLAGS_IF)
-			local_irq_enable();
-	}
-
-	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
-
-	if (error_code & PF_WRITE)
-		flags |= FAULT_FLAG_WRITE;
-
-	/*
-	 * When running in the kernel we expect faults to occur only to
-	 * addresses in user space.  All other faults represent errors in
-	 * the kernel and should generate an OOPS.  Unfortunately, in the
-	 * case of an erroneous fault occurring in a code path which already
-	 * holds mmap_sem we will deadlock attempting to validate the fault
-	 * against the address space.  Luckily the kernel only validly
-	 * references user space from well defined areas of code, which are
-	 * listed in the exceptions table.
-	 *
-	 * As the vast majority of faults will be valid we will only perform
-	 * the source reference check when there is a possibility of a
-	 * deadlock. Attempt to lock the address space, if we cannot we then
-	 * validate the source. If this is invalid we can skip the address
-	 * space check, thus avoiding the deadlock:
-	 */
-	if (unlikely(!down_read_trylock(&mm->mmap_sem))) {
-		if ((error_code & PF_USER) == 0 &&
-		    !search_exception_tables(regs->ip)) {
-			bad_area_nosemaphore(regs, error_code, address);
-			return;
-		}
-retry:
-		down_read(&mm->mmap_sem);
-	} else {
-		/*
-		 * The above down_read_trylock() might have succeeded in
-		 * which case we'll have missed the might_sleep() from
-		 * down_read():
-		 */
-		might_sleep();
-	}
-
-	vma = find_vma(mm, address);
-	if (unlikely(!vma)) {
-		bad_area(regs, error_code, address);
-		return;
-	}
-	if (likely(vma->vm_start <= address))
-		goto good_area;
-	if (unlikely(!(vma->vm_flags & VM_GROWSDOWN))) {
-		bad_area(regs, error_code, address);
-		return;
-	}
-	if (error_code & PF_USER) {
-		/*
-		 * Accessing the stack below %sp is always a bug.
-		 * The large cushion allows instructions like enter
-		 * and pusha to work. ("enter $65535, $31" pushes
-		 * 32 pointers and then decrements %sp by 65535.)
-		 */
-		if (unlikely(address + 65536 + 32 * sizeof(unsigned long) < regs->sp)) {
-			bad_area(regs, error_code, address);
-			return;
-		}
-	}
-	if (unlikely(expand_stack(vma, address))) {
-		bad_area(regs, error_code, address);
-		return;
-	}
-
-	/*
-	 * Ok, we have a good vm_area for this memory access, so
-	 * we can handle it..
-	 */
-good_area:
-	if (unlikely(access_error(error_code, vma))) {
-		bad_area_access_error(regs, error_code, address);
-		return;
-	}
-
-	/*
-	 * If for any reason at all we couldn't handle the fault,
-	 * make sure we exit gracefully rather than endlessly redo
-	 * the fault.  Since we never set FAULT_FLAG_RETRY_NOWAIT, if
-	 * we get VM_FAULT_RETRY back, the mmap_sem has been unlocked.
-	 */
-	fault = handle_mm_fault(mm, vma, address, flags);
-	major |= fault & VM_FAULT_MAJOR;
-
-	/*
-	 * If we need to retry the mmap_sem has already been released,
-	 * and if there is a fatal signal pending there is no guarantee
-	 * that we made any progress. Handle this case first.
-	 */
-	if (unlikely(fault & VM_FAULT_RETRY)) {
-		/* Retry at most once */
-		if (flags & FAULT_FLAG_ALLOW_RETRY) {
-			flags &= ~FAULT_FLAG_ALLOW_RETRY;
-			flags |= FAULT_FLAG_TRIED;
-			if (!fatal_signal_pending(tsk))
-				goto retry;
-		}
-
-		/* User mode? Just return to handle the fatal exception */
-		if (flags & FAULT_FLAG_USER)
-			return;
-
-		/* Not returning to user mode? Handle exceptions or die: */
-		no_context(regs, error_code, address, SIGBUS, BUS_ADRERR);
-		return;
-	}
-
-	up_read(&mm->mmap_sem);
-	if (unlikely(fault & VM_FAULT_ERROR)) {
-		mm_fault_error(regs, error_code, address, fault);
-		return;
-	}
-
-	/*
-	 * Major/minor page fault accounting. If any of the events
-	 * returned VM_FAULT_MAJOR, we account it as a major fault.
-	 */
-	if (major) {
-		tsk->maj_flt++;
-		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, regs, address);
-	} else {
-		tsk->min_flt++;
-		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1, regs, address);
-	}
-
-	check_v8086_mode(regs, address, tsk);
-}
-
-1.1.1 fault_in_kernel_space(), fault in kernel space
-================================================================================
-static int fault_in_kernel_space(unsigned long address)
-{
-	return address >= TASK_SIZE_MAX;
-}
-
-1.1.2 vmalloc_fault(), handle fault on vmalloc
+1. do_page_fault(regs, error_code, address) -> __do_page_fault()
 ================================================================================
 
-1.1.3 kmemcheck_fault(), handle fault on kmemcache
+1.1 kmmio_fault(regs, address)
+================================================================================
+1.2 fault_in_kernel_space(adress)
+================================================================================
+1.2.1 return address >= TASK_SIZE_MAX;
 ================================================================================
 
-1.1.3 pgtable_bad()
-================================================================================
-static noinline void
-pgtable_bad(struct pt_regs *regs, unsigned long error_code,
-	    unsigned long address)
-{
-	struct task_struct *tsk;
-	unsigned long flags;
-	int sig;
-
-	flags = oops_begin();
-	tsk = current;
-	sig = SIGKILL;
-
-	printk(KERN_ALERT "%s: Corrupted page table at address %lx\n",
-	       tsk->comm, address);
-	dump_pagetable(address);
-
-	tsk->thread.cr2		= address;
-	tsk->thread.trap_nr	= X86_TRAP_PF;
-	tsk->thread.error_code	= error_code;
-
-	if (__die("Bad pagetable", regs, error_code))
-		sig = 0;
-
-	oops_end(flags, regs, sig);
-}
-
-1.1.3.1 oops_begin()
+1.3 do_kern_addr_fault(regs, error_code, address)
 ================================================================================
 
-1.1.3.2 dump_pagetable()
+1.4 do_user_addr_fault(regs, error_code, address)
 ================================================================================
-static void dump_pagetable(unsigned long address)
-{
-	pgd_t *base = __va(read_cr3());
-	pgd_t *pgd = &base[pgd_index(address)];
-	pmd_t *pmd;
-	pte_t *pte;
-
-#ifdef CONFIG_X86_PAE
-	printk("*pdpt = %016Lx ", pgd_val(*pgd));
-	if (!low_pfn(pgd_val(*pgd) >> PAGE_SHIFT) || !pgd_present(*pgd))
-		goto out;
-#endif
-	pmd = pmd_offset(pud_offset(pgd, address), address);
-	printk(KERN_CONT "*pde = %0*Lx ", sizeof(*pmd) * 2, (u64)pmd_val(*pmd));
-
-	/*
-	 * We must not directly access the pte in the highpte
-	 * case if the page table is located in highmem.
-	 * And let's rather not kmap-atomic the pte, just in case
-	 * it's allocated already:
-	 */
-	if (!low_pfn(pmd_pfn(*pmd)) || !pmd_present(*pmd) || pmd_large(*pmd))
-		goto out;
-
-	pte = pte_offset_kernel(pmd, address);
-	printk("*pte = %0*Lx ", sizeof(*pte) * 2, (u64)pte_val(*pte));
-out:
-	printk("\n");
-}
-
-1.1.3.3 __die()
+1.4.1 down_read_trylock/down_read(&mm->map_sem)
+================================================================================
+1.4.2 vma = find_vma(mm, address)
+================================================================================
+1.4.3 fault = handle_mm_fault(vma, address, flags)
+================================================================================
+1.4.3.1 arch_vma_access_permitted()
+================================================================================
+1.4.3.2 hugetlb_fault(vma->vm_mm, vma, address, flags)
+================================================================================
+1.4.3.3 __handle_mm_fault(vma, address, flags)
+================================================================================
+1.4.4 up_read(&mm->map_sem)
 ================================================================================
 
-1.1.3.4 oops_end()
+
+2. hugetlb_fault(vma->vm_mm, vma, address, flags)
 ================================================================================
-
-1.1.4 faulthandler_disabled()
+2.1 haddr = address & huge_page_mask(h)
 ================================================================================
-#define faulthandler_disabled() (pagefault_disabled() || in_atomic())
-
-1.1.5 find_vma()
+2.2 ptep = huge_pte_offset(mm, haddr), ptep points to huge page or swap
 ================================================================================
-
-1.1.6 bad_area()
+2.3 entry = huge_ptep_get(ptep), get pte
 ================================================================================
-static noinline void
-bad_area(struct pt_regs *regs, unsigned long error_code, unsigned long address)
-{
-	__bad_area(regs, error_code, address, SEGV_MAPERR);
-}
-
-1.1.7 expand_stack()
+2.4 ptep = huge_pte_alloc(), or allocate pte
 ================================================================================
-int expand_stack(struct vm_area_struct *vma, unsigned long address)
-{
-	struct vm_area_struct *next;
-
-	address &= PAGE_MASK;
-	next = vma->vm_next;
-	if (next && next->vm_start == address + PAGE_SIZE) {
-		if (!(next->vm_flags & VM_GROWSUP))
-			return -ENOMEM;
-	}
-	return expand_upwards(vma, address);
-}
-
-1.1.7.1 expand_upwards()
+2.4.1 pgd = pgd_offset(mm, addr)
 ================================================================================
-int expand_upwards(struct vm_area_struct *vma, unsigned long address)
-{
-	int error;
-
-	if (!(vma->vm_flags & VM_GROWSUP))
-		return -EFAULT;
-
-	/*
-	 * We must make sure the anon_vma is allocated
-	 * so that the anon_vma locking is not a noop.
-	 */
-	if (unlikely(anon_vma_prepare(vma)))
-		return -ENOMEM;
-	vma_lock_anon_vma(vma);
-
-	/*
-	 * vma->vm_start/vm_end cannot change under us because the caller
-	 * is required to hold the mmap_sem in read mode.  We need the
-	 * anon_vma lock to serialize against concurrent expand_stacks.
-	 * Also guard against wrapping around to address 0.
-	 */
-	if (address < PAGE_ALIGN(address+4))
-		address = PAGE_ALIGN(address+4);
-	else {
-		vma_unlock_anon_vma(vma);
-		return -ENOMEM;
-	}
-	error = 0;
-
-	/* Somebody else might have raced and expanded it already */
-	if (address > vma->vm_end) {
-		unsigned long size, grow;
-
-		size = address - vma->vm_start;
-		grow = (address - vma->vm_end) >> PAGE_SHIFT;
-
-		error = -ENOMEM;
-		if (vma->vm_pgoff + (size >> PAGE_SHIFT) >= vma->vm_pgoff) {
-			error = acct_stack_growth(vma, size, grow);
-			if (!error) {
-				/*
-				 * vma_gap_update() doesn't support concurrent
-				 * updates, but we only hold a shared mmap_sem
-				 * lock here, so we need to protect against
-				 * concurrent vma expansions.
-				 * vma_lock_anon_vma() doesn't help here, as
-				 * we don't guarantee that all growable vmas
-				 * in a mm share the same root anon vma.
-				 * So, we reuse mm->page_table_lock to guard
-				 * against concurrent vma expansions.
-				 */
-				spin_lock(&vma->vm_mm->page_table_lock);
-				anon_vma_interval_tree_pre_update_vma(vma);
-				vma->vm_end = address;
-				anon_vma_interval_tree_post_update_vma(vma);
-				if (vma->vm_next)
-					vma_gap_update(vma->vm_next);
-				else
-					vma->vm_mm->highest_vm_end = address;
-				spin_unlock(&vma->vm_mm->page_table_lock);
-
-				perf_event_mmap(vma);
-			}
-		}
-	}
-	vma_unlock_anon_vma(vma);
-	khugepaged_enter_vma_merge(vma, vma->vm_flags);
-	validate_mm(vma->vm_mm);
-	return error;
-}
-
-1.1.8 access_error()
+2.4.2 p4d = p4d_offset(mm, pgd, addr)
 ================================================================================
-static inline int
-access_error(unsigned long error_code, struct vm_area_struct *vma)
-{
-	if (error_code & PF_WRITE) {
-		/* write, present and write, not present: */
-		if (unlikely(!(vma->vm_flags & VM_WRITE)))
-			return 1;
-		return 0;
-	}
-
-	/* read, present: */
-	if (unlikely(error_code & PF_PROT))
-		return 1;
-
-	/* read, not present: */
-	if (unlikely(!(vma->vm_flags & (VM_READ | VM_EXEC | VM_WRITE))))
-		return 1;
-
-	return 0;
-}
-
-1.1.9 bad_area_access_error()
+2.4.3 pud = pud_offset(mm, p4d, addr)
 ================================================================================
-
-1.1.10 handle_mm_fault()
+2.4.4 pte = huge_pmd_share()
 ================================================================================
-int handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
-		    unsigned long address, unsigned int flags)
-{
-	int ret;
-
-	__set_current_state(TASK_RUNNING);
-
-	count_vm_event(PGFAULT);
-	mem_cgroup_count_vm_event(mm, PGFAULT);
-
-	/* do counter updates before entering really critical section. */
-	check_sync_rss_stat(current);
-
-	/*
-	 * Enable the memcg OOM handling for faults triggered in user
-	 * space.  Kernel faults are handled more gracefully.
-	 */
-	if (flags & FAULT_FLAG_USER)
-		mem_cgroup_oom_enable();
-
-	ret = __handle_mm_fault(mm, vma, address, flags);
-
-	if (flags & FAULT_FLAG_USER) {
-		mem_cgroup_oom_disable();
-                /*
-                 * The task may have entered a memcg OOM situation but
-                 * if the allocation error was handled gracefully (no
-                 * VM_FAULT_OOM), there is no need to kill anything.
-                 * Just clean up the OOM state peacefully.
-                 */
-                if (task_in_memcg_oom(current) && !(ret & VM_FAULT_OOM))
-                        mem_cgroup_oom_synchronize(false);
-	}
-
-	return ret;
-}
-
-1.1.10.1 __set_current_state()
+2.4.5 pte = pmd_alloc(), allocate pmd table
 ================================================================================
-
-1.1.10.2 count_vm_event()
+2.4.6 return pte;
 ================================================================================
-
-1.1.10.3 hugetlb_fault()
+2.5 hugetlb_no_page(), get hugetlb and set to ptep
 ================================================================================
-
-1.1.10.4 __handle_mm_fault()
+2.5.1 page = find_lock_page(mapping, idx)
 ================================================================================
-
-1.1.11 fatal_signal_pending()
+2.5.2 ptl = huge_pte_lock(h, mm, ptep)
 ================================================================================
-static inline int __fatal_signal_pending(struct task_struct *p)
-{
-	return unlikely(sigismember(&p->pending.signal, SIGKILL));
-}
-
-1.1.12 no_context()
+2.5.3 new_pte = make_huge_pte(vma, page, )
 ================================================================================
-
-1.1.13 mm_fault_error()
+2.5.4 set_huge_pte_at(mm, haddr, ptep, new_pte)
 ================================================================================
-static noinline void
-mm_fault_error(struct pt_regs *regs, unsigned long error_code,
-	       unsigned long address, unsigned int fault)
-{
-	if (fatal_signal_pending(current) && !(error_code & PF_USER)) {
-		no_context(regs, error_code, address, 0, 0);
-		return;
-	}
-
-	if (fault & VM_FAULT_OOM) {
-		/* Kernel mode? Handle exceptions or die: */
-		if (!(error_code & PF_USER)) {
-			no_context(regs, error_code, address,
-				   SIGSEGV, SEGV_MAPERR);
-			return;
-		}
-
-		/*
-		 * We ran out of memory, call the OOM killer, and return the
-		 * userspace (which will retry the fault, or kill us if we got
-		 * oom-killed):
-		 */
-		pagefault_out_of_memory();
-	} else {
-		if (fault & (VM_FAULT_SIGBUS|VM_FAULT_HWPOISON|
-			     VM_FAULT_HWPOISON_LARGE))
-			do_sigbus(regs, error_code, address, fault);
-		else if (fault & VM_FAULT_SIGSEGV)
-			bad_area_nosemaphore(regs, error_code, address);
-		else
-			BUG();
-	}
-}
-
-1.1.13.1 pagefault_out_of_memory()
+2.5.5 spin_unlock(ptl);
 ================================================================================
-void pagefault_out_of_memory(void)
-{
-	struct oom_control oc = {
-		.zonelist = NULL,
-		.nodemask = NULL,
-		.gfp_mask = 0,
-		.order = 0,
-	};
-
-	if (mem_cgroup_oom_synchronize(true))
-		return;
-
-	if (!mutex_trylock(&oom_lock))
-		return;
-
-	if (!out_of_memory(&oc)) {
-		/*
-		 * There shouldn't be any user tasks runnable while the
-		 * OOM killer is disabled, so the current task has to
-		 * be a racing OOM victim for which oom_killer_disable()
-		 * is waiting for.
-		 */
-		WARN_ON(test_thread_flag(TIF_MEMDIE));
-	}
-
-	mutex_unlock(&oom_lock);
-}
-
-1.1.14 check_v8086_mode()
+2.6 hugetlb_cow(), if original PTE is not writable 
+================================================================================
+2.6.1 pte = huge_ptep_get(ptep)
+================================================================================
+2.6.2 old_page = pte_page(pte)
+================================================================================
+2.6.3 new_page = alloc_huge_page()
+================================================================================
+2.6.4 copy_user_huge_page(new_page, old_page, )
+================================================================================
+2.6.5 set_huge_pte_at(mm, haddr, ptep, make_huge_pte(vma, new_page, 1));
+================================================================================
+2.6.6 page_remove_rmap(old_page, true);
+================================================================================
+2.6.7 hugepage_add_new_anon_rmap(new_page, vma, haddr);
 ================================================================================
 
 2. __handle_mm_fault(vma, address, flags)
 ================================================================================
-
-2.1 setup vm_fault
+2.1 pgd = pgd_offset(mm, address)
 ================================================================================
-	struct vm_fault vmf = {
-		.vma = vma,
-		.address = address & PAGE_MASK,
-		.flags = flags,
-		.pgoff = linear_page_index(vma, address),
-		.gfp_mask = __get_fault_gfp_mask(vma),
-	};
-
-2.2 p4d_alloc
+2.2 p4d = p4d_alloc(mm, pgd, address)
 ================================================================================
-
-2.3 pud_alloc, alloc pud page table
+2.3 vmf.pud = pud_alloc(mm, p4d, address)
 ================================================================================
-
-2.3.1 __pud_alloc
+2.4 if __transparent_hugepage_enabled(vma)
 ================================================================================
-
-2.3.1.1 pud_alloc_one
+2.4.1 vma_is_dax(vma)
 ================================================================================
-
-2.3.1.2 pgd_populate
+2.5 create_huge_pud(&vmf)
 ================================================================================
-
-2.4 create_huge_pud, alloc pud huge page
+2.6 else if (pud_trans_huge(orig_pud) || pud_devmap(orig_pud))
 ================================================================================
-
-2.4.1 vmf->vma->vm_ops->huge_fault(vmf, PE_SIZE_PUD);
+2.7 wp_huge_pud(&vmf, orig_pud)
 ================================================================================
-
-2.5 wp_huge_pud
-================================================================================
-
-2.5.1 vmf->vma->vm_ops->huge_fault
-================================================================================
-
-2.6 huge_pud_set_accessed, not called on x86, since hardware will update it
-================================================================================
-
-2.6.1 pud_mkyoung, set access flag
-================================================================================
-
-2.6.2 pud_mkdirty, set dirty flag
-================================================================================
-
-2.6.3 pudp_set_access_flags, write the new pud
-================================================================================
-
-2.7 pmd_alloc, alloc pmd page table
-================================================================================
-
-2.7.1 __pmd_alloc
-================================================================================
-
-2.7.1.1 pmd_alloc_one
-================================================================================
-
-2.7.1.2 pud_populate
-================================================================================
-
-2.8 create_huge_pmd, alloc pmd huge page
-================================================================================
-
-2.8.1 do_huge_pmd_anonymous_page
-================================================================================
-
-2.8.2 vmf->vma->vm_ops->huge_fault
-================================================================================
-
-2.9 do_huge_pmd_numa_page
-================================================================================
-
-2.9.1 migrate_misplaced_transhuge_page
-================================================================================
-
-2.9.1.1 alloc_pages_node
-================================================================================
-
-2.9.1.2 numamigrate_isolate_page
-================================================================================
-
-2.9.1.3 __SetPageLocked
-================================================================================
-
-2.9.1.4 migrate_page_copy
-================================================================================
-
-2.9.1.5 page_add_anon_rmap
-================================================================================
-
-2.9.1.6 set_pmd_at
-================================================================================
-
-2.9.1.7 mlock_migrate_page
-================================================================================
-
-2.9.1.8 page_remove_rmap
-================================================================================
-
-2.10 wp_huge_pmd
-================================================================================
-
-2.10.1 do_huge_pmd_wp_page
-================================================================================
-
-2.10.2 vmf->vma->vm_ops->huge_fault
-================================================================================
-
-2.10.3 __split_huge_pmd
-================================================================================
-
-2.10.3.1 __split_huge_pmd_locked
-================================================================================
-
-2.11 huge_pmd_set_accessed
-================================================================================
-
-2.12 handle_pte_fault
-================================================================================
-
-2.12.1 pte_offset_map
-================================================================================
-
-2.12.2 do_anonymous_page, for non pte
-================================================================================
-
-2.12.2.1 pte_alloc, alloc pte page table
-================================================================================
-
-2.12.2.2 handle_userfault
-================================================================================
-
-2.12.2.3 anon_vma_prepare
-================================================================================
-
-2.12.2.4 alloc_zeroed_user_highpage_movable
-================================================================================
-
-2.12.2.5 mem_cgroup_try_charge_delay
-================================================================================
-
-2.12.2.6 handle_userfault
-================================================================================
-
-2.12.2.7 page_add_new_anon_rmap,
-================================================================================
-page->mapping = vma->anon_vma
-page->index = linear_page_index(vma, address)
-
-2.12.2.8 lru_cache_add_active_or_unevictable
-================================================================================
-
-2.12.3 do_fault, for non pte non-anonymous page
-================================================================================
-
-2.12.3.1 do_read_fault
-================================================================================
-
-2.12.3.2 do_cow_fault
-================================================================================
-
-2.12.3.3 do_shared_fault
-================================================================================
-
-2.12.4 do_swap_page
-================================================================================
-
-2.12.5 do_numa_page
-================================================================================
-
-2.12.6 do_wp_page
+2.8 huge_pud_set_accessed(&vmf, orig_pud)
 ================================================================================
 
 3. PCID
@@ -828,6 +161,24 @@ https://kernelnewbies.org/Linux_4.14#Longer-lived_TLB_Entries_with_PCID
 ================================================================================
 4.8.1 tlb_flush_mmu(tlb)
 ================================================================================
+
+5. pgd_alloc(), pgd is allocated during fork
+================================================================================
+do_fork()
+    copy_process()
+        copy_mm()
+            dup_mm()
+                mm_init()
+                    mm_alloc_pgd()
+                        pgd_alloc()
+
+
+__do_execve_file()
+    bprm_mm_init()
+        mm_alloc()
+            mm_init()
+                mm_alloc_pgd()
+                    pgd_alloc()
 
 0. Page Table
 ================================================================================
