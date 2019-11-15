@@ -5,7 +5,7 @@ ifneq ($(KERNELRELEASE),)
     obj-m += usermodehelper.o
     obj-m += pci_driver.o register_netdev.o
     obj-m += bitmap.o numa_access.o
-    obj-m += page_allocation.o
+    obj-m += page_allocation.o kthread.o
 # hello_world-objs :=
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
