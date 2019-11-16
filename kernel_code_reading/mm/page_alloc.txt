@@ -982,3 +982,31 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
 0.6 per_cpu_pages
 ================================================================================
 
+0.7 compound page
+================================================================================
+
+prep_compound_page
+    __SetPageHead(page)
+    set_compound_head(p, page)
+
+free_tail_pages_check
+    clear_compound_head()
+
+
+NULL_COMPOUND_DTOR
+COMPOUND_PAGE_DTOR
+HUGETLB_PAGE_DTOR
+TRANSHUGE_PAGE_DTOR
+
+    page                  page                  page                  page
+    +----------------+    +----------------+    +----------------+    +----------------+
+    |PG_HEAD         |    |                |    |                |    |                |
+    |compound_order  |    |                |    |                |    |                |
+    |compound_dtor   |    |                |    |                |    |                |
+    |                |    |                |    |                |    |                |
+    |                |    |compound_head + |    |compound_head + |    |compound_head + |
+    +----------------+    +--------------|-+    +--------------|-+    +--------------|-+
+    ^                                    |                     |                     |
+    |                                    |                     |                     |
+    +------------------------------------+---------------------+---------------------+
+
