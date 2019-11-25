@@ -1,0 +1,622 @@
+1. thp enable patch set
+================================================================================
+1.1 2011, maybe too old
+================================================================================
+
+Transparent huge pages in 2.6.38 (2011.01.19)
+https://lwn.net/Articles/423584/
+
+Transparent huge page reference counting (2014.11.11)
+https://lwn.net/Articles/619738/
+
+describe the refcount in original thp (commit 71e3aac0724f) and the idea
+introduced in
+
+THP refcounting redesign (2015.10.06)
+https://lwn.net/Articles/659663/
+
+looks it is the final version merged in mainline.
+
+initial core one
+71e3aac0724f 2011-01-13 thp: transparent hugepage core
+
+22e5c47ee238 2011-01-13 thp: add compound_trans_head() helper
+29ad768cfc08 2011-01-13 thp: KSM on THP
+60ab3244ec85 2011-01-13 thp: khugepaged: make khugepaged aware about madvise
+a664b2d8555c 2011-01-13 thp: madvise(MADV_NOHUGEPAGE)
+1ddd6db43a08 2011-01-13 thp: mm: define MADV_NOHUGEPAGE
+37c2ac7872a9 2011-01-13 thp: compound_trans_order
+91600e9e592e 2011-01-13 thp: fix memory-failure hugetlbfs vs THP collision
+14d1a55cd26f 2011-01-13 thp: add debug checks for mapcount related invariants
+05b258e99725 2011-01-13 thp: transparent hugepage sysfs meminfo
+9992af102974 2011-01-13 thp: scale nr_rotated to balance memory pressure
+2c888cfbc1b4 2011-01-13 thp: fix anon memory statistics with transparent hugepages
+97562cd24329 2011-01-13 thp: disable transparent hugepages by default on small systems
+c5a73c3d55be 2011-01-13 thp: use compaction for all allocation orders
+5a03b051ed87 2011-01-13 thp: use compaction in kswapd for GFP_ATOMIC order > 0
+878aee7d6b55 2011-01-13 thp: freeze khugepaged and ksmd
+8ee53820edfd 2011-01-13 thp: mmu_notifier_test_young
+4b7167b9ff9b 2011-01-13 thp: don't allow transparent hugepage support without PSE
+94fcc585fb85 2011-01-13 thp: avoid breaking huge pmd invariants in case of vma_adjust failures
+bc835011afbe 2011-01-13 thp: transhuge isolate_migratepages()
+5d6892407cab 2011-01-13 thp: select CONFIG_COMPACTION if TRANSPARENT_HUGEPAGE enabled
+13ece886d99c 2011-01-13 thp: transparent hugepage config choice
+ce83d2174ea9 2011-01-13 thp: allocate memory in khugepaged outside of mmap_sem write mode
+0bbbc0b33d14 2011-01-13 thp: add numa awareness to hugepage allocations
+d39d33c332c6 2011-01-13 thp: enable direct defrag
+f000565adb77 2011-01-13 thp: set recommended min free kbytes
+cd7548ab360c 2011-01-13 thp: mprotect: transparent huge page support
+b36f5b0710e9 2011-01-13 thp: mprotect: pass vma down to page table walkers
+c489f1257b8c 2011-01-13 thp: add pmd_modify
+0ca1634d4143 2011-01-13 thp: mincore transparent hugepage support
+f2d6bfe9ff0a 2011-01-13 thp: add x86 32bit support
+5f24ce5fd34c 2011-01-13 thp: remove PG_buddy
+21ae5b01750f 2011-01-13 thp: skip transhuge pages in ksm for now
+b15d00b6af61 2011-01-13 thp: khugepaged vma merge
+ba76149f47d8 2011-01-13 thp: khugepaged
+79134171df23 2011-01-13 thp: transparent hugepage vmstat
+b9bbfbe30ae0 2011-01-13 thp: memcg huge memory
+152c9ccb7554 2011-01-13 thp: transhuge-memcg: commit tail pages at charge
+ec1685109f13 2011-01-13 thp: memcg compound
+500d65d47101 2011-01-13 thp: pmd_trans_huge migrate bugcheck
+0af4e98b6b09 2011-01-13 thp: madvise(MADV_HUGEPAGE)
+f66055ab6fb9 2011-01-13 thp: verify pmd_trans_huge isn't leaking
+05759d380a9d 2011-01-13 thp: split_huge_page anon_vma ordering dependency
+8a07651ee8cd 2011-01-13 thp: transparent hugepage core fixlet
+71e3aac0724f 2011-01-13 thp: transparent hugepage core
+5c3240d92e29 2011-01-13 thp: don't alloc harder for gfp nomemalloc even if nowait
+32dba98e085f 2011-01-13 thp: _GFP_NO_KSWAPD
+936a5fe6e614 2011-01-13 thp: kvm mmu transparent hugepage support
+47ad8475c000 2011-01-13 thp: clear_copy_huge_page
+3f04f62f90d4 2011-01-13 thp: split_huge_page paging
+bae9c19bf12b 2011-01-13 thp: split_huge_page_mm/vma
+e7a00c45f29c 2011-01-13 thp: add pmd_huge_pte to mm_struct
+4e6af67e970a 2011-01-13 thp: clear page compound
+91a4ee2670e0 2011-01-13 thp: add pmd mmu_notifier helpers
+8ac1f8320a00 2011-01-13 thp: pte alloc trans splitting
+64cc6ae001d7 2011-01-13 thp: bail out gup_fast on splitting pmd
+db3eb96f4e62 2011-01-13 thp: add pmd mangling functions to x86
+e2cda3226481 2011-01-13 thp: add pmd mangling generic functions
+5f6e8da70a28 2011-01-13 thp: special pmd_trans_* functions
+4c76d9d1fb9b 2011-01-13 thp: CONFIG_TRANSPARENT_HUGEPAGE
+59ff42163129 2011-01-13 thp: comment reminder in destroy_compound_page
+14fd403f2146 2011-01-13 thp: export maybe_mkwrite
+2609ae6d10af 2011-01-13 thp: no paravirt version of pmd ops
+331127f799d1 2011-01-13 thp: add pmd paravirt ops
+0a47de52db04 2011-01-13 thp: add native_set_pmd_at
+8dd60a3a65c1 2011-01-13 thp: clear compound mapping
+a5b338f2b0b1 2011-01-13 thp: update futex compound knowledge
+a95a82e96c48 2011-01-13 thp: put_page: recheck PageHead after releasing the compound_lock
+ 918070634448 2011-01-13 thp: alter compound get_page/put_page
+e9da73d67729 2011-01-13 thp: compound_lock
+a826e422420b 2011-01-13 thp: mm: define MADV_HUGEPAGE
+1c9bf22c09ae 2011-01-13 thp: transparent hugepage support documentation
+4e9f64c42d0b 2011-01-13 thp: fix bad_page to show the real reason the page is bad
+ae52a2adb5af 2011-01-13 thp: ksm: free swap when swapcache page is replaced
+
+1.2 2016, try to analysis based on this
+================================================================================
+d965432234db 2016-01-15 thp: increase split_huge_page() success rate
+49071d436b51 2016-01-15 thp: add debugfs handle to split all huge pages
+b20ce5e03b93 2016-01-15 mm: prepare page_referenced() and page_idle to new THP refcounting
+
+e90309c9f772 2016-01-15 thp: allow mlocked THP again
+a46e63764eb6 2016-01-15 thp: update documentation
+61f5d698cc97 2016-01-15 mm: re-enable THP
+9a982250f773 2016-01-15 thp: introduce deferred_split_huge_page()
+248db92da13f 2016-01-15 migrate_pages: try to split pages on queuing
+e9b61f19858a 2016-01-15 thp: reintroduce split_huge_page()
+4e41a30c6d50 2016-01-15 mm: hwpoison: adjust for new thp refcounting
+d96b339f4539 2016-01-15 mm: soft-offline: check return value in second __get_any_page() call
+4d2fa965483f 2016-01-15 thp, mm: split_huge_page(): caller need to lock page
+ba98828088ad 2016-01-15 thp: add option to setup migration entries during PMD split
+eef1b3ba053a 2016-01-15 thp: implement split_huge_pmd()
+e81c48024f43 2016-01-15 mm, numa: skip PTE-mapped THP on numa fault
+e1534ae95004 2016-01-15 mm: differentiate page_mapped() from page_mapcount() for compound pages
+53f9263baba6 2016-01-15 mm: rework mapcount accounting to enable 4k mapping of THPs
+4b471e8898c3 2016-01-15 mm, thp: remove infrastructure for handling splitting PMDs
+1f19617d7758 2016-01-15 x86, thp: remove infrastructure for handling splitting PMDs
+702b63ca3284 2016-01-15 tile, thp: remove infrastructure for handling splitting PMDs
+99f1bc0116cc 2016-01-15 sparc, thp: remove infrastructure for handling splitting PMDs
+fecffad25458 2016-01-15 s390, thp: remove infrastructure for handling splitting PMDs
+7aa9a23c69ea 2016-01-15 powerpc, thp: remove infrastructure for handling splitting PMDs
+b27873702b06 2016-01-15 mips, thp: remove infrastructure for handling splitting PMDs
+0ebd74461559 2016-01-15 arm, thp: remove infrastructure for handling splitting PMDs
+b7ed934a7c3f 2016-01-15 arm64, thp: remove infrastructure for handling splitting PMDs
+3ac808fdd2b8 2016-01-15 mm, thp: remove compound_lock()
+f765f540598a 2016-01-15 ksm: prepare to new THP semantics
+14d27abd1d12 2016-01-15 futex, thp: remove special case for THP in get_futex_key
+ddc58f27f9ee 2016-01-15 mm: drop tail page refcounting
+ad0bed24e98b 2016-01-15 thp: drop all split_huge_page()-related code
+56a17b883639 2016-01-15 mm: temporarily mark THP broken
+122afea9626a 2016-01-15 mm, vmstats: new THP splitting event
+78ddc5347341 2016-01-15 thp: rename split_huge_page_pmd() to split_huge_pmd()
+b1caa957ae6d 2016-01-15 khugepaged: ignore pmd tables with THP mapped with ptes
+7479df6da950 2016-01-15 thp, mlock: do not allow huge pages in mlocked area
+7aef4172c795 2016-01-15 mm: handle PTE-mapped tail pages in gerneric fast gup implementaiton
+6742d293cbe0 2016-01-15 mm: adjust FOLL_SPLIT for new refcounting
+1f25fe20a76a 2016-01-15 mm, thp: adjust conditions when we can reuse the page on WP fault
+f627c2f53786 2016-01-15 memcg: adjust to support new THP refcounting
+d281ee614518 2016-01-15 rmap: add argument to charge compound page
+afd9883f93b6 2016-01-15 mm, proc: adjust PSS calculation
+
+685eaade56c6 2016-01-15 page-flags: drop __TestClearPage*() helpers
+1c290f642101 2016-01-15 mm: sanitize page->mapping for tail pages
+822cdd115226 2016-01-15 page-flags: look at head page if the flag is encoded in page->mapping
+d2998c4de293 2016-01-15 page-flags: define PG_uptodate behavior on compound pages
+b9d418170aef 2016-01-15 page-flags: define PG_uncached behavior on compound pages
+e4f87d5d752d 2016-01-15 page-flags: define PG_mlocked behavior on compound pages
+50ea78d676d4 2016-01-15 page-flags: define PG_swapcache behavior on compound pages
+da5efc408bae 2016-01-15 page-flags: define PG_swapbacked behavior on compound pages
+de09d31dd38a 2016-01-15 page-flags: define PG_reserved behavior on compound pages
+c13985fa8003 2016-01-15 page-flags: define behavior of Xen-related flags on compound pages
+dcb351cd095a 2016-01-15 page-flags: define behavior SL*B-related flags on compound pages
+8cb38fabb6bc 2016-01-15 page-flags: define behavior of LRU-related flags on compound pages
+df8c94d13c7e 2016-01-15 page-flags: define behavior of FS/IO-related flags on compound pages
+48c935ad88f5 2016-01-15 page-flags: define PG_locked behavior on compound pages
+95ad97554ac8 2016-01-15 page-flags: introduce page flags policies wrt compound pages
+0e6d31a7336f 2016-01-15 page-flags: move code around
+d8c1bdeb5d6b 2016-01-15 page-flags: trivial cleanup for PageTrans* helpers
+
+
+2. Evolution
+================================================================================
+2.1 First THP version
+================================================================================
+Andrea Arcangeli introduced the first version of THP.
+
+Related to the refcount change, there are two important commits.
+
+   * 918070634448 2011-01-13 thp: alter compound get_page/put_page
+   * 71e3aac0724f 2011-01-13 thp: transparent hugepage core
+
+General concept is described in
+
+    Transparent huge page reference counting (2014.11.11)
+    https://lwn.net/Articles/619738/
+
+    In current kernel, a specific 4KB page can be treated as an individual
+    page, or it can be part of a huge page, but not both. If a huge page must
+    be split into individual pages, it is split completely for all users, the
+    compound page structure is torn down, and the huge page no longer exists.
+
+This means there is an important restriction for the first version of thp.
+
+Generally, first version thp doesn't change the refcount rule. But with the
+following adjustment.
+
+Before
+ 918070634448 2011-01-13 thp: alter compound get_page/put_page
+
+compound page is counted as a whole before this commit. Each refcount on head
+or tail is counted to head.
+static inline void get_page(struct page *page)
+{
+	page = compound_head(page);
+	VM_BUG_ON(atomic_read(&page->_count) == 0);
+	atomic_inc(&page->_count);
+}
+
+After
+ 918070634448 2011-01-13 thp: alter compound get_page/put_page
+
+The change in this commit happens on get_page on tail. If we want to get a
+tail, elevate both head and tail.
+This means when put_page a tail, decrease both head and tail.
+
+static inline void get_page(struct page *page)
+{
+	/*
+	 * Getting a normal page or the head of a compound page
+	 * requires to already have an elevated page->_count. Only if
+	 * we're getting a tail page, the elevated page->_count is
+	 * required only in the head page, so for tail pages the
+	 * bugcheck only verifies that the page->_count isn't
+	 * negative.
+	 */
+	VM_BUG_ON(atomic_read(&page->_count) < !PageTail(page));
+	atomic_inc(&page->_count);
+	/*
+	 * Getting a tail page will elevate both the head and tail
+	 * page->_count(s).
+	 */
+	if (unlikely(PageTail(page))) {
+		/*
+		 * This is safe only because
+		 * __split_huge_page_refcount can't run under
+		 * get_page().
+		 */
+		VM_BUG_ON(atomic_read(&page->first_page->_count) <= 0);
+		atomic_inc(&page->first_page->_count);
+	}
+}
+
+Now let's look at how thp manipulate _mapcount and _count.
+
+71e3aac0724f 2011-01-13 thp: transparent hugepage core
+
+Several functions in thp would touch them: the first two is normal, and the
+third one is critical.
+
+Generally, _count and _mapcount would increase on creation and copy.
+
+__do_huge_pmd_anonymous_page()
+    page_add_new_anon_rmap()
+        atomic_set(_mapcount, 0)
+
+copy_huge_pmd()
+    src_page = pmd_page(pmd)
+    get_page(src_page)
+        atomic_inc(_count)
+    page_dup_rmap(src_page)
+        atomic_inc(_mapcount)
+
+The critical change happens on split.
+
+__split_huge_page_refcount(), split the thp into normal pages
+    atomic_sub(page_tail->_count, page->_count)
+    atomic_add(page_mapcount(page) + 1, page_tail->_count)
+    page_tail->_mapcount = page->_mapcount
+    put_page(page_tail)
+
+Since first version thp doesn't "allow a huge page to be split in one process's
+address space, while remaining a huge page in any other address space where it
+is found". There are only two cases:
+
+    * no tail is gotten by others
+    * some tail is gotten by others
+
+          THP _mapcount change w/o gup
+
+  a. new thp with __do_huge_pmd_anonymous_page()
+
+  page[0] +-----------------------+
+          |_count                 |  = 1            page refcount set to 1
+          |_mapcount              |  = -1 -> 0      from -1 to 0
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          +-----------------------+
+
+  b. __split_huge_page_refcount()
+
+  page[0] +-----------------------+
+          |_count                 |  = 1
+          |_mapcount              |  = 0
+  page[1] +-----------------------+
+          |_count                 |  = 2  -> 1      count for the mapping
+          |_mapcount              |  = -1 -> 0      set to page[0]._mapcount
+          +-----------------------+
+
+          THP _mapcount change w/ gup
+
+  a. new thp with __do_huge_pmd_anonymous_page()
+
+  page[0] +-----------------------+
+          |_count                 |  = 1            page refcount set to 1
+          |_mapcount              |  = -1 -> 0      from -1 to 0
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          +-----------------------+
+
+  b. just get_page(page[1]) for example
+
+  page[0] +-----------------------+
+          |_count                 |  = 1  -> 2      add 1 to count page[1]
+          |_mapcount              |  = 0
+  page[1] +-----------------------+
+          |_count                 |  = 0  -> 1      add 1 for itself
+          |_mapcount              |  = -1
+          +-----------------------+
+
+  c. __split_huge_page_refcount()
+
+  page[0] +-----------------------+
+          |_count                 |  = 2  -> 1      dec 1 for page[1]._count
+          |_mapcount              |  = 0
+  page[1] +-----------------------+
+          |_count                 |  = 3  -> 2      one for mapping, one for get_page()
+          |_mapcount              |  = -1 -> 0      set to page[0]._mapcount
+          +-----------------------+
+
+  d. put_pge(page[1])
+
+  Since page is not a compound page anymore, just decrease _count is enough.
+
+  page[0] +-----------------------+
+          |_count                 |  = 1
+          |_mapcount              |  = 0
+  page[1] +-----------------------+
+          |_count                 |  = 2  -> 1      dec 1
+          |_mapcount              |  = 0
+          +-----------------------+
+
+
+2.1 Kirill's redesign refcount (introduce compound_mapcout and PG_double_map)
+================================================================================
+The design is described in following article.
+
+Transparent huge page reference counting (2014.11.11)
+https://lwn.net/Articles/619738/
+
+As mentioned in this article:
+
+    The fundamental change in Kirill's patch set is to allow a huge page to be
+    split in one process's address space, while remaining a huge page in any
+    other address space where it is found.
+
+To achieve this, the restriction comes down to how refcount are represented in
+huge pages.
+
+The patchset starts with:
+
+    afd9883f93b6 2016-01-15 mm, proc: adjust PSS calculation
+
+First patch related to refcount is
+
+ddc58f27f9ee 2016-01-15 mm: drop tail page refcounting
+
+This one revert previous code and make the logic simple.
+
+static inline void get_page(struct page *page)
+{
+	page = compound_head(page);
+	/*
+	 * Getting a normal page or the head of a compound page
+	 * requires to already have an elevated page->_count.
+	 */
+	VM_BUG_ON_PAGE(atomic_read(&page->_count) <= 0, page);
+	atomic_inc(&page->_count);
+}
+
+static inline void init_page_count(struct page *page)
+{
+	atomic_set(&page->_count, 1);
+}
+
+static inline void put_page(struct page *page)
+{
+	page = compound_head(page);
+	if (put_page_testzero(page))
+		__put_page(page);
+}
+
+So everything count on head page.
+
+Then here comes the one refactor the refcount.
+
+53f9263baba6 2016-01-15 mm: rework mapcount accounting to enable 4k mapping of THPs
+
+    The idea is to store separately how many times the page was mapped as
+    whole -- compound_mapcount.
+
+    Any time we map/unmap whole compound page (THP or hugetlb) -- we
+    increment/decrement compound_mapcount.  When we map part of compound
+    page with PTE we operate on ->_mapcount of the subpage.
+
+Before: 
+static inline int page_mapcount(struct page *page)
+{
+	VM_BUG_ON_PAGE(PageSlab(page), page);
+	return atomic_read(&page->_mapcount) + 1;
+}
+
+After: 
+static inline int page_mapcount(struct page *page)
+{
+	int ret;
+	VM_BUG_ON_PAGE(PageSlab(page), page);
+
+	ret = atomic_read(&page->_mapcount) + 1;
+	if (PageCompound(page)) {
+		page = compound_head(page);
+		ret += atomic_read(compound_mapcount_ptr(page)) + 1;
+		if (PageDoubleMap(page))
+			ret--;
+	}
+	return ret;
+}
+
+Introduce PageDoubleMap
+
+    PageDoubleMap indicates that the compound page is mapped with PTEs as well
+    as PMDs.
+    
+    This is required for optimization of rmap operations for THP: we can
+    postpone per small page mapcount accounting (and its overhead from atomic
+    operations) until the first PMD split.
+    
+    For the page PageDoubleMap means ->_mapcount in all sub-pages is offset up
+    by one. This reference will go away with last compound_mapcount.
+
+I see where check and clear PageDoubleMap, but not see where set it. The
+secret hides in commit
+
+eef1b3ba053a 2016-01-15 thp: implement split_huge_pmd()
+
+	/*
+	 * Set PG_double_map before dropping compound_mapcount to avoid
+	 * false-negative page_mapped().
+	 */
+	if (compound_mapcount(page) > 1 && !TestSetPageDoubleMap(page)) {
+		for (i = 0; i < HPAGE_PMD_NR; i++)
+			atomic_inc(&page[i]._mapcount);
+	}
+
+	if (atomic_add_negative(-1, compound_mapcount_ptr(page))) {
+		/* Last compound_mapcount is gone. */
+		__dec_zone_page_state(page, NR_ANON_TRANSPARENT_HUGEPAGES);
+		if (TestClearPageDoubleMap(page)) {
+			/* No need in mapcount reference anymore */
+			for (i = 0; i < HPAGE_PMD_NR; i++)
+				atomic_dec(&page[i]._mapcount);
+		}
+	}
+
+If there is only one process map this THP PMD, compound_mapcount(page) == 1,
+we just need to decrease compound_mapcount by 1.
+
+If there is more than one process map this THP PMD, compound_mapcount(page) > 1,
+we would set PageDoubleMap. If this is set for the first time, increase
+_mapcount for each PTE page.
+
+The is a fact implied by this behavior, before we split the pmd, THP PTE can't
+be mapped.
+
+Now let's have a chart to explain:
+
+
+          THP _mapcount change w/o split pmd
+
+  a. new thp with __do_huge_pmd_anonymous_page()
+
+  page[0] +-----------------------+
+          |_count                 |  = 1            compound page refcount set to 1
+          |_mapcount              |  = -1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = -1  -> 0     THP PMD mapcount
+          +-----------------------+
+
+  b. another process map the same THP PMD after fork
+
+  page[0] +-----------------------+
+          |_count                 |  = 1   -> 2     compound page refcount inc 1
+          |_mapcount              |  = -1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = 0   -> 1     THP PMD mapcount inc 1
+          +-----------------------+
+
+          THP _mapcount change w split pmd
+
+  a. new thp with __do_huge_pmd_anonymous_page() and two process fork
+
+  First process
+
+  page[0] +-----------------------+
+          |_count                 |  = 0   -> 1     compound page refcount set to 1
+          |_mapcount              |  = -1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = -1  -> 0     THP PMD mapcount
+          +-----------------------+
+
+  b. another process map the same THP PMD after fork
+
+  page[0] +-----------------------+
+          |_count                 |  = 1   -> 2     compound page refcount inc 1
+          |_mapcount              |  = -1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = 0   -> 1     THP PMD mapcount inc 1
+          +-----------------------+
+
+  c. 3rd process map the same THP PMD after fork
+
+  page[0] +-----------------------+
+          |_count                 |  = 2   -> 3     compound page refcount inc 1
+          |_mapcount              |  = -1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = 1   -> 2     THP PMD mapcount inc 1
+          +-----------------------+
+
+  d. one process want to split THP PMD
+
+  Add HPAGE_PMD_NR - 1 to page[0]._count, since we could put_page() on each PTE page.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3   -> 3 + HPAGE_PMD_NR - 1
+          |_mapcount              |  = -1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = 2
+          +-----------------------+
+
+  Increase PTE page _mapcount to indicate PTE page is mapped in process.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + HPAGE_PMD_NR - 1
+          |_mapcount              |  = -1  -> 0     count for PTE map for this process
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1  -> 0     count for PTE map for this process
+          |compound_mapcount      |  = 2
+          +-----------------------+
+
+  Since the first time to set PageDoubleMap, increase _mapcount.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + HPAGE_PMD_NR - 1
+          |_mapcount              |  = 0   -> 1     count for DoubleMap
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 0   -> 1     count for DoubleMap
+          |compound_mapcount      |  = 2
+          +-----------------------+
+
+  Decrease compount_mapcount of the THP PMD, since current process will map PTE
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + HPAGE_PMD_NR - 1
+          |_mapcount              |  = 1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 1
+          |compound_mapcount      |  = 2   -> 1     THP PMD mapcount dec 1
+          +-----------------------+
+
+  e. another process want to split THP PMD
+
+  Add HPAGE_PMD_NR - 1 to page[0]._count, since we could put_page() on each PTE page.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + HPAGE_PMD_NR - 1 -> 3 + 2 * (HPAGE_PMD_NR - 1)
+          |_mapcount              |  = 1
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1
+          |compound_mapcount      |  = 1
+          +-----------------------+
+
+  Increase PTE page _mapcount to indicate PTE page is mapped in process.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + 2 * (HPAGE_PMD_NR - 1)
+          |_mapcount              |  = 1   -> 2     count for PTE map for this process
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 1   -> 2     count for PTE map for this process
+          |compound_mapcount      |  = 1
+          +-----------------------+
+
+  Since not the first time to set PageDoubleMap, _mapcount remains.
+
+  Decrease compount_mapcount of the THP PMD, since current process will map PTE
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + 2 * (HPAGE_PMD_NR - 1)
+          |_mapcount              |  = 2
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 2
+          |compound_mapcount      |  = 1   -> 0     THP PMD mapcount dec 1
+          +-----------------------+
+
+The status means
+
+    compound_mapcount = 0, one process map the THP PMD.
+    page[]._mapcount = 1, two process map the THP PTE
+    head page._count = 3 + 2 * (HPAGE_PMD_NR - 1) = 1 + 2 * HPAGE_PMD_NR
+        this means, 1 for the THP PMD use and 2 * HPAGE_PMD_NR THP PTE use
+    PageDoubleMap set, this THP is mapped both in PMD and PTE.
+
+Now we could get a more clear understanding on the change of page_mapcount().
