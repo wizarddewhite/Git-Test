@@ -1,6 +1,6 @@
 1. thp enable patch set
 ================================================================================
-1.1 2011, maybe too old
+1.1 2011, initial version, no pmd split
 ================================================================================
 
 Transparent huge pages in 2.6.38 (2011.01.19)
@@ -94,7 +94,7 @@ a826e422420b 2011-01-13 thp: mm: define MADV_HUGEPAGE
 4e9f64c42d0b 2011-01-13 thp: fix bad_page to show the real reason the page is bad
 ae52a2adb5af 2011-01-13 thp: ksm: free swap when swapcache page is replaced
 
-1.2 2016, try to analysis based on this
+1.2 2016, second version enabed with pmd split
 ================================================================================
 d965432234db 2016-01-15 thp: increase split_huge_page() success rate
 49071d436b51 2016-01-15 thp: add debugfs handle to split all huge pages
@@ -158,6 +158,41 @@ df8c94d13c7e 2016-01-15 page-flags: define behavior of FS/IO-related flags on co
 0e6d31a7336f 2016-01-15 page-flags: move code around
 d8c1bdeb5d6b 2016-01-15 page-flags: trivial cleanup for PageTrans* helpers
 
+1.3 3rd version enable file thp
+================================================================================
+
+1b5946a84d6e 2016-07-26 thp: update Documentation/{vm/transhuge,filesystems/proc}.txt
+779750d20b93 2016-07-26 shmem: split huge pages beyond i_size under memory pressure
+e496cf3d7821 2016-07-26 thp: introduce CONFIG_TRANSPARENT_HUGE_PAGECACHE
+f3f0e1d2150b 2016-07-26 khugepaged: add support of collapse for tmpfs/shmem pages
+4595ef88d136 2016-07-26 shmem: make shmem_inode_info::lock irq-safe
+988ddb710bb5 2016-07-26 khugepaged: move up_read(mmap_sem) out of khugepaged_alloc_page()
+b46e756f5e47 2016-07-26 thp: extract khugepaged from mm/huge_memory.c
+657e3038c4e6 2016-07-26 shmem, thp: respect MADV_{NO,}HUGEPAGE for file mappings
+800d8c63b2e9 2016-07-26 shmem: add huge pages support
+5a6e75f8110c 2016-07-26 shmem: prepare huge= mount option and sysfs knob
+65c453778aea 2016-07-26 mm, rmap: account shmem thp pages
+fc127da085c2 2016-07-26 truncate: handle file thp
+83929372f629 2016-07-26 filemap: prepare find and delete operations for huge pages
+c78c66d1ddfd 2016-07-26 radix-tree: implement radix_tree_maybe_preload_order()
+e2f0a0db9597 2016-07-26 page-flags: relax policy for PG_mappedtodisk and PG_reclaim
+7751b2da6be0 2016-07-26 vmscan: split file huge pages before paging them out
+9a73f61bdb8a 2016-07-26 thp, mlock: do not mlock PTE-mapped file huge pages
+baa355fd3314 2016-07-26 thp: file pages support for split_huge_page()
+37f9f5595c26 2016-07-26 thp: run vma_adjust_trans_huge() outside i_mmap_rwsem
+b237aded41cd 2016-07-26 thp: prepare change_huge_pmd() for file thp
+628d47ce98d5 2016-07-26 thp: skip file huge pmd on copy_huge_pmd()
+af9e4d5f2de2 2016-07-26 thp: handle file COW faults
+d21b9e57c74c 2016-07-26 thp: handle file pages in split_huge_pmd()
+b5072380eb61 2016-07-26 thp: support file pages in zap_huge_pmd()
+95ecedcd6abb 2016-07-26 thp, vmstats: add counters for huge file pages
+ 101024596441 2016-07-26 mm: introduce do_set_pmd()
+dd78fedde4b9 2016-07-26 rmap: support file thp
+7267ec008b5c 2016-07-26 mm: postpone page table allocation until we have page to map
+bae473a423f6 2016-07-26 mm: introduce fault_env
+dcddffd41d3f 2016-07-26 mm: do not pass mm_struct into handle_mm_fault
+6fb8ddfc455c 2016-07-26 thp, mlock: update unevictable-lru.txt
+1f52e67e5e7f 2016-07-26 khugepaged: recheck pmd after mmap_sem re-acquired
 
 2. Evolution
 ================================================================================
@@ -333,7 +368,7 @@ is found". There are only two cases:
           +-----------------------+
 
 
-2.1 Kirill's redesign refcount (introduce compound_mapcout and PG_double_map)
+2.1 Kirill's redesign refcount (introduce compound_mapcount and PG_double_map)
 ================================================================================
 The design is described in following article.
 
@@ -620,3 +655,190 @@ The status means
     PageDoubleMap set, this THP is mapped both in PMD and PTE.
 
 Now we could get a more clear understanding on the change of page_mapcount().
+
+2.3 Support file thp
+================================================================================
+Here comes the third version, Kirill enabled file thp.
+
+The core commit is 
+
+dd78fedde4b9 2016-07-26 rmap: support file thp
+
+And in this commit, the most important changes lie in two functions:
+
+    * page_add_file_rmap
+    * total_mapcount
+    * __page_mapcount
+
+Before:
+
+void page_add_file_rmap(struct page *page)
+{
+	lock_page_memcg(page);
+	if (atomic_inc_and_test(&page->_mapcount)) {
+		__inc_zone_page_state(page, NR_FILE_MAPPED);
+		mem_cgroup_inc_page_stat(page, MEM_CGROUP_STAT_FILE_MAPPED);
+	}
+	unlock_page_memcg(page);
+}
+
+int total_mapcount(struct page *page)
+{
+	int i, ret;
+
+	VM_BUG_ON_PAGE(PageTail(page), page);
+
+	if (likely(!PageCompound(page)))
+		return atomic_read(&page->_mapcount) + 1;
+
+	ret = compound_mapcount(page);
+	if (PageHuge(page))
+		return ret;
+	for (i = 0; i < HPAGE_PMD_NR; i++)
+		ret += atomic_read(&page[i]._mapcount) + 1;
+	if (PageDoubleMap(page))
+		ret -= HPAGE_PMD_NR;
+	return ret;
+}
+
+
+int __page_mapcount(struct page *page)
+{
+	int ret;
+
+	ret = atomic_read(&page->_mapcount) + 1;
+	page = compound_head(page);
+	ret += atomic_read(compound_mapcount_ptr(page)) + 1;
+	if (PageDoubleMap(page))
+		ret--;
+	return ret;
+}
+
+After:
+
+void page_add_file_rmap(struct page *page, bool compound)
+{
+	int i, nr = 1;
+
+	VM_BUG_ON_PAGE(compound && !PageTransHuge(page), page);
+	lock_page_memcg(page);
+	if (compound && PageTransHuge(page)) {
+		for (i = 0, nr = 0; i < HPAGE_PMD_NR; i++) {
+			if (atomic_inc_and_test(&page[i]._mapcount))
+				nr++;
+		}
+		if (!atomic_inc_and_test(compound_mapcount_ptr(page)))
+			goto out;
+	} else {
+		if (!atomic_inc_and_test(&page->_mapcount))
+			goto out;
+	}
+	__mod_zone_page_state(page_zone(page), NR_FILE_MAPPED, nr);
+	mem_cgroup_inc_page_stat(page, MEM_CGROUP_STAT_FILE_MAPPED);
+out:
+	unlock_page_memcg(page);
+}
+
+int total_mapcount(struct page *page)
+{
+	int i, compound, ret;
+
+	VM_BUG_ON_PAGE(PageTail(page), page);
+
+	if (likely(!PageCompound(page)))
+		return atomic_read(&page->_mapcount) + 1;
+
+	compound = compound_mapcount(page);
+	if (PageHuge(page))
+		return compound;
+	ret = compound;
+	for (i = 0; i < HPAGE_PMD_NR; i++)
+		ret += atomic_read(&page[i]._mapcount) + 1;
+	/* File pages has compound_mapcount included in _mapcount */
+	if (!PageAnon(page))
+		return ret - compound * HPAGE_PMD_NR;
+	if (PageDoubleMap(page))
+		ret -= HPAGE_PMD_NR;
+	return ret;
+}
+
+int __page_mapcount(struct page *page)
+{
+	int ret;
+
+	ret = atomic_read(&page->_mapcount) + 1;
+	/*
+	 * For file THP page->_mapcount contains total number of mapping
+	 * of the page: no need to look into compound_mapcount.
+	 */
+	if (!PageAnon(page) && !PageHuge(page))
+		return ret;
+	page = compound_head(page);
+	ret += atomic_read(compound_mapcount_ptr(page)) + 1;
+	if (PageDoubleMap(page))
+		ret--;
+	return ret;
+}
+
+Per my understanding, the core change happens in function
+page_add_file_rmap(). To understand this, we need to compare not only change
+in page_add_file_rmap() but also the difference between page_add_file_rmap()
+and it counterpart for anonymous page page_add_new_anon_rmap() and
+do_page_add_anon_rmap().
+
+For anonymous THP PMD page, we only increase compound_mapcount on mapping.
+And to keep the mapcount syntax, we will add 1 to THP PTE mapcount.
+
+For file THP PMD page, we will increase both compound_mapcount and each THP PTE
+mapcount. This means during split, THP PTE mapcount doesn't change. Just need
+to decrease compound_mapcount by 1.
+
+          File THP _mapcount change w/ split pmd
+
+  a. map file thp pmd with page_add_file_rmap()
+
+  page[0] +-----------------------+
+          |_count                 |  = 1            compound page refcount set to 1
+          |_mapcount              |  = -1  -> 0     inc on PTE _mapcount
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = -1  -> 0     inc on PTE _mapcount
+          |compound_mapcount      |  = -1  -> 0     THP PMD mapcount
+          +-----------------------+
+
+  b. map file thp pte (page[1]) with page_add_file_rmap()
+
+  page[0] +-----------------------+
+          |_count                 |  = 1   -> 2     get_page(page[1])
+          |_mapcount              |  = 0
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 0   -> 1     inc on PTE _mapcount
+          |compound_mapcount      |  = 0
+          +-----------------------+
+
+  c. __split_huge_pmd_locked
+
+  page[0] +-----------------------+
+          |_count                 |  = 2
+          |_mapcount              |  = 0
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 1
+          |compound_mapcount      |  = 0   -> -1    decrease compound_mapcount
+          +-----------------------+
+
+After this:
+
+  page[0] is just mapped once.
+  page[1] is mapped twice.
+
+While I still have some confusion about how page[0]._count changes in this
+process. Let's leave a TODO here.
+
+One more thing interesting is
+
+  * total_mapcount can't work on PageTail
+  * __page_mapcount just apply to PTE page except PageHuge
+
+This is a little complicated.
