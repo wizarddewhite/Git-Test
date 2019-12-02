@@ -646,6 +646,28 @@ Now let's have a chart to explain:
           |compound_mapcount      |  = 1   -> 0     THP PMD mapcount dec 1
           +-----------------------+
 
+  f. the last process want to split THP PMD
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + 3 * (HPAGE_PMD_NR - 1)
+          |_mapcount              |  = 2   -> 3     count for PTE map for this process
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 2   -> 3     count for PTE map for this process
+          |compound_mapcount      |  = 0   -> -1    no THP PMD mapping now
+          +-----------------------+
+
+  Since not the last time to clear PageDoubleMap, _mapcount dec by 1.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 + 3 * (HPAGE_PMD_NR - 1)
+          |_mapcount              |  = 3   -> 2     now each PTE map in 3 process
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 3   -> 2     now each PTE map in 3 process
+          |compound_mapcount      |  = -1
+          +-----------------------+
+
 The status means
 
     compound_mapcount = 0, one process map the THP PMD.
@@ -655,6 +677,44 @@ The status means
     PageDoubleMap set, this THP is mapped both in PMD and PTE.
 
 Now we could get a more clear understanding on the change of page_mapcount().
+
+After split PMD, now let's take a look at how split page works. This is
+introduced in e9b61f19858a 2016-01-15 thp: reintroduce split_huge_page().
+
+Based on previous state:
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 * HPAGE_PMD_NR
+          |_mapcount              |  = 2
+  page[1] +-----------------------+
+          |_count                 |  = 0
+          |_mapcount              |  = 2
+          |compound_mapcount      |  = -1
+          +-----------------------+
+
+  Add PTE's mapcount + 1 to PTE's count. Something like offload the statistic.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 * HPAGE_PMD_NR -> 3 * HPAGE_PMD_NR + 3
+          |_mapcount              |  = 2
+  page[1] +-----------------------+
+          |_count                 |  = 0   -> 3
+          |_mapcount              |  = 2
+          |compound_mapcount      |  = 0
+          +-----------------------+
+
+  Release the mapcount from each subpage from head->_count.
+
+  page[0] +-----------------------+
+          |_count                 |  = 3 * HPAGE_PMD_NR + 3 -> 3
+          |_mapcount              |  = 2
+  page[1] +-----------------------+
+          |_count                 |  = 3
+          |_mapcount              |  = 2
+          |compound_mapcount      |  = 0
+          +-----------------------+
+
+  This is exactly what an individual PTE looks like.
 
 2.3 Support file thp
 ================================================================================
