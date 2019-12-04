@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define SZ_4K				0x00001000
 #define SZ_16K				0x00004000
@@ -92,9 +93,53 @@ static const char *page_size_string(struct map_range *mr)
 	return str_4k;
 }
 
+bool memblock_is_region_memory(unsigned long base, unsigned long size)
+{
+#if 0
+	int idx = memblock_search(&memblock.memory, base);
+	phys_addr_t end = base + memblock_cap_size(base, &size);
+
+	if (idx == -1)
+		return false;
+	return (memblock.memory.regions[idx].base +
+		 memblock.memory.regions[idx].size) >= end;
+#endif
+
+	return true;
+}
+
+static void adjust_range_page_size_mask(struct map_range *mr,
+					 int nr_range)
+{
+	int i;
+
+	for (i = 0; i < nr_range; i++) {
+		if ((page_size_mask & (1<<PG_LEVEL_2M)) &&
+		    !(mr[i].page_size_mask & (1<<PG_LEVEL_2M))) {
+			unsigned long start = round_down(mr[i].start, PMD_SIZE);
+			unsigned long end = round_up(mr[i].end, PMD_SIZE);
+
+#ifdef CONFIG_X86_32
+			if ((end >> PAGE_SHIFT) > max_low_pfn)
+				continue;
+#endif
+
+			if (memblock_is_region_memory(start, end - start))
+				mr[i].page_size_mask |= 1<<PG_LEVEL_2M;
+		}
+		if ((page_size_mask & (1<<PG_LEVEL_1G)) &&
+		    !(mr[i].page_size_mask & (1<<PG_LEVEL_1G))) {
+			unsigned long start = round_down(mr[i].start, PUD_SIZE);
+			unsigned long end = round_up(mr[i].end, PUD_SIZE);
+
+			if (memblock_is_region_memory(start, end - start))
+				mr[i].page_size_mask |= 1<<PG_LEVEL_1G;
+		}
+	}
+}
 static int split_mem_range(struct map_range *mr, int nr_range,
-				     unsigned long start,
-				     unsigned long end)
+			     unsigned long start, unsigned long end,
+			     bool after_bootmem)
 {
 	unsigned long start_pfn, end_pfn, limit_pfn;
 	unsigned long pfn;
@@ -167,9 +212,15 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 	end_pfn = limit_pfn;
 	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
 
-#if 0
-	if (!after_bootmem)
+	if (!after_bootmem) {
 		adjust_range_page_size_mask(mr, nr_range);
+		printf("Memory Region after adjust\n");
+		for (i = 0; i < nr_range; i++)
+			printf(" [mem %#010lx-%#010lx] page %s mask %x\n",
+				mr[i].start, mr[i].end - 1,
+				page_size_string(&mr[i]),
+				mr[i].page_size_mask);
+	}
 
 	/* try to merge same page size and continuous */
 	for (i = 0; nr_range > 1 && i < nr_range - 1; i++) {
@@ -184,19 +235,20 @@ static int split_mem_range(struct map_range *mr, int nr_range,
 		mr[i--].start = old_start;
 		nr_range--;
 	}
-#endif
 
+	printf("Memory Region after merge\n");
 	for (i = 0; i < nr_range; i++)
-		printf(" [mem %#010lx-%#010lx] page %s\n",
+		printf(" [mem %#010lx-%#010lx] page %s mask %x\n",
 				mr[i].start, mr[i].end - 1,
-				page_size_string(&mr[i]));
+				page_size_string(&mr[i]),
+				mr[i].page_size_mask);
 
 	return nr_range;
 }
 
 static int split_mem_range2(struct map_range *mr, int nr_range,
-				     unsigned long start,
-				     unsigned long end)
+			     unsigned long start, unsigned long end,
+			     bool after_bootmem)
 {
 	unsigned long start_pfn, end_pfn, limit_pfn;
 	unsigned long pfn;
@@ -267,7 +319,7 @@ only_4k_range:
 	end_pfn = limit_pfn;
 	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
 
-#if 0
+
 	if (!after_bootmem)
 		adjust_range_page_size_mask(mr, nr_range);
 
@@ -284,7 +336,6 @@ only_4k_range:
 		mr[i--].start = old_start;
 		nr_range--;
 	}
-#endif
 
 	for (i = 0; i < nr_range; i++)
 		printf(" [mem %#010lx-%#010lx] page %s\n",
@@ -293,28 +344,42 @@ only_4k_range:
 
 	return nr_range;
 }
-int main()
+
+void split_test()
 {
 #ifdef CONFIG_X86_64
 	printf("Original version [4k, 2G + 64M]:\n");
-	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M);
+	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M, true);
 	printf("Refined version [4k, 2G + 64M]:\n");
-	split_mem_range2(range, 0, SZ_4K, SZ_2G + SZ_64M);
+	split_mem_range2(range, 0, SZ_4K, SZ_2G + SZ_64M, true);
 
 	printf("Original version [4k, 64M]:\n");
-	split_mem_range(range, 0, SZ_4K, SZ_64M);
+	split_mem_range(range, 0, SZ_4K, SZ_64M, true);
 	printf("Refined version [4k, 64M]:\n");
-	split_mem_range2(range, 0, SZ_4K, SZ_64M);
+	split_mem_range2(range, 0, SZ_4K, SZ_64M, true);
 
 	printf("Original version [4k, 16k]:\n");
-	split_mem_range(range, 0, SZ_4K, SZ_16K);
+	split_mem_range(range, 0, SZ_4K, SZ_16K, true);
 	printf("Refined version [4k, 16k]:\n");
-	split_mem_range2(range, 0, SZ_4K, SZ_16K);
+	split_mem_range2(range, 0, SZ_4K, SZ_16K, true);
 #else
 	printf("Original version:\n");
-	split_mem_range(range, 0, 0, SZ_2G);
+	split_mem_range(range, 0, 0, SZ_2G, true);
 	printf("Refined version:\n");
-	split_mem_range2(range, 0, 0, SZ_2G);
+	split_mem_range2(range, 0, 0, SZ_2G, true);
 #endif
+}
+
+void split_before_boot()
+{
+	printf("Split after boot [4k, 2G + 64M]:\n");
+	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M, true);
+	printf("Split before boot [4k, 2G + 64M]:\n");
+	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M, false);
+}
+
+int main()
+{
+	split_before_boot();
 	return 0;
 }

@@ -11,9 +11,11 @@ LD_FLAGS = -lm
 .PHONY: all clean cscope
 all: $(PROGRAM)
 
+# for study split_mem_range()
 main: main.c $(OBJS)
 	gcc $(CFLAGS) $^ -o $@
 
+# compare the effects of different split_mem_range()
 split_mem_range_refine: split_mem_range_refine.c
 	gcc $(CFLAGS) $^ -o $@
 
