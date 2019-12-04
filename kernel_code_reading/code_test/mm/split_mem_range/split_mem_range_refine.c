@@ -3,12 +3,16 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define SZ_4K				0x00001000
-#define SZ_16K				0x00004000
-#define SZ_64M				0x04000000
-#define SZ_2G				0x80000000
+#define SZ_4K				0x00001000UL
+#define SZ_16K				0x00004000UL
+#define SZ_2M				0x00200000UL
+#define SZ_4M				0x00400000UL
+#define SZ_64M				0x04000000UL
+#define SZ_1G				0x40000000UL
+#define SZ_2G				0x80000000UL
 
 #define CONFIG_X86_64 1
+//#define CONFIG_X86_32 0
 #define NR_RANGE_MR 5
 
 #define __AC(X,Y)	(X##Y)
@@ -33,6 +37,19 @@
 #define PFN_PHYS(x)	((phys_addr_t)(x) << PAGE_SHIFT)
 #define PHYS_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
+#define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0)
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+
+#define max(a,b) 		\
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+
+#define min(a,b) 		\
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
+
 enum pg_level {
 	PG_LEVEL_NONE,
 	PG_LEVEL_4K,
@@ -47,6 +64,11 @@ struct map_range {
 	unsigned long start;
 	unsigned long end;
 	unsigned page_size_mask;
+};
+
+struct mapinfo {
+	unsigned int	mask;
+	unsigned int	size;
 };
 
 struct map_range range[NR_RANGE_MR];
@@ -104,6 +126,9 @@ bool memblock_is_region_memory(unsigned long base, unsigned long size)
 	return (memblock.memory.regions[idx].base +
 		 memblock.memory.regions[idx].size) >= end;
 #endif
+
+	if (base + size >= SZ_2G || base < SZ_4K)
+		return false;
 
 	return true;
 }
@@ -345,6 +370,128 @@ only_4k_range:
 	return nr_range;
 }
 
+static void mr_print(struct map_range *mr, unsigned int maxidx)
+{
+#if defined(CONFIG_X86_32) && !defined(CONFIG_X86_PAE)
+	static const char *sz[2] = { "4K", "4M" };
+#else
+	static const char *sz[4] = { "4K", "2M", "1G", "" };
+#endif
+	unsigned int idx, s;
+
+	for (idx = 0; idx < maxidx; idx++, mr++) {
+		s = (mr->page_size_mask >> PG_LEVEL_2M) & (ARRAY_SIZE(sz) -1);
+		printf("[mem %#010lx-%#010lx] page size %s\n",
+			 mr->start, mr->end - 1, sz[s]);
+ 	}
+}
+static void mr_expand(struct map_range *mr, unsigned int size)
+{
+	unsigned long start = round_down(mr->start, size);
+	unsigned long end = round_up(mr->end, size);
+
+#ifdef CONFIG_X86_32
+	if ((end >> PAGE_SHIFT) > max_low_pfn)
+		return;
+#endif
+
+	if (memblock_is_region_memory(start, end - start)) {
+		mr->start = start;
+		mr->end = end;
+	}
+}
+
+static bool mr_try_map(struct map_range *mr, const struct mapinfo *mi,
+		bool after_bootmem)
+{
+	unsigned long len;
+
+	/* Check whether the map size is supported. PAGE_SIZE always is. */
+	if (mi->mask && !(mr->page_size_mask & mi->mask))
+		return false;
+
+	if (!after_bootmem) {
+		//printf("%s: -> [mem %#010lx-%#010lx] \n",
+		//	__func__, mr->start, mr->end - 1);
+		mr_expand(mr, mi->size);
+		//printf("%s: <- [mem %#010lx-%#010lx] \n",
+		//	__func__, mr->start, mr->end - 1);
+	}
+
+
+	if (!IS_ALIGNED(mr->start, mi->size)) {
+		/* Limit the range to the next boundary of this size. */
+		mr->end = min(mr->end,
+				round_up(mr->start, mi->size));
+		return false;
+	}
+
+	if (!IS_ALIGNED(mr->end, mi->size)) {
+		/* Try to fit as much as possible */
+		len = round_down(mr->end - mr->start, mi->size);
+		if (!len)
+			return false;
+		mr->end = mr->start + len;
+	}
+
+	/* Store the effective page size mask */
+	mr->page_size_mask = mi->mask;
+	return true;
+}
+
+static void mr_setup(struct map_range *mr, unsigned long start,
+		       unsigned long end)
+{
+	/*
+	 * On 32bit the first 2/4MB are often covered by fixed size MTRRs.
+	 * Overlapping MTRRs on large pages can cause slowdowns. Force 4k
+	 * mappings.
+	 */
+#ifdef CONFIG_X86_32
+	if (start < PMD_SIZE) {
+		mr->page_size_mask = 0;
+		mr->end = min(end, PMD_SIZE);
+	} else {
+#endif
+		/* Set the possible mapping sizes and allow full range. */
+		mr->page_size_mask = page_size_mask;
+		mr->end = end;
+#ifdef CONFIG_X86_32
+	}
+#endif
+	mr->start = start;
+}
+
+int split_mem_range_tglx(struct map_range *mr, unsigned long start,
+			     unsigned long end, bool after_bootmem)
+{
+	static const struct mapinfo mapinfos[] = {
+#ifdef CONFIG_X86_64
+		{ .mask = 1U << PG_LEVEL_1G, .size = PUD_SIZE },
+#endif
+		{ .mask = 1U << PG_LEVEL_2M, .size = PMD_SIZE },
+		{ .mask = 0, .size = PAGE_SIZE },
+	};
+	const struct mapinfo *mi;
+	struct map_range *curmr;
+	unsigned long addr;
+	int idx;
+
+	for (idx = 0, addr = start, curmr = mr; addr < end; idx++, curmr++) {
+		//BUG_ON(idx == NR_RANGE_MR);
+
+		mr_setup(curmr, addr, end);
+
+		/* Try map sizes top down. PAGE_SIZE will always succeed. */
+		for (mi = mapinfos; !mr_try_map(curmr, mi, after_bootmem); mi++);
+
+		/* Get the start address for the next range */
+		addr = curmr->end;
+	}
+
+	mr_print(mr, idx);
+	return idx;
+}
 void split_test()
 {
 #ifdef CONFIG_X86_64
@@ -378,8 +525,59 @@ void split_before_boot()
 	split_mem_range(range, 0, SZ_4K, SZ_2G + SZ_64M, false);
 }
 
+void split_before_boot_tglx()
+{
+	printf("### Split after boot       [4k, 2G][%#010lx-%#010lx]:\n",
+			SZ_4K, SZ_2G);
+	split_mem_range(range, 0, SZ_4K, SZ_2G, true);
+	printf("### Split before boot      [4k, 2G][%#010lx-%#010lx]:\n",
+			SZ_4K, SZ_2G);
+	split_mem_range(range, 0, SZ_4K, SZ_2G, false);
+	printf("### Split before boot tglx [4k, 2G][%#010lx-%#010lx]:\n",
+			SZ_4K, SZ_2G);
+	split_mem_range_tglx(range, SZ_4K, SZ_2G, false);
+}
+
+void split_boot_tglx()
+{
+	/* Just has 4K page */
+	printf("### Split after boot tglx [4K, 16K][%#010lx-%#010lx]:\n",
+			SZ_4K, SZ_16K);
+	split_mem_range_tglx(range, SZ_4K, SZ_16K, true);
+	/* Just has 2M page */
+	printf("### Split after boot tglx [4M, 64M][%#010lx-%#010lx]:\n",
+			SZ_4M, SZ_64M);
+	split_mem_range_tglx(range, SZ_4M, SZ_64M, true);
+	/* Just has 1G page */
+	printf("### Split after boot tglx [0G, 2G][%#010lx-%#010lx]:\n",
+			0UL, SZ_2G);
+	split_mem_range_tglx(range, 0, SZ_2G, true);
+	/* Just has 4K and 2M page */
+	printf("### Split after boot tglx [16K, 4M + 16K][%#010lx-%#010lx]:\n",
+			SZ_16K, SZ_4M + SZ_16K);
+	split_mem_range_tglx(range, SZ_16K, SZ_4M + SZ_16K, true);
+	/* Just has 2M and 1G page */
+	printf("### Split after boot tglx [4M, 2G + 2M][%#010lx-%#010lx]:\n",
+			SZ_4M, SZ_2G + SZ_2M);
+	split_mem_range_tglx(range, SZ_4M, SZ_2G + SZ_2M, true);
+	/* Has 4K, 2M and 1G page */
+	printf("### Split after boot tglx [4M - 16K, 2G + 2M + 16K][%#010lx-%#010lx]:\n",
+			SZ_4M - SZ_16K, SZ_2G + SZ_2M + SZ_16K);
+	split_mem_range_tglx(range, SZ_4M - SZ_16K, SZ_2G + SZ_2M + SZ_16K, true);
+	/* Has 4K, 2M and 1G page, but page_size_mask doesn't support 1G */
+	page_size_mask = (1 << PG_LEVEL_2M);
+	printf("### Split after boot tglx [4M - 16K, 2G + 2M + 16K][%#010lx-%#010lx]:\n",
+			SZ_4M - SZ_16K, SZ_2G + SZ_2M + SZ_16K);
+	split_mem_range_tglx(range, SZ_4M - SZ_16K, SZ_2G + SZ_2M + SZ_16K, true);
+	/* Has 4K, 2M and 1G page, but page_size_mask just support 4K */
+	page_size_mask = 0;
+	printf("### Split after boot tglx [4M - 16K, 2G + 2M + 16K][%#010lx-%#010lx]:\n",
+			SZ_4M - SZ_16K, SZ_2G + SZ_2M + SZ_16K);
+	split_mem_range_tglx(range, SZ_4M - SZ_16K, SZ_2G + SZ_2M + SZ_16K, true);
+}
+
 int main()
 {
-	split_before_boot();
+	split_boot_tglx();
 	return 0;
 }
