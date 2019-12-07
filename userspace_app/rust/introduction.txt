@@ -1,0 +1,66 @@
+1. Reference
+================================================================================
+
+The Rust Programming Language
+https://doc.rust-lang.org/book/title-page.html
+
+2. Build & run
+================================================================================
+
+There are two ways to build and run rust
+
+  * traditional compile and run with rustc
+  * use cargo
+
+2.1 compile with rustc
+================================================================================
+
+For example, we have a source file hello.rs
+
+```
+fn main() {
+    println!("Hello, world!");
+}
+```
+
+We can compile and run like below:
+
+# rustc hello.rs
+# ./hello
+
+2.2 use cargo
+================================================================================
+
+Cargo is Rust¡¯s build system and package manager.
+
+2.2.1 create a project
+================================================================================
+
+The simplest way to create a project by cargo is:
+
+# cargo new hello_cargo
+
+A folder hello_cargo would be created with following files:
+
+©À©¤©¤ Cargo.toml
+©¸©¤©¤ src
+    ©À©¤©¤ bin
+    ©¸©¤©¤ main.rs
+
+Then you can write your own code in main.rs or put your source code, e.g.
+hello_world.rs into src directory.
+
+2.2.2 build and running
+================================================================================
+
+Instead of using rustc, we can build the project with
+
+# cargo build
+
+This will build and put binary into target/debug/hello_cargo.
+
+If you want to build a release version, use
+
+# cargo build --release
+
+
