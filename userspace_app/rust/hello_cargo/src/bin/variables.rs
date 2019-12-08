@@ -29,6 +29,7 @@ fn main() {
     //z = z + 1;
     println!("The value of z is: {}", z);
 
+    // shadow could re-use the name with different type
     let spaces = "    ";
     let spaces = spaces.len();
     println!("The space length is: {}", spaces);
