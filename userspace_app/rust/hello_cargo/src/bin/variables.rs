@@ -8,6 +8,9 @@ fn main() {
     //x = 6;
     //println!("The value of x is: {}", x);
 
+    // constant
+    println!("The value of MAX_POINTS is: {}", MAX_POINTS);
+
     // mutable
     let mut y = 5;
     println!("The value of y is: {}", y);
