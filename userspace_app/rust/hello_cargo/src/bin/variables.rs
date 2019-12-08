@@ -16,11 +16,17 @@ fn main() {
     println!("The value of y is: {}", y);
     y = 6;
     println!("The value of y is: {}", y);
+    // assign twice to mutable variable is fine
+    y = y + 1;
+    let y = y - 1;
+    println!("The value of y is: {}", y);
 
     // shadow
     let z = 5;
     let z = z + 1;
     let z = z * 2;
+    // cannot assign twice to immutable variable
+    //z = z + 1;
     println!("The value of z is: {}", z);
 
     let spaces = "    ";
