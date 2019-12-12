@@ -76,4 +76,12 @@ mod tests {
     fn greater_than_100() {
         Guess::new(200);
     }
+
+    // this case is ignored by default, if you want to run it
+    // cargo test -- --ignored
+    #[test]
+    #[ignore]
+    fn expensive_test() {
+        assert_eq!(2 + 2, 4);
+    }
 }
