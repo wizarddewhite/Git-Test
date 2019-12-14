@@ -10,10 +10,10 @@ impl<T, U> MyBox<T, U> {
 use std::ops::Deref;
 
 impl<T, U> Deref for MyBox<T, U> {
-    type Target = T;
+    type Target = U;
 
-    fn deref(&self) -> &T {
-        &self.0
+    fn deref(&self) -> &U {
+        &self.1
     }
 }
 
@@ -23,6 +23,6 @@ fn main() {
 
     assert_eq!(5, x);
     // *y equals to *(y.deref())
-    assert_eq!(5, *y);
-    println!("{}", *y);
+    assert_eq!(4, *y);
+    println!("{}", *y); // now it will print 4
 }
