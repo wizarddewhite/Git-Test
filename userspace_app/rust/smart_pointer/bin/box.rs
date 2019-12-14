@@ -20,16 +20,16 @@ fn recursive_type() {
         Box::new(Cons(2,
             Box::new(Cons(3,
                 Box::new(Nil))))));
-    //let mut con = list;
-    //loop {
-    //    con = match con {
-    //        Cons(val, next) => {
-    //            println!("{}", val);
-    //            next.downcast::<List>()
-    //        },
-    //        Nil => break,
-    //    };
-    //}
+    let mut con = list;
+    loop {
+        con = match con {
+            Cons(val, next) => {
+                println!("{}", val);
+                *next
+            },
+            Nil => break,
+        };
+    }
 }
 
 fn main() {
