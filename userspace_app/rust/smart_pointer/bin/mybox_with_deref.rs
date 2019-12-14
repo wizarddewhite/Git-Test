@@ -1,15 +1,15 @@
-struct MyBox<T>(T);
+struct MyBox<T, U>(T, U);
 
-impl<T> MyBox<T> {
-    fn new(x: T) -> MyBox<T> {
-        MyBox(x)
+impl<T, U> MyBox<T, U> {
+    fn new(x: T, y: U) -> MyBox<T, U> {
+        MyBox(x, y)
     }
 }
 
 // implement Deref trait
 use std::ops::Deref;
 
-impl<T> Deref for MyBox<T> {
+impl<T, U> Deref for MyBox<T, U> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -19,7 +19,7 @@ impl<T> Deref for MyBox<T> {
 
 fn main() {
     let x = 5;
-    let y = MyBox::new(x);
+    let y = MyBox::new(x, 4);
 
     assert_eq!(5, x);
     // *y equals to *(y.deref())
