@@ -81,6 +81,12 @@ impl Message {
 fn test_message() {
     let m = Message::Write(String::from("hello"));
     m.call();
+
+    let m2 = Message::ChangeColor(3, 2, 1);
+    m2.call();
+    if let Message::ChangeColor(x, y, z) = m2 {
+        println!("Message::ChangeColor: {}, {}, {}", x, y, z);
+    }
 }
 
 #[derive(Debug)]
