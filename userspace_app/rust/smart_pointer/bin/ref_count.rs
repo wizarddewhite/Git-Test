@@ -24,6 +24,15 @@ enum List2 {
     Nil2,
 }
 
+impl List2 {
+    fn val(&self) -> Option<&Rc<RefCell<i32>>> {
+        match self {
+            Cons2(item, _) => Some(item),
+            Nil2 => None,
+        }
+    }
+}
+
 use crate::List2::{Cons2, Nil2};
 use std::cell::RefCell;
 
@@ -35,6 +44,7 @@ fn test_rc_refcell() {
     let a = Rc::new(Cons2(Rc::clone(&value), Rc::new(Nil2)));
     println!("value.strong_count after clone for a = {}",
              Rc::strong_count(&value));
+    println!("a origin = {:?}", a);
 
     let b = Cons2(Rc::new(RefCell::new(6)), Rc::clone(&a));
     let c = Cons2(Rc::new(RefCell::new(10)), Rc::clone(&a));
@@ -44,6 +54,12 @@ fn test_rc_refcell() {
     println!("a after = {:?}", a);
     println!("b after = {:?}", b);
     println!("c after = {:?}", c);
+
+    // modify a's value
+    if let Some(val) = a.val() {
+        *val.borrow_mut() += 1;
+    }
+    println!("a after = {:?}", a);
 }
 
 fn main() {
