@@ -38,6 +38,7 @@ use std::cell::RefCell;
 
 fn test_rc_refcell() {
     let value = Rc::new(RefCell::new(5));
+    println!("Create value = {:?}", value);
     println!("value.strong_count after creating = {}",
              Rc::strong_count(&value));
 
@@ -59,7 +60,15 @@ fn test_rc_refcell() {
     if let Some(val) = a.val() {
         *val.borrow_mut() += 1;
     }
-    println!("a after = {:?}", a);
+    println!("a after borrow by val() = {:?}", a);
+
+    if let Cons2(item, _) = &*a {
+        *item.borrow_mut() += 1;
+        println!("{:?}", item);
+    }
+    println!("a after borrow by match = {:?}", a);
+    println!("value.strong_count after all = {}",
+             Rc::strong_count(&value));
 }
 
 fn main() {
