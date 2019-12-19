@@ -2,6 +2,7 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
     obj-m += percpu_test.o kmem_cache.o mempool.o
+    obj-m += list_vma.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
