@@ -155,6 +155,11 @@
 
 0.3 anon_vma_interval_tree
 ================================================================================
+; used by rmap_walk_anon().
+; And the tree is ordered by vma->vm_pgoff. For anon_vma, vm_pgoff is set to
+; (addr >> PAGE_SHIFT). See do_mmap(), MAP_PRIVATE section. This means the
+; anon_vma_interval_tree is ordered by page's virtual address in the
+; particular process.
 
                         anon_vma
                      +--------------+
