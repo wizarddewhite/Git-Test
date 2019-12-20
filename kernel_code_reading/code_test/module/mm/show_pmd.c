@@ -49,6 +49,8 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	pud_t *pud;
 	pmd_t *pmd;
 	pmd_t pmde;
+	pte_t *pte;
+	unsigned long pfn;
 	pgd = pgd_offset(mm, address);
 
 	if (!pgd_present(*pgd))
@@ -63,14 +65,28 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	pmd = pmd_offset(pud, address);
 	pmde = READ_ONCE(*pmd);
 
-	if (pmd_present(pmde))
-		printk(KERN_ERR "pmd present\n");
-	else
+	if (!pmd_present(pmde)) {
+		printk(KERN_ERR "pmd not present\n");
 		return;
+	}
 
 	page = pmd_page(pmde);
 	printk(KERN_ERR "pmd page at %lx is %s compound\n",
 			page_to_pfn(page), PageCompound(page)?"":"not");
+
+	if (pmd_trans_huge(pmde))
+		return;
+
+	pte = pte_offset_map(pmd, address);
+	if (!pte_present(*pte)) {
+		printk(KERN_ERR "pte not present\n");
+		return;
+	}
+
+	pfn = pte_pfn(*pte);
+	printk(KERN_ERR "pte page at %lx is %s compound\n",
+			pfn, PageCompound(pfn_to_page(pfn))?"":"not");
+
 }
 
 void show_pmd(struct task_struct *task)
