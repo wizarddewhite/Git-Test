@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +35,7 @@ int main(void) {
  
   // map a 3 times region
   char * region = mmap(
-    NULL,
+    NULL, // (void *)0x7f3d39000000
     mapsize,
     PROT_READ|PROT_WRITE|PROT_EXEC,
     MAP_ANON|MAP_PRIVATE,
@@ -75,6 +76,20 @@ int main(void) {
   printf("### After mmap:\n");
   read_mmap();
  
+  getchar();
+
+  // move one page shift, can't overlap
+  char *move_region = mremap(region + pagesize, pagesize, pagesize,
+         MREMAP_FIXED | MREMAP_MAYMOVE, region + (pagesize * 2) + (1 << 12));
+  if (move_region == MAP_FAILED) {
+    perror("Could not remap");
+    return 1;
+  }
+
+  printf("Move to region: [%p - %p]\n", move_region, move_region + pagesize);
+  printf("Contents of region: %s %c\n",
+		  move_region, *(move_region + pagesize - 1));
+
   getchar();
 
   return 0;
