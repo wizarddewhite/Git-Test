@@ -29,7 +29,10 @@ int main(void) {
   printf("System page size: %lx bytes\n", pagesize);
   printf("### Before mmap:\n");
   read_mmap();
+
+  getchar();
  
+  // map a 3 times region
   char * region = mmap(
     NULL,
     mapsize,
@@ -41,27 +44,34 @@ int main(void) {
   if (region == MAP_FAILED) {
     perror("Could not mmap");
     return 1;
-  } else {
-    printf("Map to region: [%p - %p]\n", region, region + mapsize);
-    printf("Exact  region: [%p - %p]\n", region + pagesize, region + pagesize * 2);
   }
+
+  printf("Map to region: [%p - %p]\n", region, region + mapsize);
+  printf("Exact  region: [%p - %p]\n", region + pagesize, region + pagesize * 2);
  
+  // write some content to 2nd one
   strcpy(region + pagesize, "Hello, world!");
+  *(region + 2 * pagesize - 1) = 'W';
  
-  printf("Contents of region: %s\n", region + pagesize);
+  printf("Contents of region: %s %c\n",
+		  region + pagesize, *(region + 2 * pagesize - 1));
  
+  // unmap the 1st
   unmap_result = munmap(region, pagesize);
   if (unmap_result) {
     perror("Could not munmap");
     return 1;
   }
+  // unmap the 3rd
   unmap_result = munmap(region + 2 * pagesize, pagesize);
   if (unmap_result) {
     perror("Could not munmap");
     return 1;
   }
 
-  printf("Contents of region: %s\n", region + pagesize);
+  // show the content still there
+  printf("Contents of region: %s %c\n",
+		  region + pagesize, *(region + 2 * pagesize - 1));
   printf("### After mmap:\n");
   read_mmap();
  
