@@ -86,9 +86,7 @@
 ================================================================================
 4.1 can_split_huge_page(head)
 ================================================================================
-4.1.1 can_split_huge_page(head)
-================================================================================
-4.1.1.1 return total_mapcount(page) == page_count(page) - extra_pins - 1; the extra "-1" is for get_page() before calling split_huge_page()
+4.1.1 return total_mapcount(page) == page_count(page) - extra_pins - 1; the extra "-1" is for get_page() before calling split_huge_page()
 ================================================================================
 4.2 unmap_page(head)
 ================================================================================
