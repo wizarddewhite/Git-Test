@@ -20,6 +20,7 @@ r
 # refer to
 # https://yulistic.gitlab.io/2018/12/debugging-linux-kernel-with-gdb-and-qemu/
 # https://unix.stackexchange.com/questions/396013/hardware-breakpoint-in-gdb-qemu-missing-start-kernel
+# http://nickdesaulniers.github.io/blog/2018/10/24/booting-a-custom-linux-kernel-in-qemu-and-debugging-it-with-gdb/
 #
 # 1. Build kernel with CONFIG_DEBUG_INFO=y and CONFIG_RANDOMIZE_BASE=n
 # 2. Make symbol file: objcopy --only-keep-debug vmlinux kernel.sym, and copy to host
