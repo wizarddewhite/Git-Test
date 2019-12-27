@@ -43,6 +43,7 @@ void put_task(void)
 
 void _show_pmd(struct mm_struct *mm, unsigned long address)
 {
+	int i, ret;
 	struct page *page;
 	pgd_t *pgd;
 	p4d_t *p4d;
@@ -74,8 +75,14 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	printk(KERN_ERR "pmd page at %lx is %s compound\n",
 			page_to_pfn(page), PageCompound(page)?"":"not");
 
-	if (pmd_trans_huge(pmde))
+	if (pmd_trans_huge(pmde)) {
+		printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
+		printk(KERN_ERR "\tmap  count: %d\n", page_mapcount(page));
+		printk(KERN_ERR "\tcom mapcnt: %d\n", compound_mapcount(page));
+		ret = memory_failure(page_to_pfn(page), 0);
+		printk(KERN_ERR "ret %d\n", ret);
 		return;
+	}
 
 	pte = pte_offset_map(pmd, address);
 	if (!pte_present(*pte)) {
@@ -84,9 +91,19 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	}
 
 	pfn = pte_pfn(*pte);
+	page = pfn_to_page(pfn);
 	printk(KERN_ERR "pte page at %lx is %s compound\n",
 			pfn, PageCompound(pfn_to_page(pfn))?"":"not");
+	printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
+	ret = 0;
+	for (i = 0; i < 512; i++)
+		ret += page_mapcount(page + i);
+	printk(KERN_ERR "\tmap  count: %d\n", ret);
+	printk(KERN_ERR "\tcom mapcnt: %d\n", compound_mapcount(page));
 
+	//ret = split_huge_page(page);
+	ret = memory_failure(pfn, 0);
+	printk(KERN_ERR "ret %d\n", ret);
 }
 
 void show_pmd(struct task_struct *task)
