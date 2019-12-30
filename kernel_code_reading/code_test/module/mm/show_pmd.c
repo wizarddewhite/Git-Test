@@ -76,6 +76,7 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 			page_to_pfn(page), PageCompound(page)?"":"not");
 
 	if (pmd_trans_huge(pmde)) {
+		printk(KERN_ERR "This is a trans huge pmd\n");
 		printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
 		printk(KERN_ERR "\tmap  count: %d\n", page_mapcount(page));
 		printk(KERN_ERR "\tcom mapcnt: %d\n", compound_mapcount(page));
@@ -97,7 +98,7 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
 	ret = 0;
 	for (i = 0; i < 512; i++)
-		ret += page_mapcount(page + i);
+		ret += atomic_read(&page[i]._mapcount) + 1;
 	printk(KERN_ERR "\tmap  count: %d\n", ret);
 	printk(KERN_ERR "\tcom mapcnt: %d\n", compound_mapcount(page));
 
