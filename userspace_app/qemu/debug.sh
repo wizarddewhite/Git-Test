@@ -21,8 +21,10 @@ r
 # https://yulistic.gitlab.io/2018/12/debugging-linux-kernel-with-gdb-and-qemu/
 # https://unix.stackexchange.com/questions/396013/hardware-breakpoint-in-gdb-qemu-missing-start-kernel
 # http://nickdesaulniers.github.io/blog/2018/10/24/booting-a-custom-linux-kernel-in-qemu-and-debugging-it-with-gdb/
+# http://www.yonch.com/tech/84-debugging-the-linux-kernel-with-qemu-and-eclipse
 #
 # 1. Build kernel with CONFIG_DEBUG_INFO=y and CONFIG_RANDOMIZE_BASE=n
+# 1.1 Set CONFIG_RCU_CPU_STALL_TIMEOUT to depress rcu_sched stall warnings
 # 2. Make symbol file: objcopy --only-keep-debug vmlinux kernel.sym, and copy to host
 # run gdb with following commands
 
