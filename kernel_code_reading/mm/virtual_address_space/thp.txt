@@ -188,3 +188,20 @@ After:
                                            |                     |                 |                     |
                                            +---------------------+                 +---------------------+
 
+0.4 page_count/mapcount change
+================================================================================
+PMD-mapped THP with freeze
+
+                                 page_count    mapcount  compound_mapcount total_mapcount
+
+split_huge_page_to_list          1+1           0         1                 1
+
+    unmap_page                   1             0         0                 0
+    page_ref_freeze()            0             0         0                 0
+    __split_huge_page
+        __split_huge_page_tail   1             0         NA                NA    for tail
+	ClearPageCompound
+	page_ref_inc(head)       1             0         NA                NA    for head
+	remap_page()             2             1         NA                NA
+	put_page(subpage)        2             1         NA                NA    for page
+                                 1             1         NA                NA    for subpage
