@@ -43,12 +43,19 @@ tap_one_artical() {
 
 for (( ; ; ))
 do
+    adb shell input swipe 500 620 500 300
+    # tap 100 articles a round
+    for i in {1..100}
+    do
+        echo Tap one article
+        tap_one_artical 512 1520
 
-    echo Tap one article
-    tap_one_artical 512 1520
-    
-    # move up one
-    adb shell input swipe 500 860 500 300
-    sleep 2
+        # move up one
+        adb shell input swipe 500 860 500 300
+        sleep 2
+    done
 
+    # go out and enter again
+    adb shell input keyevent 4
+    adb shell input tap 1000 93
 done
