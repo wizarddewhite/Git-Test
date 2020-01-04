@@ -2,6 +2,16 @@
 
 # adb start-server
 
+# input chinese from https://github.com/senzhk/ADBKeyBoard
+# install and setup
+#   adb install -r ADBKeyBoard.apk
+# set to use ADBKeyBoard
+#   adb shell ime enable com.android.adbkeyboard/.AdbIME
+#   adb shell ime set com.android.adbkeyboard/.AdbIME
+# set to use FlyIME
+#   adb shell ime enable com.iflytek.inputmethod/.FlyIME
+#   adb shell ime set com.iflytek.inputmethod/.FlyIME
+
 locate_position() {
 # open menu
 adb shell input tap 1000 93
