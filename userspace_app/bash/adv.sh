@@ -30,8 +30,8 @@ adb shell input tap 512 1520
 locate_position
 
 # enter adv
-adb shell input tap 512 1400
 echo enter adv
+adb shell input tap 512 1300
 sleep 20
 
 # back adv
