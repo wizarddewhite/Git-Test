@@ -47,7 +47,8 @@ do
 echo Tap one article
 tap_one_artical 512 1520
 
-echo Take a look on another article
-tap_one_artical 512 800
+# move up one
+adb shell input swipe 500 860 500 300
+sleep 2
 
 done
