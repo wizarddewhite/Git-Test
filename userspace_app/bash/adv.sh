@@ -26,5 +26,13 @@ sleep 5
 adb shell input keyevent 4
 # back article
 adb shell input keyevent 4
-sleep 10
+sleep 5
+
+#take a look into another article
+adb shell input tap 512 800
+sleep 1
+adb shell input swipe 500 300 500 1800
+# back article
+adb shell input keyevent 4
+
 done
