@@ -23,8 +23,7 @@ adb shell am broadcast -a ADB_INPUT_TEXT --es msg '在看'
 sleep 2
 }
 
-for (( ; ; ))
-do
+tap_one_artical() {
 #enter article
 adb shell input tap 512 1520
 
@@ -39,7 +38,15 @@ adb shell input keyevent 4
 # back article
 adb shell input tap 95 93
 sleep 5
+}
 
+for (( ; ; ))
+do
+
+echo Tap one article
+tap_one_artical
+
+echo Take a look on another article
 #take a look into another article
 adb shell input tap 512 800
 sleep 1
