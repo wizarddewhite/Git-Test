@@ -2,13 +2,7 @@
 
 # adb start-server
 
-# https://blog.bihe0832.com/adb-shell-input.html
-
-for (( ; ; ))
-do
-#enter article
-adb shell input tap 512 1520
-
+locate_position() {
 # scroll to top
 adb shell input swipe 500 300 500 1800
 adb shell input swipe 500 300 500 1800
@@ -17,6 +11,14 @@ adb shell input swipe 500 300 500 1800
 adb shell input swipe 500 1600 500 200
 
 sleep 2
+}
+
+for (( ; ; ))
+do
+#enter article
+adb shell input tap 512 1520
+
+locate_position
 
 # enter adv
 adb shell input tap 512 1520
