@@ -42,6 +42,26 @@ tap_one_artical() {
     sleep 1
 }
 
+to_subscribe_list() {
+    # go out and enter again
+    adb shell input keyevent 4
+
+    # to top level
+    adb shell input tap 95 93
+    adb shell input tap 95 93
+    adb shell input tap 95 93
+    adb shell input tap 95 93
+
+    # subscribe
+    adb shell input tap 95 210
+    # into list
+    adb shell input tap 1000 93
+    # my channel
+    adb shell input tap 95 210
+    # show channel content
+    adb shell input tap 1000 93
+}
+
 for (( ; ; ))
 do
     adb shell input swipe 500 620 500 300
@@ -56,7 +76,5 @@ do
         sleep 1
     done
 
-    # go out and enter again
-    adb shell input keyevent 4
-    adb shell input tap 1000 93
+    to_subscribe_list
 done
