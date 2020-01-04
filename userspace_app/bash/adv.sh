@@ -14,13 +14,14 @@
 
 locate_position() {
     # open menu
+    sleep 1
     adb shell input tap 1000 93
-    sleep 3
+    sleep 1
     # open search
     adb shell input tap 1000 1600
-    sleep 0.5
+    sleep 1
     adb shell am broadcast -a ADB_INPUT_TEXT --es msg '在看'
-    sleep 2
+    sleep 1
 }
 
 tap_one_artical() {
@@ -32,13 +33,13 @@ tap_one_artical() {
     # enter adv
     echo enter adv
     adb shell input tap 512 1300
-    sleep 20
+    sleep 18
     
     # back adv
     adb shell input keyevent 4
     # back article
     adb shell input tap 95 93
-    sleep 5
+    sleep 1
 }
 
 for (( ; ; ))
@@ -52,7 +53,7 @@ do
 
         # move up one
         adb shell input swipe 500 860 500 300
-        sleep 2
+        sleep 1
     done
 
     # go out and enter again
