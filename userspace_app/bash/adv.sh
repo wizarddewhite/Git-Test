@@ -25,7 +25,7 @@ sleep 2
 
 tap_one_artical() {
 #enter article
-adb shell input tap 512 1520
+adb shell input tap $1 $2
 
 locate_position
 
@@ -45,14 +45,9 @@ for (( ; ; ))
 do
 
 echo Tap one article
-tap_one_artical
+tap_one_artical 512 1520
 
 echo Take a look on another article
-#take a look into another article
-adb shell input tap 512 800
-sleep 1
-adb shell input swipe 500 300 500 1800
-# back article
-adb shell input keyevent 4
+tap_one_artical 512 800
 
 done
