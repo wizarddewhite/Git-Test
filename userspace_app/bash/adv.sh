@@ -25,7 +25,7 @@ sleep 5
 # back adv
 adb shell input keyevent 4
 # back article
-adb shell input keyevent 4
+adb shell input tap 95 93
 sleep 5
 
 #take a look into another article
