@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# adb start-server
+
 for (( ; ; ))
 do
 #enter first entry
