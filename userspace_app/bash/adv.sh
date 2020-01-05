@@ -32,7 +32,7 @@ tap_one_artical() {
     
     # enter adv
     echo enter adv
-    adb shell input tap 512 1300
+    adb shell input tap 1000 1200
     sleep 18
     
     # back adv
