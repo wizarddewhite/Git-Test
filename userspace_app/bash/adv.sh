@@ -77,6 +77,38 @@ next_article() {
     sleep 1
 }
 
+restart_app() {
+    adb shell am force-stop com.tencent.mm
+    sleep 0.5
+    # need to put icon to this point
+    adb shell input tap 200 1300
+    sleep 5 # wait for launch
+}
+
+switch_account() {
+    # setting
+    adb shell input tap 900 1800
+    sleep 0.5
+    adb shell input tap 500 1400
+    # quit
+    adb shell input tap 500 1900
+    adb shell input tap 500 1450
+    adb shell input tap 750 1200
+    sleep 15 # wait for quit
+
+    # switch account
+    adb shell input tap 750 1850
+    adb shell input tap 500 1400
+
+    # log in
+    adb shell am broadcast -a ADB_INPUT_TEXT --es msg '18017547416'
+    adb shell input tap 500 1100
+    sleep 5
+    adb shell am broadcast -a ADB_INPUT_TEXT --es msg '144025shyw'
+    adb shell input tap 500 1100
+    sleep 5
+}
+
 for (( ; ; ))
 do
     adb shell input swipe 500 620 500 300
