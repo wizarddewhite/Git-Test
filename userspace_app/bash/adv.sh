@@ -12,6 +12,10 @@
 #   adb shell ime enable com.iflytek.inputmethod/.FlyIME
 #   adb shell ime set com.iflytek.inputmethod/.FlyIME
 
+accounts=( \
+	"18017547416" "18916874492" \
+	)
+
 locate_position() {
     # open menu
     sleep 1
@@ -82,31 +86,41 @@ restart_app() {
     sleep 0.5
     # need to put icon to this point
     adb shell input tap 200 1300
-    sleep 5 # wait for launch
+    sleep 10 # wait for launch
 }
 
-switch_account() {
+log_in() {
+    # log in
+    adb shell am broadcast -a ADB_INPUT_TEXT --es msg ${1}
+    adb shell input tap 500 1100
+    sleep 8
+    adb shell am broadcast -a ADB_INPUT_TEXT --es msg '144025shyw'
+    adb shell input tap 500 1100
+    sleep 8
+}
+
+log_out() {
     # setting
     adb shell input tap 900 1800
-    sleep 0.5
+    sleep 2
     adb shell input tap 500 1400
+    sleep 2
     # quit
     adb shell input tap 500 1900
     adb shell input tap 500 1450
     adb shell input tap 750 1200
-    sleep 15 # wait for quit
+    sleep 20 # wait for quit
+}
+
+switch_account() {
+    log_out
 
     # switch account
     adb shell input tap 750 1850
+    sleep 2
     adb shell input tap 500 1400
 
-    # log in
-    adb shell am broadcast -a ADB_INPUT_TEXT --es msg '18017547416'
-    adb shell input tap 500 1100
-    sleep 5
-    adb shell am broadcast -a ADB_INPUT_TEXT --es msg '144025shyw'
-    adb shell input tap 500 1100
-    sleep 5
+    log_in ${1}
 }
 
 for (( ; ; ))
