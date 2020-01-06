@@ -62,6 +62,12 @@ to_subscribe_list() {
     adb shell input tap 1000 93
 }
 
+next_article() {
+        # move up one
+        adb shell input swipe 500 860 500 302
+        sleep 1
+}
+
 for (( ; ; ))
 do
     adb shell input swipe 500 620 500 300
@@ -71,9 +77,7 @@ do
         echo Tap one article
         tap_one_artical 512 1520
 
-        # move up one
-        adb shell input swipe 500 860 500 300
-        sleep 1
+        next_article
     done
 
     to_subscribe_list
