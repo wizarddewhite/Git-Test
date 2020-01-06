@@ -24,12 +24,7 @@ locate_position() {
     sleep 1
 }
 
-tap_one_artical() {
-    #enter article
-    adb shell input tap $1 $2
-    
-    locate_position
-    
+tap_adv() {
     # enter adv
     echo enter adv
     adb shell input tap 1000 1200
@@ -37,6 +32,16 @@ tap_one_artical() {
     
     # back adv
     adb shell input keyevent 4
+}
+
+tap_one_artical() {
+    #enter article
+    adb shell input tap $1 $2
+
+    locate_position
+
+    tap_adv
+
     # back article
     adb shell input tap 95 93
     sleep 1
