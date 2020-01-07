@@ -20,12 +20,15 @@ source restart_app.sh
 source switch_account.sh
 source next_article.sh
 source tap_one_article.sh
-source tap_adv.sh
 source to_article_lists.sh
 
 for (( ; ; ))
 do
+    second=`date +%s`
+    idx=$((second % 2))
+    echo Use account: ${accounts[$idx]}
     restart_app
+    switch_account ${accounts[$idx]}
     to_article_list
 
     # tap 10 articles a round
