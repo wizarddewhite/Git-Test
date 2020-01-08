@@ -13,7 +13,7 @@ tap_one_article() {
 
     locate_position $width $height
 
-    tap_adv
+    tap_adv $width $height
 
     # back article
     x=`echo "($width*0.087)/1" | bc`
