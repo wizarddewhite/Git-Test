@@ -3,11 +3,15 @@ source login.sh
 source logout.sh
 
 switch_account() {
-    log_out
+    log_out $width $height
 
-    log_in ${1}
+    log_in $width $height ${3}
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    switch_account $@
+    source get_dev_info.sh
+    get_dev_info
+    echo Width:  $width
+    echo Height: $height
+    switch_account $width $height $@
 fi

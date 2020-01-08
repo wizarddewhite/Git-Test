@@ -31,7 +31,7 @@ do
     idx=$((second % 2))
     echo Use account: ${accounts[$idx]}
     restart_app
-    switch_account ${accounts[$idx]}
+    switch_account $width $height ${accounts[$idx]}
     to_article_list $width $height
 
     # tap 10 articles a round
