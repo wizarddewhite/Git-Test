@@ -30,7 +30,7 @@ do
     second=`date +%s`
     idx=$((second % 2))
     echo Use account: ${accounts[$idx]}
-    restart_app
+    restart_app $width $height
     switch_account $width $height ${accounts[$idx]}
     to_article_list $width $height
 
