@@ -21,6 +21,9 @@ source switch_account.sh
 source next_article.sh
 source tap_one_article.sh
 source to_article_lists.sh
+source get_dev_info.sh
+
+get_dev_info
 
 for (( ; ; ))
 do
@@ -36,7 +39,7 @@ do
     do
         echo Tap one article
         tap_one_article 512 1520
-        next_article
+        next_article $width $height
     done
 
 done
