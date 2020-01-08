@@ -38,7 +38,7 @@ do
     for i in {1..10}
     do
         echo Tap one article
-        tap_one_article 512 1520
+        tap_one_article $width $height
         next_article $width $height
     done
 

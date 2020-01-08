@@ -3,19 +3,29 @@ source locate_position.sh
 source tap_adv.sh
 
 tap_one_article() {
+    width=$1
+    height=$2
     #enter article
-    adb shell input tap $1 $2
+    x=$((width / 2))
+    y=`echo "($height*0.791)/1" | bc`
+    adb shell input tap $x $y
     sleep 1
 
-    locate_position
+    locate_position $width $height
 
     tap_adv
 
     # back article
-    adb shell input tap 95 93
+    x=`echo "($width*0.087)/1" | bc`
+    y=`echo "($height*0.048)/1" | bc`
+    adb shell input tap $x $y
     sleep 1
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    tap_one_article 512 1520
+    source get_dev_info.sh
+    get_dev_info
+    echo Width:  $width
+    echo Height: $height
+    tap_one_article $width $height
 fi
