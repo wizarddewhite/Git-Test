@@ -1,21 +1,39 @@
 #!/bin/bash
 
 to_article_list() {
+    width=$1
+    height=$2
     # open contact list
-    adb shell input tap 300 1900
+    x=`echo "($width*0.28)/1" | bc`
+    y=$((height-50))
+    adb shell input tap $x $y
     sleep 1
     # open public
-    adb shell input tap 500 700
+    y=`echo "($height*0.364)/1" | bc`
+    adb shell input tap $x $y
     sleep 1
     # open my account
-    adb shell input tap 500 200
+    y=`echo "($height*0.104)/1" | bc`
+    adb shell input tap $x $y
     sleep 1
     # open list
-    adb shell input tap 1000 93
+    x=`echo "($width*0.925)/1" | bc`
+    y=`echo "($height*0.048)/1" | bc`
+    adb shell input tap $x $y
+    sleep 1
     # adjust position
-    adb shell input swipe 500 620 500 300
+    x=$((width / 2))
+    # y1 -> y2 from bottom to up with adjustment
+    y1=$((height-200))
+    delta=`echo "($height*0.169)/1" | bc`
+    y2=$((y1 - delta))
+    adb shell input swipe $x $y1 $x $y2
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    to_article_list
+    source get_dev_info.sh
+    get_dev_info
+    echo Width:  $width
+    echo Height: $height
+    to_article_list $width $height
 fi

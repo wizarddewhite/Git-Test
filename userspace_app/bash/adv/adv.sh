@@ -32,7 +32,7 @@ do
     echo Use account: ${accounts[$idx]}
     restart_app
     switch_account ${accounts[$idx]}
-    to_article_list
+    to_article_list $width $height
 
     # tap 10 articles a round
     for i in {1..10}
