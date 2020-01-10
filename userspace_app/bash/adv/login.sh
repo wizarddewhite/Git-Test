@@ -17,11 +17,11 @@ log_in() {
     input=`echo "($height*0.364)/1" | bc`
     y=`echo "($height*0.572)/1" | bc`
     adb shell input tap $x $input
-    adb shell am broadcast -a ADB_INPUT_TEXT --es msg ${3}
+    adb shell input text ${3}
     adb shell input tap $x $y
     sleep 8
     adb shell input tap $x $input
-    adb shell am broadcast -a ADB_INPUT_TEXT --es msg '144025shyw'
+    adb shell input text '144025shyw'
     adb shell input tap $x $y
     sleep 15
 }
