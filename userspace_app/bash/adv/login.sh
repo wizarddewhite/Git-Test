@@ -23,7 +23,7 @@ log_in() {
     adb shell input tap $x $input
     adb shell am broadcast -a ADB_INPUT_TEXT --es msg '144025shyw'
     adb shell input tap $x $y
-    sleep 8
+    sleep 15
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

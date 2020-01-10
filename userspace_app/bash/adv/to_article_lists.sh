@@ -7,20 +7,20 @@ to_article_list() {
     x=`echo "($width*0.28)/1" | bc`
     y=$((height-50))
     adb shell input tap $x $y
-    sleep 1
+    sleep 2
     # open public
     y=`echo "($height*0.364)/1" | bc`
     adb shell input tap $x $y
-    sleep 1
+    sleep 2
     # open my account
     y=`echo "($height*0.104)/1" | bc`
     adb shell input tap $x $y
-    sleep 1
+    sleep 2
     # open list
     x=`echo "($width*0.925)/1" | bc`
     y=`echo "($height*0.048)/1" | bc`
     adb shell input tap $x $y
-    sleep 1
+    sleep 2
     # adjust position
     x=$((width / 2))
     # y1 -> y2 from bottom to up with adjustment
@@ -28,6 +28,7 @@ to_article_list() {
     delta=`echo "($height*0.169)/1" | bc`
     y2=$((y1 - delta))
     adb shell input swipe $x $y1 $x $y2
+    sleep 2
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
