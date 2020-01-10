@@ -9,7 +9,7 @@ next_article() {
     # y1 -> y2 from bottom to up with delta of one article
     y1=$((height-200))
     # we assume one article has a height of 0.29 screen
-    delta=`echo "($height*0.29)/1" | bc`
+    delta=`echo "($height*0.245)/1" | bc`
     y2=$((y1 - delta))
     for i in $(eval echo "{1..$times}")
     do

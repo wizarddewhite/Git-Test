@@ -14,8 +14,8 @@ log_in() {
     sleep 2
 
     # log in
-    input=`echo "($height*0.364)/1" | bc`
-    y=`echo "($height*0.572)/1" | bc`
+    input=`echo "($height*0.3)/1" | bc`
+    y=`echo "($height*0.5)/1" | bc`
     adb shell input tap $x $input
     adb shell input text ${3}
     adb shell input tap $x $y

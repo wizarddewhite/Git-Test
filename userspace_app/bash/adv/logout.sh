@@ -9,16 +9,16 @@ log_out() {
     adb shell input tap $x $y
     sleep 2
     x=$((width / 2))
-    y=`echo "($height*0.729)/1" | bc`
+    y=`echo "($height*0.6)/1" | bc`
     adb shell input tap $x $y
     sleep 2
     # quit
-    y=`echo "($height*0.989)/1" | bc`
+    y=`echo "($height*0.857)/1" | bc`
     adb shell input tap $x $y
-    y=`echo "($height*0.755)/1" | bc`
+    y=`echo "($height*0.791)/1" | bc`
     adb shell input tap $x $y
-    x=`echo "($width*0.694)/1" | bc`
-    y=`echo "($height*0.625)/1" | bc`
+    x=`echo "($width*0.555)/1" | bc`
+    y=`echo "($height*0.592)/1" | bc`
     adb shell input tap $x $y
     sleep 20 # wait for quit
 }

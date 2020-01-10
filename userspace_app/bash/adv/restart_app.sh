@@ -4,7 +4,7 @@ restart_app() {
     adb shell am force-stop com.tencent.mm
     sleep 0.5
     # need to put icon to this point
-    x=`echo "($width*0.185)/1" | bc`
+    x=`echo "($width*0.18)/1" | bc`
     y=`echo "($height*0.156)/1" | bc`
     adb shell input tap $x $y
     sleep 10 # wait for launch

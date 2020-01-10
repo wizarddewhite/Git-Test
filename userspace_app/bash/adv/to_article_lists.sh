@@ -9,7 +9,7 @@ to_article_list() {
     adb shell input tap $x $y
     sleep 2
     # open public
-    y=`echo "($height*0.364)/1" | bc`
+    y=`echo "($height*0.355)/1" | bc`
     adb shell input tap $x $y
     sleep 2
     # open my account
@@ -25,9 +25,9 @@ to_article_list() {
     x=$((width / 2))
     # y1 -> y2 from bottom to up with adjustment
     y1=$((height-200))
-    delta=`echo "($height*0.169)/1" | bc`
+    delta=`echo "($height*0.16)/1" | bc`
     y2=$((y1 - delta))
-    adb shell input swipe $x $y1 $x $y2
+    # adb shell input swipe $x $y1 $x $y2
     sleep 2
 }
 
