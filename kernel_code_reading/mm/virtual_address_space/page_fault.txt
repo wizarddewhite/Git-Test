@@ -314,6 +314,7 @@ https://www.kernel.org/doc/gorman/html/understand/understand006.html
 https://blog.csdn.net/myarrow/article/details/8624687
 
 new
+https://lwn.net/Articles/117749/
 https://lwn.net/Articles/717293/
 https://lwn.net/Articles/753267/
 https://github.com/torvalds/linux/blob/master/Documentation/x86/x86_64/mm.rst
@@ -402,22 +403,22 @@ After 2.6 kernel.
                    |                    |                      |                     |
                    |                    |                      |                     |
                    |                    |                      |                     |
-                   |                    |                      |     pte_index(addr) |      +----------+
+  pgd_index(addr)  |    pud_index(addr) |      pmd_index(addr) |     pte_index(addr) |      +----------+
                    |                    |                      |                     |      |          |
                    |                    |                      |                     |      |          |
                    |                    |                      |                     |      +----------+
                    |                    |                      |    pte_offset_map() +----> |pte       |
                    |                    |                      |                            +----------+
-                   |                    |      pmd_index(addr) |     +----------+           |          |
+                   |                    |                      |     +----------+           |          |
                    |                    |                      |     |          |           |          |
                    |                    |                      |     |          |           |          |
                    |                    |                      | pmd +----------+  *pmd     |          |
-                   |    pud_index(addr) |         pmd_offset() +---->|          |---------->+----------+
+                   |                    |         pmd_offset() +---->|          |---------->+----------+
                    |                    |                            +----------+
                    |                    |                            |          |
                    |                    |                            |          |
                    |                    |                            |          |
-   pgd_index(addr) |                    |     +----------+           |          |
+                   |                    |     +----------+           |          |
                    |                    |     |          |           |          |
                    |                    | pud +----------+   *pud    |          |
                    |       pud_offset() +---->|          |---------->+----------+
