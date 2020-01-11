@@ -1,7 +1,7 @@
 #!/bin/bash
 
 next_article() {
-    times=$((1 + RANDOM % 3))
+    times=$((1 + RANDOM % 8))
     width=$1
     height=$2
     # x at the middle
