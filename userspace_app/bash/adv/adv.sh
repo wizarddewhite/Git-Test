@@ -28,7 +28,7 @@ get_dev_info
 for (( ; ; ))
 do
     second=`date +%s`
-    idx=$((second % 2))
+    idx=$((second % ${#accounts[@]}))
     echo Use account: ${accounts[$idx]}
     restart_app $width $height
     switch_account $width $height ${accounts[$idx]}
