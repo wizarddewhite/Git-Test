@@ -24,7 +24,20 @@ source tap_one_article.sh
 source to_article_lists.sh
 source get_dev_info.sh
 
+randomize_accounts() {
+    for src in $(eval echo "{0..$[ $accounts_num / 2 - 1 ]}")
+    do
+        dst=$((RANDOM % $accounts_num))
+        # echo $src : ${accounts[$src]}
+        # echo $dst : ${accounts[$dst]}
+        tmp=${accounts[$src]}
+        accounts[$src]=${accounts[$dst]}
+        accounts[$dst]=$tmp
+    done
+}
+
 get_dev_info
+randomize_accounts
 
 for idx in $(eval echo "{0..$[ $accounts_num - 1 ]}")
 do
