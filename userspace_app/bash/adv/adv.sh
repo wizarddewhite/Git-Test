@@ -15,6 +15,7 @@
 accounts=( \
 	"18017547416" "18916874492" \
 	)
+accounts_num=${#accounts[@]}
 
 source restart_app.sh
 source switch_account.sh
@@ -25,10 +26,8 @@ source get_dev_info.sh
 
 get_dev_info
 
-for (( ; ; ))
+for idx in $(eval echo "{0..$[ $accounts_num - 1 ]}")
 do
-    second=`date +%s`
-    idx=$((second % ${#accounts[@]}))
     echo Use account: ${accounts[$idx]}
     restart_app $width $height
     switch_account $width $height ${accounts[$idx]}
