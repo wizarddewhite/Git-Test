@@ -48,6 +48,14 @@ expect {
 	}
 }
 
+# # cat check_result.sh
+# if [ $1 -eq 0 ]
+# then
+# 	echo Build succeed
+# else
+# 	echo Build failed
+# fi
+
 #interact -i $source
 if {$has_workload == 1} {
 	send -i $source "cd git/linux\r"
