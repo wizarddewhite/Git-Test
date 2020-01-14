@@ -44,8 +44,8 @@ do
     switch_account $width $height ${accounts[$idx]}
     to_article_list $width $height
 
-    # tap 10 articles a round
-    for i in {1..10}
+    # tap 30 articles a round
+    for i in {1..20}
     do
         echo Tap one article
         next_article $width $height

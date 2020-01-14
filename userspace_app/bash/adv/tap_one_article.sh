@@ -11,9 +11,16 @@ tap_one_article() {
     adb shell input tap $x $y
     sleep 1
 
-    locate_position $width $height
 
-    tap_adv $width $height
+    tap=$((RANDOM % 2))
+    if [ $tap -eq 0 ]
+    then
+        echo do tap
+        locate_position $width $height
+        tap_adv $width $height
+    else
+        echo not tap
+    fi
 
     # back article
     x=`echo "($width*0.087)/1" | bc`
