@@ -6,14 +6,20 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <numaif.h>
+#include <numa.h>
 
 int main(void) {
   size_t pagesize = getpagesize();
   size_t mapsize = pagesize;
   void *pages[1];
-  int nodes[1];
+  int nodes[1], cur_node, node = -1;
   int status[1];
   int ret;
+
+  if (numa_available() < 0) {
+    printf("Numa not available, Quit\n");
+    exit(-1);
+  }
  
   printf("System page size: %lx bytes\n", pagesize);
  
@@ -41,8 +47,27 @@ int main(void) {
   ret = move_pages(0, 1, (void **)&pages, NULL, status, MPOL_MF_MOVE);
   
   if (!ret) {
-    printf("Current numa node is : %d\n", status[0]);
+    cur_node = status[0];
+    printf("Current numa node is : %d\n", cur_node);
   }
+
+  printf("Max numa node: %d\n", numa_max_node());
+  // look for a numa node different from current one
+  for (node = 0; node <= numa_max_node(); node++) {
+      if (numa_bitmask_isbitset(numa_all_nodes_ptr, node) &&
+          node != status[0]) {
+          printf("Available numa node %d\n", node);
+          break;
+      }
+  }
+
+  if (node > numa_max_node()) {
+      printf("Couldn't find available numa node for testing\n");
+      exit(-1);
+  }
+
+  printf("Move page %p from Node %d to Node %d\n", region, cur_node, node);
+
 
   return 0;
 }
