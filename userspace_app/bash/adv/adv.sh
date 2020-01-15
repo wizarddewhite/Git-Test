@@ -12,9 +12,7 @@
 #   adb shell ime enable com.iflytek.inputmethod/.FlyIME
 #   adb shell ime set com.iflytek.inputmethod/.FlyIME
 
-accounts=( \
-	"18017547416" "18916874492" \
-	)
+source accounts.sh
 accounts_num=${#accounts[@]}
 
 source restart_app.sh
