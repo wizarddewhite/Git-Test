@@ -67,7 +67,8 @@ int main(void) {
   }
 
   printf("Move page %p from Node %d to Node %d\n", region, cur_node, node);
-
+  nodes[0] = node;
+  ret = move_pages(0, 1, (void **)&pages, nodes, status, MPOL_MF_MOVE);
 
   return 0;
 }
