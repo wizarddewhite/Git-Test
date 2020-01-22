@@ -2,13 +2,16 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"text/template"
 	"time"
-	"net/http"
-	"encoding/json"
-	//"fmt"
+
+	. "github.com/bitly/go-simplejson"
 )
 
 /**
@@ -58,34 +61,68 @@ func next4() string {
 
 var myClient = &http.Client{Timeout: 10 * time.Second}
 
-type Holiday struct {
-    Code int
-		Data int
+func Get(apiURL string, params url.Values) (rs []byte, err error) {
+	var Url *url.URL
+	Url, err = url.Parse(apiURL)
+	if err != nil {
+		fmt.Printf("rul error:\r\n%v", err)
+		return nil, err
+	}
+	Url.RawQuery = params.Encode()
+	resp, err := http.Get(Url.String())
+	if err != nil {
+		fmt.Println("err:", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
 }
 
-func getJson(url string, target interface{}) error {
-    r, err := myClient.Get(url)
-    if err != nil {
-        return err
-    }
-    defer r.Body.Close()
+// get month holiday
+func retrieve_data(month string) ([]byte, error) {
+	// api url
+	juheURL := "http://v.juhe.cn/calendar/month"
 
-    return json.NewDecoder(r.Body).Decode(target)
+	param := url.Values{}
+
+	param.Set("key", "api-key")
+	param.Set("year-month", month)
+
+	// get data
+	data, err := Get(juheURL, param)
+	if err != nil {
+		fmt.Errorf("request error:\r\n%v", err)
+		return nil, err
+	}
+	return data, nil
+}
+
+func isHoliday(data []byte, date string) bool {
+	js, _ := NewJson(data)
+	// reason, _ := js.Get("reason").String()
+	// fmt.Println(reason)
+	holidays, _ := js.Get("result").Get("data").Get("holiday_array").Array()
+	for _, holiday_arr := range holidays {
+		holiday_list := holiday_arr.(map[string]interface{})["list"]
+		// fmt.Println(holiday_list)
+		for _, holiday := range holiday_list.([]interface{}) {
+			h := holiday.(map[string]interface{})
+			if 0 == strings.Compare("1", h["status"].(string)) &&
+				0 == strings.Compare(date, h["date"].(string)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func is_holiday() bool {
 	now := time.Now()
+	data, _ := retrieve_data(now.Format("2006-1"))
 	weekday := int(now.Weekday())
 	n4 := now.AddDate(0, 0, 4-weekday)
 	//fmt.Println(n4.Format("20060102"))
-	holiday := new(Holiday)
-	getJson("http://api.goseek.cn/Tools/holiday?date="+n4.Format("20060102"), holiday)
-	//fmt.Printf("%d\n", holiday.Data)
-	if holiday.Data == 1 || holiday.Data == 2 {
-		return true
-	}	else {
-		return false
-	}
+	return isHoliday(data, n4.Format("2006-1-2"))
 }
 
 func H4Notify(uname, to, hash string) {
@@ -102,7 +139,7 @@ SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片�
 `
 
 	} else {
-	Templ += `
+		Templ += `
 店名：JAcafe花园咖啡
 点评：http://www.dianping.com/shop/2019466
 地址：静安区南京西路1649号静安公园内(近静安公园)
@@ -118,7 +155,7 @@ http://www.shlug.org/about/#hacking-thursday
 
 SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片以及信息发布
 `
-}
+	}
 
 	var body bytes.Buffer
 	t, _ := template.New("cm").Parse(Templ)
