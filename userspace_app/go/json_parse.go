@@ -15,11 +15,15 @@ type Config struct {
 	Settings Setting `json:"settings"`
 }
 
-func main() {
+func simple_test() {
 	file, _ := os.Open("json.conf")
 	config := &Config{}
 	decoder := json.NewDecoder(file)
 	decoder.Decode(config)
 	fmt.Println(config.Port)
 	fmt.Println(config.Settings.ID)
+}
+
+func main() {
+	simple_test()
 }
