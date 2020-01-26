@@ -14,7 +14,7 @@ static int __init kswapd_init(void)
 	return 0;
 }
 
-1.1 kswapd_run()
+1.1 kswapd_run(), for each numa node
 ================================================================================
 int kswapd_run(int nid)
 {
@@ -34,6 +34,9 @@ int kswapd_run(int nid)
 	}
 	return ret;
 }
+
+1.2 kswapd_cpu_online(), set kswapd cpu affinity
+================================================================================
 
 2. kswapd()
 ================================================================================
