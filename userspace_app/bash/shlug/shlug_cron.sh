@@ -1,6 +1,6 @@
 #!/bin/bash
 
-/home/weiyang/go/shlug/email
-
 cd /home/weiyang/go/shlug/script/
-/home/weiyang/go/shlug/script/shlug_ann_h4.sh
+export JUHE_APPKEY="your_key"
+go run email.go `./check.sh`
+echo y | /home/weiyang/go/shlug/script/shlug_ann_h4.sh
