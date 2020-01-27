@@ -101,7 +101,7 @@ SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片�
 	t, _ := template.New("cm").Parse(Templ)
 	t.Execute(&body, &ConfimrMail{uname, hash})
 	if reason != "" {
-		send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 暂停一次", body.String(), "text")
+		send(to, next4()+" 暂停本周Hacking Thursday Night活动", body.String(), "text")
 	} else {
 		send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 at JAcafe花园咖啡", body.String(), "text")
 	}
