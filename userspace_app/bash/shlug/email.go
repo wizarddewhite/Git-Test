@@ -3,15 +3,11 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"net/smtp"
-	"net/url"
 	"strings"
 	"text/template"
 	"time"
-
-	. "github.com/bitly/go-simplejson"
+	"os"
 )
 
 /**
@@ -59,78 +55,22 @@ func next4() string {
 	return n4.Format("2006/01/02")
 }
 
-var myClient = &http.Client{Timeout: 10 * time.Second}
-
-func Get(apiURL string, params url.Values) (rs []byte, err error) {
-	var Url *url.URL
-	Url, err = url.Parse(apiURL)
-	if err != nil {
-		fmt.Printf("rul error:\r\n%v", err)
-		return nil, err
-	}
-	Url.RawQuery = params.Encode()
-	resp, err := http.Get(Url.String())
-	if err != nil {
-		fmt.Println("err:", err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return ioutil.ReadAll(resp.Body)
-}
-
-// get month holiday
-func retrieve_data(month string) ([]byte, error) {
-	// api url
-	juheURL := "http://v.juhe.cn/calendar/month"
-
-	param := url.Values{}
-
-	param.Set("key", "api-key")
-	param.Set("year-month", month)
-
-	// get data
-	data, err := Get(juheURL, param)
-	if err != nil {
-		fmt.Errorf("request error:\r\n%v", err)
-		return nil, err
-	}
-	return data, nil
-}
-
-func isHoliday(data []byte, date string) bool {
-	js, _ := NewJson(data)
-	// reason, _ := js.Get("reason").String()
-	// fmt.Println(reason)
-	holidays, _ := js.Get("result").Get("data").Get("holiday_array").Array()
-	for _, holiday_arr := range holidays {
-		holiday_list := holiday_arr.(map[string]interface{})["list"]
-		// fmt.Println(holiday_list)
-		for _, holiday := range holiday_list.([]interface{}) {
-			h := holiday.(map[string]interface{})
-			if 0 == strings.Compare("1", h["status"].(string)) &&
-				0 == strings.Compare(date, h["date"].(string)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func is_holiday() bool {
-	now := time.Now()
-	data, _ := retrieve_data(now.Format("2006-1"))
-	weekday := int(now.Weekday())
-	n4 := now.AddDate(0, 0, 4-weekday)
-	//fmt.Println(n4.Format("20060102"))
-	return isHoliday(data, n4.Format("2006-1-2"))
-}
-
 func H4Notify(uname, to, hash string) {
-	holiday := is_holiday()
+	check_res := "0"
+	if len(os.Args) == 2 {
+		check_res = os.Args[1]
+	}
+	reason := ""
+	switch check_res {
+	case "1":
+		reason = "因为其他原因"
+	case "2":
+		reason = "欢度假期"
+	}
 	Templ := ``
-	if holiday {
-		Templ += `
-欢度假期，本期活动取消。
+	if reason != "" {
+		Templ += reason +
+`，本期活动取消。
 
 有关Hacking Thursday活动的介绍：
 http://www.shlug.org/about/#hacking-thursday
@@ -160,7 +100,7 @@ SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片�
 	var body bytes.Buffer
 	t, _ := template.New("cm").Parse(Templ)
 	t.Execute(&body, &ConfimrMail{uname, hash})
-	if holiday {
+	if reason != "" {
 		send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 暂停一次", body.String(), "text")
 	} else {
 		send(to, next4()+" 吃吃喝喝Hacking Thursday Night聚餐活动 at JAcafe花园咖啡", body.String(), "text")
