@@ -3,6 +3,7 @@
 ifneq ($(KERNELRELEASE),)
     obj-m += timer.o workqueue_test.o completion_test.o
     obj-m += reboot_notifier.o semaphor.o rw_semaphor.o
+    obj-m += waitqueue.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
