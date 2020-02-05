@@ -2,7 +2,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/debugfs.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 struct dentry *my_debugfs_root;
 
@@ -57,7 +57,7 @@ struct file_operations c_fops = {
 
 static int __init mydebugfs_init(void)
 {
-	struct dentry *sub_dir, *r_a, *r_b, *s_c;
+	struct dentry *sub_dir, *r_b, *s_c;
 
 	printk(KERN_INFO "mydebugfs_init\n");
 
@@ -65,9 +65,7 @@ static int __init mydebugfs_init(void)
 	if (!my_debugfs_root)
 		return -ENOENT;
 
-	r_a = debugfs_create_u8("a", 0644, my_debugfs_root, &a);
-	if (!r_a)
-		goto Fail;
+	debugfs_create_u8("a", 0644, my_debugfs_root, &a);
 
 	/* debugfs_blob_wrapper is read only */
 	b.data = (void *)hello;
