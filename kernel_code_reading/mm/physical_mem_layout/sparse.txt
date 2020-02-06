@@ -165,13 +165,15 @@ A node must has a size larger than section size?
 
 
                                     
-                                    
-    mem_section                     
-    +-----------------------------+ 
-    |pageblock_flags              | 
-    |   (unsigned long *)         | 
-    |                             | 
-    |                             | 
+0.2.1 mem_section->section_mem_map
+================================================================================
+
+    mem_section
+    +-----------------------------+
+    |usage                        |
+    |   (mem_section_usage *)     |
+    |                             |
+    |                             |
     +-----------------------------+         mem_map[PAGES_PER_SECTION]
     |section_mem_map              |  ---->  +------------------------+
     |   (unsigned long)           |    [0]  |struct page             |
@@ -195,4 +197,24 @@ A node must has a size larger than section size?
                    [PAGES_PER_SECTION - 1]  |struct page             |
                                             |                        |
                                             +------------------------+
+
+0.2.2 mem_section->usage
+================================================================================
+
+     mem_section
+     +-----------------------------+
+     |section_mem_map              |
+     |   (unsigned long)           |
+     |                             |
+     +-----------------------------+
+     |usage                        |
+     |   (mem_section_usage *)     |
+     |   +-------------------------+
+     |   |subsection_map           |
+     |   |    (bitmap)             |    each 4bits represents a pageblock type
+     |   |pageblock_flags[0]       |    get_pfnblock_flags_mask() / get_pfnblock_migratetype()
+     |   |    (unsigned long)   ---|--->+----+----+----+---...---+----+----+
+     +---+-------------------------+    |    |    |    |         |    |    |
+                                        |    |    |    |         |    |    |
+                                        +----+----+----+---...---+----+----+
 
