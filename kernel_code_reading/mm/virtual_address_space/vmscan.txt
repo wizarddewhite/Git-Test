@@ -74,7 +74,7 @@ int kswapd_run(int nid)
 ================================================================================
 2.4 balance_pgdat()
 ================================================================================
-2.4.1 age_active_anon(pgdat, sc), balance active/inactive lru
+2.4.1 age_active_anon(pgdat, sc), move some page from active to inactive
 ================================================================================
 2.4.1.1 inactive_is_low(lruvec, LRU_INACTIVE_ANON)
 ================================================================================
@@ -82,13 +82,29 @@ int kswapd_run(int nid)
 ================================================================================
 2.4.2 mem_cgroup_soft_limit_reclaim()
 ================================================================================
+2.4.2.1 mctz = soft_limit_tree_node()
+================================================================================
+2.4.2.2 mz = mem_cgroup_largest_soft_limit_node(mctz)
+================================================================================
+2.4.2.3 mem_cgroup_soft_limit_reclaim(mz->memcg, pgdat, )
+================================================================================
 2.4.3 kswapd_shrink_node(pgdat, &sc)
 ================================================================================
-2.4.3.1 shrink_node(pgdat, sc)
+2.4.3.1 sc->nr_to_reclaim = 0 
 ================================================================================
-2.4.3.2 return sc->nr_scanned >= sc->nr_to_reclaim
+2.4.3.2 sc->nr_to_reclaim += max(high_wmark_pages(zone), SWAP_CLUSTER_MAX)
+================================================================================
+2.4.3.3 shrink_node(pgdat, sc)
+================================================================================
+2.4.3.4 return sc->nr_scanned >= sc->nr_to_reclaim
 ================================================================================
 2.4.4 allow_direct_reclaim(pgdat)
+================================================================================
+2.4.4.1 pfmemalloc_reserve += min_wmark_pages(zon)
+================================================================================
+2.4.4.2 free_pages += zone_pages_state(zone, NR_FREE_PAGES)
+================================================================================
+2.4.4.3 return free_pages > pfmemalloc_reserve / 2
 ================================================================================
 2.4.5 wake_up_all(&pgdat->pfmemalloc_wait)
 ================================================================================
@@ -110,31 +126,47 @@ int kswapd_run(int nid)
 ================================================================================
 4.1 target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat)
 ================================================================================
-4.2 memset(&sc->nr, 0, sizeof())
+4.2 nr_reclaimed = sc->nr_reclaimed
 ================================================================================
-4.3 shrink_node_memcgs(pgdat, sc)
+4.3 memset(&sc->nr, 0, sizeof())
 ================================================================================
-4.3.1 shrink_lruvec(lruvec, sc)
+4.4 shrink_node_memcgs(pgdat, sc)
 ================================================================================
-4.3.1.1 get_scan_count(lruvec, sc, nr)
+4.4.1 target_memcg = sc->target_mem_cgroup
 ================================================================================
-4.3.1.2 while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] || nr[LRU_INACTIVE_FILE]) 
+4.4.2 memcg = mem_cgroup_iter(target_memcg, NULL, NULL)
 ================================================================================
-4.3.1.3 shrink_list(lru, nr_to_scan, lruvec, sc), do reclaim
+4.4.3 lruvec = mem_cgroup_lruvec(memcg, pgdat)
 ================================================================================
-4.3.2 shrink_slab()
+4.4.4 shrink_lruvec(lruvec, sc)
 ================================================================================
-4.4 vmpressure(), account vm pressure
+4.4.4.1 get_scan_count(lruvec, sc, nr), calc scan count affected by priority
 ================================================================================
-4.5 should_continue_reclaim()
+4.4.4.2 while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] || nr[LRU_INACTIVE_FILE]) 
 ================================================================================
-4.5.1 compaction_suitable(zone, order, 0, idx)
+4.4.4.3 shrink_list(lru, nr_to_scan, lruvec, sc), do reclaim
 ================================================================================
-4.5.2 pages_for_compaction = compact_gap(sc->order)
+4.4.5 shrink_slab()
 ================================================================================
-4.5.2.1 return 2UL << order;
+4.4.6 vmpressure(gfp_mask, memcg, false, scanned, reclaimed)
 ================================================================================
-4.5.3 return inactive_lru_pages > pages_for_compaction
+4.4.7 memcg = mem_cgroup_iter(target_memcg, memcg, NULL)
+================================================================================
+4.5 vmpressure(gfp, sc->target_mem_cgroup, tree, scanned, reclaimed), account vm pressure
+================================================================================
+4.6 reclaimable = true if sc->nr_reclaimed - nr_reclaimed
+================================================================================
+4.7 should_continue_reclaim()
+================================================================================
+4.7.1 compaction_suitable(zone, order, 0, idx)
+================================================================================
+4.7.2 pages_for_compaction = compact_gap(sc->order)
+================================================================================
+4.7.2.1 return 2UL << order;
+================================================================================
+4.7.3 return inactive_lru_pages > pages_for_compaction
+================================================================================
+4.8 return reclaimable
 ================================================================================
 
 5. shrink_list(lru, nr_to_scan, lruvec, sc), do reclaim
@@ -143,57 +175,83 @@ int kswapd_run(int nid)
 ================================================================================
 5.1.1 spin_lock_irq(&pgdat->lru_lock)
 ================================================================================
-5.1.2 isolate_lru_pages(, &l_hold, &nr_scanned, sc, lru)
+5.1.2 isolate_lru_pages(, &l_hold, &nr_scanned, sc, lru), isolate page to l_hold
 ================================================================================
-5.1.2.1 __isolate_lru_page(page, mode), remove page from its LRU
+5.1.2.1 skip page above sc.reclaim_idx
 ================================================================================
-5.1.2.1.1 ClearPageLRU(page)
+5.1.2.2 __isolate_lru_page(page, mode), remove page from its LRU
 ================================================================================
-5.1.2.2 list_move(&page->lru, dst)
+5.1.2.2.1 ClearPageLRU(page)
+================================================================================
+5.1.2.3 list_move(&page->lru, dst)
 ================================================================================
 5.1.3 spin_unlock_irq(&pgdat->lru_lock)
 ================================================================================
 5.1.4 page = lru_to_page(&l_hold)
 ================================================================================
-5.1.5 list_del(&page->lru)
+5.1.5 list_del(&page->lru), take a page from l_hold
 ================================================================================
-5.1.6 list_add(&page->lru, &l_inactive)
+5.1.6 putback_lru_page(page) if !page_evictable()
 ================================================================================
-5.1.7 spin_lock_irq(&pgdat->lru_lock)
+5.1.7 list_add(&page->lru, &l_active) if page_referenced(), test accessed bit
 ================================================================================
-5.1.8 move_pages_to_lru(lruvec, &l_active)
+5.1.8 list_add(&page->lru, &l_inactive)
 ================================================================================
-5.1.8.1 putback_lru_page(page), if !page_evictable()
+5.1.9 spin_lock_irq(&pgdat->lru_lock)
 ================================================================================
-5.1.8.1.1 lru_cache_add(page)
+5.1.10 move_pages_to_lru(lruvec, &l_active), depenends on PageActive
 ================================================================================
-5.1.8.2 SetPageLRU(page)
+5.1.10.1 putback_lru_page(page), if !page_evictable()
 ================================================================================
-5.1.8.3 lru = page_lru(page)
+5.1.10.1.1 lru_cache_add(page)
 ================================================================================
-5.1.8.4 list_move(&page->lru, &lruvec->lists[lru])
+5.1.10.2 SetPageLRU(page)
 ================================================================================
-5.1.8.5 if put_page_testzero()
+5.1.10.3 lru = page_lru(page)
 ================================================================================
-5.1.8.6 del_page_from_lru_list(page, lruvec, lru)
+5.1.10.4 list_move(&page->lru, &lruvec->lists[lru])
 ================================================================================
-5.1.9 move_pages_to_lru(lruvec, &l_inactive)
+5.1.10.5 if put_page_testzero()
 ================================================================================
-5.1.10 list_splice(&l_inactive, &l_active)
+5.1.10.6 del_page_from_lru_list(page, lruvec, lru)
 ================================================================================
-5.1.11 spin_unlock_irq(&pgdat->lru_lock)
+5.1.11 move_pages_to_lru(lruvec, &l_inactive)
 ================================================================================
-5.1.12 free_unref_page_list(&l_active)
+5.1.12 list_splice(&l_inactive, &l_active)
 ================================================================================
-5.2 shrink_inactive_list(), return the # of reclaimed pages
+5.1.13 spin_unlock_irq(&pgdat->lru_lock)
+================================================================================
+5.1.14 free_unref_page_list(&l_active)
+================================================================================
+5.2 shrink_inactive_list(nr_to_scan, lruvec, sc, lru), return # pages reclaimed
 ================================================================================
 5.2.1 too_many_isolated(pgdat, file, sc)
 ================================================================================
 5.2.2 lru_add_drain()
 ================================================================================
-5.2.3 isolate_lru_pages()
+5.2.3 isolate_lru_pages(nr_to_scan, lruvec, &page_list, &nr_scanned, sc, lru)
 ================================================================================
-5.2.4 shrink_page_list(), return # of reclaimed pages
+5.2.4 nr_reclaimed = shrink_page_list(&page_list, pgdat, sc, 0, &stat, false), core function
+================================================================================
+5.2.4.1 memset(stat, 0, sizeof(*stat))
+================================================================================
+5.2.4.2 page = lru_to_page(page_list)
+================================================================================
+5.2.4.3 list_del(&page->lru)
+================================================================================
+5.2.4.4 trylock_page(page)
+================================================================================
+5.2.4.5 page_check_dirty_writeback(page, &dirty, &writeback)
+================================================================================
+5.2.4.6 references = page_check_references(page, sc)
+================================================================================
+5.2.4.7 __remove_mapping(mapping, page, true, )
+================================================================================
+5.2.4.1 list_add(&page->lru, &ret_pages)
+================================================================================
+5.2.4.1 free_unref_page_list(&free_pages)
+================================================================================
+5.2.4.1 list_splice(&ret_pages, page_list)
 ================================================================================
 5.2.5 move_pages_to_lru()
 ================================================================================
@@ -237,11 +295,22 @@ The data stored here is enum migratetype.
    |    |                          |
    |    |lowmem_reserve[MAX_ZONES] |
    |    |                          |
+   |    |vm_stat[]                 | NR_VM_ZONE_STAT_ITEMS
+   |    |   (atomic_long_t)        |
+   |    |                          |
    +----+--------------------------+
-   |                               |
+   |vm_stat[NR_VM_NODE_STAT_ITEMS] |
+   |    (atomic_long_t)            |
    |                               |
    +-------------------------------+
 
+0.2.1 node_page_state(pgdat, item)
+================================================================================
+return x = atomic_long_read(&pgdat->vm_stat[item]);
+
+0.2.2 zone_page_state(zone, item)
+================================================================================
+return x = atomic_long_read(&zone->vm_stat[item]);
 
 0.3 __setup_per_zone_wmarks()
 ================================================================================
@@ -354,3 +423,25 @@ Zone0.lowmem_reserve[2] = zone_managed_pages(Zone1 + Zone2) / ratio
    |                               |
    |                               |
    +-------------------------------+
+
+0.6 lruvec
+================================================================================
+recent_scanned/recent_rotated is updated during shrink_inactive_list().
+
+   lruvec
+   +-------------------------------+
+   |lists[NR_LRU_LISTS]            |
+   |inactive_age                   |
+   |refaults                       |
+   |    (long)                     |
+   |flags                          |
+   |    (enum lruvec_flags)        |
+   |reclaim_stat                   |
+   |    (zone_reclaim_stat)        |
+   |    +--------------------------+
+   |    |recent_rotated[2]         | [0] for anon, [1] for file
+   |    |recent_scanned[2]         |
+   |    |     (unsigned long)      |
+   |    |                          |
+   +----+--------------------------+
+
