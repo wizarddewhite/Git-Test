@@ -20,6 +20,8 @@ def move_mail(mbox_name, month):
     mbox.lock()
 
     for idx, message in mbox.iteritems():
+        if not message['date']:
+            continue
         date = parse(re.sub('\(.*?\)', '', message['date'])).replace(tzinfo=None)
         if date < start or date > end:
             continue
