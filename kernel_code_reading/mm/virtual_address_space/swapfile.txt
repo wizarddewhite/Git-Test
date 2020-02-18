@@ -36,6 +36,18 @@
 ================================================================================
 2.14 init_swap_address_space(p->type, maxpages)
 ================================================================================
+2.14.1 nr = DIV_ROUND_UP(maxpages, SWAP_ADDRESS_SPACE_PAGES)
+================================================================================
+2.14.2 spaces = kvcalloc(nr, sizeof(struct address_space), )
+================================================================================
+2.14.3 space = spaces + i;
+================================================================================
+2.14.4 space->a_ops = &swap_aops
+================================================================================
+2.14.5 nr_swapper_spaces[type] = nr
+================================================================================
+2.14.6 swapper_spaces[type] = spaces
+================================================================================
 2.15 enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map)
 ================================================================================
 2.15.1 setup_swap_info(p, prio, swap_map, cluster_info)
@@ -47,41 +59,70 @@
 2.15.2.2 add_to_avail_list(p)
 ================================================================================
 
+3. add_to_avail_list(p)
+================================================================================
 
 0. data structure
 ================================================================================
+global variables
+
+struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
+static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
+
+struct swap_info_struct *swap_info[MAX_SWAPFILES];
+
+
+PLIST_HEAD(swap_active_head);
+static struct plist_head *swap_avail_heads;
+
 0.1 swap_info_struct
 ================================================================================
 
-swap_avail_heads[]
+                             struct swap_info_struct
+                             +--------------------------------+
+swap_active_head      <--->  |list                            |
+swap_avail_heads[]    <--->  |avail_lists[0]                  |
+                             |    (struct plist_node)         |
+                             |    +---------------------------+
+                             |    |prio                       | default to -1
+                             |    |     (int)                 |
+                             |    |node_list                  |
+                             |    |prio_list                  |
+                             |    |     (struct list_head)    |
+                             |    +---------------------------+
+                             |type                            | index in swap_info, swapper_spaces, nr_swapper_spaces
+                             |    (signed char)               |
+                             |flags                           |
+                             |max                             |
+                             |                                |
+                             |discard_work                    | = swap_discard_work
+                             |    (struct work_struct)        |
+                             |swap_file                       |
+                             |    (struct file *)             |
+                             |swap_map                        |
+                             |    (char *)                    |
+                             |                                |
+                             |                                |
+                             |                                |
+                             |                                |
+                             |                                |
+                             +--------------------------------+
 
-                struct swap_info_struct
-                +--------------------------------+
-                |list                            |
-                |avail_lists[0]                  |
-                |    (struct plist_node)         |
-                |    +---------------------------+
-                |    |prio                       |
-                |    |     (int)                 |
-                |    |node_list                  |
-                |    |prio_list                  |
-                |    |     (struct list_head)    |
-                |    +---------------------------+
-                |                                |
-                |flags                           |
-                |type                            |
-                |max                             |
-                |                                |
-                |discard_work                    | = swap_discard_work
-                |    (struct work_struct)        |
-                |swap_map                        |
-                |    (char *)                    |
-                |                                |
-                |                                |
-                |                                |
-                |                                |
-                |                                |
-                +--------------------------------+
 
+0.2 address_space
+================================================================================
 
-
+         struct address_space
+         +--------------------------------+
+         |host                            |
+         |     (struct inode *)           |
+         |i_pages                         |  cached pages
+         |     (struct xarray)            |
+         |i_mmap                          |
+         |     (struct rb_root_cached)    |  tree of mapping
+         |                                |
+         |                                |
+         |                                |
+         |a_ops                           |  = swap_aops
+         |     (address_space_operation)  |
+         +--------------------------------+
