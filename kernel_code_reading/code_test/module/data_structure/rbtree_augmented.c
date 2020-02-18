@@ -1,21 +1,3 @@
-/*
- * =====================================================================================
- *
- *       Filename:  rb_tree.c
- *
- *    Description:  
- *
- *        Version:  1.0
- *        Created:  11/21/2012 11:38:18 AM
- *       Revision:  none
- *       Compiler:  gcc
- *
- *         Author:  YOUR NAME (), 
- *        Company:  
- *
- * =====================================================================================
- */
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/rbtree_augmented.h>
@@ -68,7 +50,7 @@ static inline u32 subtree_node_recompute(struct dummy_struct *node)
 	return child_subtree_nodes;
 }
 
-RB_DECLARE_CALLBACKS(static, augment_callbacks, struct dummy_struct, rb,
+RB_DECLARE_CALLBACKS_MAX(static, augment_callbacks, struct dummy_struct, rb,
 		     u32, subtree_nodes, subtree_node_recompute)
 
 static int insert_augmented_to_tree(struct dummy_struct *node)
