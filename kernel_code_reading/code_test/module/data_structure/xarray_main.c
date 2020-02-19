@@ -25,6 +25,7 @@ void test_store_load(void)
 	else
 		printk(KERN_ERR "index 1 has no value\n");
 	printk("xa is %sempty\n", xa_empty(&array)?"":"not ");
+	xa_dump(&array);
 }
 
 void test_xas(void)
