@@ -113,7 +113,7 @@ void lookup_delete_test()
 	if (!items)
 		return;
 
-	for (i = 0; i < 1; i++) {
+	for (i = 0; i < 10; i++) {
 		items[i].index = i;
 		if (i == 2)
 			continue;
@@ -148,5 +148,6 @@ int main()
 {
 	//small_test();
 	//large_test();
-	idr_test();
+	//idr_test();
+	lookup_delete_test();
 }
