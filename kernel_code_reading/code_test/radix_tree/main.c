@@ -42,7 +42,11 @@ void dump_radix_tree(struct radix_tree_node *node, int level, bool supress)
 
 	node = entry_to_node(node);
 
-	/* Neither a leaf nor the root */
+	/*
+	 * Neither a leaf nor the root
+	 * 1. leaf return above
+	 * 2. root doesn't have parent
+	 */
 	if (node->parent)
 		printf("+(s:%d, o:%016lx)\n",
 			node->parent->shift,
