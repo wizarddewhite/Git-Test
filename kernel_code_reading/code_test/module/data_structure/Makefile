@@ -3,8 +3,9 @@
 ifneq ($(KERNELRELEASE),)
     obj-m += idr_index.o ida_idr_test.o
     obj-m += rb_tree.o rbtree_augmented.o
-    obj-m += radix_tree.o xarray.o
     obj-m += klist_test.o list_test.o
+    obj-m += radix_tree.o xarray.o
+    xarray-y := xarray_main.o xarray_debug.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
