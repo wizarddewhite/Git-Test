@@ -49,9 +49,9 @@ void dump_radix_tree(struct radix_tree_node *node, int level,
 	 * 2. root doesn't have parent
 	 */
 	if (node->parent)
-		printf("+(s:%d, o:%016lx)\n",
+		printf("+(s:%d, o:%016lx, c: %2d)\n",
 			node->parent->shift,
-			get_offset(node)
+			get_offset(node), node->count
 			);
 
 	for (i = 0; i < RADIX_TREE_MAP_SIZE; i++) {
