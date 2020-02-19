@@ -54,9 +54,9 @@ void dump_radix_tree(struct radix_tree_node *node, int level, bool supress)
 			continue;
 
 		if (!level)
-			printf("|[%d]", i);
+			printf("|[%02d]", i);
 		else
-			printf("%*s|[%d]", level*4, " ", i);
+			printf("%*s|[%02d]", level*4, " ", i);
 		if (node->slots[i])
 			dump_radix_tree(node->slots[i], level+1, supress);
 		else
