@@ -50,6 +50,20 @@ void test_xas(void)
 
 }
 
+void test_xas2(void)
+{
+	XA_STATE(xas, &array, 0);
+
+	/* store value in index 0 */
+	xas_store(&xas, xa_mk_value(7));
+	xas_set(&xas, 5);
+	/* store value in index 5 */
+	xas_store(&xas, xa_mk_value(17));
+
+	xa_dump(&array);
+}
+
+
 static int xarry_test_init(void)
 {
 	test_store_load();
