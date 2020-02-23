@@ -63,11 +63,48 @@ void test_xas2(void)
 	xa_dump(&array);
 }
 
+void test_xas_order(void)
+{
+	XA_STATE(xas, &array, 0);
+
+	// order 2
+	xas_set_order(&xas, 0, 2);
+	xas_store(&xas, xa_mk_value(2));
+	xas_set(&xas, 4);
+	xas_store(&xas, xa_mk_value(2));
+	xa_dump(&array);
+
+	// order 1
+	xas_set_order(&xas, 0, 1);
+	xas_store(&xas, xa_mk_value(1));
+	xa_dump(&array);
+
+	// order 3
+	xas_set_order(&xas, 0, 3);
+	xas_store(&xas, xa_mk_value(3));
+	xa_dump(&array);
+}
+
+void test_xas_order2(void)
+{
+	XA_STATE(xas, &array, 0);
+
+	// order 19
+	xas_set_order(&xas, 0, 19);
+	xas_store(&xas, xa_mk_value(19));
+	xa_dump(&array);
+
+	// order 18
+	xas_set_order(&xas, 0, 18);
+	xas_store(&xas, xa_mk_value(18));
+	xa_dump(&array);
+}
 
 static int xarry_test_init(void)
 {
 	test_store_load();
 	test_xas();
+	test_xas_order();
 	return 0;
 }
 static void xarry_test_exit(void)
