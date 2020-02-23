@@ -26,6 +26,7 @@ void test_store_load(void)
 		printk(KERN_ERR "index 1 has no value\n");
 	printk("xa is %sempty\n", xa_empty(&array)?"":"not ");
 	xa_dump(&array);
+	xa_destroy(&array);
 }
 
 void test_xas(void)
@@ -48,6 +49,7 @@ void test_xas(void)
 	xas_for_each(&xas, entry, ULONG_MAX)
 		printk(KERN_ERR "entry %lu\n", xa_to_value(entry));
 
+	xa_destroy(&array);
 }
 
 void test_xas2(void)
@@ -61,6 +63,7 @@ void test_xas2(void)
 	xas_store(&xas, xa_mk_value(17));
 
 	xa_dump(&array);
+	xa_destroy(&array);
 }
 
 void test_xas_order(void)
@@ -83,6 +86,7 @@ void test_xas_order(void)
 	xas_set_order(&xas, 0, 3);
 	xas_store(&xas, xa_mk_value(3));
 	xa_dump(&array);
+	xa_destroy(&array);
 }
 
 void test_xas_order2(void)
@@ -95,16 +99,36 @@ void test_xas_order2(void)
 	xa_dump(&array);
 
 	// order 18
+	// but actually affect order 19 range since following siblings
 	xas_set_order(&xas, 0, 18);
 	xas_store(&xas, xa_mk_value(18));
 	xa_dump(&array);
+	xa_destroy(&array);
+}
+
+void test_xas_order3(void)
+{
+	XA_STATE(xas, &array, 0);
+
+	// order 5 [32, 63]
+	xas_set_order(&xas, 32, 5);
+	xas_store(&xas, xa_mk_value(19));
+	xa_dump(&array);
+
+	// order 4 [48, 63]
+	// but actually affect [32, 63] since xas_descend will return [32]
+	xas_set_order(&xas, 48, 4);
+	xas_store(&xas, xa_mk_value(18));
+	xa_dump(&array);
+	xa_destroy(&array);
 }
 
 static int xarry_test_init(void)
 {
-	test_store_load();
-	test_xas();
-	test_xas_order();
+	// test_store_load();
+	// test_xas();
+	// test_xas_order();
+	test_xas_order3();
 	return 0;
 }
 static void xarry_test_exit(void)
