@@ -27,4 +27,14 @@ send "$user\r"
 expect "Password:"
 send -- "$passwd\r"
 
+## kernel build
+#send "cd git/linux\r"
+#send "make clean && make -j4\r"
+
+## sysbench
+#send "./sysbench.sh\r"
+
+## netperf
+#send "./netperf.sh\r"
+
 interact
