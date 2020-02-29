@@ -76,6 +76,14 @@
 ================================================================================
 2.15.2.2 add_to_avail_list(p)
 ================================================================================
+2.16 wake_up_interruptible(&proc_poll_wait)
+================================================================================
+2.17 enable_swap_slots_cache()
+================================================================================
+2.17.1 __reenable_swap_slots_cache()
+================================================================================
+2.17.1.1 swap_slot_cache_enabled = has_usable_swap();
+================================================================================
 
 3. swap_discard_work() -> swap_do_scheduled_discard(si), free page and put back to free list
 ================================================================================
@@ -93,8 +101,78 @@
 4. swap_readpage/writepage
 ================================================================================
 
+5. get_swap_pages(n_goal, swp_entries[], entry_size)
+================================================================================
+5.1 size = swap_entry_size(entry_size)
+================================================================================
+5.2 atomic_long_sub(n_goal * size, &nr_swap_pages)
+================================================================================
+5.3 node = numa_node_id()
+================================================================================
+5.4 plist_for_each_entry_safe(si, next, &swap_avail_heads[node], avail_lists[node]) {
+================================================================================
+5.5 swap_alloc_cluster(si, swp_entries), whole cluster only for THP
+================================================================================
+5.5.1 idx = cluster_list_first(&si->free_cluster)
+================================================================================
+5.5.2 alloc_cluster(si, idx), take it from free_clusters
+================================================================================
+5.5.3 swap_range_alloc(si, offset, SWAPFILE_CLUSTER)
+================================================================================
+5.5.4 *slot = swp_entry(si->type, offset)
+================================================================================
+5.6 scan_swap_map_slots(si, SWAP_HAS_CACHE, n_goal, swp_entries)
+================================================================================
+5.6.1 scan_base = offset = si->cluster_next
+================================================================================
+5.6.2 scan_swap_map_try_ssd_cluster(si, &offset, &scan_base), ssd case
+================================================================================
+5.6.3 scan_swap_map_ssd_cluster_conflict(si, offset)
+================================================================================
+5.6.4 __try_to_reclaim_swap(si, offset, TTRS_ANYWAY)
+================================================================================
+5.6.4.1 entry = swp_entry(si->type, offset)
+================================================================================
+5.6.4.2 page = find_get_page(swap_address_space(entry), offset)
+================================================================================
+5.6.5 si->swap_map[offset] = usage
+================================================================================
+5.6.6 inc_cluster_info_page(si, si->cluster_info, offset)
+================================================================================
+5.6.7 swap_range_alloc(si, offset, 1)
+================================================================================
+5.6.8 swp_entries[n_ret++] = swp_entry(si->type, offset)
+================================================================================
+5.6.9 return n_ret
+================================================================================
+
+6. swapin_readahead(entry, gfp_mask, vmf)
+================================================================================
+6.1 swap_vma_readahead(entry, gfp_mask, vmf)
+================================================================================
+6.2 swap_cluster_readahead(entry, gfp_mask, vmf)
+================================================================================
+6.2.1 offset = swp_offset(entry)
+================================================================================
+6.2.2 mask = swapin_nr_pages(offset) - 1
+================================================================================
+6.2.3 page = __read_swap_cache_async(entry, gfp, vma, addr, &page_allocated)
+================================================================================
+6.2.4 swap_readpage(page, false)
+================================================================================
+
 0. /proc/swaps
 ================================================================================
+
+0.0 add your own swap file
+================================================================================
+# create a file with 256M
+sudo dd if=/dev/zero of=myswap bs=32k count=8192
+# format myswap to swap file
+sudo mkswap myswap
+# enable it
+sudo swapon myswap
+
 
 0.1 procswaps_init()
 ================================================================================
@@ -143,105 +221,122 @@ static struct plist_head *swap_avail_heads;
 
 
 
-                                0     1              nr_swapfiles      MAX_SWAPFILES
-                                |     |                 |                 |
-                                v     v                 v                 v
-           swap_info         +-----+-----+-----+-----+-----+-----+-----+-----+
-                             |     |     |     |     |     |     |     |     |
-                             |     |     |     |     |     |     |     |     |
-                             +-----+-----+-----+-----+-----+-----+-----+-----+
-                                            ^
-                                            |
-                                            |
-                                            +----------------------+
-                                                                   |
-                                                                   |
-                                                                   |
-                             struct swap_info_struct               |
-                             +--------------------------------+    |
-                             |type                         ---|----+
-                             |                                | index in swap_info,
-                             |                                | swapper_spaces, nr_swapper_spaces
-                             |                                |
-                             |flags                           | SWP_USED
-                             |                                |
-                             |prio                            |
-                             |    (signed short)              |
-swap_active_head      <--->  |list                            |
-swap_avail_heads[]    <--->  |avail_lists[0]                  |
-                             |    (struct plist_node)         |
-                             |    +---------------------------+
-                             |    |prio                       | = -prio
-                             |    |     (int)                 |
-                             |    |node_list                  |
-                             |    |prio_list                  |
-                             |    |     (struct list_head)    |
-                             |    +---------------------------+
-                             |    (signed char)               |
-                             |discard_work                    | = swap_discard_work
-                             |    (struct work_struct)        |
-                             |swap_file                       |
-                             |    (struct file *)             |
-                             |                                |
-                             |max                             | = maxpages
-                             |pages                           | = nr_good_pages
-                             |swap_map                        | [maxpage]
-                             |    (char *)                    | each element represent page status
-                             |                                |
-                             |                                |
-                             |cluster_next                    |
-                             |cluster_nr                      |
-                             |    (unsigned int)              |
-                             |percpu_cluster                  |
-                             |    (struct percpu_cluster *)   |
-                             |    +---------------------------+
-                             |    |index                      |
-                             |    |   (swap_cluster_info)     |
-                             |    |next                       |
-                             |    |   (unsigned int)          |
-                             |    +---------------------------+
-                             |                                |
-                             |cluster_info                    | [maxpages/SWAPFILE_CLUSTER]
-                             |    a block of swap disk space  | 
-                             |    with SWAPFILE_CLUSTER pages |
-                             |    this is a array             |
-                             |                                |
-                             |    (swap_cluster_info*)        |
-                             |    +---------------------------+
-                             |    |lock                       |
-                             |    |    (spinlock_t)           |   +---------+   +---------+   +---------+   +---------+
-                             |    |data:24                    |   |1        |   |3        |   |count    |   |         |
-                             |    |flags:8                    |   |FREE     |   |FREE     |   |         |   |FREE     |
-                             |    |    (unsigned int)         |   +---------+   +---------+   +---------+   +---------+
-                             |    |                           |    ^      |       ^     |                     ^
-                             |    +---------------------------+    |      |       |     |                     |
-                             |                                |    |      +-------+     +---------------------+
-                             |free_clusters                   |    |                                          |
-                             |discard_clusters                |    |                                          |
-                             |    (swap_cluster_list)         |    |                                          |
-                             |    +---------------------------+    |                                          |
-                             |    |head                     --|----+                                          |
-                             |    |tail                       |                                               |
-                             |    |   (swap_cluster_info)   --|-----------------------------------------------+
-                             |    |                           |
-                             |    +---------------------------+
-                             |                                |
-                             |                                |
-                             |                                |
-                             |swap_extent_root                | extent rbtree
-                             |    (struct rb_root)            |
-                             |    +---------------------------+
-                             |    |                           |
-                             |    |start_page                 |
-                             |    |start_block                |
-                             |    |nr_pages                   |
-                             |    |                           |
-                             |    +---------------------------+
-                             |                                |
-                             |                                |
-                             |                                |
-                             |                                |
-                             +--------------------------------+
+                                          0     1              nr_swapfiles       MAX_SWAPFILES -1
+                                          |     |                 |                 |
+                                          v     v                 v                 v
+         struct swap_info_struct       +-----+-----+-----+-----+-----+-----+-----+-----+
+          *swap_info[MAX_SWAPFILES]    |     |     |     |     |     |     |     |     |
+                                       |     |     |     |     |     |     |     |     |
+                                       +-----+-----+-----+-----+-----+-----+-----+-----+
+      
+         struct address_space          +-----+-----+-----+-----+-----+-----+-----+-----+
+       *swapper_space[MAX_SWAPFILES]   |     |     |     |     |     |     |     |     |
+                                       |     |     |     |     |     |     |     |     |
+                                       +-----+-----+-----+-----+-----+-----+-----+-----+
+      
+         unsigned int                  +-----+-----+-----+-----+-----+-----+-----+-----+
+       nr_swapper_spaces[MAX_SWAPFILES]|     |     |     |     |     |     |     |     |
+                                       |     |     |     |     |     |     |     |     |
+                                       +-----+-----+-----+-----+-----+-----+-----+-----+
+                                                      ^
+                                                      |
+                                                      |
+                                                      +----------------------+
+                                                                             |
+                                                                             |
+                                                                             |
+                                       struct swap_info_struct               |
+                                       +--------------------------------+    |
+                                       |type                         ---|----+
+                                       |                                | index in swap_info,
+                                       |                                | swapper_spaces, nr_swapper_spaces
+                                       |                                |
+                                       |flags                           | SWP_USED
+                                       |                                |
+                                       |prio                            |
+                                       |    (signed short)              |
+      swap_active_head      <--->      |list                            |
+      swap_avail_heads[]    <--->      |avail_lists[0]                  |
+                                       |    (struct plist_node)         |
+                                       |    +---------------------------+
+                                       |    |prio                       | = -prio
+                                       |    |     (int)                 |
+                                       |    |node_list                  |
+                                       |    |prio_list                  |
+                                       |    |     (struct list_head)    |
+                                       |    +---------------------------+
+                                       |    (signed char)               |
+                                       |discard_work                    | = swap_discard_work
+                                       |    (struct work_struct)        |
+                                       |swap_file                       |
+                                       |    (struct file *)             |
+                                       |                                |
+                                       |max                             | = maxpages
+                                       |pages                           | = nr_good_pages real available pages
+                                       |inuse_pages                     | = current used pages
+                                       |                                |
+                                       |highest_bit                     |    ----------------------+
+                                       |lowest_bit                      |    ----+                 |
+                                       |                                |        |                 |
+                                       |                                |  0     v                 v  maxpages
+                                       |swap_map                        | [  |  |  |  |  |  |  |  |  |  ]
+                                       |    (char *)                    |               ^
+                                       |                                |               |
+                                       |cluster_next                    |    -----------+     indicate next allocation
+                                       |cluster_nr                      |
+                                       |    (unsigned int)              |
+                                       |                                |
+                                       |percpu_cluster                  |
+                                       |    (struct percpu_cluster *)   |
+                                       |    +---------------------------+
+                                       |    |index                      |
+                                       |    |   (swap_cluster_info)     |
+                                       |    |next                       |
+                                       |    |   (unsigned int)          |
+                                       |    +---------------------------+
+                                       |                                |
+                                       |cluster_info                    | [maxpages/SWAPFILE_CLUSTER]
+                                       |    a block of swap disk space  | 
+                                       |    with SWAPFILE_CLUSTER pages |
+                                       |    this is a array.            |
+                                       |    Only valid for SSD          |
+                                       |                                |
+                                       |    (swap_cluster_info*)        |
+                                       |    +---------------------------+
+                                       |    |lock                       |
+                                       |    |    (spinlock_t)           |   +---------+   +---------+   +---------+   +---------+
+                                       |    |data:24                    |   |1        |   |3        |   |count    |   |         |
+                                       |    |flags:8                    |   |FREE     |   |FREE     |   |         |   |FREE     |
+                                       |    |    (unsigned int)         |   +---------+   +---------+   +---------+   +---------+
+                                       |    |                           |    ^      |       ^     |                     ^
+                                       |    +---------------------------+    |      |       |     |                     |
+                                       |                                |    |      +-------+     +---------------------+
+                                       |free_clusters                   |    |                                          |
+                                       |discard_clusters                |    |                                          |
+                                       |    (swap_cluster_list)         |    |                                          |
+                                       |    +---------------------------+    |                                          |
+                                       |    |head                     --|----+                                          |
+                                       |    |tail                       |                                               |
+                                       |    |   (swap_cluster_info)   --|-----------------------------------------------+
+                                       |    |                           |
+                                       |    +---------------------------+
+                                       |                                |
+                                       |                                |
+                                       |                                |
+                                       |swap_extent_root                | extent rbtree
+                                       |    (struct rb_root)            | seems to be used by bdev
+                                       |    +---------------------------+ from page to sector
+                                       |    |                           |
+                                       |    |start_page                 |
+                                       |    |start_block                |
+                                       |    |nr_pages                   |
+                                       |    |                           |
+                                       |    +---------------------------+
+                                       |                                |
+                                       |                                |
+                                       |                                |
+                                       |                                |
+                                       +--------------------------------+
 
 
 0.2 address_space
@@ -281,3 +376,89 @@ swap_avail_heads[]    <--->  |avail_lists[0]                  |
          |badpages[1]                     |  [nr_badpages]
          |     (__u32)                    |
          +--------------------------------+
+
+0.4 swp_entry_t
+================================================================================
+
+    
+    +-----------------------------------------------+
+    |             |                                 |
+    +-----------------------------------------------+
+    ^             ^                                 ^
+    |   type      |       index/offset              |
+
+0. history of swap
+================================================================================
+
+Restyle scan_swap_map:
+Drop swap_device_lock and swap_list_lock
+use swap_lock
+
+dae06ac43d56 2005-09-05 [PATCH] swap: update swsusp use of swap_info
+5d337b9194b1 2005-09-05 [PATCH] swap: swap_lock replace list+device
+048c27fd7281 2005-09-05 [PATCH] swap: scan_swap_map latency breaks
+52b7efdbe5f5 2005-09-05 [PATCH] swap: scan_swap_map drop swap_device_lock
+7dfad4183bf9 2005-09-05 [PATCH] swap: scan_swap_map restyled
+fb4f88dcabdc 2005-09-05 [PATCH] swap: get_swap_page drop swap_list_lock
+89d09a2c80ea 2005-09-05 [PATCH] swap: freeing update swap_list.next
+6eb396dc4a97 2005-09-05 [PATCH] swap: swap unsigned int consistency
+53092a7402f2 2005-09-05 [PATCH] swap: show span of swap extents
+11d31886dbcb 2005-09-05 [PATCH] swap: swap extent list is ordered
+4cd3bb10ff0b 2005-09-05 [PATCH] swap: move destroy_swap_extents calls
+e2244ec2efa4 2005-09-05 [PATCH] swap: correct swapfile nr_good_pages
+b0d9bcd4bb79 2005-09-05 [PATCH] swap: update swapfile i_sem comment
+
+swap randomize if nonrot
+
+f0d7a4b3ed46 2009-01-06 swapfile: let others seed random
+858a29900ea2 2009-01-06 swapfile: change discard pgoff_t to sector_t
+c60aa176c6de 2009-01-06 swapfile: swap allocation cycle if nonrot
+20137a490f39 2009-01-06 swapfile: swapon randomize if nonrot
+7992fde72ce0 2009-01-06 swapfile: swap allocation use discard
+6a6ba83175c0 2009-01-06 swapfile: swapon use discard (trim)
+ebebbbe90463 2009-01-06 swapfile: rearrange scan and swap_info
+81e33971271e 2009-01-06 swapfile: remove v0 SWAP-SPACE message
+886bb7e9c3ed 2009-01-06 swapfile: remove surplus whitespace
+22c6f8fdb319 2009-01-06 swapfile: remove SWP_ACTIVE mask
+73fd8748ab0b 2009-01-06 swapfile: swapon needs larger size type
+
+swap count continuations, encoded in swap_map
+
+7509765a29cf 2009-12-15 swap_info: reorder its fields
+aaa468653b4a 2009-12-15 swap_info: note SWAP_MAP_SHMEM
+570a335b8e22 2009-12-15 swap_info: swap count continuations
+8d69aaee80c1 2009-12-15 swap_info: swap_map of chars not shorts
+253d553ba75a 2009-12-15 swap_info: SWAP_HAS_CACHE cleanups
+73c34b6accc8 2009-12-15 swap_info: miscellaneous minor cleanups
+9625a5f289f7 2009-12-15 swap_info: include first_swap_extent
+efa90a981bbc 2009-12-15 swap_info: change to array of pointers
+f29ad6a99b59 2009-12-15 swap_info: private to swapfile.c
+
+Opt for SSD
+
+ebc2a1a69111 2013-09-11 swap: make cluster allocation per-cpu
+edfe23dac3e2 2013-09-11 swap: fix races exposed by swap discard
+815c2c543d3a 2013-09-11 swap: make swap discard async
+2a8f94493432 2013-09-11 swap: change block allocation algorithm for SSD
+
+Regular page swap optimizations
+https://lwn.net/Articles/704359/
+a) per cluster lock
+b) 64M address space
+c) add cache for swap slots allocation
+
+ba81f8384254 2017-02-22 mm/swap: skip readahead only when swap slot cache is enabled
+039939a65059 2017-02-22 mm/swap: enable swap slots cache usage
+67afa38e012e 2017-02-22 mm/swap: add cache for swap slots allocation
+7c00bafee87c 2017-02-22 mm/swap: free swap slots in batch
+36005bae205d 2017-02-22 mm/swap: allocate swap slots in batches
+e8c26ab60598 2017-02-22 mm/swap: skip readahead for unreferenced swap slots
+4b3ef9daa4fc 2017-02-22 mm/swap: split swap cache into 64MB trunks
+235b62176712 2017-02-22 mm/swap: add cluster lock
+6a991fc72d12 2017-02-22 mm/swap: fix kernel message in swap_info_get()
+
+0. some articles on swap
+================================================================================
+Making swapping scalable https://lwn.net/Articles/704478/
+Reconsidering swapping   https://lwn.net/Articles/690079/
+mm: balance LRU lists based on relative thrashing https://lwn.net/Articles/690069/
