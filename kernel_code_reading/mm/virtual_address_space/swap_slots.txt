@@ -1,0 +1,70 @@
+1. enable_swap_slots_cache()
+================================================================================
+1.1 swap_slot_cache_initialized = true;
+================================================================================
+1.2 __reenable_swap_slots_cache();
+================================================================================
+1.3 swap_slot_cache_enabled = has_usable_swap();
+================================================================================
+
+2. refill_swap_slots_cache(cache), refill swap_slots_cache
+================================================================================
+2.1 get_swap_pages(SWAP_SLOTS_CACHE_SIZE, cache->slots, 1)
+================================================================================
+
+3. free_swap_slot(swp_entry_t entry)
+================================================================================
+3.1 cache = raw_cpu_ptr(&swp_slots)
+================================================================================
+3.2 cache->slots_ret[cache->n_ret++] = entry
+================================================================================
+3.3 swapcache_free_entries(cache->slots_ret, cache->n_ret), if slots_ret is full
+================================================================================
+3.3.1 swap_entry_free(p, entries[i])
+================================================================================
+3.3.1.1 p->swap_map[offset] = 0
+================================================================================
+3.3.1.2 dec_cluster_info_page(p, p->cluster_info, offset)
+================================================================================
+3.3.1.3 swap_range_free()
+================================================================================
+
+4. get_swap_page(page)
+================================================================================
+4.1 search in swap cache
+================================================================================
+4.2 refill_swap_slots_cache(cache), or refill if no
+================================================================================
+4.3 get_swap_pages(1, &entry, 1), allocate from swap device
+================================================================================
+
+0. data struct
+================================================================================
+
+bool	swap_slot_cache_active;
+bool	swap_slot_cache_enabled;
+bool	swap_slot_cache_initialized;
+DEFINE_MUTEX(swap_slots_cache_enable_mutex);
+
+0.1 swap_slots_cache, per cpu variable
+================================================================================
+static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
+static DEFINE_MUTEX(swap_slots_cache_mutex);
+
+         swap_slots_cache
+         +--------------------------------+
+         |slots                           | = [SWAP_SLOTS_CACHE_SIZE]
+         |    (swp_entry_t *)             |
+         |cur                             | current index
+         |nr                              | free to use
+         |    (int)                       |
+         |alloc_lock                      |
+         |    (struct mutex)              |
+         |slots_ret                       | = [SWAP_SLOTS_CACHE_SIZE]
+         |    (swp_entry_t *)             |
+         |n_ret                           |
+         |    (int)                       |
+         |free_lock                       |
+         |    (spinlock_t)                |
+         +--------------------------------+
+
