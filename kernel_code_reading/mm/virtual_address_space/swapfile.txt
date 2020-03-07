@@ -161,6 +161,13 @@
 6.2.4 swap_readpage(page, false)
 ================================================================================
 
+7. swap_duplicate(entry)
+================================================================================
+7.1 __swap_duplicate(entry, 1)
+================================================================================
+7.2 add_swap_count_continuation(entry, GFP)
+================================================================================
+
 0. /proc/swaps
 ================================================================================
 
@@ -386,6 +393,51 @@ static struct plist_head *swap_avail_heads;
     +-----------------------------------------------+
     ^             ^                                 ^
     |   type      |       index/offset              |
+
+0.5 swap_map
+================================================================================
+; swap_map stores the count of page refer this slot
+; and this filed is encoded
+
+Two formats for swap_map: first swap_map and continuations
+
+    First swap_map:
+
+        COUNT_CONTINUED
+         |    SWAP_HAS_CACHE
+         |     |
+         v     v
+       +----+----+----+----+----+----+----+----+
+       |    |    |    |    |    |    |    |    |
+       +----+----+----+----+----+----+----+----+
+
+    Continuations:
+
+        COUNT_CONTINUED
+         |
+         |
+         v
+       +----+----+----+----+----+----+----+----+
+       |    |    |    |    |    |    |    |    |
+       +----+----+----+----+----+----+----+----+
+
+Bit indication in first swap_map:
+
+   SWAP_HAS_CACHE  0x40(0100 0000)
+
+Bit indication in all swap_map(?):
+
+   COUNT_CONTINUED 0x80(1000 0000)
+
+Special value in first swap_map:
+
+   SWAP_MAP_MAX    0x3e(0011 1110)
+   SWAP_MAP_BAD    0x3f(0011 1111)
+   SWAP_MAP_SHMEM  0xbf(1011 1111)
+
+Special value in swap_map continuation:
+
+   SWAP_CONT_MAX   0x7f(0111 1111)
 
 0. history of swap
 ================================================================================
