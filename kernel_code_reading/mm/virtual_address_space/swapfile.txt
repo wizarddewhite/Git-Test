@@ -487,6 +487,12 @@ ebebbbe90463 2009-01-06 swapfile: rearrange scan and swap_info
 22c6f8fdb319 2009-01-06 swapfile: remove SWP_ACTIVE mask
 73fd8748ab0b 2009-01-06 swapfile: swapon needs larger size type
 
+introduce SWAP_HAS_CACHE
+
+c9e444103b5e 2009-06-16 mm: reuse unused swap entry if necessary
+355cfa73ddff 2009-06-16 mm: modify swap_map and add SWAP_HAS_CACHE flag
+cb4b86ba47bb 2009-06-16 mm: add swap cache interface for swap reference
+
 swap count continuations, encoded in swap_map
 
 7509765a29cf 2009-12-15 swap_info: reorder its fields
