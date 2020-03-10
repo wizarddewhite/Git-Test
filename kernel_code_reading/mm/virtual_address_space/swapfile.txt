@@ -165,8 +165,34 @@
 ================================================================================
 7.1 __swap_duplicate(entry, 1)
 ================================================================================
+7.1.1 swap_count_continued(p, offset, count), core function to manipulate inc/des
+================================================================================
 7.2 add_swap_count_continuation(entry, GFP)
 ================================================================================
+
+8. swap cache and swap entry
+================================================================================
+There are two operations on swap:
+
+  a) swap entry: no corresponding page
+  b) swap cache: with corresponding page
+
+From the following commit, it reveals more detail.
+
+    355cfa73ddff 2009-06-16 mm: modify swap_map and add SWAP_HAS_CACHE flag
+
+This looks: swap cache = swap entry + page cache. In that commit, we can see
+related allocation and release functions respectively.
+
+Allocation:
+
+  a) swap entry: scan_swap_map(si, SWAP_MAP)
+  b) swap cache: scan_swap_map(si, SWAP_CACHE)
+
+Release:
+
+  a) swap entry: swap_entry_free(p, entry, SWAP_MAP)
+  b) swap cache: swap_entry_free(p, entry, SWAP_CACHE)
 
 8. swap_free(entry) -> __swap_entry_free(p, entry, 1)
 ================================================================================
