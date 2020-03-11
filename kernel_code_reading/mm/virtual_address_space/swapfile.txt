@@ -194,18 +194,50 @@ Release:
   a) swap entry: swap_entry_free(p, entry, SWAP_MAP)
   b) swap cache: swap_entry_free(p, entry, SWAP_CACHE)
 
-8. swap_free(entry) -> __swap_entry_free(p, entry, 1)
-================================================================================
-8.1 usage = __swap_entry_free_locked(p, offset, 1)
-================================================================================
-8.2 free_swap_slot(entry), if usage == 0
+8.1 swap cache allocation & release at commit 355cfa73ddff
 ================================================================================
 
-9. free_swap_and_cache(entry)
+8.1.1 add_to_swap(), called in vmscan -> shrink_page_list
+================================================================================
+8.1.1.1 entry = get_swap_page()
+================================================================================
+8.1.1.1.1 scan_swap_map(si, SWAP_CACHE)       --- allocate
+================================================================================
+8.1.1.2 add_to_swap_cache(page, entry, ), add page to space_address
+================================================================================
+8.1.1.3 swapcache_free(entry, NULL)           --- release
+================================================================================
+8.1.1.3.1 swap_entry_free(p, entry, SWAP_CACHE);
 ================================================================================
 
-10. put_swap_page(page, entry)
+8.2 swap entry allocation & release
 ================================================================================
+
+8.2.1 alloc_swapdev_block(swap)
+================================================================================
+8.2.1.1 offset = swap_offset(get_swap_page_of_type(swap)),   --- allocate
+================================================================================
+8.2.1.2 swap_free(swp_entry(swap, offset))
+================================================================================
+8.2.1.2.1 swap_entry_free(p, entry, SWAP_MAP)
+================================================================================
+
+9. The process of how swap cache works
+================================================================================
+
+   shrink_page_list()
+       add_to_swap(page)
+           get_swap_page()
+           SetPageSwapCache(page)
+           SetPageDirty(page)
+       try_to_unmap(page, 0)
+           try_to_unmap_one(page, vma, 0)
+	       swap_duplicate(), if PageSwapCache(page)
+	       page_remove_rmap()
+       pageout(page, mapping, sync_writeback) if PageDirty(page)
+           SetPageReclaim(page)
+	   mapping->a_ops->writepage(page, &wbc) = swap_aops
+
 
 0. /proc/swaps
 ================================================================================
