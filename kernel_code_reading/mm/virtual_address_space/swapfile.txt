@@ -194,52 +194,46 @@ Release:
   a) swap entry: swap_entry_free(p, entry, SWAP_MAP)
   b) swap cache: swap_entry_free(p, entry, SWAP_CACHE)
 
-8.1 swap cache allocation & release at commit 355cfa73ddff
+8.1 swap allocation & release at commit 355cfa73ddff mm: modify swap_map and add SWAP_HAS_CACHE flag
 ================================================================================
 
-8.1.1 add_to_swap(), called in vmscan -> shrink_page_list
-================================================================================
-8.1.1.1 entry = get_swap_page()
-================================================================================
-8.1.1.1.1 scan_swap_map(si, SWAP_CACHE)       --- allocate
-================================================================================
-8.1.1.2 add_to_swap_cache(page, entry, ), add page to space_address
-================================================================================
-8.1.1.3 swapcache_free(entry, NULL)           --- release
-================================================================================
-8.1.1.3.1 swap_entry_free(p, entry, SWAP_CACHE);
+8.1.1 swap cache allocation & release
 ================================================================================
 
-8.2 swap entry allocation & release at commit 355cfa73ddff
+    add_to_swap(), called in vmscan -> shrink_page_list
+       entry = get_swap_page()
+          scan_swap_map(si, SWAP_CACHE)       --- allocate
+       add_to_swap_cache(page, entry, ), add page to space_address
+       swapcache_free(entry, NULL)           --- release
+          swap_entry_free(p, entry, SWAP_CACHE);
+
+8.1.2 swap entry allocation & release
 ================================================================================
 
-8.2.1 alloc_swapdev_block(swap)
-================================================================================
-8.2.1.1 offset = swap_offset(get_swap_page_of_type(swap)),   --- allocate
-================================================================================
-8.2.1.2 swap_free(swp_entry(swap, offset))
-================================================================================
-8.2.1.2.1 swap_entry_free(p, entry, SWAP_MAP)
+    alloc_swapdev_block(swap)
+       offset = swap_offset(get_swap_page_of_type(swap)),   --- allocate
+       swap_free(swp_entry(swap, offset))
+          swap_entry_free(p, entry, SWAP_MAP)
+
+8.2 swap allocation & release at commit bb6d3fb354c5 Linux 5.6-rc1
 ================================================================================
 
-8.3 swap cache allocation & release at commit bb6d3fb354c5 Linux 5.6-rc1
+8.2.1 swap cache allocation & release
 ================================================================================
 
-8.3.1 allocation swap cache
-================================================================================
+   add_to_swap()
+      entry = get_swap_page()
+         refill_swap_slots_cache()     --- refill swap cache's cache with bunch swap slots
+             get_swap_pages(SWAP_SLOTS_CACHE_SIZE)
+         get_swap_pages(1)             --- entries allocated is marked SWAP_HAS_CACHE
+             swap_alloc_cluster()
+                 map[i] = SWAP_HAS_CACHE
+             scan_swap_map_slots(, SWAP_HAS_CACHE, )
+      add_to_swap_cache(page, entry, )
+      put_swap_page(page, entry)       --- release for a particular page
 
-   get_swap_page()
-      refill_swap_slots_cache()     --- refill swap cache's cache
-      get_swap_pages()              --- entries allocated is marked SWAP_HAS_CACHE
-          swap_alloc_cluster()
-	     map[i] = SWAP_HAS_CACHE
-	  scan_swap_map_slots(, SWAP_HAS_CACHE, )
 
-8.3.2 release swap cache
-================================================================================
-   put_swap_page(page, entry)       --- so you know there is a page related
-
-8.3.3 allocation & release swap entry
+8.2.2 swap entry allocation & release
 ================================================================================
 
  alloc_swapdev_block(swap)
