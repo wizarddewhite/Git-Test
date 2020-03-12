@@ -608,6 +608,22 @@ e8c26ab60598 2017-02-22 mm/swap: skip readahead for unreferenced swap slots
 235b62176712 2017-02-22 mm/swap: add cluster lock
 6a991fc72d12 2017-02-22 mm/swap: fix kernel message in swap_info_get()
 
+Delay splitting THP after swapped out:
+https://lwn.net/Articles/696840/
+
+fe490cc0fe9e 2017-09-06 mm, THP, swap: add THP swapping out fallback counting
+bd4c82c22c36 2017-09-06 mm, THP, swap: delay splitting THP after swapped out
+d6810d730022 2017-09-06 memcg, THP, swap: make mem_cgroup_swapout() support THP
+abe2895b7604 2017-09-06 memcg, THP, swap: avoid to duplicated charge THP in swap cache
+3e14a57b2416 2017-09-06 memcg, THP, swap: support move mem cgroup charge for THP swapped out
+59807685a7e7 2017-09-06 mm, THP, swap: support splitting THP for THP swap out
+225311a46411 2017-09-06 mm: test code to write THP to swap device as a whole
+98cc093cba1e 2017-09-06 block, THP: make block_device_operations.rw_page support THP
+f0eea189e8e9 2017-09-06 mm, THP, swap: don't allocate huge cluster for file backed swap device
+ba3c4ce6def4 2017-09-06 mm, THP, swap: make reuse_swap_page() works for THP swapped out
+e07098294adf 2017-09-06 mm, THP, swap: support to reclaim swap space for THP swapped out
+a3aea839e42e 2017-09-06 mm, THP, swap: support to clear swap cache flag for THP swapped out
+
 0. some articles on swap
 ================================================================================
 Making swapping scalable https://lwn.net/Articles/704478/
