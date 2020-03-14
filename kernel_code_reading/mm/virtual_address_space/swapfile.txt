@@ -250,16 +250,40 @@ Release:
    shrink_page_list()
        add_to_swap(page)
            get_swap_page()
-           SetPageSwapCache(page)
+               get_swap_pages(1, )                               --- set SWAP_HAS_CACHE
+           add_to_swap_cache
+               page_ref_add(page, nr)
+               SetPageSwapCache(page)                            --- set PageSwapCache
+               xas_store(&xas, page)
            SetPageDirty(page)
        try_to_unmap(page, 0)
            try_to_unmap_one(page, vma, 0)
-	       swap_duplicate(), if PageSwapCache(page)
+	       swap_duplicate()                                  --- inc swap_map
 	       page_remove_rmap()
        pageout(page, mapping, sync_writeback) if PageDirty(page)
            SetPageReclaim(page)
-	   mapping->a_ops->writepage(page, &wbc) = swap_aops
+           mapping->a_ops->writepage(page, &wbc) = swap_aops
+       try_to_free_swap(page) or __remove_mapping()
+           __delete_from_swap_cache(page, entry)
+               xas_store(&xas, NULL);
+               ClearPageSwapCache(page)                          --- clear PageSwapCache
+           put_swap_page(page, entry)                            --- clear SWAP_HAS_CACHE
+           page_ref_sub(page, nr)
 
+   do_swap_page(vmf)
+       entry = pte_to_swp_entry(vmf->orig_pte);
+       page = lookup_swap_cache(entry, vma, vmf->address);
+       if (!page), not in swap cache, alloc and add it
+           page = swapin_readahead()
+               new_page = alloc_page_vma()
+               __SetPageLocked(new_page)
+               __SetPageSwapBacked(new_page)
+               add_to_swap_cache(new_page, entry)
+                   page_ref_add(page, nr)
+                   SetPageSwapCache(page)                        --- set PageSwapCache
+                   xas_store(&xas, page)
+       swap_free(entry)                                          --- dec swap_map
+       try_to_free_swap(page)                                    --- try to return swap_map
 
 0. /proc/swaps
 ================================================================================
