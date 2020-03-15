@@ -25,9 +25,21 @@
 1.4 return 1, successfully added to swap
 ================================================================================
 
-2. pageout(struct page *page, struct address_space *mapping), called by shrink_list
+2. delete_from_swap_cache(page)
 ================================================================================
-2.1 mapping->a_ops->writepage(page, &wbc), a_ops = swap_aops for swap
+2.1 entry = { .val = page_private(page) }
+================================================================================
+2.2 __delete_from_swap_cache(page, entry)
+================================================================================
+2.2.1 xas_store(&xas, NULL)
+================================================================================
+2.2.2 set_page_private(page + i, 0)
+================================================================================
+2.2.3 ClearPageSwapCache(page)
+================================================================================
+2.3 put_swap_page(), it clear SWAP_HAS_CACHE, return swap slot until no one use
+================================================================================
+2.4 page_ref_sub(page, compound_nr(page))
 ================================================================================
 
 3. swapin_readahead(entry, gfp_mask, vmf), called in do_swap_page()
