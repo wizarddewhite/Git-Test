@@ -258,7 +258,9 @@ Release:
            SetPageDirty(page)
        try_to_unmap(page, 0)
            try_to_unmap_one(page, vma, 0)
+	       ptep_get_and_clear(mm, address, pvmw.pte)
 	       swap_duplicate()                                  --- inc swap_map
+               set_pte_at(mm, address, pvmw.pte, swp_pte)
 	       page_remove_rmap()
        pageout(page, mapping, sync_writeback) if PageDirty(page)
            SetPageReclaim(page)
