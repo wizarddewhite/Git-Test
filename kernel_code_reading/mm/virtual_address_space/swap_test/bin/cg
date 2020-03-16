@@ -1,0 +1,77 @@
+#!/bin/sh
+seconds=60
+
+move() {
+	s=$1
+	d=$2
+	mkdir $cg/$d || exit $?
+	echo $mem >$cg/$d/memory.limit_in_bytes || exit $?
+	[ -z "$soft" ] || echo $soft >$cg/$d/memory.soft_limit_in_bytes || exit $?
+	[ -z "$swam" ] || echo $swam >$cg/$d/memory.memsw.limit_in_bytes || exit $?
+	echo 3 >$cg/$d/memory.move_charge_at_immigrate || exit $?
+	tasks=0
+	while [ $tasks -lt 4 ]
+	do	sleep 1
+		[ -f /tmp/swapswap ] || exit 0
+		set -- `wc -l $cg/$s/tasks`
+		tasks=$1
+	done
+	while :
+	do
+		while :
+		do	read task <$cg/$s/tasks  || break
+			echo $task >$cg/$d/tasks # but might have gone already
+			[ -f /tmp/swapswap ] || exit 0
+		done	2>/dev/null
+		rmdir $cg/$s 2>/dev/null && break
+		sleep 1
+		[ -f /tmp/swapswap ] || exit 0
+	done
+	sleep $seconds
+	[ -f /tmp/swapswap ] || exit 0
+}
+
+case "x$1" in
+x)	mem=700M ; soft=""  ; memcgs=1 ;;
+x1)	mem=700M ; soft=""  ; memcgs=1 ;;
+x2)	mem=300M ; soft=250M; memcgs=2 ;;
+xm)	mem=300M ; soft=250M; memcgs=2 ;;
+*)	mem=$1   ; soft=""  ; memcgs=1 ;;
+esac
+
+> /tmp/swapswap
+mkdir -p /cg || exit $?
+[ -f /cg/memory.usage_in_bytes ] ||
+	mount -t cgroup -o memory cg /cg || exit $?
+[ -f /cg/memory.memsw.usage_in_bytes ] && swam=1000M || swam=""
+echo 1 >/cg/memory.use_hierarchy || exit $?
+
+cg=/cg/cg
+mkdir -p $cg || exit $?
+echo 1000M >$cg/memory.limit_in_bytes
+[ -z "$soft" ] || echo  800M >$cg/memory.soft_limit_in_bytes
+[ -z "$swam" ] || echo 2000M >$cg/memory.memsw.limit_in_bytes
+echo $$ >$cg/tasks
+
+i=0
+while [ $i -lt $memcgs ]
+do	let i=$i+1
+	mkdir -p $cg/$i || exit $?
+	echo $mem >$cg/$i/memory.limit_in_bytes || exit $?
+	[ -z "$soft" ] || echo $soft >$cg/$i/memory.soft_limit_in_bytes || exit $?
+	[ -z "$swam" ] || echo $swam >$cg/$i/memory.memsw.limit_in_bytes || swam=""
+
+	chmod a+w $cg/$i/tasks || exit $?
+done
+while [ $i -lt 4 ]
+do	let i=$i+1
+	[ ! -d $cg/$i ] || rmdir $cg/$i || exit $?
+done
+[ "x$1" = xm ] || exit 0
+
+while :
+do	move 1 3
+	move 2 4
+	move 3 1
+	move 4 2
+done &

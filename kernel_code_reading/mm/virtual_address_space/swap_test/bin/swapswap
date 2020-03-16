@@ -1,0 +1,32 @@
+swap1=/dev/sda8
+swap2=/dev/sda9
+seconds=60
+swapoff -a
+swapon -d $swap1 || exit $?
+across=1
+[ -f /tmp/swapswap ] || : > /tmp/swapswap
+while :
+do	[ -f /tmp/swapswap ] || exit 0
+	sleep 60
+	[ -f /tmp/swapswap ] || exit 0
+	let seconds=$SECONDS
+	swapon -d $swap2 || {
+		status=$? ; date >&2; rm -f /tmp/swapswap ; exit $status
+	}
+	swapoff $swap1 || {
+		status=$? ; date >&2; rm -f /tmp/swapswap ; exit $status
+	}
+	[ -f /sys/kernel/mm/ksm/merge_across_nodes -a \
+          -d /sys/devices/system/node/node1 ] && {
+		sleep 10
+		echo 2 >/sys/kernel/mm/ksm/run
+		let across=$across^1
+		echo $across >/sys/kernel/mm/ksm/merge_across_nodes
+		echo 1 >/sys/kernel/mm/ksm/run
+	}
+	swapx=$swap1; swap1=$swap2; swap2=$swapx
+	let seconds=$SECONDS-$seconds
+	[ $seconds -lt 20 ] && seconds=20
+	let seconds=$seconds+$seconds+$seconds+$seconds
+	let seconds=$RANDOM%$seconds
+done &

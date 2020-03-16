@@ -1,0 +1,12 @@
+--- 5064/mm/vmscan.c	2020-02-23 17:27:12.917774660 -0800
++++ 5064D/mm/vmscan.c	2020-03-01 17:39:25.091574831 -0800
+@@ -1189,7 +1189,8 @@ static unsigned long shrink_page_list(st
+ 				goto activate_locked;
+ 
+ 			/* Case 2 above */
+-			} else if (writeback_throttling_sane(sc) ||
++			} else if ((writeback_throttling_sane(sc) &&
++				    !PageSwapBacked(page)) ||
+ 			    !PageReclaim(page) || !may_enter_fs) {
+ 				/*
+ 				 * This is slightly racy - end_page_writeback()

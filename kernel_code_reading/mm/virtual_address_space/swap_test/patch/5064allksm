@@ -1,0 +1,66 @@
+--- 5064/mm/mmap.c	2020-02-23 17:27:12.909774620 -0800
++++ 5064D/mm/mmap.c	2020-03-01 17:39:25.079574787 -0800
+@@ -1357,9 +1357,9 @@ static inline bool file_mmap_ok(struct f
+ 	return true;
+ }
+ 
+-/*
+- * The caller must hold down_write(&current->mm->mmap_sem).
+- */
++/* The caller must hold down_write(&current->mm->mmap_sem). */
++#include <linux/ksm.h>
++unsigned long vm_mergeable;
+ unsigned long do_mmap(struct file *file, unsigned long addr,
+ 			unsigned long len, unsigned long prot,
+ 			unsigned long flags, vm_flags_t vm_flags,
+@@ -1519,7 +1519,7 @@ unsigned long do_mmap(struct file *file,
+ 			/*
+ 			 * Set pgoff according to addr for anon_vma.
+ 			 */
+-			pgoff = addr >> PAGE_SHIFT;
++			vm_flags |= vm_mergeable; pgoff = addr >> PAGE_SHIFT;
+ 			break;
+ 		default:
+ 			return -EINVAL;
+@@ -1768,9 +1768,9 @@ unsigned long mmap_region(struct file *f
+ 		 */
+ 		vma->vm_file = get_file(file);
+ 		error = call_mmap(file, vma);
+-		if (error)
+-			goto unmap_and_free_vma;
+-
++		if (error) goto unmap_and_free_vma;
++		if (vm_mergeable)
++			ksm_madvise(vma, 0, 0, MADV_MERGEABLE, &vma->vm_flags);
+ 		/* Can addr have changed??
+ 		 *
+ 		 * Answer: Yes, several device drivers can do it in their
+@@ -2976,7 +2976,7 @@ static int do_brk_flags(unsigned long ad
+ 	if ((flags & (~VM_EXEC)) != 0)
+ 		return -EINVAL;
+ 	flags |= VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
+-
++	flags |= vm_mergeable;
+ 	mapped_addr = get_unmapped_area(NULL, addr, len, 0, MAP_FIXED);
+ 	if (IS_ERR_VALUE(mapped_addr))
+ 		return mapped_addr;
+@@ -3171,7 +3171,7 @@ int insert_vm_struct(struct mm_struct *m
+ 		BUG_ON(vma->anon_vma);
+ 		vma->vm_pgoff = vma->vm_start >> PAGE_SHIFT;
+ 	}
+-
++	vma->vm_flags |= vm_mergeable;
+ 	vma_link(mm, vma, prev, rb_link, rb_parent);
+ 	return 0;
+ }
+@@ -3742,3 +3742,10 @@ static int __meminit init_reserve_notifi
+ 	return 0;
+ }
+ subsys_initcall(init_reserve_notifier);
++static int __init allksm(char *s)
++{
++	randomize_va_space = 0;
++	vm_mergeable = VM_MERGEABLE;
++	return 1;
++}
++__setup("allksm", allksm);

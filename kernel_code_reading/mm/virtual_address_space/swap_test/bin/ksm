@@ -1,0 +1,86 @@
+[ -d /sys/kernel/mm/ksm ] || exit 1
+cd /sys/kernel/mm/ksm || exit 1
+schedstat=/proc/$(pidof ksmd)/schedstat
+cgusage=/cg/0/memory.usage_in_bytes
+
+run=0
+
+showstats() {
+read pages_shared <pages_shared
+read pages_sharing <pages_sharing
+read pages_unshared <pages_unshared
+read pages_volatile <pages_volatile
+
+let total=$pages_shared+$pages_sharing+$pages_unshared+$pages_volatile
+[ $total -eq 0 ] && return
+
+read pages_to_scan <pages_to_scan
+read sleep_millisecs <sleep_millisecs
+read run <run
+[ -f merge_across_nodes ] && read merge_across_nodes <merge_across_nodes || merge_across_nodes=1
+[ $merge_across_nodes = 0 ] && let run=$run+4
+read full_scans <full_scans
+if [ -f $schedstat ]
+then	read sum_exec_runtime run_delay pcount <$schedstat
+	let millisecs=$sum_exec_runtime/1000000
+else	millisecs=
+fi
+if [ -f $cgusage ]
+then	read cgbytes <$cgusage
+else	cgbytes=
+fi
+
+set -- `see ksm_stats 10/4 2>/dev/null`
+echo ksm \
+$run $pages_shared $pages_sharing $pages_unshared \
+$pages_volatile $pages_to_scan $sleep_millisecs $full_scans $millisecs \
+$cgbytes $2 $3 $4 $5
+}
+
+arg=$1
+case "$arg" in
+path)	echo /sys/kernel/mm/ksm
+	exit 0
+	;;
+on*)	echo 100 >pages_to_scan || exit 1
+	echo 20 >sleep_millisecs
+#	pat vm_mergeable 80000000
+	echo 1 >run
+	;;
+fast*)	echo 1000 >pages_to_scan || exit 1
+	echo 0 >sleep_millisecs
+	echo 1 >run
+	;;
+back)	echo 3 >run || exit 1
+	;;
+stop)	echo 0 >run || exit 1
+	;;
+off)	echo 2 >run || exit 1
+	[ ! -f merge_across_nodes ] || echo 1 >merge_across_nodes || exit 1
+	;;
+numa)	echo 0 >merge_across_nodes || exit 1
+	;;
+defer)	echo 1 >deferrable_timer || exit 1
+	;;
+immed)  echo 0 >deferrable_timer || exit 1
+	;;
+esac
+
+showstats
+
+[ "$arg" = onoff -o "$arg" = fastoff ] || exit 0
+
+while :
+do	sleep 10
+	showstats
+	[ $run -eq 0 ] && exit 0
+	sleep 30
+	showstats
+	[ $run -eq 0 ] && exit 0
+	echo 2 >run
+	showstats
+	sleep 20
+	showstats
+	[ $run -eq 0 ] && exit 0
+	echo 1 >run
+done

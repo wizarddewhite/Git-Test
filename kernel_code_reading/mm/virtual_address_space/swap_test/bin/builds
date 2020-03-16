@@ -1,0 +1,121 @@
+#!/bin/sh
+swap=/dev/sda8
+home=/home/hugh
+linux=2624
+# kernel source tree has build fixes and a 32-bit .config
+[ "$(uname -p)" = ppc64 ] && ARCH=powerpc || ARCH=i386
+
+build() {
+cp -a $home/$linux $1 || exit 1
+cd $1/$linux || exit 1
+ARCH=$ARCH make oldconfig >log 2>&1 || exit 1
+ARCH=$ARCH make -j20 >log 2>&1 || exit 1
+cd $home
+}
+
+tlobuilds() {
+while :
+do	[ -f /tmp/done ] && exit 0
+	( time build /tlo ) >/tlo/done 2>&1 || exit 1
+	while [ -f /tlo/done ]
+	do sleep 1 || exit 1
+	done
+done
+}
+
+tmpbuilds() {
+while :
+do	$home/bin/ksm
+	[ -f /tmp/done ] && exit 0
+	( time build /tmp ) 2>&1 || exit 1
+	while [ ! -s /tlo/done ]
+	do sleep 1 || exit 1
+	done
+	cat /tlo/done
+	$home/bin/ksm
+	grep -q "$home" /tlo/done && exit 1
+	rm -rf /tmp/$linux /tlo/$linux
+	[ -f /tmp/swapswap ] || {
+		$home/bin/swapoff $swap && $home/bin/swapon $swap || {
+			rm -f /tlo/done
+			exit 1
+		}
+	}
+	let iters=$iters+1
+#	cat /proc/sys/vm/stat_refresh /proc/meminfo >meminfo/$iters
+	case "$iters" in
+	-1)	echo "$(date): warming up"
+		;;
+	0)	echo "$(date): warmed up"
+#		readprofile -r
+		SECONDS=0
+		seconds=0
+		;;
+	"$N")	let mean=$SECONDS/$iters
+		let seconds=$SECONDS-$seconds
+		echo "$(date): iter $iters in $seconds secs: $mean secs/iter"
+#		readprofile -n -m /boot/System.map-$(uname -r) | sort -rn -k 1,1 | head -n 100
+#		cat /proc/vmstat
+#		cat /proc/diskstats
+		touch /tmp/done
+		;;
+	*)	let mean=$SECONDS/$iters
+		let seconds=$SECONDS-$seconds
+		echo "$(date): iter $iters in $seconds secs: $mean secs/iter"
+		seconds=$SECONDS
+		;;
+	esac
+	sync
+	rm -f /tlo/done
+done
+}
+
+case "$1" in
+on)	/usr/sbin/klogconsole -l 7 -r 0
+	echo 100 >/proc/sys/vm/swappiness
+	chmod 444 /proc/slabinfo
+	cp /dev/zero /tst
+	losetup /dev/loop0 /tst/zero || exit 1
+	mkfs -t ext4 -b 4096 /dev/loop0 || exit 1
+	mount -t ext4 -o discard /dev/loop0 /tlo || exit 1
+	chmod 1777 /tlo || exit 1
+	echo
+	uname -a
+	cat /proc/cmdline
+	$home/bin/ksm fast
+	exit 0
+	;;
+""|[1-9]*)
+	N="$1"
+	/usr/bin/setterm -blank 0 -bfreq 0
+	rm -f /tmp/done /tlo/done
+	rm -rf /tmp/$linux /tlo/$linux
+	echo "$(date): $(uname -rp) builds"
+	sync
+	iters=-2
+	export TIMEFORMAT="build1	%2R	%2U	%2S"
+	[ -w /cg/1/tasks ] && echo $$ >/cg/1/tasks
+	[ -w /cg/cg/1/tasks ] && echo $$ >/cg/cg/1/tasks
+	tmpbuilds &
+	export TIMEFORMAT="build2	%2R	%2U	%2S"
+	[ -w /cg/2/tasks ] && echo $$ >/cg/2/tasks
+	[ -w /cg/cg/2/tasks ] && echo $$ >/cg/cg/2/tasks
+	tlobuilds &
+#	$home/bin/pat migration_interval 1001
+	exit 0
+	;;
+stop)	touch /tmp/done
+	exit 0
+	;;
+off)	umount /tlo
+	losetup -d /dev/loop0
+	umount /tst || exit 1
+	mount /tst
+	rm -f /tmp/done /tmp/swapswap
+	rm -rf /tmp/$linux
+#	$home/bin/pat migration_interval 0
+	exit 0
+	;;
+*)	exit 2
+	;;
+esac

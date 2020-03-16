@@ -1,0 +1,227 @@
+# Do not run this builds.txt as a shell script, it's a guide to what to do:
+# maybe I've written the scripted parts right, maybe they need fixing up;
+# maybe it should merely be mined for ideas to improve your own testing.
+#
+# First extract builds.tar.xz: it's intended to be extracted in and run
+# from the tester's home directory (with $HOME/bin in the tester's $PATH,
+# and perhaps a few of the pieces in root's $PATH too); but you will
+# probably prefer to extract it somewhere else first, to browse through
+# this .txt and the scripts, to decide how you're going to use it.
+#
+# Hugh Dickins <hughd@google.com> 9 March 2020
+#
+# Contents:
+#
+# builds.txt
+# bin/builds
+# bin/cg
+# bin/ksm
+# bin/swapswap
+# patch/26/2624bld
+# patch/26/2624cfg
+# patch/5064allksm
+# patch/5064wriback
+
+# Setting up the source tree to be used in the test's kernel builds.
+# Why v2.6.24? I used to update with each kernel release, but as the
+# kernel tree grew, the balance changed between what is built and what
+# is not needed, so better for reproducibility to stick with one tree.
+# The 2624cfg is not special, just a cutdown i386 laptop config from
+# long ago, generating the same size of kernel each time: you will not
+# need to run the resulting kernel.
+#
+# Why a 2624bld patch to it? To reduce warnings and remove errors when
+# built with more recent gccs (in recent years I've used 4.8 and 7.5);
+# the version of gcc used is unlikely to make a critical difference to
+# the testing, but may affect sizing, and you may find that a different
+# compiler version generates further errors, needing to be fixed up in
+# your 2624bld patch.  This source tree only needs to be set up once:
+# it is not modified from now on, just copied into the builds each time.
+#
+wget http://www.kernel.org/pub/linux/kernel/v2.6/linux-2.6.24.tar.xz
+tar xvf linux-2.6.24.tar.xz
+mv linux-2.6.24 2624
+cd 2624; patch -p1 <../patch/26/2624bld; cd ..
+cp -p patch/26/2624cfg 2624/.config
+
+# I have two swap partitions of the same size, 1.5G, for this testing:
+# one normally mounted in /etc/fstab, the other exchanged with it when
+# doing swapswap.  Beware, the bin/builds and bin/swapswap scripts have
+# those device names hard-wired in at the top - you'll want to edit them
+# (and I notice now that bin/builds also uses home=/home/hugh: that used
+# to say $HOME, but maybe I changed it to let root run it there instead:
+# that too of course you will want to edit).
+#
+# /dev/sda8            swap        swap       defaults              0 0
+# #/dev/sda9           swap        swap       defaults              0 0
+#
+# These days I'm usually swapping to SSD: hard disk is okay but slower.
+# Using swap files instead of swap partitions should work just as well:
+# as root,
+#
+dd if=/dev/zero of=/swap1 bs=1M count=1533
+dd if=/dev/zero of=/swap2 bs=1M count=1533
+chmod 0600 /swap1 /swap2
+mkswap /swap1
+mkswap /swap2
+swapon /swap1
+#
+# and edit /etc/fstab to add /swap1, and comment out whatever swap the
+# machine was set up with (which might interfere).  The exact 1533M is
+# irrelevant historical accident, but the approximate 1.5G probably
+# does matter somewhat: allowing enough for the tests to swap into,
+# but limiting it so that swap has to be freed while being consumed.
+# But a different compiler, and a different distro, might turn out
+# to work better by allowing more swap there ("work better" does not
+# mean "faster", which would avoid swap altogether: the testing needs
+# to exercise swap, while avoiding OOMkills and outright thrashing).
+#
+# And there's a point at which the bin/builds script wants the user
+# to be able to swapoff and swapon again (to start each iteration from
+# the same point with no swap in use - though it's good also to test the
+# opposite sometimes, letting swap carry over from one run to the next).
+# I used to "chmod +s" the executables in /usr/sbin, but that gets lost
+# if the distro updates them, and /usr/sbin would need adding to $PATH,
+# and arguably it's safer use local copies: so, again as root,
+#
+cp -p /usr/sbin/swapon /usr/sbin/swapoff bin
+chmod +s bin/swapon bin/swapoff
+
+# My /tmp is a tmpfs, and I have two more in /etc/fstab.  bin/builds
+# uses all of those, but differently: it copies the 2624 source tree
+# into /tmp and builds it there on tmpfs, but it fills /tst with one
+# single file, uses losetup to loop that file to /dev/loop0, does "mkfs
+# -t ext4" on that, mounts it on /tlo, then copies the 2624 source tree
+# into /tlo and builds it there on ext4 on loop on tmpfs: concurrently
+# with the build in /tmp, both builds using "make -j20" (the laptops
+# and workstations on which this testing is usually run have either
+# 4 or 8 x86 HT cpus, so -j20 is overloading them, intentionally).
+#
+# bin/builds is only using /tlo as a directory, and its original
+# tmpfs size is completely irrelevant.  I forget the origin of 1300M
+# for /tmp: probably decided by some other test, 470M should be enough.
+# The significant size is the 470M for /tst (though it could just as
+# well be larger, if bin/builds were changed to create a 470M file in
+# it instead).  Many years ago it was 450M (or less?), but had to be
+# increased to 470M as kernels and compilers changed (and at some stage
+# I switched from ext4 "-b 1024" to default "-b 4096"). Using btrfs or
+# xfs or another filesystem instead of ext4 would probably entail some
+# effort of retuning numbers: only worth doing when it's that other
+# filesystem you're trying to test, rather than tmpfs swapping.
+#
+# Hmm, well the 470M size is not all that significant - it just limits
+# a surplus that would get pushed into swap each time - but it's better
+# not to raise it, unless your /tlo build runs out of filesystem space.
+# Like swapfile size, it should be kept small, to detect leaks sooner.
+#
+# You can quite easily change bin/builds to skip loop+ext4 altogether,
+# and just do two parallel tmpfs builds: it's a long time since I tried
+# that, but there was a lot more contention between the builds that way,
+# and it ends up as rather a different test.  No doubt you can easily
+# change bin/builds to use some other directory than /tmp, if you prefer
+# to leave /tmp as the distro set it up.  (And there is no real need to
+# separate /tmp and /tst: the looped file could just as well be created
+# in the same tmpfs as its build tree; but bin/builds expects to use
+# /tmp /tst and /tlo.)
+#
+# tmpfs                /tmp        tmpfs      size=1300M            0 0
+# tmpfs                /tst        tmpfs      size=470M             0 0
+# tmpfs                /tlo        tmpfs      size=4G               0 0
+#
+# So after editing the /tmp entry in /etc/fstab,
+# and adding /tst and /tlo entries, root should
+#
+mkdir /tst /tlo /cg
+chmod 1777 /tst /tlo
+#
+# but no need to mount /tmp /tst /tlo yet, because we have to reboot.
+# Ah, don't forget /cg: that's where bin/cg will mount memory cgroup.
+
+# Now reboot to the kernel which is to be tested and debugged.
+# I expect it would be built with mm debugging options enabled:
+# CONFIG_SMP=y CONFIG_PREEMPT=y CONFIG_SWAP=y CONFIG_MEMCG=y
+# CONFIG_MEMCG_SWAP=y but not always _ENABLED=y (with and without
+# both need to be tested) CONFIG_COMPACTION=y CONFIG_MIGRATION=y
+# CONFIG_TRANSPARENT_HUGEPAGE=y CONFIG_TRANSPARENT_HUGE_PAGECACHE=y
+# CONFIG_TMPFS=y CONFIG_DEBUG_KERNEL=y CONFIG_DEBUG_VM=y
+# CONFIG_DEBUG_ATOMIC_SLEEP=y CONFIG_DEBUG_SPINLOCK=y
+# CONFIG_DEBUG_PREEMPT=y CONFIG_PROVE_LOCKING=y CONFIG_DEBUG_LIST=y
+# 
+# First boot kernel to be tested with "mem=700M cgroup_disable=memory 3"
+# on the command line, that "3" telling init to stop at networking and
+# multitasking without GUI.  That's somewhat new territory to me, I've
+# mostly tested on old machines with old distro and lightweight window
+# manager, setting things up from xterm, then switching to virtual
+# console to start the test run - watching for kernel warnings and
+# crashes there. But I doubt that "mem=700M" would suit a modern distro
+# with full KDE up, so switched to run the testing from console instead.
+#
+# Login to home directory, setup as root, start run as user:
+#
+sudo bin/builds on
+builds >log 2>&1; tail -f log
+#
+# Then when it has gone enough iterations (depending on which of my
+# machines, each iteration takes between 2 and 15 minutes) to satisfy
+# you that no obvious bugs are being caught (depending on how subtle the
+# bug, that may be minutes or hours or days), ^C out of the "tail -f log"
+# and
+#
+builds stop
+#
+# to complete the current iteration tidily (or if you're impatient,
+# killall make gcc cc1 cp), before cleaning up the mounts:
+#
+sudo bin/builds off
+#
+# Though even if the kernel you're testing is good, you may well
+# find initially that the 700M was too small to avoid OOMkilling
+# in your environment, and you will want to try again with a larger
+# amount - but not so large that the test hardly gets to swap at all.
+#
+# (I think there's also a "builds N" option to stop after N iterations:
+# you may find it convenient, but I've almost forgotten it - probably
+# because my machines vary so much in how long an iteration takes.)
+
+# That was an easy run with "cgroup_disable=memory" to turn off memcg.
+# Next easy one is to boot with "mem=700M 3" on the kernel boot command
+# line, then do the same as above - memcg enabled, but everything is
+# root_mem_cgroup: so not a lot more complicated than memcg disabled,
+# but does exercise different paths.  But usually I just jump to the
+# next one, which is harder, and will exercise the memcg paths too.
+
+# Boot with "mem=1G 3", and do the same as above, but with bin/cg 2
+# to set up a limited memcg for each of the two kernel builds,
+# and bin/swapswap to move between swap1 and swap2 concurrently.
+#
+sudo bin/builds on
+sudo bin/cg 2; sudo bin/swapswap
+builds >log 2>&1; tail -f log
+^C
+builds stop
+<wait to complete>
+sudo bin/builds off
+
+# Then there is "bin/cg m", which concurrently moves the building tasks
+# around between four memcgs, with memory.move_charge_at_immigrate set.
+#
+# And bin/ksm, which bin/builds assumes to be there, but will not do
+# anything interesting unless the running kernel has been patched with
+# an allksm patch, and booted with "allksm" added in the command line:
+# patch/5064allksm for v5.6-rc4 or -rc5 included for completeness -
+# but I don't recommend that you use it, because KSM does not add
+# any difficulties to lru_lock handling.
+#
+# Also included is patch/5064wriback: it's a long time since I tried
+# without it, but on this particular laptop, there was a tendency to
+# OOMkill prematurely while swapping this heavily, which this patch
+# avoids: included just in case you have persistent trouble with
+# premature OOMkill while testing, and this turns out to help.
+#
+# The next topic should be: how to exercise compaction and page
+# migration, which most certainly make difficulties for lru_lock.
+# Once upon a time I used to run this testing with a patch to
+# sometimes migrate page on fault; but in recent years have relied
+# much more on huge pages (anon THP, and tmpfs huge=always mount
+# option, with khugepaged tuned up to be over-active) to generate
+# a good compaction load; but mostly, different testing altogether.
