@@ -1,0 +1,111 @@
+1. shmem_get_inode(sb, dir, mode, dev, flags)
+================================================================================
+vma->vm_ops = &shmem_vm_ops;
+inode->i_mapping->a_ops = &shmem_aops;
+inode->i_fop = &shmem_file_operations;
+inode->i_op = &shmem_inode_operations;
+inode->i_op = &shmem_dir_inode_operations;
+
+2. anon share map
+================================================================================
+
+mmap(0, len, prot, MAP_SHARED, fd, offset)
+do_mmap()
+    addr = get_unmapped_area(file, addr, len, pgoff, flags);
+        get_area = shmem_get_unmapped_area; if (flags & MAP_SHARED)
+        addr = get_area(file, addr, len, pgoff, flags);
+        return addr
+    vm_flags |= VM_SHARED | VM_MAYSHARE;
+    mmap_region()
+        shmem_zero_setup(vma)
+            file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
+            vma->vm_file = file;
+            vma->vm_ops = &shmem_vm_ops;
+
+3. shmem_zero_setup(vma)
+================================================================================
+3.1 file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
+================================================================================
+3.1.1 inode = shmem_get_inode()
+================================================================================
+3.1.2 file = alloc_file_pseudo(inode, mnt, name, O_RDWR, &shmem_file_operations)
+================================================================================
+3.2 vma->vm_file = file;
+================================================================================
+3.3 vma->vm_ops = &shmem_vm_ops;
+================================================================================
+
+4. shmem_fault, fault in page
+================================================================================
+4.1 err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp, gfp, vma, vmf, &ret);
+================================================================================
+4.1.1 mapping = inode->i_mapping;
+================================================================================
+4.1.2 info = SHMEM_I(inode)
+================================================================================
+4.1.3 sbinfo = SHMEM_SB(inode->i_sb)
+================================================================================
+4.1.4 page = find_lock_entry(mapping, pgoff)
+================================================================================
+4.1.4.1 page = find_get_entry(mapping, pgoff)
+================================================================================
+4.1.4.2 lock_page(page)
+================================================================================
+4.1.5 shmem_swapin_page(inode, pgoff, &page, ), if in swap
+================================================================================
+4.1.5.1 swap = radix_to_swp_entry(*pagep)
+================================================================================
+4.1.5.2 page = lookup_swap_cache(swap, NULL, 0), try swap cache
+================================================================================
+4.1.5.3 page = shmem_swapin(swap, gfn, info, ), read from disk
+================================================================================
+4.1.5.4 shmem_add_to_page_cache(page, inode->i_mapping)
+================================================================================
+4.1.5.5 delete_from_swap_cache(page)
+================================================================================
+4.1.5.6 swap_free(swap)
+================================================================================
+4.1.6 page = shmem_alloc_and_acct_page(gfp, inode, pgoff, true/false), alloc new
+================================================================================
+4.1.7 shmem_add_to_page_cache(page, inode->i_mapping, )
+================================================================================
+
+0. Note
+================================================================================
+Mel Gorman's note
+https://www.kernel.org/doc/gorman/html/understand/understand015.html
+
+An example on Sys V shmem
+http://www.cs.kent.edu/~ruttan/sysprog/lectures/shmem/shared-mem-with-semaphore.c
+
+
+0. data struct
+================================================================================
+0.1 shmem_vm_ops
+================================================================================
+static const struct vm_operations_struct shmem_vm_ops = {
+	.fault		= shmem_fault,
+	.map_pages	= filemap_map_pages,
+#ifdef CONFIG_NUMA
+	.set_policy     = shmem_set_policy,
+	.get_policy     = shmem_get_policy,
+#endif
+};
+0.2 shmem_vm_ops
+================================================================================
+static const struct file_operations shmem_file_operations = {
+	.mmap		= shmem_mmap,
+	.get_unmapped_area = shmem_get_unmapped_area,
+#ifdef CONFIG_TMPFS
+	.llseek		= shmem_file_llseek,
+	.read_iter	= shmem_file_read_iter,
+	.write_iter	= generic_file_write_iter,
+	.fsync		= noop_fsync,
+	.splice_read	= generic_file_splice_read,
+	.splice_write	= iter_file_splice_write,
+	.fallocate	= shmem_fallocate,
+#endif
+};
+
+0.3 shmem_inode_info
+================================================================================
