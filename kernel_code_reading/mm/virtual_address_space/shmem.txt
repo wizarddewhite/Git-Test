@@ -6,7 +6,7 @@ inode->i_fop = &shmem_file_operations;
 inode->i_op = &shmem_inode_operations;
 inode->i_op = &shmem_dir_inode_operations;
 
-2. anon share map
+2. how a shared anonymous vma link to shmem
 ================================================================================
 
 mmap(0, len, prot, MAP_SHARED, fd, offset)
@@ -19,6 +19,10 @@ do_mmap()
     mmap_region()
         shmem_zero_setup(vma)
             file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
+                inode = shmem_get_inode()
+                    inode->i_mapping->a_ops = &shmem_aops;
+                    inode->i_op = &shmem_inode_operations;
+                    inode->i_fop = &shmem_file_operations;
             vma->vm_file = file;
             vma->vm_ops = &shmem_vm_ops;
 
@@ -28,11 +32,11 @@ do_mmap()
 ================================================================================
 3.1.1 inode = shmem_get_inode()
 ================================================================================
-3.1.1.1	inode->i_mapping->a_ops = &shmem_aops;
+3.1.1.1 inode->i_mapping->a_ops = &shmem_aops;
 ================================================================================
-3.1.1.2	inode->i_op = &shmem_inode_operations;
+3.1.1.2 inode->i_op = &shmem_inode_operations;
 ================================================================================
-3.1.1.3	inode->i_fop = &shmem_file_operations;
+3.1.1.3 inode->i_fop = &shmem_file_operations;
 ================================================================================
 3.1.2 file = alloc_file_pseudo(inode, mnt, name, O_RDWR, &shmem_file_operations)
 ================================================================================
@@ -41,7 +45,7 @@ do_mmap()
 3.3 vma->vm_ops = &shmem_vm_ops;
 ================================================================================
 
-4. shmem_fault, fault in page
+4. shmem_fault, fault in a shared anonymous page
 ================================================================================
 4.1 err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp, gfp, vma, vmf, &ret);
 ================================================================================
@@ -69,7 +73,7 @@ do_mmap()
 ================================================================================
 4.1.7 shmem_add_to_page_cache(page, inode->i_mapping, ), add to shmem cache
 ================================================================================
-4.1.7.1 page->mappint = mapping
+4.1.7.1 page->mapping = mapping
 ================================================================================
 4.1.8 lru_cache_add_anon(page)
 ================================================================================
@@ -88,11 +92,11 @@ do_mmap()
 ================================================================================
 5.3.1.2 swapcache_prepare(swap), mark SWAP_HAS_CACHE
 ================================================================================
-5.3.1.3	__SetPageLocked(new_page);
+5.3.1.3 __SetPageLocked(new_page);
 ================================================================================
-5.3.1.4	__SetPageSwapBacked(new_page);
+5.3.1.4 __SetPageSwapBacked(new_page);
 ================================================================================
-5.3.1.5	add_to_swap_cache(new_page, entry, gfp_mask & GFP_KERNEL);
+5.3.1.5 add_to_swap_cache(new_page, entry, gfp_mask & GFP_KERNEL);
 ================================================================================
 5.3.1.6 lru_cache_add_anon(new_page)
 ================================================================================
