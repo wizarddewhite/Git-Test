@@ -887,19 +887,26 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 
 10.1 nr_free_buffer_pages()
 ================================================================================
-
-10.2 setup_per_zone_wmarks()
+10.2 setup_per_zone_wmarks() -> __setup_per_zone_wmarks()
 ================================================================================
-
+10.2.1 lowmem_pages += zone_managed_pages(zone);
+================================================================================
+10.2.2 tmp = (u64)pages_min * zone_managed_pages(zone);
+================================================================================
+10.2.3 do_div(tmp, lowmem_pages);
+================================================================================
+10.2.4 zone->_watermark[WMARK_MIN] = tmp;
+================================================================================
+10.2.5 zone->_watermark[WMARK_LOW]  = min_wmark_pages(zone) + tmp;
+================================================================================
+10.2.6 zone->_watermark[WMARK_HIGH] = min_wmark_pages(zone) + tmp * 2;
+================================================================================
 10.3 refresh_zone_stat_thresholds()
 ================================================================================
-
 10.4 setup_per_zone_lowmem_reserve()
 ================================================================================
-
 10.5 setup_min_unmapped_ratio()
 ================================================================================
-
 10.6 setup_min_slab_ratio()
 ================================================================================
 
@@ -1009,4 +1016,20 @@ TRANSHUGE_PAGE_DTOR
     ^                                    |                     |                     |
     |                                    |                     |                     |
     +------------------------------------+---------------------+---------------------+
+
+0.8 zone watermark
+================================================================================
+
+  lowmem_pages = total lowmem
+  zone->_watermark[min] = (current zone lowmem * pages_min) / total lowmem
+
+  =>  sum(zone->_watermark[WMARK_MIN]) = pages_min
+
+
+  tmp = (zone_managed_pages(z) * watermark_scale_factor) / 10000
+
+  zone->_watermark[WMARK_LOW]  = min_wmark_pages(zone) + tmp;
+  zone->_watermark[WMARK_HIGH] = min_wmark_pages(zone) + tmp * 2;
+
+  The bigger watermark_scale_factor, the bigger gap between MIN, LOW and HIGH.
 
