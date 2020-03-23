@@ -175,3 +175,69 @@ static const struct file_operations shmem_file_operations = {
 
 0.3 shmem_inode_info
 ================================================================================
+
+0.4 the process of how shmem pageout
+================================================================================
+
+   shrink_page_list()
+       try_to_unmap(page, 0)
+           try_to_unmap_one(page, vma, 0)
+	       page_remove_rmap()
+       pageout(page, mapping, sync_writeback) if PageDirty(page)
+           SetPageReclaim(page)
+           mapping->a_ops->writepage(page, &wbc) = shmem_writepage()
+           get_swap_page(page)                                   --- set SWAP_HAS_CACHE
+           add_to_swap_cache(page, swap, )
+               page_ref_add(page, nr)
+               SetPageSwapCache(page)                            --- set PageSwapCache
+           swap_shmem_alloc(swap)                                --- set SWAP_MAP_SHMEM
+           shmem_delete_from_page_cache(page, swp_to_radix_entry(swap))
+               page->mapping = NULL
+           swap_writepage(page, wbc)
+       try_to_free_swap(page) or __remove_mapping()
+           __delete_from_swap_cache(page, entry)
+               xas_store(&xas, NULL);
+               ClearPageSwapCache(page)                          --- clear PageSwapCache
+           put_swap_page(page, entry)                            --- clear SWAP_HAS_CACHE
+           page_ref_sub(page, nr)
+
+
+   shmem_fault
+       err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp, gfp, vma, vmf, &ret);
+           mapping = inode->i_mapping;
+           info = SHMEM_I(inode)
+           sbinfo = SHMEM_SB(inode->i_sb)
+           page = find_lock_entry(mapping, pgoff)
+               page = find_get_entry(mapping, pgoff)
+               lock_page(page)
+           shmem_swapin_page(inode, pgoff, &page, ), if in swap
+               swap = radix_to_swp_entry(*pagep)
+               page = lookup_swap_cache(swap, NULL, 0), try swap cache
+               page = shmem_swapin(swap, gfn, info, ), read from disk
+                   page = swap_cluster_readahead(swap, gfp, &vmf)
+                       __read_swap_cache_async()
+                           new_page = alloc_page_vma()
+                           swapcache_prepare(swap),                      --- set SWAP_HAS_CACHE
+                           __SetPageLocked(new_page);
+                           __SetPageSwapBacked(new_page);
+                           add_to_swap_cache(new_page, entry, gfp_mask & GFP_KERNEL);
+                               page_ref_add(page, nr);
+                               SetPageSwapCache(page)                    --- set PageSwapCache
+                           lru_cache_add_anon(new_page)
+               shmem_add_to_page_cache(page, inode->i_mapping), add to shmem cache
+               delete_from_swap_cache(page), remove from swap cache
+                   ClearPageSwapCache(page)                              --- clear PageSwapCache
+                   put_swap_page(page, entry)
+                       __swap_entry_free_locked(, , SWAP_HAS_CACHE)      --- clear SWAP_HAS_CACHE
+               swap_free(swap)
+                   __swap_entry_free(p, swap)
+                       usage = __swap_entry_free_locked(p, offset, 1)    --- clear SWAP_MAP_SHMEM
+                       free_swap_slot(entry), if (!usage)
+           page = shmem_alloc_and_acct_page(gfp, inode, pgoff, true/false), alloc new
+               page = shmem_alloc_page(gfp, info, index)
+               __SetPageLocked(page)
+               __SetPageSwapBacked(page)
+           shmem_add_to_page_cache(page, inode->i_mapping, ), add to shmem cache
+               page->mapping = mapping
+           lru_cache_add_anon(page)
+

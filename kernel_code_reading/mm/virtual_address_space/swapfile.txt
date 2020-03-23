@@ -388,8 +388,11 @@ Release:
        entry = pte_to_swp_entry(vmf->orig_pte);
        page = lookup_swap_cache(entry, vma, vmf->address);
        if (!page), not in swap cache, alloc and add it
-           page = swapin_readahead()
+           page = alloc_page_vma()                               --- no SWAP_HAS_CACHE
+           or
+           page = swapin_readahead() -> __read_swap_cache_async()
                new_page = alloc_page_vma()
+               swapcache_prepare(entry)                          --- set SWAP_HAS_CACHE
                __SetPageLocked(new_page)
                __SetPageSwapBacked(new_page)
                add_to_swap_cache(new_page, entry)
