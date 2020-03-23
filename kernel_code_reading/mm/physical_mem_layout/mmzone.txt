@@ -736,13 +736,88 @@ MAX_ZONELISTS is defined to 1 or 2.
    |   |                         |    |               |        |   |                         |    |6G             |   
    +---+-------------------------+    +---------------+        +---+-------------------------+    +---------------+
 
-0.3.2 GFP_ZONE_TABLE
+0.3.2 GFP_ZONE_TABLE lowest 4 bits gfp_t to zone index
 ================================================================================
 
-  [0]       [1]                 [14]     [15]
-  +-----------+-----------+         +----------+-----------+
-  |ZONE_NORMAL|ZONE_DMA   |  .....  |          |           |
-  +-----------+-----------+         +----------+-----------+
+There are 4 bits represent zone information in GFP.
+
+#define ___GFP_DMA		0x01u
+#define ___GFP_HIGHMEM		0x02u
+#define ___GFP_DMA32		0x04u
+#define ___GFP_MOVABLE		0x08u
+
+#define __GFP_DMA	((__force gfp_t)___GFP_DMA)
+#define __GFP_HIGHMEM	((__force gfp_t)___GFP_HIGHMEM)
+#define __GFP_DMA32	((__force gfp_t)___GFP_DMA32)
+#define __GFP_MOVABLE	((__force gfp_t)___GFP_MOVABLE)  /* ZONE_MOVABLE allowed */
+#define GFP_ZONEMASK	(__GFP_DMA|__GFP_HIGHMEM|__GFP_DMA32|__GFP_MOVABLE)
+
+A 4 bits could have 2^4 = 16 combinations.
+
+Since there are 8 BAD combinations,
+
+#define GFP_ZONE_BAD ( \
+	1 << (___GFP_DMA | ___GFP_HIGHMEM)				      \
+	| 1 << (___GFP_DMA | ___GFP_DMA32)				      \
+	| 1 << (___GFP_DMA32 | ___GFP_HIGHMEM)				      \
+	| 1 << (___GFP_DMA | ___GFP_DMA32 | ___GFP_HIGHMEM)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_HIGHMEM | ___GFP_DMA)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_DMA)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_HIGHMEM)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_DMA | ___GFP_HIGHMEM)  \
+)
+
+Totally there are 8 valid ones.
+
+#define GFP_ZONE_TABLE ( \
+	(ZONE_NORMAL << 0 * GFP_ZONES_SHIFT)				       \
+	| (OPT_ZONE_DMA << ___GFP_DMA * GFP_ZONES_SHIFT)		       \
+	| (OPT_ZONE_HIGHMEM << ___GFP_HIGHMEM * GFP_ZONES_SHIFT)	       \
+	| (OPT_ZONE_DMA32 << ___GFP_DMA32 * GFP_ZONES_SHIFT)		       \
+	| (ZONE_NORMAL << ___GFP_MOVABLE * GFP_ZONES_SHIFT)		       \
+	| (OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * GFP_ZONES_SHIFT)    \
+	| (ZONE_MOVABLE << (___GFP_MOVABLE | ___GFP_HIGHMEM) * GFP_ZONES_SHIFT)\
+	| (OPT_ZONE_DMA32 << (___GFP_MOVABLE | ___GFP_DMA32) * GFP_ZONES_SHIFT)\
+
+This macro encode zone information into GFP_ZONE_TABLE.
+
+         GFP_ZONE_TABLE
+         +------------+
+       0 |            |  => NORMAL
+         +------------+                                                           
+       1 |            |  => DMA or NORMAL
+         +------------+                                                           
+       2 |            |  => HIGHMEM or NORMAL
+         +------------+                                                           
+       3 |            |  => BAD (DMA+HIGHMEM)
+         +------------+                                                           
+       4 |            |  => DMA32 or NORMAL
+         +------------+                                                           
+       5 |            |  => BAD (DMA+DMA32)
+         +------------+                                                           
+       6 |            |  => BAD (HIGHMEM+DMA32)
+         +------------+                                                           
+       7 |            |  => BAD (HIGHMEM+DMA32+DMA)
+         +------------+                                                           
+       8 |            |  => NORMAL (MOVABLE+0)
+         +------------+                                                           
+       9 |            |  => DMA or NORMAL (MOVABLE+DMA)
+         +------------+                                                           
+       a |            |  => MOVABLE (Movable is valid only if HIGHMEM is set too)
+         +------------+                                                           
+       b |            |  => BAD (MOVABLE+HIGHMEM+DMA)
+         +------------+                                                           
+       c |            |  => DMA32 or NORMAL (MOVABLE+DMA32)
+         +------------+                                                           
+       d |            |  => BAD (MOVABLE+DMA32+DMA)
+         +------------+                                                           
+       e |            |  => BAD (MOVABLE+DMA32+HIGHMEM)
+         +------------+                                                           
+       f |            |  => BAD (MOVABLE+DMA32+HIGHMEM+DMA)
+         +------------+
+
+
+
 
 
 0.4 zone
