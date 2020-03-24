@@ -315,46 +315,46 @@ Release:
 
 8.3.1 swap_free(entry)
 ================================================================================
-8.3.1.1 __swap_entry_free(p, entry)
-================================================================================
+
+    swap_free(entry)
+        p = _swap_info_get(entry);
+        __swap_entry_free(p, entry)
+            usage = __swap_entry_free_locked(p, offset, 1);
+            free_swap_slot(entry), if (!usage)
+                cache->slots_ret[cache->n_ret++] = entry;
+                or
+                swapcache_free_entries(&entry, 1)
 
 8.3.2 free_swap_and_cache(entry)
 ================================================================================
-8.3.2.1 __swap_entry_free(p, entry)
-================================================================================
-8.3.2.1.1 __swap_entry_free_locked(p, offset, 1), dec 1
-================================================================================
-8.3.2.1.2 free_swap_slot(entry), if usage == 0
-================================================================================
-8.3.3.2.2.1 swapcache_free_entries(&entry, 1)
-================================================================================
-8.3.3.2.2.1.1 swap_entry_free(p, entries[]), clear swap_map
-================================================================================
-8.3.3.2.2.1.1.1 p->swap_map[offset] = 0;
-================================================================================
-8.3.2.2 __try_to_reclaim_swap(p, swp_offset(entry), ), if usage == HAS_CACHE
-================================================================================
-8.3.2.2.1 page = find_get_page(swap_address_space(entry), offset)
-================================================================================
-8.3.2.2.2 try_to_free_swap(page)
-================================================================================
-8.3.2.2.2.1 delete_from_swap_cache(page)
-================================================================================
-8.3.2.2.2.1.1 put_swap_page(page, entry)
-================================================================================
+
+    free_swap_and_cache(entry)
+        __swap_entry_free(p, entry)
+            usage = __swap_entry_free_locked(p, offset, 1)
+            free_swap_slot(entry), if (!usage)
+                cache->slots_ret[cache->n_ret++] = entry;
+                or
+                swapcache_free_entries(&entry, 1)
+        __try_to_reclaim_swap(p, swp_offset(entry), ), if usage == HAS_CACHE
+            page = find_get_page(swap_address_space(entry), offset)
+            try_to_free_swap(page)
+                delete_from_swap_cache(page)
+                    __delete_from_swap_cache(page, entry);
+                    put_swap_page(page, entry)
+                        usage = __swap_entry_free_locked(p, offset, SWAP_HAS_CACHE)
+                        free_swap_slot(entry), if (!usage)
+            put_page(page)
 
 8.3.3 put_swap_page(page, entry)
 ================================================================================
-8.3.3.1 __swap_entry_free_locked(si, offset + i, SWAP_HAS_CACHE), clear HAS_CACHE
-================================================================================
-8.3.3.2 free_swap_slot(entry) if usage == 0
-================================================================================
-8.3.3.2.1 swapcache_free_entries(&entry, 1)
-================================================================================
-8.3.3.2.1.1 swap_entry_free(p, entries[]), clear swap_map
-================================================================================
-8.3.3.2.1.1.1 p->swap_map[offset] = 0;
-================================================================================
+called after remove page from swap cache to clear SWAP_HAS_CACHE
+
+    put_swap_page(page, entry)
+        __swap_entry_free_locked(si, offset + i, SWAP_HAS_CACHE), clear HAS_CACHE
+        free_swap_slot(entry) if usage == 0
+            swapcache_free_entries(&entry, 1)
+                swap_entry_free(p, entries[]), clear swap_map
+                    p->swap_map[offset] = 0;
 
 9. The process of how swap cache works
 ================================================================================
