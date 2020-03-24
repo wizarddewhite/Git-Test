@@ -1033,3 +1033,45 @@ TRANSHUGE_PAGE_DTOR
 
   The bigger watermark_scale_factor, the bigger gap between MIN, LOW and HIGH.
 
+0.9 lowmem reserve
+================================================================================
+
+setup_per_zone_lowmem_reserve()
+
+abbreviation:
+mp[i]: managed pages of zone[i]
+ra[i]: sysctl_lowmem_reserve_ratio[i]
+ls[i]: lowmem_reserve[i]
+
+
+        Zone[0]       Zone[1]      Zone[2]      Zone[3]
+        +-------------+-------------+------------+------------+
+  ls[3] |mp[3] + mp[2]|mp[3] + mp[2]|mp[3]       |     0      |
+        |+ mp[1] /    |   /         |   /        |            |
+        |ra[0]        |ra[1]        |ra[2]       |            |
+        +-------------+-------------+------------+------------+
+  ls[2] |mp[2] + mp[1]|mp[2]        |     0      |   N/A      |
+        |   /         |   /         |            |            |
+        |ra[0]        |ra[1]        |            |            |
+        +-------------+-------------+------------+------------+
+  ls[1] |mp[1]        |     0       |   N/A      |   N/A      |
+        |   /         |             |            |            |
+        |ra[0]        |             |            |            |
+        +-------------+-------------+------------+------------+
+  ls[0] |     0       |   N/A       |   N/A      |   N/A      |
+        |             |             |            |            |
+        |             |             |            |            |
+        +-------------+-------------+------------+------------+
+
+The zone[i].lowmem_reserve[j] means if the allocation for zone[j] fall back to
+zone[i], the allocation would succeed if we have more than lowmem_reserve[j]
+memory.
+
+The is used to check the watermark in __zone_watermark_ok()
+
+```
+	if (free_pages <= min + z->lowmem_reserve[classzone_idx])
+		return false;
+```
+
+If free_pages is less then this, watermark will alarm.
