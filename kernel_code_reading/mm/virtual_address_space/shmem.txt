@@ -187,13 +187,13 @@ static const struct file_operations shmem_file_operations = {
            SetPageReclaim(page)
            mapping->a_ops->writepage(page, &wbc) = shmem_writepage()
            get_swap_page(page)                                   --- set SWAP_HAS_CACHE
-           add_to_swap_cache(page, swap, )
-               page_ref_add(page, nr)
-               SetPageSwapCache(page)                            --- set PageSwapCache
-           swap_shmem_alloc(swap)                                --- set SWAP_MAP_SHMEM
-           shmem_delete_from_page_cache(page, swp_to_radix_entry(swap))
-               page->mapping = NULL
-           swap_writepage(page, wbc)
+               add_to_swap_cache(page, swap, )
+                   page_ref_add(page, nr)
+                   SetPageSwapCache(page)                        --- set PageSwapCache
+               swap_shmem_alloc(swap)                            --- set SWAP_MAP_SHMEM
+               shmem_delete_from_page_cache(page, swp_to_radix_entry(swap))
+                   page->mapping = NULL
+               swap_writepage(page, wbc)
        try_to_free_swap(page) or __remove_mapping()
            __delete_from_swap_cache(page, entry)
                xas_store(&xas, NULL);
@@ -202,6 +202,8 @@ static const struct file_operations shmem_file_operations = {
            page_ref_sub(page, nr)
 
 
+do_shared_fault
+   __do_fault -> vma->vm_ops->fault:
    shmem_fault
        err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp, gfp, vma, vmf, &ret);
            mapping = inode->i_mapping;
@@ -240,4 +242,7 @@ static const struct file_operations shmem_file_operations = {
            shmem_add_to_page_cache(page, inode->i_mapping, ), add to shmem cache
                page->mapping = mapping
            lru_cache_add_anon(page)
+   finish_fault(vmf)
+       alloc_set_pte(vmf, vmf->memcg, vmf->page)
+           set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
 

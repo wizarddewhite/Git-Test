@@ -399,6 +399,7 @@ called after remove page from swap cache to clear SWAP_HAS_CACHE
                    page_ref_add(page, nr)
                    SetPageSwapCache(page)                        --- set PageSwapCache
                    xas_store(&xas, page)
+       set_pte_at(vma->vm_mm, vmf->address, vmf->pte, pte);
        swap_free(entry)                                          --- dec swap_map
        try_to_free_swap(page)                                    --- try to return swap_map
 
