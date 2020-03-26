@@ -739,7 +739,7 @@ MAX_ZONELISTS is defined to 1 or 2.
 0.3.2 GFP_ZONE_TABLE lowest 4 bits gfp_t to zone index
 ================================================================================
 
-There are 4 bits represent zone information in GFP.
+The lowest 4 bits represent zone information in GFP.
 
 #define ___GFP_DMA		0x01u
 #define ___GFP_HIGHMEM		0x02u

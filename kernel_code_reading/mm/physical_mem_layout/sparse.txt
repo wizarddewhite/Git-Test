@@ -261,3 +261,15 @@ functions. If I am correct, it is used for compaction.
    define get_pageblock_skip(page)
    define clear_pageblock_skip(page)
    define set_pageblock_skip(page)
+
+0.1.1 gfpflags_to_migratetype(), gfp to migrate type
+================================================================================
+Tow bits in GFP[4:5] represents the migrate type for page allocation.
+
+   #define GFP_MOVABLE_MASK (__GFP_RECLAIMABLE|__GFP_MOVABLE)
+   #define GFP_MOVABLE_SHIFT 3
+   /* Group based on mobility */
+   return (gfp_flags & GFP_MOVABLE_MASK) >> GFP_MOVABLE_SHIFT;
+
+But the max value from this operation is [0-3], while MIGRATE_TYPES could be
+in range [0-7]. Confused.
