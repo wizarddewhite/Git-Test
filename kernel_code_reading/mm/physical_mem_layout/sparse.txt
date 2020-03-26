@@ -218,3 +218,46 @@ A node must has a size larger than section size?
                                         |    |    |    |         |    |    |
                                         +----+----+----+---...---+----+----+
 
+0.1 pageblock_flags
+================================================================================
+Each pageblock represents (1 << pageblock_order) range memory. And we use 4
+bits pageblock type to describe it.
+
+   mem_section->usage->pageblock_flags[usemap_size()]
+
+
+    3     2     1     0      total NR_PAGEBLOCK_BITS = 4
+   +-----+-----+-----+-----+
+   |     |     |     |     |
+   |     |     |     |     |
+   +-----+-----+-----+-----+
+      |     |     |     |
+      |     |     |     +---
+      |     |     |          \
+      |     |     +---------   = enum migratetype
+      |     |                /
+      |     +---------------
+      |
+      +---------------------  migrate_skip
+
+
+The lower three bits represents migratetype, this requires
+
+   BUILD_BUG_ON(MIGRATE_TYPES > (1 << PB_migratetype_bits));
+
+This means there more at most 8 migrate types.
+
+To set/get the migrate type from pageblock_flags, use these following two
+functions with the help of this mask.
+
+   #define MIGRATETYPE_MASK ((1UL << PB_migratetype_bits) - 1)
+
+   get_pageblock_migratetype(page)
+   set_pageblock_migratetype(page)
+
+To set/get the migrate_skip flag from pageblock_flags, use those following
+functions. If I am correct, it is used for compaction.
+
+   define get_pageblock_skip(page)
+   define clear_pageblock_skip(page)
+   define set_pageblock_skip(page)
