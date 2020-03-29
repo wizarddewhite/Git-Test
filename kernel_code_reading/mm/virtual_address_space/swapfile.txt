@@ -527,22 +527,13 @@ static struct plist_head *swap_avail_heads;
                                        |highest_bit                     |    ----------------------+
                                        |lowest_bit                      |    ----+                 |
                                        |                                |        |                 |
-                                       |                                |  0     v                 v  maxpages
-                                       |swap_map                        | [  |  |  |  |  |  |  |  |  |  ]
+                                       |                                |    0   v                 v                           maxpages
+                                       |swap_map                        |   [  |  |  |  |  |   |  |  |  |  |  |  |  |  |  |  |  ]
                                        |    (char *)                    |               ^
                                        |                                |               |
                                        |cluster_next                    |    -----------+     indicate next allocation
                                        |cluster_nr                      |
                                        |    (unsigned int)              |
-                                       |                                |
-                                       |percpu_cluster                  |
-                                       |    (struct percpu_cluster *)   |
-                                       |    +---------------------------+
-                                       |    |index                      |
-                                       |    |   (swap_cluster_info)     |
-                                       |    |next                       |
-                                       |    |   (unsigned int)          |
-                                       |    +---------------------------+
                                        |                                |
                                        |cluster_info                    | [maxpages/SWAPFILE_CLUSTER]
                                        |    a block of swap disk space  | 
@@ -570,6 +561,15 @@ static struct plist_head *swap_avail_heads;
                                        |    |                           |
                                        |    +---------------------------+
                                        |                                |
+                                       |                                |
+                                       |percpu_cluster                  |
+                                       |    (struct percpu_cluster *)   |
+                                       |    +---------------------------+
+                                       |    |index                      |
+                                       |    |   (swap_cluster_info)     |
+                                       |    |next                       |
+                                       |    |   (unsigned int)          |
+                                       |    +---------------------------+
                                        |                                |
                                        |                                |
                                        |swap_extent_root                | extent rbtree
@@ -631,7 +631,7 @@ static struct plist_head *swap_avail_heads;
 
 Encoding: (type, offset) -> swp_entry
 
-  entry = swap_entry(type, offset)
+  entry = swp_entry(type, offset)
 
 Decoding: swp_entry -> (type, offset)
 
@@ -639,11 +639,11 @@ Decoding: swp_entry -> (type, offset)
   offset = swp_offset(entry)
 
     
-    +-----------------------------------------------+
-    |             |                                 |
-    +-----------------------------------------------+
+  +-+-------------+---------------------------------+
+  | |             |                                 |
+  +-+-------------+---------------------------------+
     ^             ^                                 ^
-    |   type      |       index/offset              |
+    | type(5bits) |       index/offset              |
 
 0.5 swap_map
 ================================================================================
@@ -749,6 +749,8 @@ ebc2a1a69111 2013-09-11 swap: make cluster allocation per-cpu
 edfe23dac3e2 2013-09-11 swap: fix races exposed by swap discard
 815c2c543d3a 2013-09-11 swap: make swap discard async
 2a8f94493432 2013-09-11 swap: change block allocation algorithm for SSD
+
+6b53491598a4 2016-10-02 mm, swap: add swap_cluster_list
 
 Regular page swap optimizations
 https://lwn.net/Articles/704359/
