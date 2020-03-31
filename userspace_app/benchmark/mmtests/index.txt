@@ -1,0 +1,44 @@
+https://github.com/gormanm/mmtests
+
+# Usage
+
+./run-mmtests.sh [-kmnph] [-c path_to_config] runname
+
+-m|--run-monitor Force enable monitor.
+-n|--no-monitor  Force disable monitor.
+-p|--performance Force performance CPUFreq governor before starting the tests.
+-c|--config      Use MMTests config, default is ./config, more than one can be specified
+-h|--help        Prints this help.
+
+The config file dominate the test.
+
+For example
+
+    export MMTESTS="stream"
+
+Specify the test to run is "stream".
+
+
+# Simplified Call flow
+
+
+  // run-mmtests.sh
+  # Generate shellpack
+  for TEST in $MMTESTS
+      shellpack_src/src/refresh.sh $TEST
+          # Generate from $TEST/$TEST- for later use
+          shellpack_src/src/$TEST/$TEST-bench   -> shellpacks/shellpack-bench-$TEST
+          shellpack_src/src/$TEST/$TEST-install -> shellpacks/shellpack-install-$TEST
+
+  # Run test
+  for TEST in $MMTESTS
+      # Install test
+      export INSTALL_ONLY=yes
+      ./bin/run-single-test.sh $TEST
+      unset INSTALL_ONLY
+
+      # Run test
+      ./bin/run-single-test.sh $TEST
+          . drivers/driver-$TEST.sh // define run_bench()
+          run_bench()
+              shellpacks/shellpack-bench-$TEST
