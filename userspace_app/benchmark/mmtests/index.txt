@@ -35,6 +35,10 @@ Specify the test to run is "stream".
       # Install test
       export INSTALL_ONLY=yes
       ./bin/run-single-test.sh $TEST
+          . drivers/driver-$TEST.sh // define run_bench()
+          run_bench()
+              shellpacks/shellpack-bench-$TEST
+                  shellpacks/shellpack-install-$TEST
       unset INSTALL_ONLY
 
       # Run test
@@ -42,3 +46,30 @@ Specify the test to run is "stream".
           . drivers/driver-$TEST.sh // define run_bench()
           run_bench()
               shellpacks/shellpack-bench-$TEST
+
+# Test Cases
+
+If my understanding is correct, you could get supported test cases from two
+directories:
+
+  shellpack_src/src/
+  drivers/
+
+## Source
+
+If a test needs to download source and compile, it is put into
+
+    work/source/$TEST-$VERSION-installed
+
+
+# Log
+
+mmtests provides various log infrastructure.
+
+Usually it is put into
+
+    work/log/$runname/iter-$i
+
+## mmtests_activity
+
+It logs in tests-activity
