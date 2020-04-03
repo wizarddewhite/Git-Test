@@ -3,7 +3,7 @@
 tap_adv() {
     # enter adv
     echo enter adv
-    x=`echo "($width*0.925)/1" | bc`
+    x=`echo "($width*0.525)/1" | bc`
     y=`echo "($height*0.625)/1" | bc`
     adb shell input tap $x $y
     sleep 18

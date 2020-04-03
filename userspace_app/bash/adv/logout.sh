@@ -9,7 +9,7 @@ log_out() {
     adb shell input tap $x $y
     sleep 2
     x=$((width / 2))
-    y=`echo "($height*0.6)/1" | bc`
+    y=`echo "($height*0.58)/1" | bc`
     adb shell input tap $x $y
     sleep 2
     # quit
