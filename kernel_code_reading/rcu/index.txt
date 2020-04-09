@@ -1,0 +1,27 @@
+# Related Documents
+
+ * Good to start
+   [What is RCU?] [5]
+   [What is RCU, Fundamentally?] [1]
+   [What is RCU? Part 2: Usage] [2]
+   [RCU part 3: the RCU API][3]
+   [Kernel Document] [8]
+ * Papers
+   [Read the Fscking Papers!][4]
+   [Paul's Page][6]
+     * [RCU: Using Execution History to Solve Concurrency Problem][10]
+     * [Exploring Deferred Destruction: An analysis of RCU][9]
+ * Parallel Programming
+   [Is Parallel Programming Hard, And If So, What Can You Do About It?][7]
+
+
+[1]: https://lwn.net/Articles/262464/
+[2]: https://lwn.net/Articles/263130/
+[3]: https://lwn.net/Articles/264090/
+[4]: https://github.com/torvalds/linux/blob/master/Documentation/RCU/RTFP.txt
+[5]: https://github.com/torvalds/linux/blob/master/Documentation/RCU/whatisRCU.rst
+[6]: http://www.rdrop.com/users/paulmck/RCU/
+[7]: http://www2.rdrop.com/~paulmck/
+[8]: https://github.com/torvalds/linux/blob/master/Documentation/RCU/
+[9]: http://www.rdrop.com/users/paulmck/RCU/RCUdissertation.2004.07.14e1.pdf
+[10]: http://www.rdrop.com/users/paulmck/RCU/rclockjrnl_tpds_mathtype.pdf 
