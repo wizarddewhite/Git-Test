@@ -1,0 +1,367 @@
+1. synchronize_rcu
+================================================================================
+1.1 rcu_blocking_is_gp()
+================================================================================
+1.2 rcu_gp_is_expedited()
+================================================================================
+1.3 wait_rcu_gp(call_rcu)
+================================================================================
+1.3.1 __wait_rcu_gp(false, 1, {call_rcu}, __rs_array[1])
+================================================================================
+1.3.1.1 call_rcu(__rs_array[0].head, wakeme_after_rcu)
+================================================================================
+1.3.1.2 wait_for_completion(__rs_array[0].completion)
+================================================================================
+
+2. call_rcu(struct rcu_head *head, rcu_callback_t func) -> __call_rcu
+================================================================================
+2.1 head->func = func
+================================================================================
+2.2 head->next = NULL
+================================================================================
+2.3 local_irq_save(flags)
+================================================================================
+2.4 rdp = this_cpu_ptr(&rcu_data);
+================================================================================
+
+
+3. rcu_init(), called in start_kernel()
+================================================================================
+3.1 rcu_early_boot_tests()
+================================================================================
+3.2 kfree_rcu_batch_init(), init per-cpu kfree_rcu_cpu
+================================================================================
+3.3 rcu_bootup_announce()
+================================================================================
+3.4 rcu_init_geometry(), calculate rcu_num_nodes/rcu_num_lvls/num_rcu_lvl[]
+================================================================================
+3.4.1 adjust_jiffies_till_sched_qs()
+================================================================================
+3.5 rcu_init_one(), initialize the global rcu_state and per-cpu rcu_data
+================================================================================
+3.5.1 rcu_init_levelspread(levelspread, num_rcu_lvl), prepare levelspread[]
+================================================================================
+3.5.2 rcu_boot_init_percpu_data(cpu), init rcu_data for each possible cpu
+================================================================================
+3.5.2.1 rcu_boot_init_nocb_percpu_data()
+================================================================================
+3.6 rcu_dump_rcu_node_tree()
+================================================================================
+3.7 open_softirq(RCU_SOFTIRQ, rcu_core_si)
+================================================================================
+3.8 pm_notifier(rcu_pm_notify, 0)
+================================================================================
+3.9 rcutree_prepare_cpu(cpu), prepare rcu_data for each online cpu
+================================================================================
+3.9.1 rcu_segcblist_init(), all segment points to &head
+================================================================================
+3.9.2 rcu_prepare_kthreads()
+================================================================================
+3.9.3 rcu_spawn_cpu_nocb_kthread()
+================================================================================
+3.10 rcu_cpu_starting(cpu)
+================================================================================
+3.10.1 rcu_gpnum_ovf(rnp, rdp)
+================================================================================
+3.11 rcutree_online_cpu(cpu)
+================================================================================
+3.11.1 sync_sched_exp_online_cleanup(cpu)
+================================================================================
+3.11.2 rcutree_affinity_setting(cpu)
+================================================================================
+3.11.2.1 rcu_boost_kthread_setaffinity(rdp->mynode, outgoingcpu)
+================================================================================
+3.12 rcu_gp_wq = alloc_workqueue("rcu_gp", WQ_MEM_RECLAIM, 0)
+================================================================================
+3.13 rcu_par_gp_wq = alloc_workqueue("rcu_par_gp", WQ_MEM_RECLAIM, 0)
+================================================================================
+3.14 srcu_init()
+================================================================================
+
+0. data struct
+================================================================================
+A good reference in kernel doc:
+
+Documentation/RCU/Design/Data-Structures/
+Documentation/RCU/Design/Data-Structures/Data-Structures.rst
+
+0.1 rcu_synchronize/rcu_head
+================================================================================
+
+    rcu_synchronize
+    +-----------------------+        +-----------------------+
+    |head                   |        |head                   |
+    |    (struct rcu_head)  |        |    (struct rcu_head)  |
+    |    +------------------+        |    +------------------+
+    |    |next          ----|--------|--->|next              |
+    |    |func              |        |    |func              |
+    |    +------------------+        |    +------------------+
+    |completion             |        |completion             |
+    |    (struct completion)|        |    (struct completion)|
+    +-----------------------+        +-----------------------+
+
+0.2 kfree_rcu_cpu, per-cpu data
+================================================================================
+
+    kfree_rcu_cpu
+    +-----------------------------+<---+
+    |head                         |    |
+    |    (struct rcu_head*)       |    |
+    |krw_arr[KFREE_N_BATCHES(2)]  |    |
+    |    (kfree_rcu_cpu_work)     |    |
+    |    +------------------------+    |
+    |    |krcp                 ---|----+
+    |    |    (kfree_rcu_cpu *)   |
+    |    |head_free               |
+    |    |    (struct rcu_head*)  |
+    |    |rcu_work                |
+    |    |    (struct rcu_work)   |
+    |    |                        |
+    |    +------------------------+
+    |                             |
+    |monitor_work                 | = kfree_rcu_monitor
+    |    (struct delayed_work)    |
+    +-----------------------------+
+
+
+0.3 rcu_state
+================================================================================
+
+    rcu_state
+    +-----------------------------+
+    |name                         |  "rcu_preempt" or "rcu_sched"
+    |abbr                         |  'p' or 's'
+    |                             |
+    |ncpus                        |  CPUs seen so far
+    |    (int)                    |
+    |                             |
+    |boost                        |
+    |    (u8)                     |
+    |gp_seq                       |  grace period sequence
+    |    (unsigned long)          |  last 2bits represent rcu state
+    |                             |
+    |gp_wq                        |  where GP task waits
+    |    (struct swait_queue_head)|
+    |gp_kthread                   |  task for grace period
+    |    (struct task_struct*)    |
+    |gp_flags                     |  GP task commands
+    |gp_state                     |  GP kthread sleep state
+    |    (short)                  |
+    |gp_wake_time                 |  Last GP kthread wake
+    |gp_wake_seq                  |  gp_seq at ^^^
+    |    (unsigned long)          |
+    |                             |
+    |barrier_mutex                |
+    |    (struct mutex)           |
+    |barrier_cpu_count            |  # CPUs waiting on
+    |    (atomic_t)               |
+    |barrier_completion           |  wake at barrier end
+    |    (struct completion)      |
+    |barrier_sequence             |  ++ at start and end of rcu_barrier()
+    |    (unsigned long)          |
+    |                             |
+    |exp_mutex                    |
+    |exp_wake_mutex               |
+    |    (struct mutex)           |
+    |expedited_sequence           |
+    |    (unsigned long)          |
+    |expedited_need_qs            |
+    |    (atomic_t)               |
+    |expedited_wq                 |
+    |    (struct swait_queue_head)|
+    |ncpus_snap                   |
+    |    (int)                    |
+    |                             |
+    |jiffies_force_qs             |  time at which to invoke force_quiescent_state()
+    |jiffies_kick_kthreads        |  time at which to kick kthread
+    |n_force_qs                   |  # of calls to force_quiescent_state()
+    |                             |
+    |gp_start                     |
+    |gp_end                       |
+    |gp_activity                  |
+    |gp_req_activity              |
+    |jiffies_stall                |
+    |jiffies_resched              |
+    |n_force_qs_gpstart           |
+    |gp_max                       |
+    |    (unsigned long)          |
+    |                             |
+    |                             |
+    |level[RCU_NUM_LVLS + 1]      |
+    |    (struct rcu_node*)       |
+    |node[NUM_RCU_NODES]          |
+    |    (struct rcu_node)        |
+    |    +------------------------+
+    |    |                        |  # combining tree
+    |    |parent                  |
+    |    |    (struct rcu_node*)  |
+    |    |grplo                   |  lowest CPU # in this node
+    |    |grphi                   |  highest CPU # in this node
+    |    |level                   |  the level this node belongs to
+    |    |grpnum                  |  this node's position within children of its parent
+    |    |    (int)               |
+    |    |grpmask                 |  bitmask counterpart of grpnum
+    |    |    (unsigned long)     |
+    |    |                        |  # grace period tracking
+    |    |gp_seq                  |  counterpart of rcu_state->gp_seq
+    |    |gp_seq_needed           |  furthest-in-future gp request
+    |    |    (unsigned long)     |
+    |    |                        |  # quiescent state tracking
+    |    |qsmask                  |  which of this rcu_node's children to report for normal GP
+    |    |qsmaskinit              |
+    |    |qsmaskinitnext          |
+    |    |expmask                 |  which of this rcu_node's children to report for exp GP
+    |    |expmaskinit             |
+    |    |expmaskinitnext         |
+    |    |    (unsigned long)     |
+    |    |                        |  # blocked-task management
+    |    |blkd_tasks              |  list of blocked and preempted task
+    |    |    (struct list_head)  |
+    |    |gp_tasks                |  pointer to the first
+    |    |exp_tasks               |  pointer to the first
+    |    |boost_tasks             |
+    |    |    (struct list_head*) |
+    |    |wait_blkd_tasks         |  current gp is waiting on a blocked task?
+    |    |    (bool)              |
+    |    |                        |
+    |    |                        |
+    |    |completedqs             |
+    |    |rcu_gp_init_mask        |
+    |    |ffmask                  |
+    |    |                        |
+    |    |                        |
+    |    |                        |
+    +----+------------------------+
+
+0.3.1 rcu_node geometry
+================================================================================
+
+A "Full" 64-tree with the leaf node represents 16 CPUs.
+
+#define RCU_FANOUT_1	      (RCU_FANOUT_LEAF)
+#define RCU_FANOUT_2	      (RCU_FANOUT_1 * RCU_FANOUT)
+#define RCU_FANOUT_3	      (RCU_FANOUT_2 * RCU_FANOUT)
+#define RCU_FANOUT_4	      (RCU_FANOUT_3 * RCU_FANOUT)
+
+rcu_num_lvls   real levels
+rcu_num_nodes  real rcu_node
+num_rcu_lvl[]  number of rcu_node in each level
+
+
+    rcu_state
+    +----------------------+                  0
+    |node[NUM_RCU_NODES]   |       +---->     +---+
+    |    (struct rcu_node) |       |          |   |                  NUM_RCU_LVL_0 = 1
+    |level[0]           ---|-------+          +---+                  CPUs per rcu_node = RCU_FANOUT_4
+    |level[1]           ---|-------+         / / \ \
+    |level[2]     ---+     |       |      /   /   \   \
+    |level[3]        |     |       v   /     /     \     \
+    +----------------------+        /       /       \      \
+                     |           1       2          63      64
+                     |           +---+   +---+      +---+   +---+
+                     |           |   |   |   | ...  |   |   |   |    NUM_RCU_LVL_1 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_3)
+                     |           +---+   +---+      +---+   +---+    CPUs per rcu_node = RCU_FANOUT_3
+                     |          / / \ \
+                     |       /   /   \   \
+                     v    /     /     \     \
+                       /       /       \      \
+                    +---+   +---+      +---+   +---+
+                    |   |   |   | ...  |   |   |   |                 NUM_RCU_LVL_2 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_2)
+                    +---+   +---+      +---+   +---+                 CPUs per rcu_node = RCU_FANOUT_2
+                                      / / \ \
+                                   /   /   \   \
+                                /     /     \     \
+                             /       /       \      \
+                          +---+   +---+      +---+   +---+
+                          |   |   |   | ...  |   |   |   |           NUM_RCU_LVL_3 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_1)
+                          +---+   +---+      +---+   +---+           CPUs per rcu_node = RCU_FANOUT_1
+                            ^       ^          ^       ^
+                            |       |          |       |
+                            |    rcu_data      |    rcu_data
+                            |    +-----+       |    +-----+
+                            |    |     |       |    |     |
+                            |    +-----+       |    +-----+
+                            |                  |
+                            |                  |
+                         rcu_data           rcu_data
+                         +-----+            +-----+
+                         |     |            |     |
+                         +-----+            +-----+
+
+
+
+0.4 rcu_data, per-cpu data
+================================================================================
+rcu_cpu_started, per-cpu data as an indication of started or not
+
+    rcu_data
+    +------------------------------+
+    |                              |  # connection to other data structure
+    |cpu                           |  cpu number
+    |     (int)                    |
+    |mynode                        |  rcu_node this cpu belongs to
+    |     (struct rcu_node*)       |
+    |grpmask                       |  similar to rcu_node->grpmask
+    |     (unsigned long)          |
+    |beenonline                    |  cpu online at least once
+    |     (bool)                   |
+    |                              |  # quiescent state and grace period track
+    |gp_seq                        |  track rsp->gp_seq
+    |gp_seq_needed                 |  track rsp->gp_seq_needed
+    |     (unsigned long)          |
+    |cpu_no_qs                     |  no qs yet for this CPU
+    |     (union rcu_noqs)         |
+    |core_needs_qs                 |  core waits for qs state
+    |gpwrap                        |  indicates gp_seq may overflow
+    |     (bool)                   |
+    |                              |
+    |exp_deferred_qs               |
+    |     (bool)                   |
+    |ticks_this_gp                 |
+    |     (unsigned long)          |
+    |defer_qs_iw                   |
+    |     (struct irq_work)        |
+    |defer_qs_iw_pending           |
+    |     (bool)                   |
+    |                              |
+    |                              |  # dyntick handling
+    |dynticks_snap                 |  dyntick-idle state when force qs
+    |     (int)                    |
+    |                              |
+    |dynticks_nesting              |
+    |dynticks_nmi_nesting          |
+    |     (long)                   |
+    |dynticks                      |
+    |     (atomic_t)               |
+    |rcu_need_heavy_qs             |
+    |rcu_urgent_qs                 |
+    |     (bool)                   |
+    |                              |
+    |                              |  # RCU callback handling
+    |n_force_qs_snap               |
+    |     (unsigned long)          |
+    |qlen_last_fqs_check           |
+    |blimit                        |  upper limit on a processed batch
+    |     (long)                   |
+    |cblist                        |  segmented callback list
+    |     (struct rcu_segcblist)   |
+    |     +------------------------+
+    |     |enabled                 |
+    |     |offloaded               |
+    |     |   (bool)               |
+    |     |len                     |
+    |     |   (long)               |
+    |     |gp_seq[RCU_CBLIST_NSEGS]| DONE_TAIL| WAIT_TAIL| NEXT_READY| NEXT_TAIL|
+    |     |                        |
+    |     |head                    |    +-----+    +-----+    +-----+    +-----+
+    |     |   (struct rcu_head*)   |--->|     |--->|     |--->|     |--->|     |
+    |     |                        |    +-----+    +-----+    +-----+    +-----+
+    |     |tails[RCU_CBLIST_NSEGS] |        ^          ^          ^          ^
+    |     |   RCU_DONE_TAIL        |--------+          |          |          |
+    |     |   RCU_WAIT_TAIL        |-------------------+          |          |
+    |     |   RCU_NEXT_READY_TAIL  |------------------------------+          |
+    |     |   RCU_NEXT_TAIL        |-----------------------------------------+
+    |     |                        |
+    +-----+------------------------+
+
+
