@@ -14,6 +14,22 @@
  * Parallel Programming
    [Is Parallel Programming Hard, And If So, What Can You Do About It?][7]
 
+#Definition
+
+## Quiescent State [10]
+
+A state at which all temporary variables belonging to the CPU or thread
+passing through the quiescent state are dead. A quiescent state may be defined
+to be with respect to a particular data structure or with respect to all data
+structures in the system. Unless otherwise specified, the paper will use
+“quiescent state” in this latter universal sense. Examples of quiescent
+states in various software systems appear in a later section.
+
+## Quiescent Period [10]
+
+A time interval during which each thread passes through at least one quiescent
+state. Note that any time interval that encloses a quiescent period is itself
+a quiescent period.
 
 [1]: https://lwn.net/Articles/262464/
 [2]: https://lwn.net/Articles/263130/
@@ -24,4 +40,4 @@
 [7]: http://www2.rdrop.com/~paulmck/
 [8]: https://github.com/torvalds/linux/blob/master/Documentation/RCU/
 [9]: http://www.rdrop.com/users/paulmck/RCU/RCUdissertation.2004.07.14e1.pdf
-[10]: http://www.rdrop.com/users/paulmck/RCU/rclockjrnl_tpds_mathtype.pdf 
+[10]: http://www.rdrop.com/users/paulmck/RCU/rclockjrnl_tpds_mathtype.pdf
