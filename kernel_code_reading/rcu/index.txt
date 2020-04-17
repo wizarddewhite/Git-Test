@@ -10,9 +10,25 @@
    [Read the Fscking Papers!][4]
    [Paul's Page][6]
      * [RCU: Using Execution History to Solve Concurrency Problem][10]
+     * [Implementation and Performance of Read-Copy Update][11]
      * [Exploring Deferred Destruction: An analysis of RCU][9]
  * Parallel Programming
    [Is Parallel Programming Hard, And If So, What Can You Do About It?][7]
+
+
+For newbies, it is better to start from "Good to start".
+
+After that there are some Paul's paper to read to dive into more detail.
+
+[10] introduce this novel solution and define quiescent-state and period.
+There are four actual implementation issue for this solution.
+
+     * proper handle of callbacks
+     * efficient notification of beginning and ending of a quiescent period
+     * efficient placement of state variable
+     * batching of callbacks
+
+[11] gives more detail on quiescent-period algorithm.
 
 #Definition
 
@@ -41,3 +57,4 @@ a quiescent period.
 [8]: https://github.com/torvalds/linux/blob/master/Documentation/RCU/
 [9]: http://www.rdrop.com/users/paulmck/RCU/RCUdissertation.2004.07.14e1.pdf
 [10]: http://www.rdrop.com/users/paulmck/RCU/rclockjrnl_tpds_mathtype.pdf
+[11]: http://www2.rdrop.com/~paulmck/techreports/paulmck.1998.06.20a.pdf
