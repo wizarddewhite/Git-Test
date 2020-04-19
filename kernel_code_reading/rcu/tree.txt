@@ -47,6 +47,8 @@
 ================================================================================
 3.6 rcu_dump_rcu_node_tree()
 ================================================================================
+3.6 open_softirq(RCU_SOFTIRQ, rcu_core_si)
+================================================================================
 3.7 open_softirq(RCU_SOFTIRQ, rcu_core_si)
 ================================================================================
 3.8 pm_notifier(rcu_pm_notify, 0)
@@ -76,6 +78,53 @@
 3.13 rcu_par_gp_wq = alloc_workqueue("rcu_par_gp", WQ_MEM_RECLAIM, 0)
 ================================================================================
 3.14 srcu_init()
+================================================================================
+
+4. rcu_sched_clock_irq(int user), called from timer interrupt
+================================================================================
+4.1 raw_cpu_inc(rcu_data.ticks_this_gp)
+================================================================================
+4.2 rcu_flavor_sched_clock_irq(user), whether in non-context-switch qs?
+================================================================================
+4.2.1 user || rcu_is_cpu_rrupt_from_idle(), interrupted from user or idle
+================================================================================
+4.2.2 rcu_qs(), note the cpu is in a quiescent state
+================================================================================
+4.2.2.1 __this_cpu_read(rcu_data.cpu_no_qs.s)
+================================================================================
+4.2.2.2 __this_cpu_write(rcu_data.cpu_no_qs.b.norm, false)
+================================================================================
+4.2.2.3 __this_cpu_read(rcu_data.cpu_no_qs.b.exp)
+================================================================================
+4.2.2.4 __this_cpu_write(rcu_data.cpu_no_qs.b.exp, false)
+================================================================================
+4.2.2.5 rcu_report_exp_rdp(this_cpu_ptr(&rcu_data))
+================================================================================
+4.3 rcu_pending(user)
+================================================================================
+4.3.1 check_cpu_stall(rdp), not sure
+================================================================================
+4.3.2 rcu_nocb_need_deferred_wakeup(rdp), empty
+================================================================================
+4.3.3 gp_in_progress = rcu_gp_in_progress(), check on rcu_state.gp_seq
+================================================================================
+4.3.3.1 return rcu_seq_state(rcu_seq_current(&rcu_state.gp_seq));
+================================================================================
+4.3.4 rcu_segcblist_ready_cbs(&rdp->cblist)
+================================================================================
+4.3.4.1 &rdp->cblist->head != READ_ONCE(rdp->cblist->tails[RCU_DONE_TAIL]);
+================================================================================
+4.3.5 rcu_segcblist_restempty(&rdp->cblist, RCU_NEXT_READY_TAIL)
+================================================================================
+4.3.5.1 return !READ_ONCE(*READ_ONCE(rdp->cblist->tails[seg]));
+================================================================================
+4.3.6 rcu_seq_current(&rnp->gp_seq) != rdp->gp_seq
+================================================================================
+4.3.7 unlikely(READ_ONCE(rdp->gpwrap)) /* outside lock */
+================================================================================
+4.4 invoke_rcu_core(), if rcu_pending(user)
+================================================================================
+4.4.1 raise_softirq(RCU_SOFTIRQ) -> rcu_core_si() -> rcu_core()
 ================================================================================
 
 0. data struct
@@ -138,7 +187,9 @@ Documentation/RCU/Design/Data-Structures/Data-Structures.rst
     |boost                        |
     |    (u8)                     |
     |gp_seq                       |  grace period sequence
-    |    (unsigned long)          |  last 2bits represent rcu state
+    |    (unsigned long)          |  last 2bits: 
+    |                             |      0x0: no gp in progress
+    |                             |
     |                             |
     |gp_wq                        |  where GP task waits
     |    (struct swait_queue_head)|
@@ -249,44 +300,41 @@ num_rcu_lvl[]  number of rcu_node in each level
 
 
     rcu_state
-    +----------------------+                  0
+    +----------------------+
     |node[NUM_RCU_NODES]   |       +---->     +---+
-    |    (struct rcu_node) |       |          |   |                  NUM_RCU_LVL_0 = 1
+    |    (struct rcu_node) |       |          |0  |                  NUM_RCU_LVL_0 = 1
     |level[0]           ---|-------+          +---+                  CPUs per rcu_node = RCU_FANOUT_4
     |level[1]           ---|-------+         / / \ \
     |level[2]     ---+     |       |      /   /   \   \
     |level[3]        |     |       v   /     /     \     \
     +----------------------+        /       /       \      \
-                     |           1       2          63      64
                      |           +---+   +---+      +---+   +---+
-                     |           |   |   |   | ...  |   |   |   |    NUM_RCU_LVL_1 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_3)
+                     |           |1  |   |2  | ...  |63 |   |64 |    NUM_RCU_LVL_1 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_3)
                      |           +---+   +---+      +---+   +---+    CPUs per rcu_node = RCU_FANOUT_3
                      |          / / \ \
                      |       /   /   \   \
                      v    /     /     \     \
                        /       /       \      \
                     +---+   +---+      +---+   +---+
-                    |   |   |   | ...  |   |   |   |                 NUM_RCU_LVL_2 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_2)
+                    |65 |   |   | ...  |   |   |   |                 NUM_RCU_LVL_2 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_2)
                     +---+   +---+      +---+   +---+                 CPUs per rcu_node = RCU_FANOUT_2
-                                      / / \ \
-                                   /   /   \   \
-                                /     /     \     \
-                             /       /       \      \
-                          +---+   +---+      +---+   +---+
-                          |   |   |   | ...  |   |   |   |           NUM_RCU_LVL_3 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_1)
-                          +---+   +---+      +---+   +---+           CPUs per rcu_node = RCU_FANOUT_1
-                            ^       ^          ^       ^
-                            |       |          |       |
-                            |    rcu_data      |    rcu_data
-                            |    +-----+       |    +-----+
-                            |    |     |       |    |     |
-                            |    +-----+       |    +-----+
-                            |                  |
-                            |                  |
-                         rcu_data           rcu_data
-                         +-----+            +-----+
-                         |     |            |     |
-                         +-----+            +-----+
+                   / / \ \
+                /   /   \   \
+             /     /     \     \
+          /       /       \      \
+       +---+   +---+      +---+   +---+
+       |   |   |   | ...  |   |   |   |                              NUM_RCU_LVL_3 = DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_1)
+       +---+   +---+      +---+   +---+                              CPUs per rcu_node = RCU_FANOUT_1
+       ^   ^                      ^   ^
+       |   |                      |   |
+       |   |                      |   |
+    +--+   +--+                +--+   +--+
+    |         |                |         |
+    |         |                |         |
+ rcu_data   rcu_data        rcu_data   rcu_data
+ +-----+    +-----+         +-----+    +-----+
+ |0    | .. |15   |         |16*63| .. |+15  |
+ +-----+    +-----+         +-----+    +-----+
 
 
 
@@ -311,13 +359,21 @@ rcu_cpu_started, per-cpu data as an indication of started or not
     |     (unsigned long)          |
     |cpu_no_qs                     |  no qs yet for this CPU
     |     (union rcu_noqs)         |
+    |     +------------+-----------+
+    |     |norm        |exp        |
+    |     |   (u8)     |   (u8)    |
+    |     +------------+-----------+
+    |     |s                       |
+    |     |   (u16)                |
+    |     +------------------------+
+    |                              |
     |core_needs_qs                 |  core waits for qs state
     |gpwrap                        |  indicates gp_seq may overflow
     |     (bool)                   |
     |                              |
     |exp_deferred_qs               |
     |     (bool)                   |
-    |ticks_this_gp                 |
+    |ticks_this_gp                 |  updated in rcu_sched_clock_irq()
     |     (unsigned long)          |
     |defer_qs_iw                   |
     |     (struct irq_work)        |
@@ -357,6 +413,7 @@ rcu_cpu_started, per-cpu data as an indication of started or not
     |     |   (struct rcu_head*)   |--->|     |--->|     |--->|     |--->|     |
     |     |                        |    +-----+    +-----+    +-----+    +-----+
     |     |tails[RCU_CBLIST_NSEGS] |        ^          ^          ^          ^
+    |     |   (struct rcu_head**)  |        |          |          |          |
     |     |   RCU_DONE_TAIL        |--------+          |          |          |
     |     |   RCU_WAIT_TAIL        |-------------------+          |          |
     |     |   RCU_NEXT_READY_TAIL  |------------------------------+          |
