@@ -163,6 +163,7 @@ In this one, it tries to explain how kthread solve a trade-off.
 Disable interrupt, preempt
 
 https://blog.csdn.net/woshijidutu/article/details/68952702
+https://cloud.tencent.com/developer/article/1432987
 
 0.1 softirq_vec[]
 ================================================================================
