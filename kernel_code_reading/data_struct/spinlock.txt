@@ -1,0 +1,65 @@
+1. queued_spin_lock(qspinlock)
+================================================================================
+1.1 if (likely(atomic_try_cmpxchg_acquire(&lock->val, &val, _Q_LOCKED_VAL)))
+================================================================================
+1.2 queued_spin_lock_slowpath(lock, val);
+================================================================================
+
+0. data struct
+================================================================================
+
+Reference:
+https://lwn.net/Articles/590243/
+https://0xax.gitbooks.io/linux-insides/SyncPrim/linux-sync-2.html
+
+Painpoint: 
+    every attempt to acquire a lock requires moving the cache line containing
+    that lock to the local CPU
+
+0.1 qspinlock
+================================================================================
+
+     any !0 val indicates it is locked
+     more detail in qspinlock_types.[ch]
+
+    qspinlock (a union)
+    31                                             0
+    +-----------------------------------------------+
+    |val                                            |
+    |    (atomic_t)                                 |
+    +=======================+===========+===========+
+    |                       |pending    |locked     |
+    |                       |  (u8)     |  (u8)     |
+    +=======================+===========+===========+
+    |tail                   |locked_pending         |
+    |  (u16)                |  (u16)                |
+    +-----------------------+-----------------------+
+                                 
+
+0.2 bitfields in val
+================================================================================
+  When NR_CPUS < 16K
+   0- 7: locked byte
+      8: pending
+   9-15: not used
+  16-17: tail index
+  18-31: tail cpu (+1)
+ 
+     31             18 17 16 15         8 7        0
+    +-----------------+-----+----------+-+----------+
+    |Tail cpu         |T idx|          |P|locked    |
+    +-----------------+-----+----------+-+----------+
+
+
+  When NR_CPUS >= 16K && NR_CPUS <= 2M
+   0- 7: locked byte
+      8: pending
+   9-10: tail index
+  11-31: tail cpu (+1)
+
+
+     31                        11 10  9 8 7        0
+    +----------------------------+-----+-+----------+
+    |Tail cpu                    |T idx|P|locked    |
+    +----------------------------+-----+-+----------+
+
