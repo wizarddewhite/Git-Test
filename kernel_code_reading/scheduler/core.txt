@@ -346,7 +346,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
     |    |min_vruntime                |  = (u64)(-(1LL << 20))
     |    |    (u64)                   |
     |    |tasks_timeline              |  = RB_ROOT_CACHED
-    |    |    (struct rb_root_cached) |
+    |    |    (struct rb_root_cached) |  the task rbtree ordered by se->vruntime
     |    |                            |
     |    |runtime_enabled             |
     |    |runtime_remaining           |
