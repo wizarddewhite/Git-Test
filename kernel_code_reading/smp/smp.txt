@@ -1,0 +1,178 @@
+1. before smp_init called to setup SMP environment
+================================================================================
+
+  start_kernel()
+  |-- setup_arch()
+  |   |-- parse_cmdline_early();  // SMP looks for "noht" and "acpismp=force"
+  |   |   `-- /* "noht" disables HyperThreading (2 logical cpus per Xeon) */
+  |   |       if (!memcmp(from, "noht", 4)) {
+  |   |           disable_x86_ht = 1;
+  |   |           set_bit(X86_FEATURE_HT, disabled_x86_caps);
+  |   |       }
+  |   |       /* "acpismp=force" forces parsing and use of the ACPI SMP table */
+  |   |       else if (!memcmp(from, "acpismp=force", 13))
+  |   |           enable_acpi_smp_table = 1;
+  |   |-- setup_memory();         // reserve memory for MP configuration table
+  |   |   |-- reserve_bootmem(PAGE_SIZE, PAGE_SIZE);
+  |   |   `-- find_smp_config();
+  |   |       `-- find_intel_smp();
+  |   |           `-- smp_scan_config();
+  |   |               |-- set flag smp_found_config
+  |   |               |-- set MP floating pointer mpf_found
+  |   |               `-- reserve_bootmem(mpf_found, PAGE_SIZE);
+  |   |-- if (disable_x86_ht) {   // if HyperThreading feature disabled
+  |   |       clear_bit(X86_FEATURE_HT, &boot_cpu_data.x86_capability[0]);
+  |   |       set_bit(X86_FEATURE_HT, disabled_x86_caps);
+  |   |       enable_acpi_smp_table = 0;
+  |   |   }
+  |   |-- if (test_bit(X86_FEATURE_HT, &boot_cpu_data.x86_capability[0]))
+  |   |       enable_acpi_smp_table = 1;
+  |   |-- smp_alloc_memory();
+  |   |   `-- /* reserve AP processor's real-mode code space in low memory */
+  |   |       trampoline_base = (void *) alloc_bootmem_low_pages(PAGE_SIZE);
+  |   `-- get_smp_config();     /* get boot-time MP configuration */
+  |       |-- config_acpi_tables();
+  |       |   |-- memset(&acpi_boot_ops, 0, sizeof(acpi_boot_ops));
+  |       |   |-- acpi_boot_ops[ACPI_APIC] = acpi_parse_madt;
+  |       |   `-- /* Set have_acpi_tables to indicate using
+  |       |        * MADT in the ACPI tables; Use MPS tables if failed. */
+  |       |       if (enable_acpi_smp_table && !acpi_tables_init())
+  |       |           have_acpi_tables = 1;
+  |       |-- set pic_mode
+  |       |   /* =1, if the IMCR is present and PIC Mode is implemented;
+  |       |    * =0, otherwise Virtual Wire Mode is implemented. */
+  |       |-- save local APIC address in mp_lapic_addr
+  |       `-- scan for MP configuration table entries, like
+  |             MP_PROCESSOR, MP_BUS, MP_IOAPIC, MP_INTSRC and MP_LINTSRC.
+  |-- trap_init();
+  |   `-- init_apic_mappings();   // setup PTE for APIC
+  |       |-- /* If no local APIC can be found then set up a fake all
+  |       |    * zeroes page to simulate the local APIC and another
+  |       |    * one for the IO-APIC. */
+  |       |   if (!smp_found_config && detect_init_APIC()) {
+  |       |       apic_phys = (unsigned long) alloc_bootmem_pages(PAGE_SIZE);
+  |       |       apic_phys = __pa(apic_phys);
+  |       |   } else
+  |       |       apic_phys = mp_lapic_addr;
+  |       |-- /* map local APIC address,
+  |       |    *   mp_lapic_addr (0xfee00000) in most case,
+  |       |    *   to linear address FIXADDR_TOP (0xffffe000) */
+  |       |   set_fixmap_nocache(FIX_APIC_BASE, apic_phys);
+  |       |-- /* Fetch the APIC ID of the BSP in case we have a
+  |       |    * default configuration (or the MP table is broken). */
+  |       |   if (boot_cpu_physical_apicid == -1U)
+  |       |       boot_cpu_physical_apicid = GET_APIC_ID(apic_read(APIC_ID));
+  |       `-- // map IOAPIC address to uncacheable linear address
+  |           set_fixmap_nocache(idx, ioapic_phys);
+  |       // Now we can use linear address to access APIC space.
+  |-- init_IRQ();
+  |   |-- init_ISA_irqs();
+  |   |   |-- /* An initial setup of the virtual wire mode. */
+  |   |   |   init_bsp_APIC();
+  |   |   `-- init_8259A(auto_eoi=0);
+  |   `-- setup SMP/APIC interrupt handlers, esp. IPI.
+  |-- mem_init();
+  |   `-- /* delay zapping low mapping entries for SMP: zap_low_mappings() */
+  `-- arch_call_rest_init(); -> rest_init();
+      `-- pid = kernel_thread(kernel_init, NULL, CLONE_FS);
+          `-- kernel_init_freeable();
+	      `-- smp_init()
+
+2. smp_init()
+================================================================================
+2.1 idle_threads_init()
+================================================================================
+2.1.1 idle_init(cpu), for each cpu except boot_cpu
+================================================================================
+2.1.1.1 struct task_struct *tsk = per_cpu(idle_threads, cpu);
+================================================================================
+2.1.1.2 fork_idle(cpu)
+================================================================================
+2.2 cpuhp_threads_init()
+================================================================================
+2.2.1 smpboot_register_percpu_thread(&cpuhp_threads);
+================================================================================
+2.2.1.1 __smpboot_create_thread(&cpuhp_thread, cpu)
+================================================================================
+2.2.1.1.1 tsk = kthread_create_on_cpu(smpboot_thread_fn, td, cpu, ht->thread_comm);
+================================================================================
+2.2.1.1.1 cpuhp_thread.create(cpu) -> cpuhp_create(cpu)
+================================================================================
+2.2.2 kthread_unpark(this_cpu_read(cpuhp_state.thread))
+================================================================================
+2.3 bringup_nonboot_cpus(setup_max_cpus)
+================================================================================
+2.3.1 cpu_up(cpu, CPUHP_ONLINE)
+================================================================================
+2.4 smp_cpus_done(setup_max_cpus)
+================================================================================
+
+3. cpu_up(cpu, target)
+================================================================================
+3.1 _cpu_up(cpu, 0, target)
+================================================================================
+3.1.1 cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);
+================================================================================
+3.1.2 cpuhp_set_state(st, target);
+================================================================================
+3.1.3 cpuhp_kick_ap_work(cpu)
+================================================================================
+3.1.3.1 ret = cpuhp_kick_ap(st, st->target);
+================================================================================
+3.1.3.1.1 __cpuhp_kick_ap(st)
+================================================================================
+3.1.3.1.1.1 st->should_run = true;
+================================================================================
+3.1.3.1.1.2 wake_up_process(st->thread), wakeup smpboot_thread_fn() and call cpuhp_thread_fun()
+================================================================================
+3.1.3.1.1.3 wait_for_ap_thread(st, st->bringup)
+================================================================================
+3.1.4 cpuhp_up_callbacks(cpu, st, target)
+================================================================================
+
+4. bringup_cpu(), called dring cpuhp_invoke_callback()
+================================================================================
+4.1 smp_ops.cpu_up(cpu, tidle) -> native_cpu_up(cpu, )
+================================================================================
+4.1.1 common_cpu_up(cpu, )
+================================================================================
+4.1.2 do_boot_cpu(apicid, cpu, )
+================================================================================
+4.1.2.1 initial_code = (unsigned long)start_secondary; <- secondary cpu start
+================================================================================
+4.1.2.2 apic->wakeup_secondary_cpu()
+================================================================================
+
+0. data struct
+================================================================================
+Reference:
+
+https://www.tldp.org/HOWTO/Linux-i386-Boot-Code-HOWTO/smpboot.html
+
+0.1 cpuhp_state, per-cpu cpuhp_cpu_state struct
+================================================================================
+
+
+    cpuhp_cpu_state
+    +-------------------------------+
+    |state                          |
+    |target                         |
+    |fail                           |
+    |    (enum cpuhp_state)         |
+    |                               |
+    |thread                         |
+    |    (struct task_struct*)      |
+    |should_run                     |
+    |rollback                       |
+    |single                         |
+    |bringup                        |
+    |    (bool)                     |
+    |                               |
+    |result                         |
+    |    (int)                      |
+    |done_up                        |
+    |done_down                      |
+    |    (struct completion)        |
+    |                               |
+    +-------------------------------+
+

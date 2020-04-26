@@ -300,7 +300,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
     |                                 |
     +---------------------------------+
     |curr                             |  current task on this rq
-    |idle                             |
+    |idle                             |  the idle task for this rq, see init_idle()
     |stop                             |
     |    (struct task_struct*)        |
     |                                 |
