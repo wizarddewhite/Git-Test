@@ -1,4 +1,4 @@
-1. trace_init()
+1. trace_init(), called by start_kernel()
 ================================================================================
 void __init trace_init(void)
 {
@@ -369,184 +369,65 @@ int __init register_tracer(struct tracer *type)
 
 1.2 trace_event_init()
 ================================================================================
-
-2. tracer_init_tracefs()
+1.2.1 event_trace_memsetup()
 ================================================================================
-static __init int tracer_init_tracefs(void)
-{
-	struct dentry *d_tracer;
-
-	trace_access_lock_init();
-
-	d_tracer = tracing_init_dentry();
-	if (IS_ERR(d_tracer))
-		return 0;
-
-	init_tracer_tracefs(&global_trace, d_tracer);
-
-	trace_create_file("tracing_thresh", 0644, d_tracer,
-			&global_trace, &tracing_thresh_fops);
-
-	trace_create_file("README", 0444, d_tracer,
-			NULL, &tracing_readme_fops);
-
-	trace_create_file("saved_cmdlines", 0444, d_tracer,
-			NULL, &tracing_saved_cmdlines_fops);
-
-	trace_create_file("saved_cmdlines_size", 0644, d_tracer,
-			  NULL, &tracing_saved_cmdlines_size_fops);
-
-	trace_enum_init();
-
-	trace_create_enum_file(d_tracer);
-
-#ifdef CONFIG_MODULES
-	register_module_notifier(&trace_module_nb);
-#endif
-
-#ifdef CONFIG_DYNAMIC_FTRACE
-	trace_create_file("dyn_ftrace_total_info", 0444, d_tracer,
-			&ftrace_update_tot_cnt, &tracing_dyn_info_fops);
-#endif
-
-	create_trace_instances(d_tracer);
-
-	update_tracer_options(&global_trace);
-
-	return 0;
-}
-
-2.1 tracing_init_dentry(), create /sys/kernel/debug/tracing/
+1.2.2 init_ftrace_syscalls()
 ================================================================================
-struct dentry *tracing_init_dentry(void)
-{
-	struct trace_array *tr = &global_trace;
-
-	/* The top level trace array uses  NULL as parent */
-	if (tr->dir)
-		return NULL;
-
-	if (WARN_ON(!debugfs_initialized()))
-		return ERR_PTR(-ENODEV);
-
-	/*
-	 * As there may still be users that expect the tracing
-	 * files to exist in debugfs/tracing, we must automount
-	 * the tracefs file system there, so older tools still
-	 * work with the newer kerenl.
-	 */
-	tr->dir = debugfs_create_automount("tracing", NULL,
-					   trace_automount, NULL);
-	if (!tr->dir) {
-		pr_warn_once("Could not create debugfs directory 'tracing'\n");
-		return ERR_PTR(-ENOMEM);
-	}
-
-	return NULL;
-}
-
-2.2 init_tracer_tracefs()
+1.2.3 event_trace_enable()
 ================================================================================
-static void
-init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer)
-{
-	int cpu;
-
-	trace_create_file("available_tracers", 0444, d_tracer,
-			tr, &show_traces_fops);
-
-	trace_create_file("current_tracer", 0644, d_tracer,
-			tr, &set_tracer_fops);
-
-	trace_create_file("tracing_cpumask", 0644, d_tracer,
-			  tr, &tracing_cpumask_fops);
-
-	trace_create_file("trace_options", 0644, d_tracer,
-			  tr, &tracing_iter_fops);
-
-	trace_create_file("trace", 0644, d_tracer,
-			  tr, &tracing_fops);
-
-	trace_create_file("trace_pipe", 0444, d_tracer,
-			  tr, &tracing_pipe_fops);
-
-	trace_create_file("buffer_size_kb", 0644, d_tracer,
-			  tr, &tracing_entries_fops);
-
-	trace_create_file("buffer_total_size_kb", 0444, d_tracer,
-			  tr, &tracing_total_entries_fops);
-
-	trace_create_file("free_buffer", 0200, d_tracer,
-			  tr, &tracing_free_buffer_fops);
-
-	trace_create_file("trace_marker", 0220, d_tracer,
-			  tr, &tracing_mark_fops);
-
-	trace_create_file("trace_clock", 0644, d_tracer, tr,
-			  &trace_clock_fops);
-
-	trace_create_file("tracing_on", 0644, d_tracer,
-			  tr, &rb_simple_fops);
-
-	create_trace_options_dir(tr);
-
-#ifdef CONFIG_TRACER_MAX_TRACE
-	trace_create_file("tracing_max_latency", 0644, d_tracer,
-			&tr->max_latency, &tracing_max_lat_fops);
-#endif
-
-	if (ftrace_create_function_files(tr, d_tracer))
-		WARN(1, "Could not allocate function filter files");
-
-#ifdef CONFIG_TRACER_SNAPSHOT
-	trace_create_file("snapshot", 0644, d_tracer,
-			  tr, &snapshot_fops);
-#endif
-
-	for_each_tracing_cpu(cpu)
-		tracing_init_tracefs_percpu(tr, cpu);
-
-}
-
-2.2.1 create_trace_options_dir(), create tracing/option/ dir
-================================================================================
-static void create_trace_options_dir(struct trace_array *tr)
-{
-	struct dentry *t_options;
-	bool top_level = tr == &global_trace;
-	int i;
-
-	t_options = trace_options_init_dentry(tr);
-	if (!t_options)
-		return;
-
-	for (i = 0; trace_options[i]; i++) {
-		if (top_level ||
-		    !((1 << i) & TOP_LEVEL_TRACE_FLAGS))
-			create_trace_option_core_file(tr, trace_options[i], i);
-	}
-}
-
-2.2.2 tracing_init_tracefs_percpu()
+1.2.3.1 event_init(), init the events defined by TRACE_EVENT
 ================================================================================
 
-2.3 trace_create_file()
-================================================================================
 
-2.4 trace_enum_init()
+2. TRACE_EVENT
 ================================================================================
+	DECLARE_EVENT_CLASS(name,			       \
+			     PARAMS(proto),		       \
+			     PARAMS(args),		       \
+			     PARAMS(tstruct),		       \
+			     PARAMS(assign),		       \
+			     PARAMS(print));		       \
+	DEFINE_EVENT(name, name, PARAMS(proto), PARAMS(args));
 
-2.5 trace_create_enum_file()
+2.1 DECLARE_EVENT_CLASS
 ================================================================================
+#define DECLARE_EVENT_CLASS(call, proto, args, tstruct, assign, print)	\
+_TRACE_PERF_PROTO(call, PARAMS(proto));					\
+static char print_fmt_##call[] = print;					\
+static struct trace_event_class __used __refdata event_class_##call = { \
+	.system			= TRACE_SYSTEM_STRING,			\
+	.fields_array		= trace_event_fields_##call,		\
+	.fields			= LIST_HEAD_INIT(event_class_##call.fields),\
+	.raw_init		= trace_event_raw_init,			\
+	.probe			= trace_event_raw_event_##call,		\
+	.reg			= trace_event_reg,			\
+	_TRACE_PERF_INIT(call)						\
+};
 
-2.6 create_trace_instances()
-================================================================================
 
-2.7 update_tracer_options()
+2.2 DEFINE_EVENT, events are defined in _ftrace_events section
 ================================================================================
+#define DEFINE_EVENT(template, call, proto, args)			\
+									\
+static struct trace_event_call __used event_##call = {			\
+	.class			= &event_class_##template,		\
+	{								\
+		.tp			= &__tracepoint_##call,		\
+	},								\
+	.event.funcs		= &trace_event_type_funcs_##template,	\
+	.print_fmt		= print_fmt_##template,			\
+	.flags			= TRACE_EVENT_FL_TRACEPOINT,		\
+};									\
+static struct trace_event_call __used					\
+__attribute__((section("_ftrace_events"))) *__event_##call = &event_##call
+
 
 0. Data Structure
 ================================================================================
+Reference:
+
+https://lwn.net/Articles/379903/
+samples/trace_events/trace-events-sample.[ch]
 
 0.1 struct trace_array
 ================================================================================
