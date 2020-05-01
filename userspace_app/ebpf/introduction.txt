@@ -27,6 +27,9 @@ https://github.com/iovisor/bcc/blob/master/docs/tutorial_bcc_python_developer.md
 bcc Reference Guide
 https://github.com/iovisor/bcc/blob/master/docs/reference_guide.md
 
+BPF: A Tour of Program Type
+https://blogs.oracle.com/linux/notes-on-bpf-1
+
 2. Compile Samples in kernel source tree
 ================================================================================
 In kernel examples:
@@ -63,9 +66,28 @@ CONFIG_NET_ACT_GACT=m
 CONFIG_DUMMY=m
 CONFIG_VXLAN=m
 
-3. command, map, program
+3. map mechanism in eBPF
 ================================================================================
-3.1 command type
+
+                            Kernel
+                             +------------------------------+
+                             |                              |
+                             | .............                |
+                             | . Map       .        * * * * |
+                             | .............         BPF    |
+                             |      ^               *     * |
+                             |      |                       |
+    +------------+   bpf()   |      v               *     * |
+    | Userspace  |  syscall  | +--------------+      Prog   |
+    |            |< - - - - >| | bpf_map::ops |< - >*     * |
+    |  Process   |           | +--------------+             |
+    +------------+           |                      * * * * |
+                             +------------------------------+
+
+
+4. command, map, program
+================================================================================
+4.1 command type, used in syscall bpf()
 ================================================================================
 enum bpf_cmd {
 	BPF_MAP_CREATE,
@@ -100,7 +122,7 @@ enum bpf_cmd {
 	BPF_LINK_UPDATE,
 };
 
-3.2 map type
+4.2 map type
 ================================================================================
 enum bpf_map_type {
 	BPF_MAP_TYPE_UNSPEC,
@@ -131,3 +153,116 @@ enum bpf_map_type {
 	BPF_MAP_TYPE_DEVMAP_HASH,
 	BPF_MAP_TYPE_STRUCT_OPS,
 };
+
+4.3 prog type, pass to bpf_prog_load()
+================================================================================
+Quoted from bpf(2) man page:
+
+   The eBPF program type (prog_type) determines the subset of kernel helper
+   functions that the program may call.  The program type also determines the
+   program input (context)—the format of struct bpf_con‐ text (which is the
+   data blob passed into the eBPF program as the first argument).
+
+enum bpf_prog_type {
+	BPF_PROG_TYPE_UNSPEC,
+	BPF_PROG_TYPE_SOCKET_FILTER,
+	BPF_PROG_TYPE_KPROBE,
+	BPF_PROG_TYPE_SCHED_CLS,
+	BPF_PROG_TYPE_SCHED_ACT,
+	BPF_PROG_TYPE_TRACEPOINT,
+	BPF_PROG_TYPE_XDP,
+	BPF_PROG_TYPE_PERF_EVENT,
+	BPF_PROG_TYPE_CGROUP_SKB,
+	BPF_PROG_TYPE_CGROUP_SOCK,
+	BPF_PROG_TYPE_LWT_IN,
+	BPF_PROG_TYPE_LWT_OUT,
+	BPF_PROG_TYPE_LWT_XMIT,
+	BPF_PROG_TYPE_SOCK_OPS,
+	BPF_PROG_TYPE_SK_SKB,
+	BPF_PROG_TYPE_CGROUP_DEVICE,
+	BPF_PROG_TYPE_SK_MSG,
+	BPF_PROG_TYPE_RAW_TRACEPOINT,
+	BPF_PROG_TYPE_CGROUP_SOCK_ADDR,
+	BPF_PROG_TYPE_LWT_SEG6LOCAL,
+	BPF_PROG_TYPE_LIRC_MODE2,
+	BPF_PROG_TYPE_SK_REUSEPORT,
+	BPF_PROG_TYPE_FLOW_DISSECTOR,
+	BPF_PROG_TYPE_CGROUP_SYSCTL,
+	BPF_PROG_TYPE_RAW_TRACEPOINT_WRITABLE,
+	BPF_PROG_TYPE_CGROUP_SOCKOPT,
+	BPF_PROG_TYPE_TRACING,
+	BPF_PROG_TYPE_STRUCT_OPS,
+	BPF_PROG_TYPE_EXT,
+};
+
+4.3.1 BPF_PROG_TYPE_SOCKET_FILTER
+================================================================================
+Refer to https://blogs.oracle.com/linux/notes-on-bpf-1
+
+Attach to a specific socket, setsockopt(sock, SOL_SOCKET, SO_ATTACH_BPF, ).
+
+The context is struct __sk_buff.
+
+This type ebpf is processed in sk_filter_trim_cap()
+
+    sk_filter_trim_cap()
+        bpf_prog_run_save_cb()
+            res = BPF_PROG_RUN(prog, skb);
+                bpf_dispatcher_nop_func(skb, prog->insnsi, prog->bpf_func)
+
+
+4.3.2 BPF_PROG_TYPE_TRACEPOINT
+================================================================================
+Attach to a eventfd by ioctl(efd, PERF_EVENT_IOC_SET_BPF, fd).
+The detail is in load_and_attach() in sample/bpf/bpf_load.c
+
+The context is trace point specific.
+
+For example, for event syscalls/sys_enter_open, the file "format" shows the
+context struct.
+
+    /sys/kernel/debug/tracing/events/syscalls/sys_enter_open/format
+
+This type ebpf is processed in trace_call_bpf().
+
+    trace_call_bpf()
+        ret = BPF_PROG_RUN_ARRAY_CHECK(call->prog_array, ctx, BPF_PROG_RUN);
+            BPF_PROG_RUN(prog, ctx);
+
+5. libbpf, user interface for bpf program
+================================================================================
+It is in kernel source code directory:
+
+    tools/lib/bpf
+
+5.1 libbpf api are defined in tools/lib/bpf
+================================================================================
+
+bpf_prog_load()
+bpf_map_lookup_elem()
+
+5.2 libbpf finally use bpf() syscall to connect with kernel
+================================================================================
+
+bpf_map_lookup_elem()
+    sys_bpf(BPF_MAP_LOOKUP_ELEM, &attr, sizeof(attr));
+        syscall(__NR_bpf, cmd, attr, size);
+
+In kernel bpf syscall is defined as:
+
+#define __NR_bpf 280
+__SYSCALL(__NR_bpf, sys_bpf)  -> SYSCALL_DEFINE3(bpf, ... )
+
+6. bpf helpers, kernel interfaces
+================================================================================
+Defined in kernel/bpf/helpers.c
+
+BPF_CALL_2(bpf_map_lookup_elem, struct bpf_map *, map, void *, key)
+{
+	WARN_ON_ONCE(!rcu_read_lock_held());
+	return (unsigned long) map->ops->map_lookup_elem(map, key);
+}
+
+llvm built-in, load_half()/load_word() is declared in
+tools/testing/selftests/bpf/bpf_legacy.h
+
