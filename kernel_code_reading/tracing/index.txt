@@ -1,0 +1,8 @@
+1. general call flow
+================================================================================
+
+start_kernel()
+    ftrace_init()
+    early_trace_init()
+    trace_init()
+

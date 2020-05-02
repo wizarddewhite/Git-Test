@@ -1,482 +1,256 @@
-1. trace_init(), called by start_kernel()
+1. early_trace_init(), called by start_kernel() before trace_init()
 ================================================================================
-void __init trace_init(void)
-{
-	if (tracepoint_printk) {
-		tracepoint_print_iter =
-			kmalloc(sizeof(*tracepoint_print_iter), GFP_KERNEL);
-		if (WARN_ON(!tracepoint_print_iter))
-			tracepoint_printk = 0;
-	}
-	tracer_alloc_buffers();
-	trace_event_init();
-}
-
+1.1 tracepoint_print_iter = kmalloc(sizeof(*tracepoint_print_iter), GFP_KERNEL);
+================================================================================
 1.1 tracer_alloc_buffers()
 ================================================================================
-__init static int tracer_alloc_buffers(void)
-{
-	int ring_buf_size;
-	int ret = -ENOMEM;
-
-	/*
-	 * Make sure we don't accidently add more trace options
-	 * than we have bits for.
-	 */
-	BUILD_BUG_ON(TRACE_ITER_LAST_BIT > TRACE_FLAGS_MAX_SIZE);
-
-	if (!alloc_cpumask_var(&tracing_buffer_mask, GFP_KERNEL))
-		goto out;
-
-	if (!alloc_cpumask_var(&global_trace.tracing_cpumask, GFP_KERNEL))
-		goto out_free_buffer_mask;
-
-	/* Only allocate trace_printk buffers if a trace_printk exists */
-	if (__stop___trace_bprintk_fmt != __start___trace_bprintk_fmt)
-		/* Must be called before global_trace.buffer is allocated */
-		trace_printk_init_buffers();
-
-	/* To save memory, keep the ring buffer size to its minimum */
-	if (ring_buffer_expanded)
-		ring_buf_size = trace_buf_size;
-	else
-		ring_buf_size = 1;
-
-	cpumask_copy(tracing_buffer_mask, cpu_possible_mask);
-	cpumask_copy(global_trace.tracing_cpumask, cpu_all_mask);
-
-	raw_spin_lock_init(&global_trace.start_lock);
-
-	/* Used for event triggers */
-	temp_buffer = ring_buffer_alloc(PAGE_SIZE, RB_FL_OVERWRITE);
-	if (!temp_buffer)
-		goto out_free_cpumask;
-
-	if (trace_create_savedcmd() < 0)
-		goto out_free_temp_buffer;
-
-	/* TODO: make the number of buffers hot pluggable with CPUS */
-	if (allocate_trace_buffers(&global_trace, ring_buf_size) < 0) {
-		printk(KERN_ERR "tracer: failed to allocate ring buffer!\n");
-		WARN_ON(1);
-		goto out_free_savedcmd;
-	}
-
-	if (global_trace.buffer_disabled)
-		tracing_off();
-
-	if (trace_boot_clock) {
-		ret = tracing_set_clock(&global_trace, trace_boot_clock);
-		if (ret < 0)
-			pr_warning("Trace clock %s not defined, going back to default\n",
-				   trace_boot_clock);
-	}
-
-	/*
-	 * register_tracer() might reference current_trace, so it
-	 * needs to be set before we register anything. This is
-	 * just a bootstrap of current_trace anyway.
-	 */
-	global_trace.current_trace = &nop_trace;
-
-	global_trace.max_lock = (arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
-
-	ftrace_init_global_array_ops(&global_trace);
-
-	init_trace_flags_index(&global_trace);
-
-	register_tracer(&nop_trace);
-
-	/* All seems OK, enable tracing */
-	tracing_disabled = 0;
-
-	atomic_notifier_chain_register(&panic_notifier_list,
-				       &trace_panic_notifier);
-
-	register_die_notifier(&trace_die_notifier);
-
-	global_trace.flags = TRACE_ARRAY_FL_GLOBAL;
-
-	INIT_LIST_HEAD(&global_trace.systems);
-	INIT_LIST_HEAD(&global_trace.events);
-	list_add(&global_trace.list, &ftrace_trace_arrays);
-
-	apply_trace_boot_options();
-
-	register_snapshot_cmd();
-
-	return 0;
-
-out_free_savedcmd:
-	free_saved_cmdlines_buffer(savedcmd);
-out_free_temp_buffer:
-	ring_buffer_free(temp_buffer);
-out_free_cpumask:
-	free_cpumask_var(global_trace.tracing_cpumask);
-out_free_buffer_mask:
-	free_cpumask_var(tracing_buffer_mask);
-out:
-	return ret;
-}
-
-1.1.1 ring_buffer_alloc()
+1.1.1 alloc_cpumask_var(&tracing_buffer_mask, )
 ================================================================================
-#define ring_buffer_alloc(size, flags)			\
-({							\
-	static struct lock_class_key __key;		\
-	__ring_buffer_alloc((size), (flags), &__key);	\
-})
-
-struct ring_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
-					struct lock_class_key *key)
-{
-	struct ring_buffer *buffer;
-	int bsize;
-	int cpu, nr_pages;
-
-	/* keep it in its own cache line */
-	buffer = kzalloc(ALIGN(sizeof(*buffer), cache_line_size()),
-			 GFP_KERNEL);
-	if (!buffer)
-		return NULL;
-
-	if (!alloc_cpumask_var(&buffer->cpumask, GFP_KERNEL))
-		goto fail_free_buffer;
-
-	nr_pages = DIV_ROUND_UP(size, BUF_PAGE_SIZE);
-	buffer->flags = flags;
-	buffer->clock = trace_clock_local;
-	buffer->reader_lock_key = key;
-
-	init_irq_work(&buffer->irq_work.work, rb_wake_up_waiters);
-	init_waitqueue_head(&buffer->irq_work.waiters);
-
-	/* need at least two pages */
-	if (nr_pages < 2)
-		nr_pages = 2;
-
-	/*
-	 * In case of non-hotplug cpu, if the ring-buffer is allocated
-	 * in early initcall, it will not be notified of secondary cpus.
-	 * In that off case, we need to allocate for all possible cpus.
-	 */
-#ifdef CONFIG_HOTPLUG_CPU
-	cpu_notifier_register_begin();
-	cpumask_copy(buffer->cpumask, cpu_online_mask);
-#else
-	cpumask_copy(buffer->cpumask, cpu_possible_mask);
-#endif
-	buffer->cpus = nr_cpu_ids;
-
-	bsize = sizeof(void *) * nr_cpu_ids;
-	buffer->buffers = kzalloc(ALIGN(bsize, cache_line_size()),
-				  GFP_KERNEL);
-	if (!buffer->buffers)
-		goto fail_free_cpumask;
-
-	for_each_buffer_cpu(buffer, cpu) {
-		buffer->buffers[cpu] =
-			rb_allocate_cpu_buffer(buffer, nr_pages, cpu);
-		if (!buffer->buffers[cpu])
-			goto fail_free_buffers;
-	}
-
-#ifdef CONFIG_HOTPLUG_CPU
-	buffer->cpu_notify.notifier_call = rb_cpu_notify;
-	buffer->cpu_notify.priority = 0;
-	__register_cpu_notifier(&buffer->cpu_notify);
-	cpu_notifier_register_done();
-#endif
-
-	mutex_init(&buffer->mutex);
-
-	return buffer;
-
- fail_free_buffers:
-	for_each_buffer_cpu(buffer, cpu) {
-		if (buffer->buffers[cpu])
-			rb_free_cpu_buffer(buffer->buffers[cpu]);
-	}
-	kfree(buffer->buffers);
-
- fail_free_cpumask:
-	free_cpumask_var(buffer->cpumask);
-#ifdef CONFIG_HOTPLUG_CPU
-	cpu_notifier_register_done();
-#endif
-
- fail_free_buffer:
-	kfree(buffer);
-	return NULL;
-}
-
-1.1.1.1 rb_allocate_cpu_buffer()
+1.1.2 alloc_cpumask_var(&global_trace.tracing_cpumask, )
 ================================================================================
-static struct ring_buffer_per_cpu *
-rb_allocate_cpu_buffer(struct ring_buffer *buffer, int nr_pages, int cpu)
-{
-	struct ring_buffer_per_cpu *cpu_buffer;
-	struct buffer_page *bpage;
-	struct page *page;
-	int ret;
-
-	cpu_buffer = kzalloc_node(ALIGN(sizeof(*cpu_buffer), cache_line_size()),
-				  GFP_KERNEL, cpu_to_node(cpu));
-	if (!cpu_buffer)
-		return NULL;
-
-	cpu_buffer->cpu = cpu;
-	cpu_buffer->buffer = buffer;
-	raw_spin_lock_init(&cpu_buffer->reader_lock);
-	lockdep_set_class(&cpu_buffer->reader_lock, buffer->reader_lock_key);
-	cpu_buffer->lock = (arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
-	INIT_WORK(&cpu_buffer->update_pages_work, update_pages_handler);
-	init_completion(&cpu_buffer->update_done);
-	init_irq_work(&cpu_buffer->irq_work.work, rb_wake_up_waiters);
-	init_waitqueue_head(&cpu_buffer->irq_work.waiters);
-	init_waitqueue_head(&cpu_buffer->irq_work.full_waiters);
-
-	bpage = kzalloc_node(ALIGN(sizeof(*bpage), cache_line_size()),
-			    GFP_KERNEL, cpu_to_node(cpu));
-	if (!bpage)
-		goto fail_free_buffer;
-
-	rb_check_bpage(cpu_buffer, bpage);
-
-	cpu_buffer->reader_page = bpage;
-	page = alloc_pages_node(cpu_to_node(cpu), GFP_KERNEL, 0);
-	if (!page)
-		goto fail_free_reader;
-	bpage->page = page_address(page);
-	rb_init_page(bpage->page);
-
-	INIT_LIST_HEAD(&cpu_buffer->reader_page->list);
-	INIT_LIST_HEAD(&cpu_buffer->new_pages);
-
-	ret = rb_allocate_pages(cpu_buffer, nr_pages);
-	if (ret < 0)
-		goto fail_free_reader;
-
-	cpu_buffer->head_page
-		= list_entry(cpu_buffer->pages, struct buffer_page, list);
-	cpu_buffer->tail_page = cpu_buffer->commit_page = cpu_buffer->head_page;
-
-	rb_head_page_activate(cpu_buffer);
-
-	return cpu_buffer;
-
- fail_free_reader:
-	free_buffer_page(cpu_buffer->reader_page);
-
- fail_free_buffer:
-	kfree(cpu_buffer);
-	return NULL;
-}
-
-1.1.2 ftrace_init_global_array_ops(), global_ops
+1.1.3 trace_printk_init_buffers()
 ================================================================================
-__init void ftrace_init_global_array_ops(struct trace_array *tr)
-{
-	tr->ops = &global_ops;
-	tr->ops->private = tr;
-}
-
-1.1.3 init_trace_flags_index()
+1.1.3.1 alloc_percpu_trace_buffer()
 ================================================================================
-static void init_trace_flags_index(struct trace_array *tr)
-{
-	int i;
-
-	/* Used by the trace options files */
-	for (i = 0; i < TRACE_FLAGS_MAX_SIZE; i++)
-		tr->trace_flags_index[i] = i;
-}
-
-1.1.4 register_tracer()
+1.1.3.2 tracing_update_buffers()
 ================================================================================
-int __init register_tracer(struct tracer *type)
-{
-	struct tracer *t;
-	int ret = 0;
-
-	if (!type->name) {
-		pr_info("Tracer must have a name\n");
-		return -1;
-	}
-
-	if (strlen(type->name) >= MAX_TRACER_SIZE) {
-		pr_info("Tracer has a name longer than %d\n", MAX_TRACER_SIZE);
-		return -1;
-	}
-
-	mutex_lock(&trace_types_lock);
-
-	tracing_selftest_running = true;
-
-	for (t = trace_types; t; t = t->next) {
-		if (strcmp(type->name, t->name) == 0) {
-			/* already found */
-			pr_info("Tracer %s already registered\n",
-				type->name);
-			ret = -1;
-			goto out;
-		}
-	}
-
-	if (!type->set_flag)
-		type->set_flag = &dummy_set_flag;
-	if (!type->flags)
-		type->flags = &dummy_tracer_flags;
-	else
-		if (!type->flags->opts)
-			type->flags->opts = dummy_tracer_opt;
-
-	ret = run_tracer_selftest(type);
-	if (ret < 0)
-		goto out;
-
-	type->next = trace_types;
-	trace_types = type;
-	add_tracer_options(&global_trace, type);
-
- out:
-	tracing_selftest_running = false;
-	mutex_unlock(&trace_types_lock);
-
-	if (ret || !default_bootup_tracer)
-		goto out_unlock;
-
-	if (strncmp(default_bootup_tracer, type->name, MAX_TRACER_SIZE))
-		goto out_unlock;
-
-	printk(KERN_INFO "Starting tracer '%s'\n", type->name);
-	/* Do we want this tracer to start on bootup? */
-	tracing_set_tracer(&global_trace, type->name);
-	default_bootup_tracer = NULL;
-
-	apply_trace_boot_options();
-
-	/* disable other selftests, since this will break it. */
-	tracing_selftest_disabled = true;
-#ifdef CONFIG_FTRACE_STARTUP_TEST
-	printk(KERN_INFO "Disabling FTRACE selftests due to running tracer '%s'\n",
-	       type->name);
-#endif
-
- out_unlock:
-	return ret;
-}
-
-1.2 trace_event_init()
+1.1.4 cpumask_copy(tracing_buffer_mask, cpu_possible_mask);
 ================================================================================
-1.2.1 event_trace_memsetup()
+1.1.5 cpumask_copy(global_trace.tracing_cpumask, cpu_all_mask);
 ================================================================================
-1.2.2 init_ftrace_syscalls()
+1.1.6 cpuhp_setup_state_multi(CPUHP_TRACE_RB_PREPARE, , trace_rb_cpu_prepare)
 ================================================================================
-1.2.3 event_trace_enable()
+1.1.7 temp_buffer = ring_buffer_alloc(PAGE_SIZE, RB_FL_OVERWRITE), alloc and setup temp_buffer
 ================================================================================
-1.2.3.1 event_init(), init the events defined by TRACE_EVENT
+1.1.7.1 temp_buffer = kzalloc()
+================================================================================
+1.1.7.2 buffer->buffers = kzalloc(nr_cpu_ids, )
+================================================================================
+1.1.7.3 buffer->buffers[cpu] = rb_allocate_cpu_buffer(buffer, nr_pages, cpu);
+================================================================================
+1.1.8 trace_create_savedcmd()
+================================================================================
+1.1.9 allocate_trace_buffers(&global_trace, ring_buf_size)
+================================================================================
+1.1.9.1 allocate_trace_buffer(&global_trace, &globa_trace.array_buffer, ring_buf_size)
+================================================================================
+1.1.10 ftrace_init_global_array_ops(&global_trace)
+================================================================================
+1.1.10.1 ftrace_init_trace_array(&global_trace)
+================================================================================
+1.1.11 init_trace_flags_index(&global_trace)
+================================================================================
+1.1.12 register_tracer(&nop_trace), add to trace_types list
+================================================================================
+1.1.13 init_function_trace()
+================================================================================
+1.1.13.1 init_func_cmd_traceon()
+================================================================================
+1.1.13.2 register_tracer(&function_trace)
+================================================================================
+1.1.14 apply_trace_boot_options()
+================================================================================
+1.1.15 register_snapshot_cmd()
 ================================================================================
 
-
-2. TRACE_EVENT
+2. trace_init(), called by start_kernel()
 ================================================================================
-	DECLARE_EVENT_CLASS(name,			       \
-			     PARAMS(proto),		       \
-			     PARAMS(args),		       \
-			     PARAMS(tstruct),		       \
-			     PARAMS(assign),		       \
-			     PARAMS(print));		       \
-	DEFINE_EVENT(name, name, PARAMS(proto), PARAMS(args));
-
-2.1 DECLARE_EVENT_CLASS
+2.1 trace_event_init()
 ================================================================================
-#define DECLARE_EVENT_CLASS(call, proto, args, tstruct, assign, print)	\
-_TRACE_PERF_PROTO(call, PARAMS(proto));					\
-static char print_fmt_##call[] = print;					\
-static struct trace_event_class __used __refdata event_class_##call = { \
-	.system			= TRACE_SYSTEM_STRING,			\
-	.fields_array		= trace_event_fields_##call,		\
-	.fields			= LIST_HEAD_INIT(event_class_##call.fields),\
-	.raw_init		= trace_event_raw_init,			\
-	.probe			= trace_event_raw_event_##call,		\
-	.reg			= trace_event_reg,			\
-	_TRACE_PERF_INIT(call)						\
-};
-
-
-2.2 DEFINE_EVENT, events are defined in _ftrace_events section
+2.1.1 event_trace_memsetup()
 ================================================================================
-#define DEFINE_EVENT(template, call, proto, args)			\
-									\
-static struct trace_event_call __used event_##call = {			\
-	.class			= &event_class_##template,		\
-	{								\
-		.tp			= &__tracepoint_##call,		\
-	},								\
-	.event.funcs		= &trace_event_type_funcs_##template,	\
-	.print_fmt		= print_fmt_##template,			\
-	.flags			= TRACE_EVENT_FL_TRACEPOINT,		\
-};									\
-static struct trace_event_call __used					\
-__attribute__((section("_ftrace_events"))) *__event_##call = &event_##call
+2.1.2 init_ftrace_syscalls()
+================================================================================
+2.1.3 event_trace_enable()
+================================================================================
+2.1.3.1 tr = top_trace_array()
+================================================================================
+2.1.3.2 event_init(), init the events defined by TRACE_EVENT
+================================================================================
+2.1.3.3 list_add(call->list, &ftrace_events)
+================================================================================
+2.1.3.4 __trace_early_add_event(tr)
+================================================================================
+2.1.3.5 early_enable_events(tr, false)
+================================================================================
+2.1.3.6 trace_printk_start_comm()
+================================================================================
+2.1.3.7 register_event_cmds()
+================================================================================
+2.1.3.8 register_trigger_cmds()
+================================================================================
 
+3. rb_allocate_cpu_buffer()
+================================================================================
+3.1 cpu_buffer = kzalloc(sizeof(*cpu_buffer))
+================================================================================
+3.2 bpage = kzalloc(sizeof(*bpage))
+================================================================================
+3.3 rb_check_bpage(cpu_buffer, bpage)
+================================================================================
+3.4 cpu_buffer->reader_page = bpage
+================================================================================
+3.5 page = alloc_pages_node()
+================================================================================
+3.6 bpage->page = page_address(page)
+================================================================================
+3.7 rb_init_page(bpage->page)
+================================================================================
+3.7.1 local_set(&bpage->page->commit, 0);
+================================================================================
+3.8 rb_allocate_pages(cpu_buffer, nr_pages)
+================================================================================
+3.8.1 __rb_allocate_pages(nr_pages, &pages, cpu_buffer->cpu)
+================================================================================
+3.8.2 cpu_buffer->pages = pages.next
+================================================================================
+3.8.3 list_del(&pages)
+================================================================================
+3.8.4 rb_check_pages(cpu_buffer)
+================================================================================
+3.8.4.1 rb_head_page_deactivate(cpu_buffer)
+================================================================================
+3.8.4.2 rb_check_list(cpu_buffer, head)
+================================================================================
+3.8.4.4 rb_head_page_activate(cpu_buffer)
+================================================================================
+
+4. event_init(call)
+================================================================================
+4.1 call->class->raw_init(call) -> trace_event_raw_init
+================================================================================
+4.1.1 register_trace_event(&call->event), add to event_hash[]
+================================================================================
 
 0. Data Structure
 ================================================================================
 Reference:
 
 https://lwn.net/Articles/379903/
+
 samples/trace_events/trace-events-sample.[ch]
+
+0.1 global variables
+================================================================================
+
+tracepoint_print_iter
+    (struct trace_iterator*) 
+
+tracing_buffer_mask
+    (cpumask_var_t)
+global_trace
+    (struct trace_array)
+
+trace_percpu_buffer
+    (struct trace_buffer_struct)
+
+temp_buffer
+    (struct trace_buffer*)
+
+trace_types
+    (struct tracer*)
+
+ftrace_commands
+trigger_commands
+    (struct list_head)
 
 0.1 struct trace_array
 ================================================================================
-   ftrace_trace_arrays
+
+  +---------------------+
+  |ftrace_trace_arrays  |
+  |   (struct list_head)|
+  +---------------------+
     |
     |
- +--+
- |
- |
- |
- | global_trace(struct trace_array)
- | +--------------------------------+
- +>|list                            |
-   |    (struct list_head)          |
-   +--------------------------------+
-   |name                            |
-   |                                |
-   +--------------------------------+
-   |ops                             |  global_ops
-   |    (struct ftrace_ops)         |
-   +--------------------------------+
-   |trace_flags                     |
-   |    (unsigned int)              |
-   |trace_flags_index[32]           |
-   |    (unsigned char)             |
-   +--------------------------------+
-   |                                |
-   |                                |
-   +--------------------------------+
-   |                                |
-   |                                |
-   +--------------------------------+
+    |
+    | global_trace(struct trace_array)
+    | +--------------------------------+
+    +>|list                            |
+      |    (struct list_head)          |
+      +--------------------------------+
+      |name                            |
+      |    (char *)                    |
+      |                                |
+      |stop_count                      |
+      |clock_id                        |
+      |nr_topts                        |
+      |buffer_percent                  |
+      |n_err_log_entries               |
+      |trace_flags                     |  = TRACE_DEFAULT_FLAGS
+      |flags                           |
+      |    (unsigned int)              |
+      |time_stamp_abs_ref              |
+      |    (int)                       |
+      |trace_flags_index[32]           |
+      |    (unsigned char)             |
+      |clear_trace                     |
+      |    (bool)                      |
+      |current_trace                   |  = &nop_trace
+      |    (struct tracer*)            |
+      |topts                           |
+      |    (struct trace_options*)     |
+      |err_log                         |
+      |systems                         |
+      |events                          |
+      |hist_vars                       |
+      |    (struct list_head)          |
+      |dir                             |
+      |options                         |
+      |percpu_dir                      |
+      |event_dir                       |
+      |    (struct dentry*)            |
+      |trace_marker_file               |
+      |    (struct trace_event_file*)  |
+      |tracing_cpumask                 |
+      |    (cpumask_var_t)             |
+      |                                |
+      |                                |  # Function Tracer
+      |ops                             |  global_ops
+      |    (struct ftrace_ops*)        |
+      |function_pids                   |
+      |    (struct trace_pid_list*)    |
+      |function_enabled                |
+      |    (int)                       |
+      |                                |
+      |array_buffer                    |
+      |    (struct array_buffer)       |
+      |    +---------------------------+
+      |    |tr                         |
+      |    |   (struct trace_array*)   |
+      |    |buffer                     |
+      |    |   (struct trace_buffer*)  |
+      |    |data                       |
+      |    |  (struct trace_array_cpu*)|
+      |    |                           |
+      |    |time_start                 |
+      |    |cpu                        |
+      |    |                           |
+      +----+---------------------------+
 
 
 
 
-0.2 struct ring_buffer
+0.2 struct trace_buffer
 ================================================================================
 
-   temp_buffer (struct ring_buffer)
+   temp_buffer (struct trace_buffer)
    +--------------------------------+
-   |flags                           |
-   |cpus                            |
+   |flags                           |  = RB_FL_OVERWRITE
+   |cpus                            |  = nr_cpu_ids
    |   (int)                        |
-   +--------------------------------+
+   |record_disable                  |
+   |resize_disable                  |
+   |   (atomic_t)                   |
    |clock                           |  trace_clock_local
    |   u64 (*)(void)                |
-   |reader_lock_key                 |  
+   |reader_lock_key                 |  static lock_class_key __key 
    |   (struct lock_class_key *)    |
+   |node                            |
+   |   (struct hlist_node)          |
+   |time_stamp_abs                  |
+   |   (bool)                       |
+   |                                |
    +--------------------------------+
    |irq_work                        |
    |   (struct rb_irq_work)         |
@@ -487,7 +261,7 @@ samples/trace_events/trace-events-sample.[ch]
    |   |  |func                     |  rb_wake_up_waiters
    |   |  | void()(struct irq_work*)|
    |   |  |llnode                   |
-   |   |  | struct llist_node       |
+   |   |  | (struct llist_node)     |
    |   +--+-------------------------+
    |   |waiters                     |  two waiting task list
    |   |full_waiters                |
@@ -498,36 +272,92 @@ samples/trace_events/trace-events-sample.[ch]
    |   |wakeup_full                 |
    |   |  (bool)                    |
    +---+----------------------------+
-   |buffers                         |     
-   | (struct ring_buffer_per_cpu**) |    
-   |   [nr_cpu_ids]                 |   
-   |   +----------------------------+   
-   |   |                            |     struct ring_buffer_per_cpu   
-   |   |                            |   +------------------------------------+
-   |   |                            |   |buffer                              |
-   |   |                            |   |    (struct ring_buffer*)           |
-   +---+----------------------------+   +------------------------------------+
-   |                                |   |cpu                                 |
-   |                                |   |                                    |
-   +--------------------------------+   +------------------------------------+
-                                        |update_pages_work                   |
-                                        |    (struct work_struct)            |
-                                        +------------------------------------+
-                                        |update_done                         |
-                                        |    (struct completion)             |
-                                        +------------------------------------+
-                                        |irq_work                            |
-                                        |    (struct rb_irq_work)            |
-                                        +------------------------------------+
-                                        |head_page                           |
-                                        |tail_page                           |
-                                        |commit_page                         |
-                                        |reader_page                         |
-                                        |    (struct buffer_page*)           |
-                                        |   +--------------------------------+
-                                        |   |page                            |
-                                        |   |                                |
-                                        |   |real_end                        |
-                                        |   |                                |
-                                        +---+--------------------------------+
-                                        |                                    |
+   |cpumask                       --|---------+
+   |   (cpumask_var_t)              |         |
+   |                                |         v
+   |buffers                         |   0    1                      nr_cpu_ids - 1     
+   | (struct ring_buffer_per_cpu**) |   +---+---+---+       +---+---+---+             
+   |                              --|-->|   |   |   |  ...  |   |   |   |
+   +--------------------------------+   +---+---+---+       +---+---+---+
+   ^                                          |
+   |                                          |                                    
+   |                                          v                                    
+   |                                    struct ring_buffer_per_cpu   
+   |                                    +-----------------------------+
+   +------------------------------------|buffer                       |
+                                        |    (struct trace_buffer*)   |
+                                        +-----------------------------+
+                                        |cpu                          |  = 1
+                                        |                             |
+                                        +-----------------------------+
+                                        |update_pages_work            |
+                                        |    (struct work_struct)     |
+                                        +-----------------------------+
+                                        |update_done                  |
+                                        |    (struct completion)      |
+                                        +-----------------------------+
+                                        |irq_work                     |
+                                        |    (struct rb_irq_work)     |
+                                        +-----------------------------+
+                                        |nr_pages                     |
+                                        |    (unsigned long)          |
+                                        |pages                        |  a list of struct buffer_page with nr_pages
+                                        |    (struct list_head*)      |
+                                        +-----------------------------+
+                                        |head_page                    |
+                                        |tail_page                    |
+                                        |commit_page                  |
+                                        |reader_page                  |
+                                        |    (struct buffer_page*)    |
+                                        |   +-------------------------+
+                                        |   |list                     |
+                                        |   |   (struct list_head)    |
+                                        |   |write                    |
+                                        |   |read                     |
+                                        |   |entries                  |
+                                        |   |real_end                 |
+                                        |   |   (local_t/unsigned)    |
+                                        |   |                         |     point to a page
+                                        |   |page                     |---->+--------------------+
+                                        |   |   (buffer_data_page *)  |     |time_stamp          |
+                                        |   |                         |     |   (u64)            |
+                                        +---+-------------------------+     |commit              |
+                                                                            |   (local_t)        |
+                                                                            |data[]              |
+                                                                            +--------------------+
+
+0.3 tracer
+================================================================================
+
+    trace_types
+       (struct tracer*)
+    +------------------+
+    |struct tracer*    |
+    +------------------+
+       |
+       |
+       |   function_trace               nop_trace
+       |      (struct tracer*)             (struct tracer*)
+       |   +------------------+         +------------------+
+       +-->|next              |-------->|next              |
+           +------------------+         +------------------+
+
+
+
+      struct tracer
+      +--------------------------------+<--------+
+      |next                            |         |
+      |    (struct tracer*)            |         |
+      |flags                           |         |
+      |    (struct tracer_flags*)      |         |
+      |    +---------------------------+         |
+      |    |val                        |         |
+      |    |    (u32)                  |         |
+      |    |trace                      | --------+
+      |    |    (struct tracer*)       |
+      |    |opts                       |
+      |    |    (struct tracer_ops*)   |
+      |    |                           |
+      |    +---------------------------+
+      |                                |
+      +--------------------------------+
