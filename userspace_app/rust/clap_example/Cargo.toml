@@ -1,0 +1,11 @@
+[package]
+name = "clap_example"
+version = "0.1.0"
+authors = ["Wei Yang <richard.weiyang@linux.alibaba.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "=2.27.1"
+
