@@ -6,3 +6,8 @@ start_kernel()
     early_trace_init()
     trace_init()
 
+2. ftrace
+================================================================================
+Reference:
+
+https://www.ibm.com/developerworks/cn/linux/l-cn-ftrace/index.html
