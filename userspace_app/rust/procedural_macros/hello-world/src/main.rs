@@ -24,13 +24,21 @@ extern crate serde;
 extern crate serde_json;
 
 #[derive(Serialize, Deserialize, Debug)]
+struct Name {
+    a: char,
+    b: char,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct Point {
     x: i32,
     y: i32,
+    n: Name,
 }
 
 fn test() {
-    let point = Point { x: 1, y: 2 };
+    let name = Name {a: 'a', b: 'b'};
+    let point = Point { x: 1, y: 2, n: name};
 
     // Convert the Point to a JSON string.
     let serialized = serde_json::to_string(&point).unwrap();
