@@ -645,6 +645,21 @@ Decoding: swp_entry -> (type, offset)
     ^             ^                                 ^
     | type(5bits) |       index/offset              |
 
+We also leverage swp_entry for encode other entries:
+
+  * Device
+  * Migration
+  * HWPoison
+
+Those entries are classified by its "type".
+
+  swap entries             [0, MAX_SWAPFILES - 1]
+  HWPoison entries         [MAX_SWAPFILES]
+  Migration entries        [MAX_SWAPFILES + 1, MAX_SWAPFILES + 2]
+  Device entries           [MAX_SWAPFILES + 3, MAX_SWAPFILES + 4]
+
+Look make_migration_entry() for more detail.
+
 0.5 swap_map
 ================================================================================
 ; swap_map stores the count of page refer this slot
