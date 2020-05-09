@@ -1,0 +1,59 @@
+1. compile
+================================================================================
+
+make kernel/sched/core.s
+
+schedule_idle:
+1:      call    __fentry__
+        .section __mcount_loc, "a",@progbits
+
+cat kernel/sched/.core.o.cmd
+
+gcc -pg -mrecord-mcount -mfentry
+
+2. __fentry__, at build & bootup time
+================================================================================
+SYM_FUNC_START(__fentry__)
+	retq
+SYM_FUNC_END(__fentry__)
+
+3. another magic for recordmcount
+================================================================================
+
+Start from make rule:
+
+# Usage: $(call if_changed_rule,foo)
+# Will check if $(cmd_foo) or any of the prerequisites changed,
+# and if so will execute $(rule_foo).
+if_changed_rule = $(if $(newer-prereqs)$(cmd-check),$(rule_$(1)),@:)
+
+# Built-in and composite module parts
+$(obj)/%.o: $(src)/%.c $(recordmcount_source) $(objtool_dep) FORCE
+	$(call cmd,force_checksrc)
+	$(call if_changed_rule,cc_o_c)
+
+So rule_cc_o_c will execute too
+
+define rule_cc_o_c
+	$(call cmd_and_fixdep,cc_o_c)
+	...
+	$(call cmd,record_mcount)
+endef
+
+From the above rule, we can see, cmd_record_mcount is invoked after object is
+created.
+
+Finally, I found this commit:
+
+https://lore.kernel.org/lkml/patch-2.thread-aa7b8d.git-de935bace15a.your-ad-here.call-01533557518-ext-9465@work.hours/
+
+# gcc 5 supports generating the mcount tables directly
+
+So there is a mcount table for each object.
+
+0. Data struct
+================================================================================
+
+0.1 Author's slide
+================================================================================
+https://blog.linuxplumbersconf.org/2014/ocw/system/presentations/1773/original/ftrace-kernel-hooks-2014.pdf
