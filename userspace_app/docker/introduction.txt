@@ -32,3 +32,108 @@ Verify installation by run:
 https://docs.docker.com/config/daemon/systemd/#httphttps-proxy
 
 
+4. Basic Usage
+
+4.1 Image Management
+
+# download some image
+docker pull ubuntu
+
+# list local images
+docker images -a
+
+# search image from repo
+docker search NAME
+
+# remove a image
+docker rmi NAME
+
+4.2 Instance Management
+
+docker run -it ubuntu /bin/bash
+
+# list all docker process
+docker ps -a
+# detail about one docker process
+docker inspect CONTAINER_ID
+# show logs of a docker process
+docker logs -f CONTAINER_ID
+
+# stop and start
+docker stop CONTAINER_ID
+docker restart CONTAINER_ID
+
+# attach into this docker process
+docker attach CONTAINER_ID
+# the difference is exit from exec will not stop container
+docker exec -it 86f170689b28 /bin/bash
+
+# remove a docker process
+docker rm CONTAINER_ID
+
+# export & import
+docker export CONTAINER_ID > image.tar
+cat image.tar | docker import - image_name
+
+4.3 Commit Image
+
+4.3.1 Create from an docker instance
+
+# start one docker process
+docker run -it ubuntu /bin/bash
+# do sth in docker
+cd
+mkdir git
+# check the difference have made
+docker diff CONTAINER_ID
+# commit a new image
+docker commit -m "new container" CONTAINER_ID myimage/ubuntu_new
+# show the image is create
+docker images
+
+4.3.2 Create via DockerFile
+
+Refer: https://juejin.im/post/5c6f52286fb9a04a0d5774eb
+
+Step 1: A Centos Image
+
+Example Dockerfile
+
+```
+FROM centos:7.2.1511
+RUN yum install -y telnet kde-l10n-Chinese net-tools vim inetutils-ping unzip \
+  && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+  && localedef -c -f UTF-8 -i zh_CN zh_CN.utf8 \
+  && yum clean all
+ENV LC_ALL "zh_CN.UTF-8"
+CMD ["/bin/bash"]
+```
+
+Put it to a directory with only files you want to pack into the image:
+
+Run: docker build -t myorg/centos:7.2 .
+
+Then you can see this image via 'docker images'.
+
+Step 2: A openjdk Image on top of Centos Image
+
+Example Dockerfile
+
+```
+FROM mytest/centos:7.2
+RUN echo "[nginx]" >> /etc/yum.repos.d/nginx.repo \
+  && echo "name=nginx repo" >> /etc/yum.repos.d/nginx.repo \
+  && echo "baseurl=http://nginx.org/packages/centos/7/\$basearch/" >> /etc/yum.repos.d/nginx.repo \
+  && echo "gpgcheck=0" >> /etc/yum.repos.d/nginx.repo \
+  && echo "enabled=1" >> /etc/yum.repos.d/nginx.repo \
+  && yum makecache \
+  && rpm --rebuilddb \
+  && yum install -y java-1.8.0-openjdk-devel.x86_64 nginx \
+  && yum clean all
+ENV JAVA_HOME /usr
+CMD ["/bin/bash"]
+```
+
+The same as above
+
+docker build -t myorg/base:centos7.2.x64-ngx-java8 .
