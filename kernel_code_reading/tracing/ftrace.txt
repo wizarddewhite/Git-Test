@@ -49,7 +49,40 @@ https://lore.kernel.org/lkml/patch-2.thread-aa7b8d.git-de935bace15a.your-ad-here
 
 # gcc 5 supports generating the mcount tables directly
 
-So there is a mcount table for each object.
+So there is a mcount table for each object. As we can see the
+  .section __mcount_loc
+in the output assembly file.
+
+4. link
+================================================================================
+
+All the address calling __fentry__ is recorded in this section.
+
+/*
+ * The ftrace call sites are logged to a section whose name depends on the
+ * compiler option used. A given kernel image will only use one, AKA
+ * FTRACE_CALLSITE_SECTION. We capture all of them here to avoid header
+ * dependencies for FTRACE_CALLSITE_SECTION's definition.
+ *
+ * Need to also make ftrace_stub_graph point to ftrace_stub
+ * so that the same stub location may have different protocols
+ * and not mess up with C verifiers.
+ */
+#define MCOUNT_REC()	. = ALIGN(8);				\
+			__start_mcount_loc = .;			\
+			KEEP(*(__mcount_loc))			\
+			KEEP(*(__patchable_function_entries))	\
+			__stop_mcount_loc = .;			\
+			ftrace_stub_graph = ftrace_stub;
+
+5. set to nop at runtime
+================================================================================
+ftrace_init
+    ftrace_process_locs(NULL, __start_mcount_loc, __stop_mcount_loc)
+        sort()
+        ftrace_update_code()
+            ftrace_nop_initialize()
+                ftrace_init_nop()
 
 0. Data struct
 ================================================================================
@@ -57,3 +90,174 @@ So there is a mcount table for each object.
 0.1 Author's slide
 ================================================================================
 https://blog.linuxplumbersconf.org/2014/ocw/system/presentations/1773/original/ftrace-kernel-hooks-2014.pdf
+
+0.2 global variable
+================================================================================
+
+    ftrace_number_of_pages
+    ftrace_number_of_groups
+
+    ftrace_pages  (struct ftrace_page*)
+
+0.3 dyn_ftrace
+================================================================================
+
+    dyn_ftrace
+    +-----------------------------+
+    |ip                           |
+    |flags                        |
+    |    (unsigned long)          |
+    |arch                         |
+    |    (struct dyn_arch_ftrace) |
+    |                             |
+    |                             |
+    +-----------------------------+
+
+
+0.4 ftrace_page
+================================================================================
+
+ftrace_pages_start
+      |
+      v
+    ftrace_page
+    +-----------------------------+
+    |index                        |
+    |size                         |
+    |    (int)                    |     array of dyn_ftrace
+    |records                      |     +----------+----------+     +----------+----------+
+    |    (struct dyn_ftrace*)     |---->|          |          | ... |          |          |
+    |                             |     |          |          |     |          |          |
+    |next                         |     +----------+----------+     +----------+----------+
+    |    (struct ftrace_page*)    |
+    +-----------------------------+
+      |
+      |
+      v
+    ftrace_page
+    +-----------------------------+
+    |index                        |
+    |size                         |
+    |    (int)                    |
+    |records                      |
+    |    (struct dyn_ftrace*)     |
+    |                             |
+    |next                         |
+    |    (struct ftrace_page*)    |
+    +-----------------------------+
+      |
+      |
+      v
+    ftrace_page
+    +-----------------------------+
+    |index                        |
+    |size                         |
+    |    (int)                    |
+    |records                      |
+    |    (struct dyn_ftrace*)     |
+    |                             |
+    |next                         |
+    |    (struct ftrace_page*)    |
+    +-----------------------------+
+
+
+0.5 ftrace_iterator
+================================================================================
+
+    ftrace_iterator
+    +-----------------------------+
+    |idx/pidx/flags               |
+    |   (int/unsigned)            |
+    |pos/func_pos/mod_pos         |
+    |   (loff_t)                  |
+    |pg                           |
+    |   (struct ftrace_page*)     |
+    |func                         |
+    |   (struct dyn_ftrace*)      |
+    |probe                        |
+    |   (struct ftrace_func_probe)|
+    |probe_entry                  |
+    |   (struct ftrace_func_entry)|
+    |                             |
+    |parser                       |
+    |   (struct trace_parser)     |
+    |hash                         |  a hash table for func filter with ip as key
+    |   (struct ftrace_hash*)     |
+    |ops                          |
+    |   (struct ftrace_ops*)      |
+    |tr                           |
+    |   (struct trace_array*)     |
+    |                             |
+    +-----------------------------+
+
+
+
+0.6 available_filter_functions
+================================================================================
+
+   inode
+   +--------------+
+   |i_fop         |  = ftrace_avail_fops
+   |i_private     |  = NULL
+   +--------------+
+
+   struct file
+   +--------------+     struct seq_file
+   |.private_data |---->+-------------+     
+   |              |     |.op          |  = show_ftrace_seq_ops
+   +--------------+     |             |
+                        |             |    struct ftrace_iterator
+                        |.private     |--->+------------+
+                        |             |    |.pg         |  = ftrace_pages_start
+                        +-------------+    |            |
+                                           |.ops        |  = global_ops
+                                           |            |
+                                           +------------+
+
+0.7 set_ftrace_filter
+================================================================================
+
+   inode
+   +--------------+
+   |i_fop         |  = ftrace_filter_fops {.write = ftrace_filter_write}
+   |i_private     |  = global_ops
+   +--------------+
+
+
+   struct file
+   +--------------+    struct ftrace_iterator
+   |.private_data |--->+------------+
+   |              |    |.pg         |  = ftrace_pages_start
+   +--------------+    |            |
+                       |.ops        |  = global_ops
+                       |            |
+                       |            |  ftrace_func_entry
+                       |.hash       |  +----------+----------+----------+----------+
+                       |            |  |          |          |          |          |
+                       |            |  +----------+----------+----------+----------+
+                       |            |
+                       +------------+
+
+ftrace_filter_write will add ftrace_func_entry to ftrace_iterator.hash.
+
+
+
+0.8 current_tracer
+================================================================================
+
+   inode
+   +--------------+
+   |i_fop         |  = set_tracer_fops
+   |i_private     |  = &global_trace (struct trace_array)
+   +--------------+
+
+
+   struct file
+   +--------------+    &global_trace
+   |.private_data |--->+-----------------+
+   |              |    |                 |
+   +--------------+    |                 |
+                       |                 |
+                       |                 |
+                       |                 |
+                       +-----------------+
