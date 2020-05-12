@@ -1,0 +1,46 @@
+1. setup 
+================================================================================
+
+start_kernel
+    setup_arch
+        init_hypervisor_platform
+        x86_init.hyper.guest_late_init() -> kvm_guest_init
+            x86_init.irq.trap_init = kvm_apf_trap_init
+            kvm_guest_cpu_init()
+                wrmsrl(MSR_KVM_ASYNC_PF_EN, pa) -> kvm_pv_enable_async_pf called on host
+                __this_cpu_write(apf_reason.enabled, 1), enable apf
+
+    trap_init
+        x86_init.irqs.trap_init -> kvm_apf_trap_init
+            update_intr_gate(X86_TRAP_PF, async_page_fault);
+
+2. do_async_page_fault, page fault handler in guest
+================================================================================
+2.1 switch (kvm_read_and_reset_pf_reason())
+================================================================================
+2.2 do_page_fault(regs, error_code, address);
+================================================================================
+2.3 kvm_async_pf_task_wait((u32)address, !user_mode(regs)), if KVM_PV_REASON_PAGE_NOT_PRESENT:
+================================================================================
+2.4 kvm_async_pf_task_wake((u32)address), if KVM_PV_REASON_PAGE_READY:
+================================================================================
+
+3. page fault process
+================================================================================
+
+kvm_tdp_page_fault
+    direct_page_fault
+        try_async_pf
+	    kvm_arch_setup_async_pf
+	        kvm_arch_async_page_not_present
+
+0. Reference
+================================================================================
+Author Slide
+https://www.linux-kvm.org/images/a/ac/2010-forum-Async-page-faults.pdf
+
+Someone's summary
+https://terenceli.github.io/ºº ı/2019/03/24/kvm-async-page-fault
+
+Commit
+https://git.kernel.org/pub/scm/virt/kvm/kvm.git/commit/?id=fd10cde9294f73eeccbc16f3fec1ae6cde7b800c
