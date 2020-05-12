@@ -46,7 +46,6 @@ if __name__ == "__main__":
                         help='the month of mail to extract')
     args = parser.parse_args()
 
-    if args.month:
-        month = parse(args.month)
+    month = parse(args.month)
 
     move_mail(args.mailbox, month)
