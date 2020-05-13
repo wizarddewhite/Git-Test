@@ -36,7 +36,7 @@
 ================================================================================
 1.1.10 ftrace_init_global_array_ops(&global_trace)
 ================================================================================
-1.1.10.1 ftrace_init_trace_array(&global_trace)
+1.1.10.1 ftrace_init_trace_array(&global_trace), init some global_trace list_head
 ================================================================================
 1.1.11 init_trace_flags_index(&global_trace)
 ================================================================================
@@ -221,10 +221,20 @@ trigger_commands
       |                                |  # Function Tracer
       |ops                             |  global_ops
       |    (struct ftrace_ops*)        |
+      |    +---------------------------+
+      |    |private                    |
+      |    |   (struct trace_array*)   |  = global_trace
+      |    |                           |
+      |    +---------------------------+
+      |                                |
       |function_pids                   |
       |    (struct trace_pid_list*)    |
       |function_enabled                |
       |    (int)                       |
+      |func_probe                      |
+      |mod_trace                       |
+      |mod_notrace                     |
+      |    (struct list_head)          |
       |                                |
       |array_buffer                    |
       |    (struct array_buffer)       |
@@ -373,5 +383,9 @@ trigger_commands
       |    |    (struct tracer_ops*)   |
       |    |                           |
       |    +---------------------------+
+      |                                |
+      |init                            |  # 'echo name > current_tracer'
+      |start/stop                      |  # 'echo [01] > tracing_on'
+      |                                |
       |                                |
       +--------------------------------+
