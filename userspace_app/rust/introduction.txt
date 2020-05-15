@@ -4,6 +4,9 @@
 The Rust Programming Language
 https://doc.rust-lang.org/book/title-page.html
 
+Rust book
+https://kaisery.gitbooks.io/rust-book-chinese/content/
+
 1.1 Install & Setup environment
 ================================================================================
 
@@ -88,3 +91,263 @@ If you want to build a release version, use
 # cargo build --release
 
 
+3. Syntax
+================================================================================
+
+3.1 variable definition
+================================================================================
+
+let var = value;             // immutable
+let mut var = value;         // mutable
+
+let var: u32 = value;        // specify the type
+
+let (x, y) = (1, 2);         // define x,y by pattern 
+let (_x: i32, _y) = (1, 2);  // not work
+
+
+3.2 function definition
+================================================================================
+
+```
+fn foo() {
+}
+
+fn foo(x: i32) {
+}
+
+fn foo(x: i32) -> i32 {
+	x                     // DO NOT append ';' at last
+}
+```
+
+// function pointer
+```
+fn plus_one(i: i32) -> i32 {
+	i + 1
+}
+let f = plus_one;
+let res = f(5);
+```
+
+3.3 built-in type
+================================================================================
+
+let y: bool = false;
+let x: char = 'x';
+let a: i32  = 8;
+
+3.3.1 array
+================================================================================
+
+let a = [1, 2, 3];
+println!("a has {} elements", a.len());
+println!("the second is {}", a[1]);
+
+3.3.2 slice
+================================================================================
+
+let a = [1, 2, 3, 4];
+let complete = &a[..];
+let middle = &a[1..4];
+
+3.3.3 tuple
+================================================================================
+
+let x: (i32, &str) = (1, "hello")
+println!("x value is {}", x.0);
+
+3.3.4 vector
+================================================================================
+
+// different from array, vector is dynamic
+let v = vec![1, 2, 3, 4 , 5];
+
+// access an element
+println!("The third element of v is {}", v[2]);
+
+// access out range element
+let v = vec![1, 2, 3];
+match v.get(7) {
+    Some(x) => println!("Item 7 is {}", x),
+    None => println!("Sorry, this vector is too short.")
+}
+
+// iterate on vector
+for i in &v {
+    println!("This is a reference to {}", i);
+}
+
+3.4 if
+================================================================================
+
+let x = 5;
+
+if x == 5 {
+    println!("x is five!");
+} else if x == 6 {
+    println!("x is six!");
+} else {
+    println!("x is not five or six :(");
+}
+
+let x = 5;
+
+let y = if x == 5 {
+    10
+} else {
+    15
+}; // y: i32
+
+3.5 loop
+================================================================================
+
+loop {
+    println!("Loop forever!");
+}
+
+let mut x = 5; // mut x: i32
+let mut done = false; // mut done: bool
+
+// while loop
+while !done {
+    x += x - 3;
+
+    println!("{}", x);
+
+    if x % 5 == 0 {
+        done = true;
+    }
+}
+
+// for loop
+for x in 0..10 {
+    println!("{}", x); // x: i32
+}
+
+for var in expression {
+    code
+}
+
+// on range
+for (index, value) in (5..10).enumerate() {
+    println!("index = {} and value = {}", index, value);
+}
+
+// on iterators
+let lines = "hello\nworld".lines();
+
+for (linenumber, line) in lines.enumerate() {
+    println!("{}: {}", linenumber, line);
+}
+
+// loop labels
+'outer: for x in 0..10 {
+    'inner: for y in 0..10 {
+        if x % 2 == 0 { continue 'outer; } // Continues the loop over `x`.
+        if y % 2 == 0 { continue 'inner; } // Continues the loop over `y`.
+        println!("x: {}, y: {}", x, y);
+    }
+}
+
+4. Ownership
+================================================================================
+
+4.1 Ownership
+================================================================================
+
+4.1.1 Ownership Movement
+================================================================================
+You can't access a variable after it is assigned to other.
+This is called a movement of ownership.
+
+https://kaisery.gitbooks.io/rust-book-chinese/content/content/Ownership%20ËùÓÐÈ¨.html
+
+```
+fn take(v: Vec<i32>) {
+    // What happens here isn¡¯t important.
+}
+
+let v = vec![1, 2, 3];
+
+take(v);
+
+println!("v[0] is: {}", v[0]); // error: use of moved value: `v`
+```
+
+4.1.2 Copy
+================================================================================
+The exception is if the type implement Copy trait.
+Actually, more memory is used.
+
+```
+fn main() {
+    let a = 5;
+
+    let _y = double(a);
+    println!("{}", a);
+}
+
+fn double(x: i32) -> i32 {
+    x * 2
+}
+```
+
+4.1.3 Return Ownership
+================================================================================
+
+```
+fn foo(v1: Vec<i32>, v2: Vec<i32>) -> (Vec<i32>, Vec<i32>, i32) {
+    // Do stuff with `v1` and `v2`.
+
+    // Hand back ownership, and the result of our function.
+    (v1, v2, 42)
+}
+
+let v1 = vec![1, 2, 3];
+let v2 = vec![1, 2, 3];
+
+let (v1, v2, answer) = foo(v1, v2);
+```
+
+4.2 Borrow & Reference
+================================================================================
+https://zhuanlan.zhihu.com/p/59998584
+
+Use reference to borrow the ownership
+
+```
+fn foo(v1: &Vec<i32>, v2: &Vec<i32>) -> i32 {
+    // Do stuff with `v1` and `v2`.
+
+    //  Return the answer.
+    42
+}
+
+let v1 = vec![1, 2, 3];
+let v2 = vec![1, 2, 3];
+
+let answer = foo(&v1, &v2);
+```
+
+4.2.1 mutable reference
+================================================================================
+
+```
+let mut x = 5;
+{
+    let y = &mut x;
+    *y += 1;
+}
+println!("{}", x);
+```
+
+4.3 Life cycle
+================================================================================
+
+5. Dependency
+================================================================================
+Reference https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
+
+[dependencies]
+name = "version"

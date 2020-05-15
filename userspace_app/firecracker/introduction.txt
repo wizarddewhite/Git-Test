@@ -1,13 +1,15 @@
 1. Build from source
 
+1.1 Get source code
 https://github.com/firecracker-microvm/firecracker/blob/master/docs/getting-started.md#building-from-source
 
 git clone https://github.com/firecracker-microvm/firecracker
 
+1.2 Use devtool to build
 # prepare docker before running this
 tools/devtool build
 
-# or do it manually
+1.3 Manually build with musl
 rustup target add x86_64-unknown-linux-musl
 arch=`uname -m`
 cargo build --target ${arch}-unknown-linux-musl
@@ -21,6 +23,12 @@ cd musl
 ./configure
 make && make install
 export PATH=/usr/local/musl/bin/:$PATH
+
+1.4 Manually build with gnu
+cargo build --target ${arch}-unknown-linux-gnu
+
+# when use gnu, we need to pass  --seccomp-level 0 to start firecracker
+./firecracker --api-sock /tmp/firecracker.socket --seccomp-level 0
 
 2. Running firecracker
 
