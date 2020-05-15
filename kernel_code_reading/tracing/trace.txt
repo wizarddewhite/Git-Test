@@ -219,7 +219,7 @@ trigger_commands
       |    (cpumask_var_t)             |
       |                                |
       |                                |  # Function Tracer
-      |ops                             |  global_ops
+      |ops                             |  = global_ops
       |    (struct ftrace_ops*)        |
       |    +---------------------------+
       |    |private                    |
@@ -239,17 +239,21 @@ trigger_commands
       |array_buffer                    |
       |    (struct array_buffer)       |
       |    +---------------------------+
-      |    |tr                         |
-      |    |   (struct trace_array*)   |
-      |    |buffer                     |
-      |    |   (struct trace_buffer*)  |
-      |    |data                       |
-      |    |  (struct trace_array_cpu*)|
-      |    |                           |
       |    |time_start                 |
       |    |cpu                        |
       |    |                           |
-      +----+---------------------------+
+      |    |tr                         |
+      |    |   (struct trace_array*)   |
+      |    |buffer                     |  the same thing like temp_buffer
+      |    |   (struct trace_buffer*)  |
+      |    |data                       |  percpu variable
+      |    |  (struct trace_array_cpu*)|
+      |    |  +------------------------+
+      |    |  |entries                 |
+      |    |  |saved_latency           |
+      |    |  |rt_priority             |
+      |    |  |                        |
+      +----+--+------------------------+
 
 
 
@@ -313,23 +317,37 @@ trigger_commands
                                         |cpu                          |  = 1
                                         |                             |
                                         +-----------------------------+
-                                        |update_pages_work            |
+                                        |update_pages_work            |  = update_pages_handler
                                         |    (struct work_struct)     |
                                         +-----------------------------+
                                         |update_done                  |
                                         |    (struct completion)      |
                                         +-----------------------------+
-                                        |irq_work                     |
+                                        |irq_work                     |  = rb_wake_up_waiters
                                         |    (struct rb_irq_work)     |
                                         +-----------------------------+
+                                        |new_pages                    |
+                                        |    (struct list_head)       |
                                         |nr_pages                     |
                                         |    (unsigned long)          |
                                         |pages                        |  a list of struct buffer_page with nr_pages
-                                        |    (struct list_head*)      |
+                                        |    (struct list_head*)      |   
+                                        |                   |         |
+                                        |                   |         |     +--------+      +--------+      +--------+      +--------+
+                                        |                   +---------|---->|        |<---->|        |<---->|        |<---->|        |
+                                        |                   |         |     +--------+      +--------+      +--------+      +--------+
+                                        |                   |         |         ^                                                ^
+                                        |                   |         |         |                                                |
+                                        |                   |         |         |                                                |
+                                        |                   |         |         v                                                v
+                                        |                   |         |     +--------+      +--------+      +--------+      +--------+
+                                        |                   |         |     |        |<---->|        |<---->|        |<---->|        |
+                                        |                   |         |     +--------+      +--------+      +--------+      +--------+
+                                        |                   |         |
                                         +-----------------------------+
-                                        |head_page                    |
-                                        |tail_page                    |
-                                        |commit_page                  |
+                                        |head_page       ---+         |
+                                        |tail_page       ---+         |
+                                        |commit_page     ---+         |
                                         |reader_page                  |
                                         |    (struct buffer_page*)    |
                                         |   +-------------------------+
@@ -389,3 +407,45 @@ trigger_commands
       |                                |
       |                                |
       +--------------------------------+
+
+0.4 struct ftrace_ops
+================================================================================
+struct ftrace_ops is registered into system via __register_ftrace_function()
+
+      struct ftrace_ops (e.g. global_ops)
+      +--------------------------------+
+      |next                            |
+      |    (struct ftrace_ops*)        |
+      |func                            |  = e.g. ftrace_stub
+      |saved_func                      |  save the last func for unregister
+      |    (ftrace_func_t)             |
+      |                                |
+      |private                         |  = e.g. global_trace
+      |    (void *)                    |
+      |                                |
+      |func_hash                    ---|---+
+      |    (struct ftrace_ops_hash*)   |   |
+      |local_hash                   <--|---+
+      |old_hash                        |
+      |    (struct ftrace_ops_hash)    |
+      |    +---------------------------+
+      |    |notrace_hash               |
+      |    |filter_hash                |
+      |    |   (struct ftrace_hash*)   |
+      |    |   +-----------------------+
+      |    |   |size_bits              |
+      |    |   |count                  |
+      |    |   |    (unsigned long)    |
+      |    |   |buckets                |  ftrace_func_entry
+      |    |   |   (struct hlist_head*)|  (may copied from ftrace_ops->func_hash->[notrace_hash|filter_hash])
+      |    |   |                       |  +----------+----------+----------+----------+
+      |    |   |                       |  |          |          |          |          |
+      |    |   |                       |  +----------+----------+----------+----------+
+      |    |   |                       |
+      |    +---+-----------------------+
+      |trampoline                      |
+      |trampoline_size                 |
+      |    (unsigned long)             |
+      |                                |
+      +--------------------------------+
+
