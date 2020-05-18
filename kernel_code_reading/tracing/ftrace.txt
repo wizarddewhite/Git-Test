@@ -102,6 +102,12 @@ ftrace_init
 ================================================================================
 6.2.3.2 ftrace_ops_update_code() -> ftrace_replace_code()
 ================================================================================
+ftrace_ops_update_code
+    ftrace_run_modify_code
+        ftrace_run_update_code
+            arch_ftrace_update_code -> ftrace_modify_all_code
+                ftrace_update_ftrace_func, update ftrace_call|ftrace_reg_call to ftrace_trace_function, which is updated in update_ftrace_function
+
 6.2.4 free_ftrace_hash(iter->hash), release the hash in ftrace_iterator
 ================================================================================
 
@@ -139,6 +145,19 @@ ftrace_init
 ================================================================================
 9.1.1 text_poke_bp_batch(), all the secret about instruction replacement is here
 ================================================================================
+
+10. update_ftrace_function, update ftrace_trace_function pointer
+================================================================================
+tracing_set_tracer, write to "current_tracer"
+    tracer_init(struct tracer *t, struct trace_array *tr)
+        t->init(tr) -> e.g. function_trace_init
+            tracing_start_function_trace(tr)
+                register_ftrace_function(tr->ops), e.g. global_trace 
+                    ftrace_startup(ops, 0);
+                        __register_ftrace_function(ops);
+                            ops->saved_func = ops->func
+                            update_ftrace_function
+                                ftrace_trace_function = func;, e.g. ftrace_ops_list_func
 
 0. Data struct
 ================================================================================
