@@ -24,6 +24,8 @@ fn largest_char(list: &[char]) -> char {
 }
 
 // function with generic type
+// <T: PartialOrd + Copy> is trait bound syntax
+// Refer to https://doc.rust-lang.org/book/ch10-02-traits.html
 fn largest<T: PartialOrd + Copy>(list: &[T]) -> T {
     let mut largest = list[0];
 
@@ -34,6 +36,20 @@ fn largest<T: PartialOrd + Copy>(list: &[T]) -> T {
     }
 
     largest
+}
+
+fn smallest<T>(list: &[T]) -> T 
+    where T: PartialOrd + Copy
+{
+    let mut smallest = list[0];
+
+    for &item in list.iter() {
+        if item < smallest {
+            smallest = item;
+        }
+    }
+
+    smallest
 }
 
 fn test_generic_function() {
@@ -50,6 +66,7 @@ fn test_generic_function() {
     println!("Origin list: {:?}", char_list);
 
     println!("The largest char is {}", largest(&char_list));
+    println!("The smallest char is {}", smallest(&char_list));
 }
 
 // struct with generic

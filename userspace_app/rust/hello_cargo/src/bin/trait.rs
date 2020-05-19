@@ -42,6 +42,11 @@ pub fn notify(item: impl Summary) {
     println!("Breaking news! {}", item.summarize());
 }
 
+// trait bound syntax, the same as notify()
+pub fn notify2<T: Summary>(item: T) {
+    println!("(trait bound)Breaking news! {}", item.summarize());
+}
+
 pub trait Display {
     fn show(&self) -> String;
 }
@@ -73,8 +78,10 @@ fn main() {
 
     println!("1 new news: {}", news.summarize());
 
+    println!("Display show: {}", news.show());
+
     notify(tweet);
+    notify2(news);
     // println!("1 new tweet: {}", tweet.summarize()); tweet is moved to notify
 
-    println!("Display show: {}", news.show());
 }
