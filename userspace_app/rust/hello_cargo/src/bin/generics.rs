@@ -1,3 +1,4 @@
+// Refer to: https://doc.rust-lang.org/book/ch10-01-syntax.html
 fn largest_i32(list: &[i32]) -> i32 {
     let mut largest = list[0];
 
@@ -69,13 +70,65 @@ impl<T> Point<T> {
     }
 }
 
+// implement specially for type f32
+impl Point<f32> {
+    fn distance_from_origin(&self) -> f32 {
+        (self.x.powi(2) + self.y.powi(2)).sqrt()
+    }
+}
+
+#[derive(Debug)]
+struct Rectant<T, U> {
+    x: T,
+    y: U,
+}
+
+// some generic parameters are declared with impl
+// and some are declared with the method definition
+impl<T, U> Rectant<T, U> {
+    fn mixup<V, W>(self, other: Rectant<V, W>) -> Rectant<T, W> {
+        Rectant {
+            x: self.x,
+            y: other.y,
+        }
+    }
+}
+
+
 fn test_generic_method() {
     let p = Point {x: 5, y:10};
 
-    println!("p.x = {}", p.x());
+    println!("Generic Type Struct Pointer<T>: p.x = {}", p.x());
+
+    let p1 = Rectant { x: 5, y: 10.4 };
+    let p2 = Rectant { x: "Hello", y: 'c' };
+
+    let p3 = p1.mixup(p2);
+
+    println!("Generic Type Rectant: p3.x = {}, p3.y = {}", p3.x, p3.y);
+    println!("Since mixup() move ownership, p1 and p2 can't be access now");
 }
+
+#[derive(Debug)]
+enum GenericEnum<T> {
+    First(T),
+    Second(T),
+}
+
+fn test_generic_enum() {
+    let f = GenericEnum::First(5);
+
+    match f {
+        GenericEnum::First(val) => {
+            println!("This is a First with value: {:?}", val)
+        },
+        _ => (),
+    }
+}
+
 fn main() {
     test_generic_function();
     test_generic_struct();
     test_generic_method();
+    test_generic_enum();
 }

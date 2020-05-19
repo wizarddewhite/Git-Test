@@ -30,7 +30,7 @@ fn test_ipaddr() {
         address: String::from("127.0.0.1"),
     };
 
-    println!("home address is {:#?}", home);
+    println!("IpAddr home address is {:#?}", home);
 }
 
 // putting data directly into each enum variant
@@ -43,13 +43,13 @@ enum IpAddr2 {
 fn test_ipaddr2() {
     let home = IpAddr2::V4(String::from("127.0.0.1"));
     let _loopback = IpAddr2::V6(String::from("::1"));
-    println!("home address is {:#?}", home);
+    println!("IpAddr2 home address is {:#?}", home);
 
     let addr = match home {
-        IpAddr2::V4(addr) => addr,
-        IpAddr2::V6(addr) => addr,
+        IpAddr2::V4(val) => val,
+        IpAddr2::V6(val) => val,
     };
-    println!("home address is {}", addr);
+    println!("\tthe text is {}", addr);
 }
 
 #[derive(Debug)]
@@ -61,7 +61,7 @@ enum IpAddr3 {
 fn test_ipaddr3() {
     let home = IpAddr3::V4(127, 0, 0, 1);
     let _loopback = IpAddr3::V6(String::from("::1"));
-    println!("home address is {:#?}", home);
+    println!("IpAddr3 home address is {:#?}", home);
 }
 
 #[derive(Debug)]
@@ -87,6 +87,8 @@ fn test_message() {
     if let Message::ChangeColor(x, y, z) = m2 {
         println!("Message::ChangeColor: {}, {}, {}", x, y, z);
     }
+    println!("Can still access m is: {:#?}", m);
+    println!("Can still access m2 is: {:#?}", m2);
 }
 
 #[derive(Debug)]
@@ -141,6 +143,23 @@ fn test_placeholder() {
     }
 }
 
+#[derive(Debug)]
+enum GenericEnum<T> {
+    First(T),
+    Second(T),
+}
+
+fn test_generic_enum() {
+    let f = GenericEnum::First(5);
+
+    match f {
+        GenericEnum::First(val) => {
+            println!("This is a First with value: {:?}", val)
+        },
+        _ => (),
+    }
+}
+
 fn main() {
 
     test_ipaddr();
@@ -152,4 +171,5 @@ fn main() {
     test_match_coin();
 
     test_placeholder();
+    test_generic_enum();
 }
