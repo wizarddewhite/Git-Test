@@ -23,31 +23,6 @@ fn largest_char(list: &[char]) -> char {
     largest
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Circle {
-    radius: u32,
-}
-
-use std::cmp::Ordering;
-
-impl PartialOrd for Circle {
-    fn partial_cmp(&self, other: &Circle) -> Option<Ordering> {
-        if self.radius == other.radius {
-            Some(Ordering::Equal)
-        } else if self.radius < other.radius {
-            Some(Ordering::Less)
-        } else {
-            Some(Ordering::Greater)
-        }
-    }
-}
-
-impl PartialEq for Circle {
-    fn eq(&self, other: &Circle) -> bool {
-        self.radius == other.radius
-    }
-}
-
 // function with generic type
 // <T: PartialOrd + Copy> is trait bound syntax
 // Refer to https://doc.rust-lang.org/book/ch10-02-traits.html
@@ -63,6 +38,7 @@ fn largest<T: PartialOrd + Copy>(list: &[T]) -> T {
     largest
 }
 
+// use where to specify trait bound
 fn smallest<T>(list: &[T]) -> T 
     where T: PartialOrd + Copy
 {
@@ -92,6 +68,35 @@ fn test_generic_function() {
 
     println!("The largest char is {}", largest(&char_list));
     println!("The smallest char is {}", smallest(&char_list));
+}
+
+// Define customer type with implemented trait
+#[derive(Copy, Clone, Debug)]
+pub struct Circle {
+    radius: u32,
+}
+
+use std::cmp::Ordering;
+
+impl PartialOrd for Circle {
+    fn partial_cmp(&self, other: &Circle) -> Option<Ordering> {
+        if self.radius == other.radius {
+            Some(Ordering::Equal)
+        } else if self.radius < other.radius {
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+impl PartialEq for Circle {
+    fn eq(&self, other: &Circle) -> bool {
+        self.radius == other.radius
+    }
+}
+
+fn test_generic_function_with_custom_type() {
 
     let circle_list = vec![
         Circle {radius:5},
@@ -126,6 +131,13 @@ impl Point<f32> {
     }
 }
 
+// implement method area() just for PartialOrd trait type
+impl<T: PartialOrd> Point<T> {
+    fn area(&self) -> String {
+        format!("Area is 20")
+    }
+}
+
 #[derive(Debug)]
 struct Rectant<T, U> {
     x: T,
@@ -143,7 +155,6 @@ impl<T, U> Rectant<T, U> {
     }
 }
 
-
 fn test_generic_method() {
     let p = Point {x: 5, y:10};
 
@@ -156,6 +167,12 @@ fn test_generic_method() {
 
     println!("Generic Type Rectant: p3.x = {}, p3.y = {}", p3.x, p3.y);
     println!("Since mixup() move ownership, p1 and p2 can't be access now");
+
+    let ar = Point {
+        x: Circle {radius:2},
+        y: Circle {radius:9}
+    };
+    println!("Generic Type Struct Pointer<T>: ar.area = {}", ar.area());
 }
 
 #[derive(Debug)]
@@ -175,8 +192,10 @@ fn test_generic_enum() {
     }
 }
 
+
 fn main() {
     test_generic_function();
+    test_generic_function_with_custom_type();
     test_generic_struct();
     test_generic_method();
     test_generic_enum();

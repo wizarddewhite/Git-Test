@@ -258,8 +258,73 @@ for (linenumber, line) in lines.enumerate() {
 3.6 Generic Types
 ================================================================================
 
+3.6.1 Function
+================================================================================
+
+fn function<T>(param: T) -> T {}
+
+fn function<T: Trait>(param: T) -> T {}
+
+fn function<T>(param: T) -> T 
+    where T: Trait
+{}
+
+3.6.2 Struct
+================================================================================
+
+struct Point<T> {
+    x: T,
+    y: T,
+}
+
+impl<T> Point<T> {
+    fn x(&self) -> &T { &self.x }
+}
+
 3.7 trait
 ================================================================================
+
+3.7.1 define trait
+================================================================================
+
+pub trait Summary {
+    fn summary(&self) -> String;
+}
+
+3.7.2 impl trait
+================================================================================
+
+impl Summary for NewsArticle {
+    fn summary(&self) -> String {
+        format!("{}", self.name)
+    }
+}
+
+3.7.3 trait parameter
+================================================================================
+
+fn notify(item: impl Summary) {
+    item.summary();
+}
+
+This is the same as:
+
+fn notify<T: Summary>(item: T) {
+    item.summary();
+}
+
+3.7.4 conditional method by trait
+================================================================================
+
+pub trait Display {
+    fn show(&self) -> String;
+}
+
+impl<T: Summary> Display for T {
+    fn show(&self) -> String {
+        format!("{}", self.summary())
+    }
+}
 
 4. Ownership
 ================================================================================
