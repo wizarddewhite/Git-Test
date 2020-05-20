@@ -23,6 +23,31 @@ fn largest_char(list: &[char]) -> char {
     largest
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct Circle {
+    radius: u32,
+}
+
+use std::cmp::Ordering;
+
+impl PartialOrd for Circle {
+    fn partial_cmp(&self, other: &Circle) -> Option<Ordering> {
+        if self.radius == other.radius {
+            Some(Ordering::Equal)
+        } else if self.radius < other.radius {
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+impl PartialEq for Circle {
+    fn eq(&self, other: &Circle) -> bool {
+        self.radius == other.radius
+    }
+}
+
 // function with generic type
 // <T: PartialOrd + Copy> is trait bound syntax
 // Refer to https://doc.rust-lang.org/book/ch10-02-traits.html
@@ -67,6 +92,13 @@ fn test_generic_function() {
 
     println!("The largest char is {}", largest(&char_list));
     println!("The smallest char is {}", smallest(&char_list));
+
+    let circle_list = vec![
+        Circle {radius:5},
+        Circle {radius:8},
+    ];
+    println!("A circle list {:?}", circle_list);
+    println!("The largest circle is {:?}", largest(&circle_list));
 }
 
 // struct with generic
