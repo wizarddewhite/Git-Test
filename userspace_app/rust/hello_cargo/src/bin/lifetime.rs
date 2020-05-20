@@ -1,4 +1,17 @@
 // generic lifetime in function
+/*
+    {
+        let r;                // ---------+-- 'a
+                              //          |
+        {                     //          |
+            let x = 5;        // -+-- 'b  |
+            r = &x;           //  |       |
+        }                     // -+       |
+                              //          |
+        println!("r: {}", r); //          |
+    }                         // ---------+
+*/
+
 // * parameter x and y live at least as long as lifetime 'a
 // * return value will live at least as long as lifetime 'a
 // * lifetime of the returned reference is the same as the smaller of the lifetimes of the

@@ -427,7 +427,27 @@ let mut x = 5;
 println!("{}", x);
 ```
 
-4.3 Life cycle
+4.3 Lifetime
+================================================================================
+Refer to : https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html
+
+Every reference in Rust has a lifetime, which is the scope for which that
+reference is valid.
+
+4.3.1 Definition
+================================================================================
+
+&i32        // a reference
+&'a i32     // a reference with an explicit lifetime
+&'a mut i32 // a mutable reference with an explicit lifetime
+
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {}
+
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+
+4.3.1 prevent dangling reference
 ================================================================================
 
 5. Dependency
