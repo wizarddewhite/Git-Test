@@ -1,11 +1,16 @@
 mod front_of_house;
 use crate::front_of_house::hosting;
+use crate::front_of_house::serving;
 
 mod back_of_house;
 use crate::back_of_house::Breakfast;
 
 pub fn eat_at_restaurant() {
     hosting::add_to_waitlist();
+    hosting::seat_at_table();
+    serving::take_over();
+    serving::serve_order();
+    serving::take_payment();
 
     // Order a breakfast in the summer with Rye toast
     let mut meal = Breakfast::summer("Rye");

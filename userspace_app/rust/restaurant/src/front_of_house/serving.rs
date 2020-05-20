@@ -1,3 +1,3 @@
-fn take_over() {}
-fn serve_order() {}
-fn take_payment() {}
+pub fn take_over() {}
+pub fn serve_order() {}
+pub fn take_payment() {}
