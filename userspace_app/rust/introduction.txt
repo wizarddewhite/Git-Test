@@ -450,14 +450,37 @@ struct ImportantExcerpt<'a> {
 4.3.1 prevent dangling reference
 ================================================================================
 
-5. Dependency
+
+5. Project Management
+================================================================================
+
+5.1 Packages & Crates
+================================================================================
+
+A crate is a binary or library. The crate root is a source file that the Rust
+compiler starts from and makes up the root module of your crate.
+
+A package is one or more crates that provide a set of functionality. A package
+contains a Cargo.toml file that describes how to build those crates.
+
+5.2 Modules
+================================================================================
+
+Modules let us organize code within a crate into groups for readability and
+easy reuse
+
+5.3 Workspace
+================================================================================
+
+
+5.4 Dependency
 ================================================================================
 Reference https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 
 [dependencies]
 name = "version"
 
-5.1 specify the version
+5.4.1 specify the version
 ================================================================================
 ^1.2.3  :=  >=1.2.3, <2.0.0
 ^1.2    :=  >=1.2.0, <2.0.0
@@ -476,13 +499,13 @@ name = "version"
 1.*   := >=1.0.0, <2.0.0
 1.2.* := >=1.2.0, <1.3.0
 
-5.2 specify the registry
+5.4.2 specify the registry
 ================================================================================
 
 [dependencies]
 some-crate = { version = "1.0", registry = "my-registry" }
 
-5.3 dependency from git
+5.4.3 dependency from git
 ================================================================================
 
 [dependencies]
@@ -496,7 +519,7 @@ Note:
 To access a private git repo, you may need to configure git authentication.
 https://doc.rust-lang.org/cargo/appendix/git-authentication.html
 
-5.4 local dependency
+5.4.4 local dependency
 ================================================================================
 
 [dependencies]
@@ -505,7 +528,7 @@ hello_utils = { path = "hello_utils" }
 [dependencies]
 hello_utils = { path = "hello_utils", version = "0.1.0" }
 
-5.4 platform specific dependency
+5.4.4 platform specific dependency
 ================================================================================
 
 [target.'cfg(windows)'.dependencies]
@@ -520,7 +543,7 @@ native = { path = "native/i686" }
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 native = { path = "native/x86_64" }
 
-5.5 feature specific dependency
+5.4.5 feature specific dependency
 ================================================================================
 
 [dependencies]
@@ -530,7 +553,7 @@ bar = { version = "1.0", optional = true }
 [features]
 fancy-feature = ["foo", "bar"]
 
-5.6 development dependency
+5.4.6 development dependency
 ================================================================================
 
 [dev-dependencies]
@@ -539,7 +562,7 @@ tempdir = "0.3"
 [target.'cfg(unix)'.dev-dependencies]
 mio = "0.0.1"
 
-5.7 choose feature
+5.4.7 choose feature
 ================================================================================
 
 [dependencies.awesome]
@@ -548,26 +571,37 @@ default-features = false # do not include the default features, and optionally
                          # cherry-pick individual features
 features = ["secure-password", "civet"]
 
+5.5 feature
+================================================================================
+Reference: https://doc.rust-lang.org/cargo/reference/features.html
 
-6. Project Management
+5.5.1 definition
 ================================================================================
 
-6.1 Packages & Crates
+Define two features: tastes, cook. The first one is the default feature, and
+the second one it optional.
+
+[features]
+
+default = ["tastes"]
+
+tastes = []
+cook = []
+
+5.5.2 usage
 ================================================================================
 
-A crate is a binary or library. The crate root is a source file that the Rust
-compiler starts from and makes up the root module of your crate.
+A crate depends on the restaurant, and also depends on the optional feature:
+cook.
 
-A package is one or more crates that provide a set of functionality. A package
-contains a Cargo.toml file that describes how to build those crates.
+[dependencies.restaurant]
+path = "../restaurant"
+features = ["cook"]
 
-6.2 Modules
+5.5.3 conditional compilation
 ================================================================================
 
-Modules let us organize code within a crate into groups for readability and
-easy reuse
+When we need to build an optional feature, we can specify the feature in
+command line:
 
-6.3 Workspace
-================================================================================
-
-
+cargo build --features "feature_name"
