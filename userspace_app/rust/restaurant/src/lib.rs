@@ -6,10 +6,10 @@ mod back_of_house;
 use crate::back_of_house::Breakfast;
 
 #[cfg(feature = "tastes")]
-mod tastes;
+pub mod tastes;
 
 #[cfg(feature = "cook")]
-mod cook;
+pub mod cook;
 
 pub fn eat_at_restaurant() {
     hosting::add_to_waitlist();
