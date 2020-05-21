@@ -8,6 +8,9 @@ use crate::back_of_house::Breakfast;
 #[cfg(feature = "tastes")]
 mod tastes;
 
+#[cfg(feature = "cook")]
+mod cook;
+
 pub fn eat_at_restaurant() {
     hosting::add_to_waitlist();
     hosting::seat_at_table();
@@ -27,4 +30,7 @@ pub fn eat_at_restaurant() {
     // meal.seasonal_fruit = String::from("blueberries");
 
     tastes::like();
+
+    #[cfg(feature = "cook")]
+    cook::steem();
 }

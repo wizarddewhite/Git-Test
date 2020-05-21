@@ -9,4 +9,6 @@ edition = "2018"
 [features]
 
 default = ["tastes"]
+
 tastes = []
+cook = []
