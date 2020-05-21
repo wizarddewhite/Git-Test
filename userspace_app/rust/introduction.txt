@@ -329,6 +329,36 @@ impl<T: Summary> Display for T {
     }
 }
 
+3.8 Macros
+================================================================================
+https://doc.rust-lang.org/book/ch19-06-macros.html
+
+A little book of Rust Macros
+
+https://danielkeep.github.io/tlborm/book/index.html
+
+  * Declarative macros with macro_rules!
+  * Procedural macros
+    - custom #[derive] macros
+    - attribute-like macros
+    - function-like macros
+
+3.8.1 Declarative macros
+================================================================================
+
+#[macro_export]
+macro_rules! my_vec {
+    ( $( $x:expr ),* ) => {
+        {
+            let mut temp_vec = Vec::new();
+            $(
+                temp_vec.push($x);
+            )*
+            temp_vec
+        }
+    };
+}
+
 4. Ownership
 ================================================================================
 
