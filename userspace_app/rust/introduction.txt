@@ -4,6 +4,9 @@
 The Rust Programming Language
 https://doc.rust-lang.org/book/title-page.html
 
+The Cargo Book
+https://doc.rust-lang.org/cargo/index.html
+
 Rust book
 https://kaisery.gitbooks.io/rust-book-chinese/content/
 
@@ -605,3 +608,23 @@ When we need to build an optional feature, we can specify the feature in
 command line:
 
 cargo build --features "feature_name"
+
+5.6 registry
+================================================================================
+https://doc.rust-lang.org/cargo/reference/registries.html
+
+Add a registry in .cargo/config
+
+[registries]
+my-registry = { index = "https://my-intranet:8080/git/index" }
+
+Use is in Cargo.toml
+
+# Sample Cargo.toml
+[package]
+name = "my-project"
+version = "0.1.0"
+
+[dependencies]
+other-crate = { version = "1.0", registry = "my-registry" }
+
