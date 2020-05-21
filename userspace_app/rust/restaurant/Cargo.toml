@@ -5,3 +5,6 @@ authors = ["Wei Yang <richardw.yang@linux.intel.com>"]
 edition = "2018"
 
 [dependencies]
+
+[features]
+tastes = []
