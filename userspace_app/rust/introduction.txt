@@ -7,6 +7,9 @@ https://doc.rust-lang.org/book/title-page.html
 The Cargo Book
 https://doc.rust-lang.org/cargo/index.html
 
+Rust by Example
+https://doc.rust-lang.org/rust-by-example/macros.html
+
 Rust book
 https://kaisery.gitbooks.io/rust-book-chinese/content/
 
@@ -337,6 +340,10 @@ A little book of Rust Macros
 
 https://danielkeep.github.io/tlborm/book/index.html
 
+
+Macro Example
+https://doc.rust-lang.org/rust-by-example/macros/syntax.html
+
   * Declarative macros with macro_rules!
   * Procedural macros
     - custom #[derive] macros
@@ -358,6 +365,14 @@ macro_rules! my_vec {
         }
     };
 }
+
+3.8.2 custom #[derive] macros
+================================================================================
+
+3.9 Conditional Compilation
+================================================================================
+
+https://doc.rust-lang.org/reference/conditional-compilation.html
 
 4. Ownership
 ================================================================================
