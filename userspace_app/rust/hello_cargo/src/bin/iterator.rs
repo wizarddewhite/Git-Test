@@ -92,8 +92,21 @@ fn test_own_iterator() {
         }
     }
 
+    println!("Counter is {:?}", counter);
+
     let counter2 = Counter::new();
 
     let val = counter2.skip(1);
     println!("Counter skip 1 {:?}", val);
+
+    let pair = Counter::new().zip(Counter::new().skip(1));
+
+    for e in pair {
+        println!("{:?}", e);
+    }
+
+    let mul = Counter::new().zip(Counter::new().skip(1)).map(|(a, b)| a * b);
+    for e in mul {
+        println!("{:?}", e);
+    }
 }

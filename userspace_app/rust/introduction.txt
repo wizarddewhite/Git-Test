@@ -189,6 +189,38 @@ for i in &v {
 3.3.5 enum
 ================================================================================
 
+enum IpAddrKind {
+    V4,
+    V6,
+}
+
+enum IpAddr2 {
+    V4(String),
+    V6(String),
+}
+
+enum GenericEnum<T> {
+    First(T),
+    Second(T),
+}
+
+3.3.6 struct
+================================================================================
+
+
+struct Rectangle {
+    width: u32,
+    height: u32,
+}
+
+// define associated functions, no self is required
+impl Rectangle {
+    fn square(size: u32) -> Rectangle {
+        Rectangle {width: size, height: size}
+    }
+}
+
+
 3.4 if
 ================================================================================
 
@@ -498,6 +530,116 @@ struct ImportantExcerpt<'a> {
 4.3.1 prevent dangling reference
 ================================================================================
 
+5. Error
+================================================================================
+
+5.1 unrecoverable error with panic
+================================================================================
+
+fn main() {
+    panic!("crash and burn");
+}
+
+RUST_BACKTRACE=1 cargo run
+
+5.2 recoverable error with Result
+================================================================================
+
+Use match to handle the return value Result.
+
+    let f = File::open("hello.txt");
+
+    let f = match f {
+        Ok(file) => file,
+        Err(error) => match error.kind() {
+            ErrorKind::NotFound => match File::create("hello.txt") {
+                Ok(fc) => fc,
+                Err(e) => panic!("Problem creating the file: {:?}", e),
+            },
+            other_error => panic!("Problem opening the file: {:?}", other_error),
+        },
+    };
+
+5.2.1 unwrap()
+================================================================================
+
+If the Result value is the Ok variant, unwrap will return the value inside the Ok.
+If the Result is the Err variant, unwrap will call the panic! macro for us. 
+
+    let f = File::open("hello.txt").unwrap();
+
+5.2.2 expect()
+================================================================================
+
+The same as unwrap(), except move verbose panic! message.
+
+    let f = File::open("hello.txt").expect("Failed to open hello.txt");
+
+5.2.3 propagate error with ?
+================================================================================
+
+If the value of the Result is an Ok, the value inside the Ok will get returned
+from this expression, and the program will continue.
+
+If the value is an Err, the Err will be returned from the whole function as if
+we had used the return keyword so the error value gets propagated to the
+calling code.
+
+Following two functions are the same.
+
+fn read_username_from_file() -> Result<String, io::Error> {
+    let f = File::open("hello.txt");
+
+    let mut f = match f {
+        Ok(file) => file,
+        Err(e) => return Err(e),
+    };
+
+    let mut s = String::new();
+
+    match f.read_to_string(&mut s) {
+        Ok(_) => Ok(s),
+        Err(e) => Err(e),
+    }
+}
+
+// shorten with ?
+fn read_username_from_file2() -> Result<String, io::Error> {
+    let mut s = String::new();
+
+    File::open("hello.txt")?.read_to_string(&mut s)?;
+
+    Ok(s)
+}
+
+6. Closure
+================================================================================
+
+Compared with function:
+
+fn  add_one_v1   (x: u32) -> u32 { x + 1 }
+let add_one_v2 = |x: u32| -> u32 { x + 1 };
+let add_one_v3 = |x|             { x + 1 };
+let add_one_v4 = |x|               x + 1  ;
+
+Environment variable ownership
+
+FnOnce consumes the variables it captures from its enclosing scope, known as
+the closure¡¯s environment. To consume the captured variables, the closure
+must take ownership of these variables and move them into the closure when it
+is defined. The Once part of the name represents the fact that the closure
+can¡¯t take ownership of the same variables more than once, so it can be
+called only once.
+
+FnMut can change the environment because it mutably borrows values.
+
+Fn borrows values from the environment immutably.
+
+
+7. Iterator
+================================================================================
+
+https://www.twle.cn/c/yufei/rust/rust-basic-iterator.html
 
 5. Project Management
 ================================================================================

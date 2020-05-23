@@ -59,7 +59,36 @@ fn read_username_from_file2() -> Result<String, io::Error> {
     Ok(s)
 }
 
+use std::error::Error;
+pub struct Guess {
+    value: Option<i32>,
+}
+
+impl Guess {
+    fn new(value: i32) -> Guess {
+        if value > 1 && value < 100 {
+            Guess {value: Some(3)}
+        } else {
+            Guess {value: None}
+        }
+    }
+
+    // pub fn value(&self) -> i32 {
+        // self.value
+    // }
+}
+
+fn test_new_guest() {
+    let g = Guess::new(500);
+
+    match g.value {
+        Some(v) => println!("vvv {}", v),
+        _ => println!("not a valid guess"),
+    }
+}
+
 fn main() {
+    test_new_guest();
     test_recoverable();
     test_unrecoverable();
 }
