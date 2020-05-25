@@ -385,6 +385,18 @@ https://doc.rust-lang.org/rust-by-example/macros/syntax.html
     - attribute-like macros
     - function-like macros
 
+3.8.0 expand macros
+================================================================================
+
+For better understanding macro from others, you can use
+
+  cargo expand [--bin name]
+
+Before doing this you need to install two things:
+
+  rustup install nightly
+  cargo install cargo-expand
+
 3.8.1 Declarative macros
 ================================================================================
 
