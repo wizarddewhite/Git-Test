@@ -437,7 +437,7 @@ struct ftrace_ops is registered into system via __register_ftrace_function()
       |    |   |count                  |
       |    |   |    (unsigned long)    |
       |    |   |buckets                |  ftrace_func_entry
-      |    |   |   (struct hlist_head*)|  (may copied from ftrace_ops->func_hash->[notrace_hash|filter_hash])
+      |    |   |   (struct hlist_head*)|
       |    |   |                       |  +----------+----------+----------+----------+
       |    |   |                       |  |          |          |          |          |
       |    |   |                       |  +----------+----------+----------+----------+

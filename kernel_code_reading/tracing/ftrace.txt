@@ -83,7 +83,15 @@ ftrace_init
         ftrace_update_code()
             ftrace_nop_initialize()
                 ftrace_init_nop()
+                    ftrace_make_nop
 
+ftrace_make_nop
+    old = ftrace_call_replace
+        text_gen_insn(CALL_INSN_OPCODE, (void *)ip, (void *)addr);
+    new = ftrace_nop_replace
+    ftrace_modify_code_direct(ip, old, new)
+        ftrace_verify_code(ip, old)
+        text_poke_early(ip, new, MCOUNT_INSN_SIZE)
 
 6. update nop via set_ftrace_filter
 ================================================================================
@@ -228,8 +236,9 @@ ftrace_pages_start
     |size                         |
     |    (int)                    |     array of dyn_ftrace
     |records                      |     +----------+----------+     +----------+----------+
-    |    (struct dyn_ftrace*)     |---->|          |          | ... |          |          |
-    |                             |     |          |          |     |          |          |
+    |    (struct dyn_ftrace*)     |---->|ip        |          | ... |          |          |
+    |                             |     |flags     |          |     |          |          |
+    |                             |     |arch      |          |     |          |          |
     |next                         |     +----------+----------+     +----------+----------+
     |    (struct ftrace_page*)    |
     +-----------------------------+
@@ -240,12 +249,12 @@ ftrace_pages_start
     +-----------------------------+
     |index                        |
     |size                         |
-    |    (int)                    |
-    |records                      |
-    |    (struct dyn_ftrace*)     |
-    |                             |
-    |next                         |
-    |    (struct ftrace_page*)    |
+    |    (int)                    |     array of dyn_ftrace
+    |records                      |     +----------+----------+     +----------+----------+
+    |    (struct dyn_ftrace*)     |---->|ip        |          | ... |          |          |
+    |                             |     |flags     |          |     |          |          |
+    |next                         |     |arch      |          |     |          |          |
+    |    (struct ftrace_page*)    |     +----------+----------+     +----------+----------+
     +-----------------------------+
       |
       |
@@ -254,12 +263,12 @@ ftrace_pages_start
     +-----------------------------+
     |index                        |
     |size                         |
-    |    (int)                    |
-    |records                      |
-    |    (struct dyn_ftrace*)     |
-    |                             |
-    |next                         |
-    |    (struct ftrace_page*)    |
+    |    (int)                    |     array of dyn_ftrace
+    |records                      |     +----------+----------+     +----------+----------+
+    |    (struct dyn_ftrace*)     |---->|ip        |          | ... |          |          |
+    |                             |     |flags     |          |     |          |          |
+    |next                         |     |arch      |          |     |          |          |
+    |    (struct ftrace_page*)    |     +----------+----------+     +----------+----------+
     +-----------------------------+
 
 
@@ -342,6 +351,7 @@ ftrace_pages_start
    |              |    |.pg         |  = ftrace_pages_start
    +--------------+    |            |
                        |.ops        |  = global_ops
+                       | ftrace_ops |
                        |            |
                        |            |  ftrace_func_entry
                        |.hash       |  (may copied from ftrace_ops->func_hash->[notrace_hash|filter_hash])
@@ -354,6 +364,34 @@ ftrace_pages_start
 ftrace_filter_write will add ftrace_func_entry to ftrace_iterator.hash.
 
 ftrace_regex_release will update the nop code
+
+
+Two possible path to create this file:
+
+	tracer_init_tracefs
+            init_tracer_tracefs(&global_trace, )
+                ftrace_create_function_files(tr, parent);
+		    ftrace_create_filter_files(&tr->ops, )
+	    ftrace_init_tracefs_toplevel
+		ftrace_init_dyn_tracefs
+		    ftrace_create_filter_files(&global_ops, )
+            create_trace_instances(d_tracer);
+
+        trace_array_create(name)
+            init_tracer_tracefs(tr, )
+                ftrace_create_function_files(tr, parent);
+		    ftrace_create_filter_files(&tr->ops, )
+
+Add a dump_stack() in ftrace_create_filter_files(), the result shows:
+
+[    0.736039]  dump_stack+0x66/0x90
+[    0.736039]  ftrace_create_filter_files+0x38/0x78
+[    0.736039]  ftrace_init_tracefs_toplevel+0x69/0x17e
+[    0.736039]  tracer_init_tracefs+0x8c/0x1fc
+[    0.736039]  ? register_tracer+0x1e7/0x1e7
+[    0.736039]  do_one_initcall+0x46/0x200
+[    0.736039]  kernel_init_freeable+0x1e2/0x261
+
 
 0.8 current_tracer
 ================================================================================
