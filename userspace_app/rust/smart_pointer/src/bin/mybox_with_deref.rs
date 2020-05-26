@@ -1,3 +1,4 @@
+#[derive(Debug)]
 struct MyBox<T, U>(T, U);
 
 impl<T, U> MyBox<T, U> {
@@ -20,6 +21,7 @@ impl<T, U> Deref for MyBox<T, U> {
 fn main() {
     let x = 5;
     let y = MyBox::new(x, 4);
+    println!("y is {:?}", y);
 
     assert_eq!(5, x);
     // *y equals to *(y.deref())

@@ -3,6 +3,7 @@ fn simple_usage() {
     let b = Box::new(5);
     println!("b = {}", b);
 
+    // bc is the pointer
     let bc = Box::into_raw(b);
     println!("bc = {:?}", bc);
 }
