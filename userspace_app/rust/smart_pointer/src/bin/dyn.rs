@@ -29,6 +29,15 @@ fn random_animal(random_number: f64) -> Box<dyn Animal> {
     }
 }
 
+struct FixedSize {
+    size: u32,
+    age: u32,
+}
+
+fn have_a_size() -> Box</*dyn is not allowed here*/FixedSize> {
+    Box::new(FixedSize {size: 5, age: 7})
+}
+
 fn main() {
     let random_number = 0.234;
     let animal = random_animal(random_number);
