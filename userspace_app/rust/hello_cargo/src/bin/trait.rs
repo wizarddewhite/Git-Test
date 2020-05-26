@@ -58,6 +58,16 @@ impl<T: Summary> Display for T {
     }
 }
 
+// inheritance
+pub trait Publish: Display {
+    fn publish(&self) -> String {
+        format!("Publish: {}", self.show())
+    }
+}
+
+impl<T: Summary> Publish for T {
+}
+
 fn main() {
     let tweet = Tweet {
         username: String::from("horse_ebooks"),
@@ -79,6 +89,7 @@ fn main() {
     println!("1 new news: {}", news.summarize());
 
     println!("Display show: {}", news.show());
+    println!("Publish news: {}", news.publish());
 
     notify(tweet);
     notify2(news);
