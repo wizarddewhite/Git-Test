@@ -349,6 +349,8 @@ struct ftrace_ops is registered into system via __register_ftrace_function()
       |old_hash                        |
       |    (struct ftrace_ops_hash)    |
       |    +---------------------------+
+      |    |regex_lock                 |
+      |    |   (struct mutex)          |
       |    |notrace_hash               |
       |    |filter_hash                |
       |    |   (struct ftrace_hash*)   |
