@@ -167,6 +167,13 @@ ftrace_commands
 trigger_commands
     (struct list_head)
 
+ftrace_pages
+    (struct ftrace_page*)
+ftrace_number_of_pages
+ftrace_number_of_groups
+    (unsigned long)
+
+
 0.1 struct trace_array
 ================================================================================
 
@@ -367,7 +374,7 @@ trigger_commands
                                                                             |data[]              |
                                                                             +--------------------+
 
-0.3 tracer
+0.3 struct tracer
 ================================================================================
 
     trace_types
@@ -448,4 +455,131 @@ struct ftrace_ops is registered into system via __register_ftrace_function()
       |    (unsigned long)             |
       |                                |
       +--------------------------------+
+
+0.5 dyn_ftrace
+================================================================================
+
+    dyn_ftrace
+    +-----------------------------+
+    |ip                           |
+    |flags                        |
+    |    (unsigned long)          |
+    |arch                         |
+    |    (struct dyn_arch_ftrace) |
+    |                             |
+    |                             |
+    +-----------------------------+
+
+0.5.1 dyn_ftrace.flags
+================================================================================
+
+  The dyn_ftrace record's flags field is split into two parts.
+  the first part which is '0-FTRACE_REF_MAX' is a counter of
+  the number of callbacks that have registered the function that
+  the dyn_ftrace descriptor represents.
+ 
+  The second part is a mask:
+   ENABLED - the function is being traced
+   REGS    - the record wants the function to save regs
+   REGS_EN - the function is set up to save regs.
+   IPMODIFY - the record allows for the IP address to be changed.
+   DISABLED - the record is not ready to be touched yet
+   DIRECT   - there is a direct function to call
+ 
+  When a new ftrace_ops is registered and wants a function to save
+  pt_regs, the rec->flag REGS is set. When the function has been
+  set up to save regs, the REG_EN flag is set. Once a function
+  starts saving regs it will do so until all ftrace_ops are removed
+  from tracing that function.
+
+    31               23
+    +-----------------+-------------------------------------------+
+    | 9bit width mask |                counter                    |
+    +-----------------+-------------------------------------------+
+
+0.6 ftrace_page
+================================================================================
+
+ftrace_pages_start
+      |
+      v
+    ftrace_page
+    +-----------------------------+
+    |index                        |
+    |size                         |
+    |    (int)                    |     array of dyn_ftrace
+    |records                      |     +----------+----------+     +----------+----------+
+    |    (struct dyn_ftrace*)     |---->|ip        |          | ... |          |          |
+    |                             |     |flags     |          |     |          |          |
+    |                             |     |arch      |          |     |          |          |
+    |next                         |     +----------+----------+     +----------+----------+
+    |    (struct ftrace_page*)    |
+    +-----------------------------+
+      |
+      |
+      v
+    ftrace_page
+    +-----------------------------+
+    |index                        |
+    |size                         |
+    |    (int)                    |     array of dyn_ftrace
+    |records                      |     +----------+----------+     +----------+----------+
+    |    (struct dyn_ftrace*)     |---->|ip        |          | ... |          |          |
+    |                             |     |flags     |          |     |          |          |
+    |next                         |     |arch      |          |     |          |          |
+    |    (struct ftrace_page*)    |     +----------+----------+     +----------+----------+
+    +-----------------------------+
+      |
+      |
+      v
+    ftrace_page
+    +-----------------------------+
+    |index                        |
+    |size                         |
+    |    (int)                    |     array of dyn_ftrace
+    |records                      |     +----------+----------+     +----------+----------+
+    |    (struct dyn_ftrace*)     |---->|ip        |          | ... |          |          |
+    |                             |     |flags     |          |     |          |          |
+    |next                         |     |arch      |          |     |          |          |
+    |    (struct ftrace_page*)    |     +----------+----------+     +----------+----------+
+    +-----------------------------+
+
+0.7 ftrace_iterator
+================================================================================
+
+    ftrace_iterator
+    +-----------------------------+
+    |idx/pidx/flags               |
+    |   (int/unsigned)            |
+    |pos/func_pos/mod_pos         |
+    |   (loff_t)                  |
+    |pg                           |
+    |   (struct ftrace_page*)     |
+    |func                         |
+    |   (struct dyn_ftrace*)      |
+    |probe                        |
+    |   (struct ftrace_func_probe)|
+    |probe_entry                  |
+    |   (struct ftrace_func_entry)|
+    |                             |
+    |parser                       |
+    |   (struct trace_parser)     |
+    |   +-------------------------+
+    |   |cont                     |
+    |   |   (struct bool)         |
+    |   |idx                      |
+    |   |size                     |
+    |   |   (unsigned)            |
+    |   |buffer                   |
+    |   |   (char*)               |
+    |   +-------------------------+
+    |                             |
+    |hash                         |  a hash table for func filter with ip as key
+    |   (struct ftrace_hash*)     |
+    |ops                          |
+    |   (struct ftrace_ops*)      |
+    |tr                           |
+    |   (struct trace_array*)     |
+    |                             |
+    +-----------------------------+
 
