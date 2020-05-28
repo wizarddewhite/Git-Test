@@ -40,7 +40,7 @@
 ================================================================================
 1.1.11 init_trace_flags_index(&global_trace)
 ================================================================================
-1.1.12 register_tracer(&nop_trace), add to trace_types list
+1.1.12 register_tracer(&nop_trace), add nop_trace to trace_types list
 ================================================================================
 1.1.13 init_function_trace()
 ================================================================================
@@ -132,6 +132,8 @@
 ================================================================================
 5.4 tracer_init(t, tr), if t->init
 ================================================================================
+5.4.1 t->init(tr), e.g. function_trace_init
+================================================================================
 5.5 trace_branch_enable(tr)
 ================================================================================
 
@@ -174,19 +176,18 @@ ftrace_number_of_groups
     (unsigned long)
 
 
-0.1 struct trace_array
+ftrace_ops_list
+    (struct ftrace_ops*)
+ftrace_list_end
+global_ops
+    (struct ftrace_ops)
+
+0.1 struct trace_array / global_trace
 ================================================================================
 
-  +---------------------+
-  |ftrace_trace_arrays  |
-  |   (struct list_head)|
-  +---------------------+
-    |
-    |
-    |
-    | global_trace(struct trace_array)
-    | +--------------------------------+
-    +>|list                            |
+      global_trace(struct trace_array)
+      +--------------------------------+
+      |list                            |
       |    (struct list_head)          |
       +--------------------------------+
       |name                            |
@@ -262,10 +263,131 @@ ftrace_number_of_groups
       |    |  |                        |
       +----+--+------------------------+
 
+0.1.1 ftrace_trace_arrays
+================================================================================
+trace_array is created and added to ftrace_trace_arrays via
+trace_array_create().
+
+The only exception is global_trace is added via tracer_alloc_buffers().
+Generally, ftrace_trace_arrays only has one element global_trace.
+
+  +---------------------+
+  |ftrace_trace_arrays  |
+  |   (struct list_head)|
+  +---------------------+
+    |
+    |
+    |      struct trace_array        struct trace_array        struct trace_array
+    |      +------------------+      +------------------+      +------------------+
+    +----->|                  |----->|                  |----->|                  |
+           |                  |      |                  |      |                  |
+           +------------------+      +------------------+      +------------------+
+
+0.2 struct tracer
+================================================================================
+
+      struct tracer
+      +--------------------------------+<--------+
+      |next                            |         |
+      |    (struct tracer*)            |         |
+      |flags                           |         |
+      |    (struct tracer_flags*)      |         |
+      |    +---------------------------+         |
+      |    |val                        |         |
+      |    |    (u32)                  |         |
+      |    |trace                      | --------+
+      |    |    (struct tracer*)       |
+      |    |opts                       |
+      |    |    (struct tracer_opt*)   |
+      |    |                           |
+      |    +---------------------------+
+      |                                |
+      |init                            |  # 'echo name > current_tracer'
+      |start/stop                      |  # 'echo [0|1] > tracing_on'
+      |                                |
+      |                                |
+      +--------------------------------+
+
+0.2.1 trace_types
+================================================================================
+
+A tracer is add to trace_types via register_tracer().
+
+    trace_types
+       (struct tracer*)
+    +------------------+
+    |struct tracer*    |
+    +------------------+
+       |
+       |
+       |   function_trace               nop_trace
+       |      (struct tracer*)             (struct tracer*)
+       |   +------------------+         +------------------+
+       +-->|next              |-------->|next              |
+           |init              |         |init              |
+           +------------------+         +------------------+
 
 
+0.3 struct ftrace_ops
+================================================================================
+struct ftrace_ops is registered into system via __register_ftrace_function()
 
-0.2 struct trace_buffer
+      struct ftrace_ops (e.g. global_ops)
+      +--------------------------------+
+      |next                            |
+      |    (struct ftrace_ops*)        |
+      |func                            |  = e.g. ftrace_stub
+      |saved_func                      |  save the last func for unregister
+      |    (ftrace_func_t)             |
+      |                                |
+      |private                         |  = e.g. global_trace
+      |    (void *)                    |
+      |                                |
+      |func_hash                    ---|---+
+      |    (struct ftrace_ops_hash*)   |   |
+      |local_hash                   <--|---+
+      |old_hash                        |
+      |    (struct ftrace_ops_hash)    |
+      |    +---------------------------+
+      |    |notrace_hash               |
+      |    |filter_hash                |
+      |    |   (struct ftrace_hash*)   |
+      |    |   +-----------------------+
+      |    |   |size_bits              |
+      |    |   |count                  |
+      |    |   |    (unsigned long)    |
+      |    |   |buckets                |  ftrace_func_entry
+      |    |   |   (struct hlist_head*)|
+      |    |   |                       |  +----------+----------+----------+----------+
+      |    |   |                       |  |          |          |          |          |
+      |    |   |                       |  +----------+----------+----------+----------+
+      |    |   |                       |
+      |    +---+-----------------------+
+      |trampoline                      |
+      |trampoline_size                 |
+      |    (unsigned long)             |
+      |                                |
+      +--------------------------------+
+
+0.3.1 ftrace_ops_list / ftrace_list_end
+================================================================================
+
+ftrace_ops is registered into ftrace_ops_list via
+__register_ftrace_function(), which maybe triggered by call on
+tracing_set_tracer.
+
+     ftrace_ops_list
+     +-------------------+
+     |struct ftrace_ops* |
+     +-------------------+
+               |
+               |                                                      &trace_list_end
+               |    +-------------------+    +-------------------+    +-------------------+
+               +--->|struct ftrace_ops* |--->|struct ftrace_ops* |--->|struct ftrace_ops* |
+                    +-------------------+    +-------------------+    +-------------------+
+
+
+0.4 struct trace_buffer
 ================================================================================
 
    temp_buffer (struct trace_buffer)
@@ -374,87 +496,6 @@ ftrace_number_of_groups
                                                                             |data[]              |
                                                                             +--------------------+
 
-0.3 struct tracer
-================================================================================
-
-    trace_types
-       (struct tracer*)
-    +------------------+
-    |struct tracer*    |
-    +------------------+
-       |
-       |
-       |   function_trace               nop_trace
-       |      (struct tracer*)             (struct tracer*)
-       |   +------------------+         +------------------+
-       +-->|next              |-------->|next              |
-           |init              |         |init              |
-           +------------------+         +------------------+
-
-
-
-      struct tracer
-      +--------------------------------+<--------+
-      |next                            |         |
-      |    (struct tracer*)            |         |
-      |flags                           |         |
-      |    (struct tracer_flags*)      |         |
-      |    +---------------------------+         |
-      |    |val                        |         |
-      |    |    (u32)                  |         |
-      |    |trace                      | --------+
-      |    |    (struct tracer*)       |
-      |    |opts                       |
-      |    |    (struct tracer_ops*)   |
-      |    |                           |
-      |    +---------------------------+
-      |                                |
-      |init                            |  # 'echo name > current_tracer'
-      |start/stop                      |  # 'echo [01] > tracing_on'
-      |                                |
-      |                                |
-      +--------------------------------+
-
-0.4 struct ftrace_ops
-================================================================================
-struct ftrace_ops is registered into system via __register_ftrace_function()
-
-      struct ftrace_ops (e.g. global_ops)
-      +--------------------------------+
-      |next                            |
-      |    (struct ftrace_ops*)        |
-      |func                            |  = e.g. ftrace_stub
-      |saved_func                      |  save the last func for unregister
-      |    (ftrace_func_t)             |
-      |                                |
-      |private                         |  = e.g. global_trace
-      |    (void *)                    |
-      |                                |
-      |func_hash                    ---|---+
-      |    (struct ftrace_ops_hash*)   |   |
-      |local_hash                   <--|---+
-      |old_hash                        |
-      |    (struct ftrace_ops_hash)    |
-      |    +---------------------------+
-      |    |notrace_hash               |
-      |    |filter_hash                |
-      |    |   (struct ftrace_hash*)   |
-      |    |   +-----------------------+
-      |    |   |size_bits              |
-      |    |   |count                  |
-      |    |   |    (unsigned long)    |
-      |    |   |buckets                |  ftrace_func_entry
-      |    |   |   (struct hlist_head*)|
-      |    |   |                       |  +----------+----------+----------+----------+
-      |    |   |                       |  |          |          |          |          |
-      |    |   |                       |  +----------+----------+----------+----------+
-      |    |   |                       |
-      |    +---+-----------------------+
-      |trampoline                      |
-      |trampoline_size                 |
-      |    (unsigned long)             |
-      |                                |
-      +--------------------------------+
 
 0.5 dyn_ftrace
 ================================================================================
