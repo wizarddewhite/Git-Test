@@ -146,14 +146,53 @@ ftrace_ops_update_code
 7.2 register_tracer(&function_trace)
 ================================================================================
 
-9. text_poke_queue()
+8. ftrace_replace_code()
 ================================================================================
-9.1 text_poke_flush()
+8.1 ftrace_test_record(rec,), check dyn_ftrace.flags
 ================================================================================
-9.1.1 text_poke_bp_batch(), all the secret about instruction replacement is here
+see 0.3.1 for detail of dyn_ftrace.flags
+8.1.1 ftrace_check_record(rec, enable, false)
+================================================================================
+8.2 old = ftrace_call_replace(rec->ip, ftrace_get_addr_curr(rec))
+================================================================================
+8.2.1 ftrace_get_addr_curr(rec), return current rec's function, e.g. ftrace_caller
+================================================================================
+8.2.1.1 return ops->trampoline;
+================================================================================
+8.2.1.2 return (unsigned long)FTRACE_REGS_ADDR; -> ftrace_regs_caller
+================================================================================
+8.2.1.3 return (unsigned long)FTRACE_ADDR; -> ftrace_caller
+================================================================================
+8.2.2 text_gen_insn(CALL_INSN_OPCODE, rec->ip, ftrace_caller)
+================================================================================
+8.2.2.1 it "generate" an call instruction from rec->ip to ftrace_caller
+================================================================================
+8.3 ftrace_verify_code(rec->ip, old)
+================================================================================
+8.4 new = ftrace_call_replace(rec->ip, ftrace_get_addr_new(rec))
+================================================================================
+8.4.1 ftrace_get_addr_new(rec)
+================================================================================
+8.5 text_poke_queue(rec->ip, new, MCOUNT_INSN_SIZE, NULL)
+================================================================================
+8.5.1 text_poke_early(rec->ip, new, MCOUNT_INSN_SIZE), on sys_boot
+================================================================================
+8.5.2 text_poke_loc_init()
+================================================================================
+8.5.3 text_poke_flush(rec->ip)
+================================================================================
+8.6 ftrace_update_record(rec), update dyn_ftrace.flags
+================================================================================
+8.6.1 ftrace_check_record(rec, enable, true)
+================================================================================
+8.7 text_poke_finish() -> text_poke_flush()
+================================================================================
+8.7.1 text_poke_bp_batch(tp_vec, tp_vec_nr), update instruction on live kernel
+================================================================================
+8.7.1.1 text_poke(), the secret of modify kernel exec region
 ================================================================================
 
-10. update_ftrace_function, update ftrace_trace_function pointer
+9. update_ftrace_function, update ftrace_trace_function pointer
 ================================================================================
 tracing_set_tracer, write to "current_tracer"
     tracer_init(struct tracer *t, struct trace_array *tr)
@@ -165,52 +204,6 @@ tracing_set_tracer, write to "current_tracer"
                             ops->saved_func = ops->func
                             update_ftrace_function
                                 ftrace_trace_function = func;, e.g. ftrace_ops_list_func
-
-11. ftrace_replace_code()
-================================================================================
-11.1 ftrace_test_record(rec,), check dyn_ftrace.flags
-================================================================================
-see 0.3.1 for detail of dyn_ftrace.flags
-11.1.1 ftrace_check_record(rec, enable, false)
-================================================================================
-11.2 old = ftrace_call_replace(rec->ip, ftrace_get_addr_curr(rec))
-================================================================================
-11.2.1 ftrace_get_addr_curr(rec), return current rec's function, e.g. ftrace_caller
-================================================================================
-11.2.1.1 return ops->trampoline;
-================================================================================
-11.2.1.2 return (unsigned long)FTRACE_REGS_ADDR; -> ftrace_regs_caller
-================================================================================
-11.2.1.3 return (unsigned long)FTRACE_ADDR; -> ftrace_caller
-================================================================================
-11.2.2 text_gen_insn(CALL_INSN_OPCODE, rec->ip, ftrace_caller)
-================================================================================
-11.2.2.1 it "generate" an call instruction from rec->ip to ftrace_caller
-================================================================================
-11.3 ftrace_verify_code(rec->ip, old)
-================================================================================
-11.4 new = ftrace_call_replace(rec->ip, ftrace_get_addr_new(rec))
-================================================================================
-11.4.1 ftrace_get_addr_new(rec)
-================================================================================
-11.5 text_poke_queue(rec->ip, new, MCOUNT_INSN_SIZE, NULL)
-================================================================================
-11.5.1 text_poke_early(rec->ip, new, MCOUNT_INSN_SIZE), on sys_boot
-================================================================================
-11.5.2 text_poke_loc_init()
-================================================================================
-11.5.3 text_poke_flush(rec->ip)
-================================================================================
-11.6 ftrace_update_record(rec), update dyn_ftrace.flags
-================================================================================
-11.6.1 ftrace_check_record(rec, enable, true)
-================================================================================
-11.7 text_poke_finish() -> text_poke_flush()
-================================================================================
-11.7.1 text_poke_bp_batch(tp_vec, tp_vec_nr), update instruction on live kernel
-================================================================================
-11.7.1.1 text_poke, the secret of modify kernel exec region
-================================================================================
 
 0. Data struct
 ================================================================================
