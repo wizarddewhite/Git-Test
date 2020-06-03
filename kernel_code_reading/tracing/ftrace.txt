@@ -197,13 +197,18 @@ see 0.3.1 for detail of dyn_ftrace.flags
 tracing_set_tracer, write to "current_tracer"
     tracer_init(struct tracer *t, struct trace_array *tr)
         t->init(tr) -> e.g. function_trace_init
+            func = function_trace_call
+            ftrace_init_array_ops(tr, func)
+                tr->ops->func = func;
+                tr->ops->private = tr;
             tracing_start_function_trace(tr)
                 register_ftrace_function(tr->ops), e.g. global_trace 
                     ftrace_startup(ops, 0);
                         __register_ftrace_function(ops);
                             ops->saved_func = ops->func
                             update_ftrace_function
-                                ftrace_trace_function = func;, e.g. ftrace_ops_list_func
+                                func = ftrace_ops_list_func;
+                                ftrace_trace_function = func;
 
 0. Data struct
 ================================================================================
