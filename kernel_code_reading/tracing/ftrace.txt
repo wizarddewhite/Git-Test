@@ -318,3 +318,47 @@ Add a dump_stack() in ftrace_create_filter_files(), the result shows:
                        |                 |
                        |                 |
                        +-----------------+
+
+
+0.5 how dynamic changes works one case
+================================================================================
+
+                              compile time     __fentry__
+                             +------------->+---------------+
+                             |              |retq           |
+                             |              |               |
+          kernel._text       |              +---------------+
+          +--------------+   |
+          |              |   |
+          |              |   |boot up
+    ip -> |           ---|---+-------------> = nop
+          |              |   |
+          |              |   |
+          +--------------+   |
+                             |
+                             |
+                             |enabled         ftrace_caller 
+                             +------------->+---------------+
+                                            |               |
+                                            |ftrace_call    |
+                                            |               |
+                                            +---------------+
+
+
+
+                              compile time     ftrace_stub
+                             +------------->+---------------+
+                             |              |retq           |
+        ftrace_caller        |              |               |
+        +---------------+    |              +---------------+
+        |               |    |
+        |ftrace_call  --|----+
+        |               |    |
+        +---------------+    |
+                             |
+                             |enabled        ftrace_ops_list_func  
+                             +------------->+---------------+
+                                            |               |
+                                            |ops->func      | = function_trace_call
+                                            |               |
+                                            +---------------+
