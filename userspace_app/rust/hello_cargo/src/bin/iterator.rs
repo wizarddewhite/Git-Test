@@ -31,6 +31,8 @@ fn main() {
 
     // own iterator
     test_own_iterator();
+
+    test_iter_find();
 }
 
 #[derive(PartialEq, Debug)]
@@ -108,5 +110,14 @@ fn test_own_iterator() {
     let mul = Counter::new().zip(Counter::new().skip(1)).map(|(a, b)| a * b);
     for e in mul {
         println!("{:?}", e);
+    }
+}
+
+fn test_iter_find() {
+    let list = vec![1, 4, 2, 7, 9];
+
+    match list.iter().find(|&&i| i == 4) {
+        None => println!("Not find 4"),
+        Some(_) => println!("We find it!"),
     }
 }
