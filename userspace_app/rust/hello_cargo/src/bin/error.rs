@@ -91,15 +91,26 @@ fn test_new_guest() {
 pub enum OwnError {
     Start,
     Stop,
+    Wait(i32),
+    Pause(i32),
 }
 
 fn return_err() -> Result<i32, ErrorKind> {
     Err(ErrorKind::NotFound)
 }
 
+fn return_wait() -> Result<i32, i32> {
+    Err(5)
+}
+
 // map an error from one type to a user defined one
 fn test_map_err() -> Result<i32, OwnError> {
-    return_err().map_err(|_| OwnError::Start)
+    return_err().map_err(|_| OwnError::Start)?;
+
+    // when e has the same type wrapped by enum, we can simplify the code
+    // so the following two line are the same
+    // return_wait().map_err(|e| OwnError::Wait(e));
+    return_wait().map_err(OwnError::Wait)
 }
 
 fn main() {
