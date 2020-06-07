@@ -87,6 +87,21 @@ fn test_new_guest() {
     }
 }
 
+// Define your own error
+pub enum OwnError {
+    Start,
+    Stop,
+}
+
+fn return_err() -> Result<i32, ErrorKind> {
+    Err(ErrorKind::NotFound)
+}
+
+// map an error from one type to a user defined one
+fn test_map_err() -> Result<i32, OwnError> {
+    return_err().map_err(|_| OwnError::Start)
+}
+
 fn main() {
     test_new_guest();
     test_recoverable();
