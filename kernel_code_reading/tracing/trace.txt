@@ -358,8 +358,8 @@ struct ftrace_ops is registered into system via __register_ftrace_function()
       |    |   |size_bits              |
       |    |   |count                  |
       |    |   |    (unsigned long)    |
-      |    |   |buckets                |  ftrace_func_entry
-      |    |   |   (struct hlist_head*)|
+      |    |   |buckets                |
+      |    |   |   (struct hlist_head*)|  ftrace_func_entry
       |    |   |                       |  +----------+----------+----------+----------+
       |    |   |                       |  |          |          |          |          |
       |    |   |                       |  +----------+----------+----------+----------+
