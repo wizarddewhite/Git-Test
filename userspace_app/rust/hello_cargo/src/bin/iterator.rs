@@ -33,6 +33,7 @@ fn main() {
     test_own_iterator();
 
     test_iter_find();
+    test_map_fold();
 }
 
 #[derive(PartialEq, Debug)]
@@ -120,4 +121,14 @@ fn test_iter_find() {
         None => println!("Not find 4"),
         Some(_) => println!("We find it!"),
     }
+}
+
+fn test_map_fold() {
+    let vec = vec![1, 2, 4];
+    // each element count 1, and do the sum
+    println!("vec has {} elements", 
+        vec.iter().map(|_| 1).fold(0, std::ops::Add::add));
+    // get value of each element, and do the sum
+    println!("total number of vec {} ", 
+        vec.iter().map(|v| v).fold(0, std::ops::Add::add));
 }
