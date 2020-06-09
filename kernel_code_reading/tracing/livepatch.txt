@@ -251,6 +251,36 @@ End of assembler dump.
 Now, return from add(), we execute leaveq(0x00400528) directly instead of
 handle return value.
 
+5. Leverage callq/retq to switch to new_func
+================================================================================
+
+ftrace_regs_caller
+    pushfq
+    save_mcount_regs 8
+        movq MCOUNT_REG_SIZE+\added(%rsp), %rdi
+        movq %rdi, RIP(%rsp)                         <-- save it to pt_regs
+    leaq (%rsp), %rcx                                <-- 4th parameter pt_regs
+    ftrace_ops_list_func
+        klp_ftrace_handler(ip, parent_ip, fops, pt_regs)
+            klp_arch_set_pc(regs, func->new_func)
+                regs->ip = ip;
+    movq RIP(%rsp), %rax                             <-- it is func->new_func
+    movq %rax, MCOUNT_REG_SIZE+8(%rsp)
+
+
+                      rsp  --->+-------------------+---
+                               |                   | ^
+                               |                   | |
+                               |                   |    MCOUNT_REG_SIZE
+                               |                   | |
+                               |                   | v
+                               +-------------------+---
+                               |eflags             |    8
+   MCOUNT_REG_SIZE+8(%rsp) --->+-------------------+---
+                               |return address     |
+                               +-------------------+
+
+
 0. data struct
 ================================================================================
 
