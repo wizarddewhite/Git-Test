@@ -95,6 +95,162 @@
 3.1.1.1 add_ftrace_ops(&ftrace_ops_list, ops)
 ================================================================================
 
+4. retq
+================================================================================
+4.1 Test code
+================================================================================
+
+#include <stdio.h>
+
+int add(int a, int b)
+{
+        return a + b;
+}
+
+int main()
+{
+        int a = 3;
+        a = a + 3;
+        add(a, 2);
+        return 0;
+}
+
+Disassemble code:
+
+(gdb) disassemble main
+Dump of assembler code for function main:              
+   0x0000000000400501 <+0>:     push   %rbp            
+   0x0000000000400502 <+1>:     mov    %rsp,%rbp       
+   0x0000000000400505 <+4>:     sub    $0x10,%rsp      
+   0x0000000000400509 <+8>:     movl   $0x3,-0x4(%rbp) 
+   0x0000000000400510 <+15>:    addl   $0x3,-0x4(%rbp) 
+   0x0000000000400514 <+19>:    mov    -0x4(%rbp),%eax 
+   0x0000000000400517 <+22>:    mov    $0x2,%esi       
+   0x000000000040051c <+27>:    mov    %eax,%edi       
+   0x000000000040051e <+29>:    callq  0x4004ed <add>  
+   0x0000000000400523 <+34>:    mov    $0x0,%eax       
+   0x0000000000400528 <+39>:    leaveq                 
+   0x0000000000400529 <+40>:    retq                   
+End of assembler dump.                                 
+(gdb) disassemble add                                  
+Dump of assembler code for function add:               
+   0x00000000004004ed <+0>:     push   %rbp            
+   0x00000000004004ee <+1>:     mov    %rsp,%rbp       
+   0x00000000004004f1 <+4>:     mov    %edi,-0x4(%rbp) 
+   0x00000000004004f4 <+7>:     mov    %esi,-0x8(%rbp) 
+   0x00000000004004f7 <+10>:    mov    -0x8(%rbp),%eax 
+   0x00000000004004fa <+13>:    mov    -0x4(%rbp),%edx 
+   0x00000000004004fd <+16>:    add    %edx,%eax       
+   0x00000000004004ff <+18>:    pop    %rbp            
+=> 0x0000000000400500 <+19>:    retq
+
+4.2 Return address is push on stack after callq
+================================================================================
+After "callq 0x4004ed", we can see the return address is pushed on to stack.
+
+(gdb) x/4xw $rsp
+0x7fffffffe2e8: 0x00400523
+
+Let's see how this value is used in retq. First let's step to the last
+instruction of add(), which is retq here. We can see on the top of stack, the
+value is 0x00400523.
+
+(gdb) disassemble
+Dump of assembler code for function add:
+   0x00000000004004ed <+0>:     push   %rbp
+   0x00000000004004ee <+1>:     mov    %rsp,%rbp
+   0x00000000004004f1 <+4>:     mov    %edi,-0x4(%rbp)
+   0x00000000004004f4 <+7>:     mov    %esi,-0x8(%rbp)
+   0x00000000004004f7 <+10>:    mov    -0x8(%rbp),%eax
+   0x00000000004004fa <+13>:    mov    -0x4(%rbp),%edx
+   0x00000000004004fd <+16>:    add    %edx,%eax
+   0x00000000004004ff <+18>:    pop    %rbp
+=> 0x0000000000400500 <+19>:    retq
+End of assembler dump.
+(gdb) info registers rsp
+rsp            0x7fffffffe2e8   0x7fffffffe2e8
+(gdb) x/1xw 0x7fffffffe2e8
+0x7fffffffe2e8: 0x00400523
+(gdb) stepi
+main () at main.c:13
+13              return 0;
+(gdb) info registers rsp
+rsp            0x7fffffffe2f0   0x7fffffffe2f0
+(gdb) info registers rip
+rip            0x400523 0x400523 <main+34>
+(gdb) disassemble
+Dump of assembler code for function main:
+   0x0000000000400501 <+0>:     push   %rbp
+   0x0000000000400502 <+1>:     mov    %rsp,%rbp
+   0x0000000000400505 <+4>:     sub    $0x10,%rsp
+   0x0000000000400509 <+8>:     movl   $0x3,-0x4(%rbp)
+   0x0000000000400510 <+15>:    addl   $0x3,-0x4(%rbp)
+   0x0000000000400514 <+19>:    mov    -0x4(%rbp),%eax
+   0x0000000000400517 <+22>:    mov    $0x2,%esi
+   0x000000000040051c <+27>:    mov    %eax,%edi
+   0x000000000040051e <+29>:    callq  0x4004ed <add>
+=> 0x0000000000400523 <+34>:    mov    $0x0,%eax
+   0x0000000000400528 <+39>:    leaveq
+   0x0000000000400529 <+40>:    retq
+End of assembler dump.
+
+After retq, rsp is moved up and rip points to 0x400523. From the disassemble,
+the program continues after "callq".
+
+The process shows call/req would put/get return address on stack.
+
+4.3 Change Return Address on stack
+================================================================================
+
+This is natural to think about manipulate the return path by change the
+content on stack.
+
+After "callq 0x4004ed", we can see the content on $rsp is 0x00400523, which
+is the return address. Now let's secretly adjust the return address on stack:
+
+(gdb) disassemble
+Dump of assembler code for function add:
+   0x00000000004004ed <+0>:     push   %rbp
+   0x00000000004004ee <+1>:     mov    %rsp,%rbp
+   0x00000000004004f1 <+4>:     mov    %edi,-0x4(%rbp)
+   0x00000000004004f4 <+7>:     mov    %esi,-0x8(%rbp)
+   0x00000000004004f7 <+10>:    mov    -0x8(%rbp),%eax
+   0x00000000004004fa <+13>:    mov    -0x4(%rbp),%edx
+   0x00000000004004fd <+16>:    add    %edx,%eax
+   0x00000000004004ff <+18>:    pop    %rbp
+=> 0x0000000000400500 <+19>:    retq
+End of assembler dump.
+(gdb) info registers rsp
+rsp            0x7fffffffe2e8   0x7fffffffe2e8
+(gdb) x/1xw 0x7fffffffe2e8
+0x7fffffffe2e8: 0x00400523
+(gdb) set *((int *) 0x7fffffffe2e8) = 0x00400528
+(gdb) x/1xw 0x7fffffffe2e8
+0x7fffffffe2e8: 0x00400528
+(gdb) stepi
+main () at main.c:14
+14      }
+(gdb) info registers rip
+rip            0x400528 0x400528 <main+39>
+(gdb) disassemble
+Dump of assembler code for function main:
+   0x0000000000400501 <+0>:     push   %rbp
+   0x0000000000400502 <+1>:     mov    %rsp,%rbp
+   0x0000000000400505 <+4>:     sub    $0x10,%rsp
+   0x0000000000400509 <+8>:     movl   $0x3,-0x4(%rbp)
+   0x0000000000400510 <+15>:    addl   $0x3,-0x4(%rbp)
+   0x0000000000400514 <+19>:    mov    -0x4(%rbp),%eax
+   0x0000000000400517 <+22>:    mov    $0x2,%esi
+   0x000000000040051c <+27>:    mov    %eax,%edi
+   0x000000000040051e <+29>:    callq  0x4004ed <add>
+   0x0000000000400523 <+34>:    mov    $0x0,%eax
+=> 0x0000000000400528 <+39>:    leaveq
+   0x0000000000400529 <+40>:    retq
+End of assembler dump.
+
+Now, return from add(), we execute leaveq(0x00400528) directly instead of
+handle return value.
+
 0. data struct
 ================================================================================
 
