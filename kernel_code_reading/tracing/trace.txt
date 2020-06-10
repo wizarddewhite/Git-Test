@@ -139,11 +139,6 @@
 
 0. Data Structure
 ================================================================================
-Reference:
-
-https://lwn.net/Articles/379903/
-
-samples/trace_events/trace-events-sample.[ch]
 
 0.1 global variables
 ================================================================================

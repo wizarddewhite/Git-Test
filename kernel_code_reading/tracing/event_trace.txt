@@ -1,11 +1,63 @@
+1. TRACE_EVENT
+================================================================================
+       DECLARE_EVENT_CLASS(name,                              \
+                            PARAMS(proto),                    \
+                            PARAMS(args),                     \
+                            PARAMS(tstruct),                  \
+                            PARAMS(assign),                   \
+                            PARAMS(print));                   \
+       DEFINE_EVENT(name, name, PARAMS(proto), PARAMS(args));
+
+1.1 DECLARE_EVENT_CLASS
+================================================================================
+#define DECLARE_EVENT_CLASS(call, proto, args, tstruct, assign, print) \
+_TRACE_PERF_PROTO(call, PARAMS(proto));                                        \
+static char print_fmt_##call[] = print;                                        \
+static struct trace_event_class __used __refdata event_class_##call = { \
+       .system                 = TRACE_SYSTEM_STRING,                  \
+       .fields_array           = trace_event_fields_##call,            \
+       .fields                 = LIST_HEAD_INIT(event_class_##call.fields),\
+       .raw_init               = trace_event_raw_init,                 \
+       .probe                  = trace_event_raw_event_##call,         \
+       .reg                    = trace_event_reg,                      \
+       _TRACE_PERF_INIT(call)                                          \
+};
+
+
+1.2 DEFINE_EVENT, events are defined in _ftrace_events section
+================================================================================
+#define DEFINE_EVENT(template, call, proto, args)                      \
+                                                                       \
+static struct trace_event_call __used event_##call = {                 \
+       .class                  = &event_class_##template,              \
+       {                                                               \
+               .tp                     = &__tracepoint_##call,         \
+       },                                                              \
+       .event.funcs            = &trace_event_type_funcs_##template,   \
+       .print_fmt              = print_fmt_##template,                 \
+       .flags                  = TRACE_EVENT_FL_TRACEPOINT,            \
+};                                                                     \
+static struct trace_event_call __used                                  \
+__attribute__((section("_ftrace_events"))) *__event_##call = &event_##call
+
 
 0. Data Structure
 ================================================================================
 
-0.1 Reference:
+0.1 Reference
 ================================================================================
 
+0.1.1. How to use TRACE_EVENT
+================================================================================
+https://lwn.net/Articles/379903/
+
+samples/trace_events/trace-events-sample.[ch]
+
+
+0.1.2. Some internal
+================================================================================
 A very good reading for event trace
 
 https://www.ibm.com/developerworks/cn/linux/1609_houp_ftrace/index.html
+
 
