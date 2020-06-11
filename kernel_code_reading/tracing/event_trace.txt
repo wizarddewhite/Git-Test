@@ -41,23 +41,150 @@ static struct trace_event_call __used                                  \
 __attribute__((section("_ftrace_events"))) *__event_##call = &event_##call
 
 
-0. Data Structure
+2. Header file definition 
 ================================================================================
 
-0.1 Reference
+A header defines TRACE_EVENT():
+
+        trace-events-sample.h
+        +----------------------------------------------------------------+
+        |#define TRACE_SYSTEM      sample-trace                          |
+        |#define TRACE_SYSTEM_VAR  sample_trace                          |
+        |                                                                |
+        |#defined(TRACE_HEADER_MULTI_READ)                               |
+        |#include <linux/tracepoint.h>                                   |
+        |                                                                |
+        |   #define TRACE_EVENT(name) DECLARE_TRACE(name)                |
+        |   #define DECLARE_TRACE(name) __DECLARE_TRACE(name)            |
+        |   #define __DECLARE_TRACE()                                   \|
+        |           struct tracepoint __tracepoint_##name;              \|
+        |           void trace_##name() {}                              \|
+        |           int register_trace_##name()                         \|
+        |           int register_trace_prio_##name()                    \|
+        |           int unregister_trace_##name()                       \|
+        |           void check_trace_callback_type_##name()             \|
+        |           bool trace_##name_enabled()                         \|
+        |                                                                |
+        |TRACE_EVENT(foo_bar, );                                         |  <- expand 1st time
+        |#endif  // TRACE_HEADER_MULTI_READ                              |
+        |                                                                |
+        |#define TRACE_INCLUDE_FILE trace-events-sample                  |
+        |#include <trace/define_trace.h>                                 |
+        |                                                                |
+        |   #undef TRACE_EVENT()                                         |
+        |   #define TRACE_EVENT() DEFINE_TRACE()                         |
+        |   #define DEFINE_TRACE() DEFINE_TRACE_FN()                    \|  # in "linux/tracepoint.h"
+        |           char __tpstrtab_##name[] = #name;                   \|
+        |                section("__tracepoints_strings")               \|
+        |           struct tracepoint __tracepoint_##name =             \|
+        |              {__tpstrtab_##name, };                           \|
+        |                section("__tracepoints")                       \|
+        |           __TRACEPOINT_ENTRY(name);                            |
+        |                                                                |
+        |   #define TRACE_HEADER_MULTI_READ                              |
+        |   #include "trace-events-sample.h"                             |  # due to TRACE_HEADER_MULTI_READ
+        |                                                                |  # we just have TRACE_EVENT() left
+        |      TRACE_EVENT()                                             |  <- expand 2nd time
+        |                                                                |
+        |                                                                |
+        |   #include <trace/trace_events.h>                              |
+        |                                                                |
+        |      #undef TRACE_EVENT()                                      |
+        |      #define TRACE_EVENT()                                    \|
+        |              DECLARE_EVENT_CLASS()                            \|
+        |              DEFINE_EVENT()                                    |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              struct trace_event_raw_##name {};                \|
+        |              struct trace_event_class event_class_##name;      |
+        |      #undef DEFINE_EVENT()                                     |
+        |      #define DEFINE_EVENT()                                    |
+        |              struct trace_event_call event_##name;             |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 3rd time
+        |                                                                |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              struct trace_event_data_offset_##name {}          |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 4th time
+        |                                                                |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              enum print_line_t trace_raw_output_##name {}      |
+        |              struct trace_event_functions                     \|
+        |                       trace_event_type_funcs_##name {         \|
+        |                       .trace = trace_raw_output_##name,       \|
+        |                     }                                          |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 5th time
+        |                                                                |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              struct trace_event_fields                        \|
+        |                     trace_event_fields_##name[] = { tstruct }; |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 6th time
+        |                                                                |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              int trace_event_get_offsets_##name(              \|
+        |                  struct trace_event_data_offset_##name off,   \|
+        |                  proto) {}                                     |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 7th time
+        |                                                                |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              void trace_event_raw_event_##name() {}            |
+        |      #undef DEFINE_EVENT()                                     |
+        |      #define DEFINE_EVENT()                                   \|
+        |              void ftrace_test_probe_##name() {}                |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 8th time
+        |                                                                |
+        |      #undef DECLARE_EVENT_CLASS()                              |
+        |      #define DECLARE_EVENT_CLASS()                            \|
+        |              char print_fmt_##name[] = print;                 \|
+        |              struct trace_event_class event_class_##name = {}; |
+        |      #undef DEFINE_EVENT()                                     |
+        |      #define DEFINE_EVENT()                                   \|
+        |              struct trace_event_call event_##name = {};       \|
+        |              struct trace_event_call *__event_##name =        \|
+        |                                       &event_##name;           |
+        |                                                                |
+        |      #include "trace-events-sample.h"                          |
+        |         TRACE_EVENT()                                          |  <- expand 9th time
+        |                                                                |
+        +----------------------------------------------------------------+
+
+0. Reference
 ================================================================================
 
-0.1.1. How to use TRACE_EVENT
+0.1. How to use TRACE_EVENT
 ================================================================================
 https://lwn.net/Articles/379903/
 
 samples/trace_events/trace-events-sample.[ch]
 
 
-0.1.2. Some internal
+0.2. Some internal
 ================================================================================
 A very good reading for event trace
 
 https://www.ibm.com/developerworks/cn/linux/1609_houp_ftrace/index.html
+
+
+
+0. Data Structure
+================================================================================
+
+struct tracepoint
 
 
