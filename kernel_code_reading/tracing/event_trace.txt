@@ -224,28 +224,31 @@ https://www.ibm.com/developerworks/cn/linux/1609_houp_ftrace/index.html
 0.1 struct trace_event_call
 ================================================================================
 
-     trace_event_call
-     +------------------------------+
-     |list                          |
-     |    (struct list_head)        |
-     |name | tp                     |  = &__tracepoint_##name
-     |(char * | struct tracepoint *)|
-     |class                         |  = &event_class_##name
-     |   (struct trace_event_class*)|
-     |event                         |
-     |    (struct trace_event)      |
-     |    +-------------------------+
-     |    |funcs                    |  = &trace_event_type_funcs_##name
-     |    |  (trace_event_functions)|
-     |    +-------------------------+
-     |flags                         |
-     |    (int)                     |
-     |print_fmt                     |  = print_fmt_##name
-     |    (char *)                  |
-     |                              |
-     |                              |
-     |                              |
-     +------------------------------+
+ftrace_events
+    (struct list_head)
+    |
+    |    trace_event_call
+    |    +------------------------------+
+    +--->|list                          |
+         |    (struct list_head)        |
+         |name | tp                     |  = &__tracepoint_##name
+         |(char * | struct tracepoint *)|
+         |class                         |  = &event_class_##name
+         |   (struct trace_event_class*)|
+         |event                         |
+         |    (struct trace_event)      |
+         |    +-------------------------+
+         |    |funcs                    |  = &trace_event_type_funcs_##name
+         |    |  (trace_event_functions)|
+         |    +-------------------------+
+         |flags                         |
+         |    (int)                     |
+         |print_fmt                     |  = print_fmt_##name
+         |    (char *)                  |
+         |                              |
+         |                              |
+         |                              |
+         +------------------------------+
 
 0.2 struct tracepoint
 ================================================================================

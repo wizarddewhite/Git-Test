@@ -117,13 +117,6 @@
 3.8.4.4 rb_head_page_activate(cpu_buffer)
 ================================================================================
 
-4. event_init(call)
-================================================================================
-4.1 call->class->raw_init(call) -> trace_event_raw_init
-================================================================================
-4.1.1 register_trace_event(&call->event), add to event_hash[]
-================================================================================
-
 5. tracing_set_tracer(tr, buf)
 ================================================================================
 5.1 trace_branch_disable();
@@ -145,13 +138,14 @@
 0.1 global variables
 ================================================================================
 
+0.1.1 buffer
+================================================================================
+
 tracepoint_print_iter
     (struct trace_iterator*) 
 
 tracing_buffer_mask
     (cpumask_var_t)
-global_trace
-    (struct trace_array)
 
 trace_percpu_buffer
     (struct trace_buffer_struct)
@@ -159,25 +153,46 @@ trace_percpu_buffer
 temp_buffer
     (struct trace_buffer*)
 
+0.1.2 tracer
+================================================================================
 trace_types
     (struct tracer*)
+
+0.1.3 trace_array
+================================================================================
+global_trace
+    (struct trace_array)
 
 ftrace_commands
 trigger_commands
     (struct list_head)
 
+0.1.4 ftrace_pages
+================================================================================
 ftrace_pages
     (struct ftrace_page*)
 ftrace_number_of_pages
 ftrace_number_of_groups
     (unsigned long)
 
-
+0.1.5 ftrace_ops
+================================================================================
 ftrace_ops_list
     (struct ftrace_ops*)
 ftrace_list_end
 global_ops
     (struct ftrace_ops)
+
+0.1.6 ftrace_events
+================================================================================
+ftrace_events
+    (struct list_head)
+    |
+    |      struct trace_event_call   struct trace_event_call   struct trace_event_call
+    |      +------------------+      +------------------+      +------------------+
+    +----->|                  |----->|                  |----->|                  |
+           |                  |      |                  |      |                  |
+           +------------------+      +------------------+      +------------------+
 
 0.1 struct trace_array / global_trace
 ================================================================================
@@ -495,48 +510,6 @@ tracing_set_tracer.
                                                                             |data[]              |
                                                                             +--------------------+
 
-
-0.5 dyn_ftrace
-================================================================================
-
-    dyn_ftrace
-    +-----------------------------+
-    |ip                           |
-    |flags                        |
-    |    (unsigned long)          |
-    |arch                         |
-    |    (struct dyn_arch_ftrace) |
-    |                             |
-    |                             |
-    +-----------------------------+
-
-0.5.1 dyn_ftrace.flags
-================================================================================
-
-  The dyn_ftrace record's flags field is split into two parts.
-  the first part which is '0-FTRACE_REF_MAX' is a counter of
-  the number of callbacks that have registered the function that
-  the dyn_ftrace descriptor represents.
- 
-  The second part is a mask:
-   ENABLED - the function is being traced
-   REGS    - the record wants the function to save regs
-   REGS_EN - the function is set up to save regs.
-   IPMODIFY - the record allows for the IP address to be changed.
-   DISABLED - the record is not ready to be touched yet
-   DIRECT   - there is a direct function to call
- 
-  When a new ftrace_ops is registered and wants a function to save
-  pt_regs, the rec->flag REGS is set. When the function has been
-  set up to save regs, the REG_EN flag is set. Once a function
-  starts saving regs it will do so until all ftrace_ops are removed
-  from tracing that function.
-
-    31               23
-    +-----------------+-------------------------------------------+
-    | 9bit width mask |                counter                    |
-    +-----------------+-------------------------------------------+
-
 0.6 ftrace_page
 ================================================================================
 
@@ -583,6 +556,47 @@ ftrace_pages_start
     |next                         |     |arch      |          |     |          |          |
     |    (struct ftrace_page*)    |     +----------+----------+     +----------+----------+
     +-----------------------------+
+
+0.6.1 dyn_ftrace
+================================================================================
+
+    dyn_ftrace
+    +-----------------------------+
+    |ip                           |
+    |flags                        |
+    |    (unsigned long)          |
+    |arch                         |
+    |    (struct dyn_arch_ftrace) |
+    |                             |
+    |                             |
+    +-----------------------------+
+
+0.6.1.1 dyn_ftrace.flags
+================================================================================
+
+  The dyn_ftrace record's flags field is split into two parts.
+  the first part which is '0-FTRACE_REF_MAX' is a counter of
+  the number of callbacks that have registered the function that
+  the dyn_ftrace descriptor represents.
+
+  The second part is a mask:
+   ENABLED - the function is being traced
+   REGS    - the record wants the function to save regs
+   REGS_EN - the function is set up to save regs.
+   IPMODIFY - the record allows for the IP address to be changed.
+   DISABLED - the record is not ready to be touched yet
+   DIRECT   - there is a direct function to call
+
+  When a new ftrace_ops is registered and wants a function to save
+  pt_regs, the rec->flag REGS is set. When the function has been
+  set up to save regs, the REG_EN flag is set. Once a function
+  starts saving regs it will do so until all ftrace_ops are removed
+  from tracing that function.
+
+    31               23
+    +-----------------+-------------------------------------------+
+    | 9bit width mask |                counter                    |
+    +-----------------+-------------------------------------------+
 
 0.7 ftrace_iterator
 ================================================================================
