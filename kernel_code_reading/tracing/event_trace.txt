@@ -221,34 +221,19 @@ https://www.ibm.com/developerworks/cn/linux/1609_houp_ftrace/index.html
 0. Data Structure
 ================================================================================
 
-0.1 struct trace_event_call
+0.1 struct trace_event_call, the center of those data structures
 ================================================================================
 
 ftrace_events
     (struct list_head)
     |
-    |    trace_event_call
-    |    +------------------------------+
-    +--->|list                          |
-         |    (struct list_head)        |
-         |name | tp                     |  = &__tracepoint_##name
-         |(char * | struct tracepoint *)|
-         |class                         |  = &event_class_##name
-         |   (struct trace_event_class*)|
-         |event                         |
-         |    (struct trace_event)      |
-         |    +-------------------------+
-         |    |funcs                    |  = &trace_event_type_funcs_##name
-         |    |  (trace_event_functions)|
-         |    +-------------------------+
-         |flags                         |
-         |    (int)                     |
-         |print_fmt                     |  = print_fmt_##name
-         |    (char *)                  |
-         |                              |
-         |                              |
-         |                              |
-         +------------------------------+
+    |    trace_event_call             trace_event_call             trace_event_call         
+    |    +-----------------------+    +-----------------------+    +-----------------------+
+    +--->|list                   |--->|list                   |--->|list                   |
+         |    (struct list_head) |    |    (struct list_head) |    |    (struct list_head) |
+         +-----------------------+    +-----------------------+    +-----------------------+
+
+
 
 0.2 struct tracepoint
 ================================================================================
@@ -315,3 +300,62 @@ ftrace_event_list(struct list_head)
      +---+--------------------------+
 
 event_hash[128] (sturct hlist_head)
+
+
+0.5 trace_event_call <-> (tracepoint, trace_event, trace_event_class)
+================================================================================
+
+    trace_event_call
+    +------------------------------+
+    |list                          |
+    |    (struct list_head)        |
+    |name | tp                     |  = &__tracepoint_##name
+    |(char * | struct tracepoint *)|
+    |    +-------------------------+
+    |    |name                     |  = "name"
+    |    |    (char *)             |
+    |    |key                      |  = STATIC_KEY_INIT_FALSE
+    |    |    (struct static_key)  |
+    |    |regfunc                  |  = NULL
+    |    |unregfunc                |  = NULL
+    |    |    ()                   |
+    |    |funcs                    |  = NULL
+    |    |(struct tracepoint_func*)|
+    |    |                         |
+    |    +-------------------------+
+    |class                         |  = &event_class_##name
+    |   (struct trace_event_class*)|
+    |    +-------------------------+
+    |    |name                     |  = TRACE_SYSTEM_STRING
+    |    |    (char *)             |
+    |    |probe                    |  = trace_event_raw_event_##name
+    |    |    (void *)             |
+    |    |reg                      |  = trace_event_reg
+    |    |    (void *)             |
+    |    |raw_init                 |  = trace_event_raw_init
+    |    |    (int *)              |
+    |    |fields_array             |  = trace_event_fields_##name
+    |    |   (trace_event_fields *)|
+    |    +-------------------------+
+    |event                         |  # be registered by register_trace_event()
+    |    (struct trace_event)      |
+    |    +-------------------------+
+    |    |funcs                    |  = &trace_event_type_funcs_##name
+    |    |  (trace_event_functions)|
+    |    |  +----------------------+
+    |    |  |trace                 |  = trace_raw_output_##name -> trace_seq_printf(s, print)
+    |    |  |raw                   |  = trace_nop_print
+    |    |  |hex                   |  = trace_nop_print
+    |    |  |binary                |  = trace_nop_print
+    |    |  |    (trace_print_func)|
+    |    +--+----------------------+
+    |flags                         |
+    |    (int)                     |
+    |print_fmt                     |  = print_fmt_##name
+    |    (char *)                  |
+    |                              |
+    +------------------------------+
+
+
+print_fmt_##name is passed by in TRACE_EVENT( , , , , print)
+
