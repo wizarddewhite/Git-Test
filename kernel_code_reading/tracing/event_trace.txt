@@ -92,6 +92,11 @@ A header defines TRACE_EVENT():
         |              };                                               \|
         |                section("__tracepoints")                       \|
         |           __TRACEPOINT_ENTRY(name);                            |
+        |   #define __TRACEPOINT_ENTRY(name)                            \|
+        |           tracepoint_ptr_t __tracepoint_ptr_##name            \|
+        |           __attribute__((section("__tracepoints_ptrs"))) =    \|
+        |                 &__tracepoint_##name                           |
+        |                                                                |
         |                                                                |
         |   #define TRACE_HEADER_MULTI_READ                              |
         |   #include "trace-events-sample.h"                             |  # due to TRACE_HEADER_MULTI_READ
@@ -258,6 +263,26 @@ A header defines TRACE_EVENT():
 5.7 register_module_notifier(&trace_module_nb)
 ================================================================================
 
+6. event_enable_write(), enable one trace_event
+================================================================================
+6.1 ftrace_event_enable_disable(file, val) -> __ftrace_event_enable_disable()
+================================================================================
+6.1.1 call->class->reg() -> trace_event_reg()
+================================================================================
+6.1.1.1 tracepoint_probe_register(call->tp, class->class->probe, file)
+================================================================================
+
+7. trace_##name()
+================================================================================
+7.1 __DO_TRACE(&__tracepoint_##name, )
+================================================================================
+7.1.1 it_func_ptr = __tracepoint_->funcs
+================================================================================
+7.1.2 it_func = it_func_ptr->func
+================================================================================
+7.1.3 it_func(args)
+================================================================================
+
 0. Reference
 ================================================================================
 
@@ -378,7 +403,9 @@ event_hash[128] (sturct hlist_head)
     |    |unregfunc                |  = NULL
     |    |    ()                   |
     |    |funcs                    |  = NULL
-    |    |(struct tracepoint_func*)|
+    |    |(struct tracepoint_func*)|    first entry is assigned to
+    |    |                         |    trace_event_raw_event_##name
+    |    |                         |    by tracepoint_probe_register
     |    |                         |
     |    +-------------------------+
     |class                         |  = &event_class_##name
@@ -416,4 +443,8 @@ event_hash[128] (sturct hlist_head)
 
 
 print_fmt_##name is passed by in TRACE_EVENT( , , , , print)
+
+0.6 trace_event_file
+================================================================================
+
 
