@@ -330,10 +330,16 @@ ftrace_events
      |regfunc                       |  = NULL
      |unregfunc                     |  = NULL
      |    ()                        |
-     |funcs                         |  = NULL
+     |funcs                         |
      |    (struct tracepoint_func*) |
      |    +-------------------------+
-     |    |func                     |
+     |    |func                     |  = trace_event_raw_event_##name
+     |    |data                     |  = &trace_event_file
+     |    |    (void *)             |
+     |    |prio                     |
+     |    |    (int)                |
+     |    +-------------------------+
+     |    |func                     |  = NULL  
      |    |data                     |
      |    |    (void *)             |
      |    |prio                     |
@@ -402,7 +408,7 @@ event_hash[128] (sturct hlist_head)
     |    |regfunc                  |  = NULL
     |    |unregfunc                |  = NULL
     |    |    ()                   |
-    |    |funcs                    |  = NULL
+    |    |funcs                    |  = NULL (a NULL terminated array)
     |    |(struct tracepoint_func*)|    first entry is assigned to
     |    |                         |    trace_event_raw_event_##name
     |    |                         |    by tracepoint_probe_register
@@ -444,7 +450,30 @@ event_hash[128] (sturct hlist_head)
 
 print_fmt_##name is passed by in TRACE_EVENT( , , , , print)
 
-0.6 trace_event_file
+0.6 trace_array.events <-> trace_event_file <-> trace_event_call
 ================================================================================
 
 
+                                        
+                                        
+                                        
+      struct trace_array
+      +--------------------------------+
+      |events                          |
+      |    (struct list_head)          |
+      |       ^                        |
+      |       |                        |
+      +--------------------------------+
+              |                         
+              |
+              |
+              |      trace_event_file                trace_event_file                trace_event_file
+              |      +--------------------------+    +--------------------------+    +--------------------------+
+              |      |tr                        |    |tr                        |    |tr                        |
+              |      |     (struct trace_array*)|    |     (struct trace_array*)|    |     (struct trace_array*)|
+              +----->|list                      |<-->|list                      |<-->|list                      |
+                     |     (struct list)        |    |     (struct list)        |    |     (struct list)        |
+                     |event_call                |    |event_call                |    |event_call                |
+                     |     (trace_event_call *) |    |     (trace_event_call *) |    |     (trace_event_call *) |
+                     |                          |    |                          |    |                          |
+                     +--------------------------+    +--------------------------+    +--------------------------+
