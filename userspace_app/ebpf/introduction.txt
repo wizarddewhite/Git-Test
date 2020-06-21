@@ -70,19 +70,20 @@ CONFIG_VXLAN=m
 ================================================================================
 
                             Kernel
-                             +------------------------------+
-                             |                              |
-                             | .............                |
-                             | . Map       .        * * * * |
-                             | .............         BPF    |
-                             |      ^               *     * |
-                             |      |                       |
-    +------------+   bpf()   |      v               *     * |
-    | Userspace  |  syscall  | +--------------+      Prog   |
-    |            |< - - - - >| | bpf_map::ops |< - >*     * |
-    |  Process   |           | +--------------+             |
-    +------------+           |                      * * * * |
-                             +------------------------------+
+                             +--------------------------------+
+                             |                                |
+                             | .............                  |
+                             | . Map       .          * * * * |
+                             | .............           BPF    |
+                             |      ^                 *     * |
+                             |      |                         |
+    +------------+   bpf()   |      v                 *     * |
+    | Userspace  |  syscall  | +----------------+      Prog   |
+    |            |< - - - - >| | bpf_map::ops   |< - >*     * |
+    |  Process   |           | | (bpf/helpers.c)|             |
+    | (libbpf.a) |           | +----------------+     * * * * |
+    +------------+           |                                |
+                             +--------------------------------+
 
 
 4. command, map, program
@@ -241,6 +242,11 @@ It is in kernel source code directory:
 bpf_prog_load()
 bpf_map_lookup_elem()
 
+5.1.1 bpf_prog_load(file, type, pobj, prog_fd)
+================================================================================
+5.1.1.1 bpf_prog_load_xattr(&attr, pobj)
+================================================================================
+
 5.2 libbpf finally use bpf() syscall to connect with kernel
 ================================================================================
 
@@ -266,3 +272,32 @@ BPF_CALL_2(bpf_map_lookup_elem, struct bpf_map *, map, void *, key)
 llvm built-in, load_half()/load_word() is declared in
 tools/testing/selftests/bpf/bpf_legacy.h
 
+0. data struct (user land)
+================================================================================
+
+    bpf_object
+    +-------------------------------+
+    |list                           |
+    |    (struct list_head)         |
+    |name[]                         |
+    |    (char)                     |
+    |                               |
+    |programs                       |
+    |    (struct bpf_program*)      |
+    |nr_programs                    |
+    |    (size_t)                   |
+    |maps                           |
+    |    (struct bpf_map*)          |
+    |nr_maps                        |
+    |maps_cap                       |
+    |    (size_t)                   |
+    |                               |
+    |btf                            |
+    |    (struct btf*)              |
+    |                               |
+    |                               |
+    |                               |
+    +-------------------------------+
+
+0. data struct (kernel space)
+================================================================================
