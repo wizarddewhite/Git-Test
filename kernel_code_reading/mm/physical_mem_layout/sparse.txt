@@ -211,7 +211,10 @@ A node must has a size larger than section size?
      |   (mem_section_usage *)     |
      |   +-------------------------+
      |   |subsection_map           |
-     |   |    (bitmap)             |    each 4bits represents a pageblock type
+     |   |    (bitmap)             |
+     |   |                         |
+     |   |                         |    [(1UL << (PFN_SECTION_SHIFT - pageblock_order))]
+     |   |                         |    each 4bits represents a pageblock type
      |   |pageblock_flags[0]       |    get_pfnblock_flags_mask() / get_pfnblock_migratetype()
      |   |    (unsigned long)   ---|--->+----+----+----+---...---+----+----+
      +---+-------------------------+    |    |    |    |         |    |    |
@@ -273,3 +276,34 @@ Tow bits in GFP[4:5] represents the migrate type for page allocation.
 
 But the max value from this operation is [0-3], while MIGRATE_TYPES could be
 in range [0-7]. Confused.
+
+0.1.2 migratetype
+================================================================================
+
+There are total 5 possible migrate types.
+
+enum migratetype {
+	MIGRATE_UNMOVABLE,
+	MIGRATE_MOVABLE,
+	MIGRATE_RECLAIMABLE,
+	MIGRATE_PCPTYPES,	/* the number of types on the pcp lists */
+	MIGRATE_HIGHATOMIC = MIGRATE_PCPTYPES,
+#ifdef CONFIG_CMA
+	MIGRATE_CMA,
+#endif
+#ifdef CONFIG_MEMORY_ISOLATION
+	MIGRATE_ISOLATE,	/* can't allocate from here */
+#endif
+	MIGRATE_TYPES
+};
+
+      +------------------------------+      The buddy system
+      |free_area[MAX_ORDER]  0...11  |
+      |   (struct free_area)         | 
+      |   +--------------------------+
+      |   |                          |
+      |   |free_list[MIGRATE_TYPES]  |
+      |   |(struct list_head)        |
+      |   |                          |
+      |   |                          |
+      +---+--------------------------+
