@@ -1,3 +1,4 @@
+Qemu command example:
 
 /home/richard/git/qemu/x86_64-softmmu/qemu-system-x86_64 -machine pc,nvdimm \
 	-m 4G,slots=4,maxmem=128G -smp 8 --enable-kvm \
@@ -7,6 +8,13 @@
 	-device nvdimm,id=nvdimm1,memdev=mem1,label-size=128k \
 	-object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax0.1,size=2G,align=2M \
 	-device nvdimm,id=nvdimm2,memdev=mem2,label-size=128k
+
+Or use memory as backend:
+
+    -object memory-backend-ram,id=mem0,size=8G \
+    -device nvdimm,id=vm0,memdev=mem0,addr=0x144000000,label-size=128k
+
+Usually not necessary to specify the start address.
 
 In case backend is a pmem, we should configure like this:
 
