@@ -1,0 +1,229 @@
+
+0. data struct
+================================================================================
+
+0.1 node_page_state
+================================================================================
+
+0.1.1 per_cpu_nodestat, each node has this field
+================================================================================
+
+    pgdat->per_cpu_nodestat                     =>   vm_node_stat[NR_VM_NODE_STAT_ITEMS]
+    +----------------------------------------+
+    |stat_threshold                          |
+    |    (s8)                                |
+    |vm_node_stat_diff[NR_VM_NODE_STAT_ITEMS]|
+    |    (s8)                                |
+    |      NR_INACTIVE_ANON                  |
+    |      NR_ACTIVE_ANON                    |
+    |      NR_INACTIVE_FILE                  |
+    |      NR_ACTIVE_FILE                    |
+    |      NR_UNEVICTABLE                    |
+    |                                        |
+    |      NR_SLAB_RECLAIMABLE               |
+    |      NR_SLAB_UNRECLAIMABLE             |
+    |      NR_ISOLATED_ANON                  |
+    |      NR_ISOLATED_FILE                  |
+    |      WORKINGSET_NODES                  |
+    |      WORKINGSET_REFAULT                |
+    |      WORKINGSET_ACTIVATE               |
+    |      WORKINGSET_RESTORE                |
+    |      WORKINGSET_NODERECLAIM            |
+    |      NR_ANON_MAPPED                    |
+    |      NR_FILE_MAPPED                    |
+    |      NR_FILE_PAGES                     |
+    |      NR_FILE_DIRTY                     |
+    |      NR_WRITEBACK                      |
+    |      NR_WRITEBACK_TEMP                 |
+    |      NR_SHMEM                          |
+    |      NR_SHMEM_THPS                     |
+    |      NR_SHMEM_PMDMAPPED                |
+    |      NR_FILE_THPS                      |
+    |      NR_FILE_PMDMAPPED                 |
+    |      NR_ANON_THPS                      |
+    |      NR_VMSCAN_WRITE                   |
+    |      NR_VMSCAN_IMMEDIATE               |
+    |      NR_DIRTIED                        |
+    |      NR_WRITTEN                        |
+    |      NR_KERNEL_MISC_RECLAIMABLE        |
+    |      NR_FOLL_PIN_ACQUIRED              |
+    |      NR_FOLL_PIN_RELEASED              |
+    |      NR_VM_NODE_STAT_ITEMS             |
+    +----------------------------------------+
+
+0.1.2 per_cpu_nodestat -> pgdat->vm_stat -> vm_node_stat
+================================================================================
+
+__mod_node_page_state()
+__inc_node_state()
+__dec_node_state()
+	node_page_state_add()
+
+
+                          vm_node_stat[]
+                           /          \
+                        /                \
+                     /                      \
+
+       pgdata(n1)->vm_stat                pgdata(n2)->vm_stat
+              ^                                  ^
+              |                                  |
+       pgdata(n1)                         pgdata(n2)
+          ->per_cpu_nodestat                 ->per_cpu_nodestat
+
+
+
+0.2 zone_page_state
+================================================================================
+
+
+0.2.1 zone->pageset->vm_stat_diff[NR_VM_ZONE_STAT_ITEMS]
+================================================================================
+
+    zone->pageset->vm_stat_diff[NR_VM_ZONE_STAT_ITEMS]
+    +----------------------------------------+
+    |NR_FREE_PAGES                           |
+    |NR_ZONE_INACTIVE_ANON                   |
+    |NR_ZONE_ACTIVE_ANON                     |
+    |NR_ZONE_INACTIVE_FILE                   |
+    |NR_ZONE_ACTIVE_FILE                     |
+    |NR_ZONE_UNEVICTABLE                     |
+    |NR_ZONE_WRITE_PENDING                   |
+    |NR_MLOCK                                |
+    |NR_PAGETABLE                            |
+    |NR_KERNEL_STACK_KB                      |
+    |NR_KERNEL_SCS_KB                        |
+    |NR_BOUNCE                               |
+    |NR_ZSPAGES                              |
+    |NR_FREE_CMA_PAGES                       |
+    |NR_VM_ZONE_STAT_ITEMS                   |
+    +----------------------------------------+
+
+0.2.2 zone->pageset->vm_stat_diff[]  -> zone->vm_stat[] -> vm_zone_stat[]
+================================================================================
+
+                          vm_zone_stat[]
+                           /          \
+                        /                \
+                     /                      \
+
+         zone->vm_stat[]                    zone->vm_stat[]
+              ^                                  ^
+              |                                  |
+       zone->pageset->                    zone->pageset->
+          ->vm_stat_diff[]                   ->vm_stat_diff[]
+
+
+0.3 lruvec_page_state
+================================================================================
+
+lruvec_page_state()
+
+__mod_lruvec_state(lruvec, idx, val)
+
+    mem_cgroup_per_node
+    +----------------------------------------+
+    |lruvec                                  |
+    |    (struct lruvec)                     |
+    |lruvec_stat_local                       |
+    |lruvec_stat_cpu                         |
+    |    (struct lruvec_stat)                |
+    |    +-----------------------------------+
+    |    |count[NR_VM_NODE_STAT_ITEMS]       |
+    |    |    (long)                         |
+    |    +-----------------------------------+
+    |lruvec_stat[NR_VM_NODE_STAT_ITEMS]      |
+    |    (atomic_long_t)                     |
+    |      NR_INACTIVE_ANON                  |
+    |      NR_ACTIVE_ANON                    |
+    |      NR_INACTIVE_FILE                  |
+    |      NR_ACTIVE_FILE                    |
+    |      NR_UNEVICTABLE                    |
+    |                                        |
+    |      NR_SLAB_RECLAIMABLE               |
+    |      NR_SLAB_UNRECLAIMABLE             |
+    |      NR_ISOLATED_ANON                  |
+    |      NR_ISOLATED_FILE                  |
+    |      WORKINGSET_NODES                  |
+    |      WORKINGSET_REFAULT                |
+    |      WORKINGSET_ACTIVATE               |
+    |      WORKINGSET_RESTORE                |
+    |      WORKINGSET_NODERECLAIM            |
+    |      NR_ANON_MAPPED                    |
+    |      NR_FILE_MAPPED                    |
+    |      NR_FILE_PAGES                     |
+    |      NR_FILE_DIRTY                     |
+    |      NR_WRITEBACK                      |
+    |      NR_WRITEBACK_TEMP                 |
+    |      NR_SHMEM                          |
+    |      NR_SHMEM_THPS                     |
+    |      NR_SHMEM_PMDMAPPED                |
+    |      NR_FILE_THPS                      |
+    |      NR_FILE_PMDMAPPED                 |
+    |      NR_ANON_THPS                      |
+    |      NR_VMSCAN_WRITE                   |
+    |      NR_VMSCAN_IMMEDIATE               |
+    |      NR_DIRTIED                        |
+    |      NR_WRITTEN                        |
+    |      NR_KERNEL_MISC_RECLAIMABLE        |
+    |      NR_FOLL_PIN_ACQUIRED              |
+    |      NR_FOLL_PIN_RELEASED              |
+    |      NR_VM_NODE_STAT_ITEMS             |
+    +----------------------------------------+
+
+0.4 memcg_state
+================================================================================
+
+    mem_cgroup
+    +----------------------------------------+
+    |lruvec                                  |
+    |    (struct lruvec)                     |
+    |vmstats_local                           |
+    |vmstats_percpu                          |
+    |    (struct memcg_vmstats_percpu)       |
+    |    +-----------------------------------+
+    |    |stat[MEMCG_NR_STAT]                |
+    |    |    (long)                         |
+    |    |events[NR_VM_EVENT_ITEMS]          |
+    |    |                                   |
+    |    |                                   |
+    |    +-----------------------------------+
+    |vmstats[MEMCG_NR_STAT]                  | = NR_VM_NODE_STAT_ITEMS
+    |    (atomic_long_t)                     |   + MEMCG_SWAP
+    |      NR_INACTIVE_ANON                  |   + MEMCG_SOCK
+    |      NR_ACTIVE_ANON                    |   + MEMCG_KERNEL_STACK_KB
+    |      NR_INACTIVE_FILE                  |
+    |      NR_ACTIVE_FILE                    |
+    |      NR_UNEVICTABLE                    |
+    |                                        |
+    |      NR_SLAB_RECLAIMABLE               |
+    |      NR_SLAB_UNRECLAIMABLE             |
+    |      NR_ISOLATED_ANON                  |
+    |      NR_ISOLATED_FILE                  |
+    |      WORKINGSET_NODES                  |
+    |      WORKINGSET_REFAULT                |
+    |      WORKINGSET_ACTIVATE               |
+    |      WORKINGSET_RESTORE                |
+    |      WORKINGSET_NODERECLAIM            |
+    |      NR_ANON_MAPPED                    |
+    |      NR_FILE_MAPPED                    |
+    |      NR_FILE_PAGES                     |
+    |      NR_FILE_DIRTY                     |
+    |      NR_WRITEBACK                      |
+    |      NR_WRITEBACK_TEMP                 |
+    |      NR_SHMEM                          |
+    |      NR_SHMEM_THPS                     |
+    |      NR_SHMEM_PMDMAPPED                |
+    |      NR_FILE_THPS                      |
+    |      NR_FILE_PMDMAPPED                 |
+    |      NR_ANON_THPS                      |
+    |      NR_VMSCAN_WRITE                   |
+    |      NR_VMSCAN_IMMEDIATE               |
+    |      NR_DIRTIED                        |
+    |      NR_WRITTEN                        |
+    |      NR_KERNEL_MISC_RECLAIMABLE        |
+    |      NR_FOLL_PIN_ACQUIRED              |
+    |      NR_FOLL_PIN_RELEASED              |
+    |      NR_VM_NODE_STAT_ITEMS             |
+    +----------------------------------------+
+
