@@ -1,7 +1,17 @@
-1. Git Repo
+1. How to get
+================================================================================
+
+1.1 Install from package
+================================================================================
+yum install fio.x86_64
+
+1.2 Git Repo
 ================================================================================
 https://github.com/axboe/fio.git
 
+./configure
+make
+make install
 
 2. How it works
 ================================================================================
@@ -37,3 +47,20 @@ numa_mem_policy
 
     Set this job’s memory policy and corresponding NUMA nodes
 
+
+4. Some examples
+================================================================================
+
+fio:
+
+#iops
+fio --name=test -filename=/dev/vdb1 -direct=1 -iodepth 128 -thread -rw=randread -ioengine=libaio -bs=4k -size=50G -numjobs=1 -runtime=60
+fio --name=test -filename=/dev/vdb1 -direct=1 -iodepth 128 -thread -rw=randwrite -ioengine=libaio -bs=4k -size=50G -numjobs=1 -runtime=60
+
+# 带宽
+fio --name=test -filename=/dev/vdb1 -direct=1 -iodepth 128 -thread -rw=randread -ioengine=libaio -bs=1M -size=50G -numjobs=1 -runtime=60
+fio --name=test -filename=/dev/vdb1 -direct=1 -iodepth 128 -thread -rw=randwrite -ioengine=libaio -bs=1M -size=50G -numjobs=1 -runtime=60
+
+# 延时
+fio --name=test -filename=/dev/vdb1 -direct=1 -iodepth 1 -thread -rw=randread -ioengine=libaio -bs=4k -size=50G -numjobs=1 -runtime=60
+fio --name=test -filename=/dev/vdb1 -direct=1 -iodepth 1 -thread -rw=randwrite -ioengine=libaio -bs=4k -size=50G -numjobs=1 -runtime=60
