@@ -1197,3 +1197,44 @@ In this section, I extract the code path for each part.
                     sparse_init_nid()                  setup section's memmap/usermap
                 zone_sizes_init()                      init pgdat
 ```
+
+0.0.7 page_struct and defer init
+================================================================================
+
+```
+ start_kernel()
+     setup_arch()
+         e820__memblock_setup()
+         init_mem_mapping()
+         initmem_init()
+         x86_init.paging.pagetable_init() -> paging_init()
+             sparse_memory_present_with_active_regions(MAX_NUMNODES);
+                 memory_present()
+             sparse_init()
+                 sparse_init_nid()
+                     map = __populate_section_memmap()        alloc page struct
+                     sparse_init_one_section(sec, map)        link page struct to section
+             zone_sizes_init()
+                 free_area_init() -> free_area_init_node()
+                     free_area_init_core()
+                         memmap_init() -> memmap_init_zone()
+                             defer_init()                     defer init?
+                             __init_single_page()             init page struct
+     mm_init() -> mem_init()
+         memblock_free_all()
+             reset_all_zones_managed_pages()
+             free_low_memory_core_early()
+                 reserve_bootmem_region()
+                     init_reserved_page()
+                         early_page_uninitialised()           defer init?
+                     __SetPageReserved()
+                 __free_memory_core() -> __free_pages_memory()
+                     memblock_free_pages()
+                         early_page_uninitialised()           defer init?
+                         __free_pages_core()                  add to buddy
+     arch_call_rest_init() -> rest_init()
+         pid = kernel_thread(kernel_init, NULL, CLONE_FS);
+             kernel_init_freeable() -> page_alloc_init_late()
+                 deferred_init_memmap()                       defer init page struct
+```
+
