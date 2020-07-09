@@ -50,7 +50,10 @@ docker rmi NAME
 
 4.2 Instance Management
 
+# start a docker instance
 docker run -it ubuntu /bin/bash
+# with local file passed in as /git
+docker run -v `pwd`:/git -it ubuntu /bin/bash
 
 # list all docker process
 docker ps -a
@@ -70,6 +73,7 @@ docker exec -it 86f170689b28 /bin/bash
 
 # remove a docker process
 docker rm CONTAINER_ID
+docker rm -f CONTAINER_ID
 
 # export & import
 docker export CONTAINER_ID > image.tar
