@@ -8,7 +8,7 @@
 ================================================================================
 1.4 hugetlb_init_hstates()
 ================================================================================
-1.4.1 hugetlb_hstate_alloc_pages()
+1.4.1 hugetlb_hstate_alloc_pages(), alloc page to max_huge_pages
 ================================================================================
 1.4.1.1 alloc_pool_huge_page(h, &node_states[N_MEMORY], node_alloc_noretry)
 ================================================================================
@@ -17,6 +17,14 @@
 1.6 report_hugepages()
 ================================================================================
 1.7 hugetlb_sysfs_init()
+================================================================================
+1.7.1 hugepages_kobj = kobject_create_and_add("hugepages", mm_kobj);
+================================================================================
+1.7.2 err = hugetlb_sysfs_add_hstate(h, hugepages_kobj, hstate_kobjs, &hstate_attr_group);
+================================================================================
+1.7.2.1 hstate_kobjs[hi] = kobject_create_and_add(h->name, hugepages_kobj)
+================================================================================
+1.7.2.2 retval = sysfs_create_group(hstate_kobjs[hi], hstate_attr_group);
 ================================================================================
 1.8 hugetlb_register_all_nodes()
 ================================================================================
@@ -27,91 +35,67 @@
 1.11 mutex_init(hugetlb_fault_mutex_table[i])
 ================================================================================
 
-2. nr_hugepages_store_common() -> __nr_hugepages_store_common()
+2. alloc_pool_huge_page(h, nodes_allowed, node_alloc_noretry)
 ================================================================================
-2.1 set_max_huge_pages(h, count, nid, n_mask)
+2.0 for_each_node_mask_to_alloc(), get the proper node to alloc
 ================================================================================
-2.1.1 NODEMASK_ALLOC(nodemask_t, node_alloc_noretry, GFP_KERNEL);
+2.0.1 node = hstate_next_node_to_alloc(hs, mask)
 ================================================================================
-2.1.2 nodes_clear(*node_alloc_noretry);
+2.0.1.1 nid = get_valid_node_allowed(h->next_nid_to_alloc, nodes_allowed);
 ================================================================================
-2.1.3 adjust_pool_surplus(h, nodes_allowed, -1)
+2.0.1.2 h->next_nid_to_alloc = next_node_allowed(nid, nodes_allowed);
 ================================================================================
-2.1.4 alloc_pool_huge_page(h, nodes_allowed, node_alloc_noretry)
+2.1 alloc_fresh_huge_page(h, gfp_mask, node, nodes_allowed, node_alloc_noretry)
 ================================================================================
-2.1.5 try_to_free_low(h, min_count, nodes_allowed)
+2.1.0 alloc_gigantic_page()
 ================================================================================
-2.1.6 free_pool_huge_page(h, nodes_allowed, 0)
+2.1.1 alloc_buddy_huge_page()
 ================================================================================
-
-3. alloc_pool_huge_page(h, nodes_allowed, node_alloc_noretry)
+2.1.1.1 order = huge_page_order(h)
 ================================================================================
-3.0 for_each_node_mask_to_alloc(), get the proper node to alloc
+2.1.1.2 __alloc_pages_nodemask(gfp_mask, order, nid, nmask)
 ================================================================================
-3.0.1 node = hstate_next_node_to_alloc(hs, mask)
+2.1.2 prep_new_huge_page(h, page, page_to_nid(page))
 ================================================================================
-3.0.1.1 nid = get_valid_node_allowed(h->next_nid_to_alloc, nodes_allowed);
+2.1.2.1 set_compound_page_dtor(page, HUGETLB_PAGE_DTOR);
 ================================================================================
-3.0.1.2 h->next_nid_to_alloc = next_node_allowed(nid, nodes_allowed);
+2.1.2.2 h->nr_huge_pages++;
 ================================================================================
-3.1 alloc_fresh_huge_page(h, gfp_mask, node, nodes_allowed, node_alloc_noretry)
+2.1.2.3 h->nr_huge_pages_node[nid]++;
 ================================================================================
-3.1.0 alloc_gigantic_page()
+2.2 put_page(page) -> __put_page(page) -> __put_compound_page(page);
 ================================================================================
-3.1.1 alloc_buddy_huge_page()
+2.2.1 free_huge_page() -> __free_huge_page()
 ================================================================================
-3.1.1.1 order = huge_page_order(h)
+2.2.1.1 h = page_hstate(page)
 ================================================================================
-3.1.1.2 __alloc_pages_nodemask(gfp_mask, order, nid, nmask)
+2.2.1.2 spool = page_private(page)
 ================================================================================
-3.1.2 prep_new_huge_page(h, page, page_to_nid(page))
+2.2.1.3 clear_page_huge_active(page)
 ================================================================================
-3.1.2.1 set_compound_page_dtor(page, HUGETLB_PAGE_DTOR);
+2.2.1.4 update_and_free_page(page), return to buddy
 ================================================================================
-3.1.2.2 h->nr_huge_pages++;
-================================================================================
-3.1.2.3 h->nr_huge_pages_node[nid]++;
-================================================================================
-3.2 put_page(page) -> __put_page(page) -> __put_compound_page(page);
-================================================================================
-3.2.1 free_huge_page() -> __free_huge_page()
-================================================================================
-3.2.1.1 h = page_hstate(page)
-================================================================================
-3.2.1.2 spool = page_private(page)
-================================================================================
-3.2.1.3 clear_page_huge_active(page)
-================================================================================
-3.2.1.4 update_and_free_page(page), return to buddy
-================================================================================
-3.2.1.5 enqueue_huge_page(h, page), link to freelist
+2.2.1.5 enqueue_huge_page(h, page), link to freelist
 ================================================================================
 
-4. free_pool_huge_page(h, nodes_allowed, 0)
+3. free_pool_huge_page(h, nodes_allowed, 0)
 ================================================================================
-4.1 update_and_free_page(h, page)
+3.1 update_and_free_page(h, page)
 ================================================================================
-4.1.1 h->nr_huge_pages--;
+3.1.1 h->nr_huge_pages--;
 ================================================================================
-4.1.2 h->nr_huge_pages_node[page_to_nid(page)]--;
+3.1.2 h->nr_huge_pages_node[page_to_nid(page)]--;
 ================================================================================
-4.1.3 reset page->flags
+3.1.3 reset page->flags
 ================================================================================
-4.1.3 set_compound_page_dtor(page, NULL_COMPOUND_DTOR);
+3.1.3 set_compound_page_dtor(page, NULL_COMPOUND_DTOR);
 ================================================================================
-4.1.4 set_page_refcounted(page);
+3.1.4 set_page_refcounted(page);
 ================================================================================
-4.1.5 __free_pages(page, huge_page_order(h)), return to buddy
-================================================================================
-
-5. alloc_huge_page(vma, addr, avoid_reserve)
-================================================================================
-5.1 spool = spool_vma(vma)
-================================================================================
-5.2 hstate_vma(vma)
+3.1.5 __free_pages(page, huge_page_order(h)), return to buddy
 ================================================================================
 
-6. mmap hugetlb
+4. mmap -> ksys_mmap_pgoff()
 ================================================================================
 
 const struct file_operations hugetlbfs_file_operations = {
@@ -137,13 +121,207 @@ const struct vm_operations_struct hugetlb_vm_ops = {
             vma->vm_flags |= VM_HUGETLB | VM_DONTEXPAND;
             vma->vm_ops = &hugetlb_vm_ops
 
+4.1 flags & MAP_HUGETLB
+================================================================================
+4.2 hs = hstate_sizelog((flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK), may get default_hstate
+================================================================================
+4.3 len = ALIGN(len, huge_page_size(hs))
+================================================================================
+4.4 file = hugetlb_file_setup(HUGETLB_ANON_FILE, len, ), prepare the backend file
+================================================================================
+4.4.1 mnt = hugetlbfs_vfsmount[hstate_idx]
+================================================================================
+4.4.2 inode = hugetlbfs_get_inode(mnt->mnt_sb, NULL, )
+================================================================================
+4.4.3 inode->i_size = size
+================================================================================
+4.4.4 hugetlb_reserve_pages(inode, 0, size >> huge_page_shift())
+================================================================================
+4.4.5 file = alloc_file_pseudo(inode, mnt, name, &hugetlbfs_file_operations)
+================================================================================
+4.4.6 return file
+================================================================================
+4.5 vm_mmap_pgoff(file, addr, len, prot, flags, pgoff) -> do_mmap_pgoff -> do_mmap -> mmap_region
+================================================================================
+4.5.1 vma->vm_file = get_file(file)
+================================================================================
+4.5.2 call_mmap(file, vma) -> file->f_op->mmap() -> hugetlbfs_file_mmap()
+================================================================================
+4.5.2.1 vma->vm_flags |= VM_HUGETLB | VM_DONTEXPAND
+================================================================================
+4.5.2.2 vma->vm_ops = &hugetlb_vm_ops
+================================================================================
+
+6. hugetlb_reserve_pages(inode, from, to, vma, vm_flags)
+================================================================================
+6.1 h = hstate_inode(inode)
+================================================================================
+6.1.1 return HUGETLBFS_SB(i->i_sb)->hstate;
+================================================================================
+6.2 spool = subpool_inode(inode)
+================================================================================
+6.2.1 return HUGETLBFS_SB(inode->i_sb)->spool;
+================================================================================
+6.3 return 0, if (vm_flags & VM_NORESERVE), only reserve if asked
+================================================================================
+6.4 resv_map = inode_resv_map(inode)
+================================================================================
+6.5 chg = region_chg(resv_map, from, to, &regions_needed)
+================================================================================
+6.5.1 add_reservation_in_range(resv, f, t, NULL, NULL, out_regions_needed, true)
+================================================================================
+6.5.1.1 nrg = get_file_region_entry_from_cache(), get one file_region from cache
+================================================================================
+6.5.1.2 list_add(nrg->link, rg->link.prev)
+================================================================================
+6.5.1.3 coalesce_file_region(resv, nrg)
+================================================================================
+6.5.2 allocate_file_region_entries(resv, out_regions_needed), prepare region_cache
+================================================================================
+6.1 resv_map = resv_map_alloc()
+================================================================================
+6.2 set_vma_resv_map(vma, resv_map), save to vma->private_data
+================================================================================
+6.3 set_vma_resv_flags(vma, HPAGE_RESV_OWNER)
+================================================================================
+6.4 gbl_reserve = hugepage_subpool_get_pages(spool, chg), # to reserve
+================================================================================
+6.5 hugetlb_acct_memory(h, gbl_reserve)
+================================================================================
+6.5.1 gather_surplus_pages(h, gbl_reserve)
+================================================================================
+6.5.1.1 alloc_surplus_huge_page(h, htlb_alloc_mask(h)) -> alloc_fresh_huge_page
+================================================================================
+6.5.2 return_unused_surplus_pages(h, gbl_reserve)
+================================================================================
+6.5.2.1 free_pool_huge_page(h, &node_state[N_MEMORY], 1)
+================================================================================
+6.6 region_add(resv_map, from, to, regions_needed, h, h_cg), add file_region to resv_map
+================================================================================
+
+7. hugetlb_fault(), invoked by handle_mm_fault()
+================================================================================
+7.0 h = hstate_vma(vma), vma -> file -> inode -> sb -> hstate
+================================================================================
+7.1 haddr = address & huge_page_mask(h)
+================================================================================
+7.2 ptep = huge_pte_offset(mm, haddr, huge_page_size())
+================================================================================
+7.3 handle migration and hwpoison, if (ptep)
+================================================================================
+7.4 ptep = huge_pte_alloc(mm, haddr, huge_page_size(h))
+================================================================================
+7.5 idx = vma_hugecache_offset(h, vma, haddr), index within mapping
+================================================================================
+7.6 hash = hugetlb_fault_mutex_hash(mapping, idx), idx to hash
+================================================================================
+7.7 hugetlb_no_page(mm, vma, mapping, idx, address, ptep, flags)
+================================================================================
+7.7.1 find_lock_page(mapping, idx)
+================================================================================
+7.7.2 alloc_huge_page(vma, haddr, 0)
+================================================================================
+7.7.3 clear_huge_page(page, address, pages_per_huge_page(h))
+================================================================================
+7.7.3.1 process_huge_page(, pages_per_huge_page, clear_subpage), clear page before use
+================================================================================
+7.7.4 new_pte = make_huge_pte()
+================================================================================
+7.7.5 set_huge_pte_at(mm, haddr, ptep, new_pte)
+================================================================================
+7.8 hugetlb_cow()
+================================================================================
+
+8. alloc_huge_page(vma, addr, avoid_reserve), consider whether consume reserve page
+================================================================================
+8.1 spool = spool_vma(vma)
+================================================================================
+8.2 h = hstate_vma(vma)
+================================================================================
+8.3 idx = hstate_index(h)
+================================================================================
+8.4 map_chg = gbl_chg = vma_needs_reservation(h, vma, addr)
+================================================================================
+8.4.1 return __vma_reservation_common(h, vma, addr, VMA_NEEDS_RESV)
+================================================================================
+8.4.1.1 ret = region_chg(resv, idx, idx+1, &dummy_out_regions_needed)
+================================================================================
+8.3 page = dequeue_huge_page_vma(h, vma, addr, avoid_reserv, gbl_chg)
+================================================================================
+8.3.1 vma_has_reserves(vma, gbl_chg)
+================================================================================
+8.3.2 page = dequeue_huge_page_nodemask(h, gfp_mask, nid, nodemask);
+================================================================================
+8.3.2.1 zonelist = node_zonelist(nid, gfp_mask);
+================================================================================
+8.3.2.2 page = dequeue_huge_page_node_exact(h, node)
+================================================================================
+8.4 map_commit = vma_commit_reservation(h, vma, addr)
+================================================================================
+8.4.1 return __vma_reservation_common(h, vma, addr, VMA_COMMIT_RESV);
+================================================================================
+8.4.1.1 ret = region_add(resv, idx, idx + 1, 1, NULL, NULL);
+================================================================================
+
+
+9. resv_map's file_region operations
+================================================================================
+9.1 region_add(), add a region
+================================================================================
+9.2 region_chg(), return number of huge pages are not represented
+================================================================================
+9.3 region_del()
+================================================================================
+9.4 region_abort(), decrease resv->adds_in_progress
+================================================================================
+
+10. nr_hugepages_store_common() -> __nr_hugepages_store_common()
+================================================================================
+10.1 set_max_huge_pages(h, count, nid, n_mask)
+================================================================================
+10.1.1 NODEMASK_ALLOC(nodemask_t, node_alloc_noretry, GFP_KERNEL);
+================================================================================
+10.1.2 nodes_clear(*node_alloc_noretry);
+================================================================================
+10.1.3 adjust_pool_surplus(h, nodes_allowed, -1)
+================================================================================
+10.1.4 alloc_pool_huge_page(h, nodes_allowed, node_alloc_noretry)
+================================================================================
+10.1.5 try_to_free_low(h, min_count, nodes_allowed)
+================================================================================
+10.1.6 free_pool_huge_page(h, nodes_allowed, 0)
+================================================================================
 
 0. data struct
 ================================================================================
 
-[root@debug010000002015 hugepages-2048kB]# pwd
-/sys/kernel/mm/hugepages/hugepages-2048kB
+0.0 usage
+================================================================================
+
+[root@debug010000002015 ~]# tail /proc/meminfo
+CmaFree:               0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+[root@debug010000002015 ~]# cd /sys/kernel/mm/hugepages/hugepages-2048kB/
 [root@debug010000002015 hugepages-2048kB]# echo 20 > nr_hugepages
+[root@debug010000002015 hugepages-2048kB]# tail /proc/meminfo
+CmaFree:               0 kB
+HugePages_Total:      20
+HugePages_Free:       20
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:           40960 kB
+
+
+Example code:
+tools/testing/selftests/vm/map_hugetlb.c
+
+mmap(MAP_HUGETLB)
 
 0.1 global variables
 ================================================================================
@@ -155,9 +333,15 @@ default_hstate  =  hstates[default_hstate_idx]
 
 
 hstates[HUGE_MAX_HSTATE]
-hstate_kobjs[HUGE_MAX_HSTATE]
+struct kobject *hugepages_kobj
+struct kobject *hstate_kobjs[HUGE_MAX_HSTATE]
+
+hugetlbfs_vfsmount[HUGE_MAX_HSTATE]
 
 node_hstates[MAX_NUMNODES]
+
+int num_fault_mutexes
+struct mutex *hugetlb_fault_mutex_table 
 
 0.2 struct hstate
 ================================================================================
@@ -173,12 +357,12 @@ node_hstates[MAX_NUMNODES]
     |mask                                |
     |    (unsigned long)                 |
     |                                    |
-    |max_huge_pages                      |
+    |max_huge_pages                      |  = nr_huge_pages - surplus_huge_pages
     |                                    |
-    |nr_huge_pages                       |
-    |free_huge_pages                     |
-    |resv_huge_pages                     |
-    |surplus_huge_pages                  |
+    |nr_huge_pages                       |  adjust in prep_new_huge_page()
+    |free_huge_pages                     |  free includes surplus
+    |resv_huge_pages                     |  gather_surplus_pages() & return_unused_surplus_pages()
+    |surplus_huge_pages                  |  more like a tmp list, alloc_surplus_huge_page()
     |nr_overcommit_huge_pages            |
     |    (unsigned long)                 |
     |                                    |
@@ -191,6 +375,19 @@ node_hstates[MAX_NUMNODES]
     |hugepage_freelists[MAX_NUMNODES]    |
     |    (struct list_head)              |
     +------------------------------------+
+
+
+                          |             |              |
+                          |<--  free -->|<-- surplus-->|
+                          |             |              |
+                          v             v              v
+   |----------------------+-------------+--------------+--------------|
+   ^                                                   ^              ^
+   |                                                   |              |
+   |<--                nr_huge_pages                -->|<--  resv  -->|
+   |                                                   |              |
+
+
 
 0.1.1 struct hstate hstates[HUGE_MAX_HSTATE = 2]
 ================================================================================
@@ -205,3 +402,77 @@ node_hstates[MAX_NUMNODES]
     |    (struct kobject *)              |
     |                                    |
     +------------------------------------+
+
+0.4 struct hugepage_subpool
+================================================================================
+
+    hugepage_subpool
+    +------------------------------------+
+    |hstate                              |
+    |    (struct hstate *)               |
+    |                                    |
+    |max_hpages                          |
+    |used_hpages                         |
+    |                                    |
+    |min_hpages                          |
+    |rsv_hpages                          |
+    |    (long)                          |
+    |                                    |
+    |                                    |
+    +------------------------------------+
+
+
+0.5 struct resv_map
+================================================================================
+
+    resv_map
+    +------------------------------------+
+    |adds_in_progress                    |
+    |    (long)                          |    ordered by [from, to)
+    |                                    |    file_region      file_region
+    |regions                             |--->+-----------+--->+-----------+
+    |    (struct list_head)              |    |from       |    |from       |
+    |                                    |    |to         |    |to         |
+    |                                    |    |           |    |           |
+    |                                    |    +-----------+    +-----------+
+    |                                    |
+    |region_cache_count                  |  count in region_cache
+    |    (long)                          |    file_region      file_region
+    |region_cache                        |--->+-----------+--->+-----------+
+    |    (struct list_head)              |    |           |    |           |
+    |                                    |    +-----------+    +-----------+
+    +------------------------------------+
+
+0.6 inode -> super_block -> subpool
+================================================================================
+
+
+    inode              super_block       hugetlbfs_sb_info
+    +-------------+    +------------+    +-----------------------+
+    |i_sb     ----|--->|s_fs_info --|--->|hstate                 |
+    |             |    |            |    |     (struct hstate*)  |
+    |             |    |            |    |                       |
+    |             |    +------------+    |spool                  |
+    |             |                      |   (hugepage_subpool *)|
+    |             |                      |                       |
+    |             |                      |                       |
+    |             |                      |                       |
+    |             |                      |                       |
+    |             |                      +-----------------------+
+    |i_data       | (address_space)
+    |             |      resv_map
+    | private_data| ---->+----------------+
+    |             |      |                |
+    +-------------+      +----------------+
+
+0.7 hugetlb sysfs
+================================================================================
+
+/sys/kernel/mm/hugepages                            hugepages_kobj
+/sys/kernel/mm/hugepages/hugepages-2048kB           hstate_kobjs[]
+    nr_hugepages
+    nr_overcommit_hugepages
+    free_hugepages
+    resv_hugepages
+    surplus_hugepages
+
