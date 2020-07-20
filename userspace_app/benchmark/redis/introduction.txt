@@ -1,0 +1,36 @@
+1. Reference
+================================================================================
+
+https://www.runoob.com/redis/redis-tutorial.html
+
+2. Install
+================================================================================
+
+https://redis.io/download
+
+Download binary or docker image or build by yourself.
+
+Fedora:
+
+yum install redis
+
+
+2.1 Verify
+================================================================================
+
+# start service
+$ systemctl restart redis
+
+# connect
+$ redis-cli
+ 127.0.0.1:6379>
+
+Done!
+
+3. Benchmark
+================================================================================
+
+https://www.runoob.com/redis/redis-benchmarks.html
+
+redis-benchmark -h 127.0.0.1 -p 6379 -n 100000 -c 20
+redis-benchmark -h 127.0.0.1 -p 6379 -l -t set -d 3 -r 10000000 -n 10000000 -c 100 -q
