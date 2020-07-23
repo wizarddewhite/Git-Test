@@ -285,11 +285,11 @@ const struct vm_operations_struct hugetlb_vm_ops = {
 ================================================================================
 10.1.3 adjust_pool_surplus(h, nodes_allowed, -1)
 ================================================================================
-10.1.4 alloc_pool_huge_page(h, nodes_allowed, node_alloc_noretry)
+10.1.4 alloc_pool_huge_page(h, nodes_allowed, ), alloc from buddy
 ================================================================================
 10.1.5 try_to_free_low(h, min_count, nodes_allowed)
 ================================================================================
-10.1.6 free_pool_huge_page(h, nodes_allowed, 0)
+10.1.6 free_pool_huge_page(h, nodes_allowed, 0), return to buddy
 ================================================================================
 
 0. data struct
@@ -377,16 +377,15 @@ struct mutex *hugetlb_fault_mutex_table
     +------------------------------------+
 
 
-                          |             |              |
-                          |<--  free -->|<-- surplus-->|
-                          |             |              |
-                          v             v              v
+                          |<--          free        -->|              |
+                          |                            |<-- surplus-->|
+                          |             |<-- resv   -->|              |
+                          v             v              v              v
    |----------------------+-------------+--------------+--------------|
-   ^                                                   ^              ^
-   |                                                   |              |
-   |<--                nr_huge_pages                -->|<--  resv  -->|
-   |                                                   |              |
-
+   ^                                                                  ^
+   |                                                                  |
+   |<--                      nr_huge_pages                         -->|
+   |                                                                  |
 
 
 0.1.1 struct hstate hstates[HUGE_MAX_HSTATE = 2]
