@@ -2,9 +2,9 @@
 
 set argsCount [llength $argv]
 
-if {$argsCount != 2} {
+if {$argsCount < 2} {
     puts $argv
-    puts "Usage: redis_solo.sh index result_dir"
+    puts "Usage: redis_solo.sh index result_dir \[runtime\]"
     exit 1
 }
 
@@ -13,9 +13,15 @@ set timeout 10
 #First argument is assigned to the variable name
 set idx [lindex $argv 0]
 set result_dir [lindex $argv 1]
+set runtime "runc" 
+
+if {$argsCount == 3} {
+	set runtime [lindex $argv 2]
+}
 
 # start redis
-spawn pouch run --name container-redis$idx -v $result_dir:/redis_result/ -d redis
+spawn pouch run --runtime=$runtime --name container-redis$idx -v $result_dir:/redis_result/ -d redis
+
 expect {
 	"Error: " {
 		send_user "Failed to start pod\n"
