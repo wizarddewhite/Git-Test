@@ -12,12 +12,11 @@ int main()
 	do {
 		fptr = (char *)malloc(i);
 		if(fptr == NULL)
-			i = i - 4000;
+			i = i - 0x1000;
 	} while (( fptr == NULL) && (i > 0));
 
 
 	printf("allocated memory at %p with size %ld\n", fptr, i);
-	return 0;
 
 	/* for time to observe */
 	sleep(15);
