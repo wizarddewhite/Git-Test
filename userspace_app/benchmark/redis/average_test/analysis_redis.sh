@@ -26,6 +26,7 @@ fi
 rm -f $result_dir/result_summary
 touch $result_dir/result_summary
 rm -f $result_dir/.result
+rm -f $result_dir/result_average
 
 for file in `ls $result_dir`
 do
