@@ -362,8 +362,8 @@ struct mutex *hugetlb_fault_mutex_table
     |nr_huge_pages                       |  adjust in prep_new_huge_page()
     |free_huge_pages                     |  free includes surplus
     |resv_huge_pages                     |  gather_surplus_pages() & return_unused_surplus_pages()
-    |surplus_huge_pages                  |  more like a tmp list, alloc_surplus_huge_page()
-    |nr_overcommit_huge_pages            |
+    |surplus_huge_pages                  |  number of overcommitted
+    |nr_overcommit_huge_pages            |  number of overcommit allowed
     |    (unsigned long)                 |
     |                                    |
     |nr_huge_pages_node[MAX_NUMNODES]    |
@@ -377,15 +377,17 @@ struct mutex *hugetlb_fault_mutex_table
     +------------------------------------+
 
 
-                          |<--          free        -->|              |
-                          |                            |<-- surplus-->|
-                          |             |<-- resv   -->|              |
-                          v             v              v              v
-   |----------------------+-------------+--------------+--------------|
-   ^                                                                  ^
-   |                                                                  |
-   |<--                      nr_huge_pages                         -->|
-   |                                                                  |
+   |<--          free        -->|                      |<-  overcommit ->|
+   |                            |                      .                 v
+   |             |<-- resv   -->|                      .  |<-- surplus-->|
+   v             v              v                      v  v              v
+   |-------------+--------------+----------------------------------------|
+   ^                                                      ^              ^
+   |                                                      |              |
+   |<--                  persistent_huge_pages         -->|              |
+   |                                                                     |
+   |<--                      nr_huge_pages                            -->|
+   |                                                                     |
 
 
 0.1.1 struct hstate hstates[HUGE_MAX_HSTATE = 2]
