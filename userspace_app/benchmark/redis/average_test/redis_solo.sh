@@ -20,7 +20,7 @@ if {$argsCount == 3} {
 }
 
 # start redis
-spawn pouch run --runtime=$runtime --name container-redis$idx -v $result_dir:/redis_result/ -d redis
+spawn pouch run -m 2g --annotation io.alibaba.pouch.vm.passthru.cpus=2 --runtime=$runtime --name container-redis$idx -v $result_dir:/redis_result/ -d redis
 
 expect {
 	"Error: " {
