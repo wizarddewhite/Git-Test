@@ -29,5 +29,8 @@ mkdir -p $result_dir
 
 for ((i = 1; i <= $times; i++));
 do
+	if ! (($i % 4)); then
+		sleep 1
+	fi
     ( ./redis_solo.sh $i $PWD/$result_dir $runtime & )
 done
