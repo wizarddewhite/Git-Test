@@ -32,6 +32,8 @@ expect {
 	}
 }
 
+sleep 1
+
 spawn pouch exec -it container-redis$idx sh
 expect {
 	"#" {  }
@@ -50,7 +52,7 @@ expect {
 		send_user "Test finished\n"
 	}
 	timeout {
-		send_user "Test failed\n"
+		send_user "!!! Test failed\n"
 	}
 }
 
