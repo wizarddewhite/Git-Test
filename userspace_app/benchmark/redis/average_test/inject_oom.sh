@@ -36,7 +36,7 @@ send "/test/a.out\r"
 set timeout 10000
 expect {
 	"#" {
-		send_user "Test finished\n"
+		send_user "OOM injected\n"
 	}
 	timeout {
 		send_user "!!! Test failed\n"
