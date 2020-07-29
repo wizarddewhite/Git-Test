@@ -407,9 +407,9 @@ struct mutex *hugetlb_fault_mutex_table
 
 
                                                        |<-   overcommit  ->|
-                                                       |                   |
-   |<--          free        -->|<-- resv   -->|       |<-- surplus-->|    |
-   v                            v              v       v              v    v
+   |<--          free        -->|                      |                   |
+   |             |<-- resv   -->|                      |<-- surplus-->|    |
+   v             v              v                      v              v    v
    |----------------------------+-------------------------------------+....|
    ^                                                   ^              ^
    |                                                   |              |
