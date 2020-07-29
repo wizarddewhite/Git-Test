@@ -166,7 +166,7 @@ const struct vm_operations_struct hugetlb_vm_ops = {
 ================================================================================
 6.4 resv_map = inode_resv_map(inode)
 ================================================================================
-6.5 chg = region_chg(resv_map, from, to, &regions_needed)
+6.5 chg = region_chg(resv_map, from, to, &regions_needed), prepare file_region in resv_map
 ================================================================================
 6.5.1 add_reservation_in_range(resv, f, t, NULL, NULL, out_regions_needed, true)
 ================================================================================
@@ -292,6 +292,35 @@ const struct vm_operations_struct hugetlb_vm_ops = {
 10.1.6 free_pool_huge_page(h, nodes_allowed, 0), return to buddy
 ================================================================================
 
+11. init_hugetlbfs_fs(), fs_initcall()
+================================================================================
+11.1 hugetlbfs_inode_cachep = kmem_cache_create("hugetlbfs_inode_cache",)
+================================================================================
+11.2 register_filesystem(&hugetlbfs_fs_type)
+================================================================================
+11.3 mount_one_hugetlbfs(&hstates[default_hstate_idx])
+================================================================================
+11.3.1 fc = fs_context_for_mount(&hugetlbfs_fs_type, SB_KERNMOUNT) -> alloc_fs_context
+================================================================================
+11.3.1.1 init_fs_context = fc->fs_type->init_fs_context; = hugetlbfs_init_fs_context
+================================================================================
+11.3.1.2 init_fs_context(fc) -> hugetlbfs_init_fs_context()
+================================================================================
+11.3.1.2.1 ctx = kzalloc()
+================================================================================
+11.3.1.2.2 ctx->max_hpages = -1
+================================================================================
+11.3.1.2.3 ctx->min_hpages = -1
+================================================================================
+11.3.1.2.4 fc->fs_private = ctx
+================================================================================
+11.3.1.2.5 fc->ops = &hugetlbfs_fs_context_ops
+================================================================================
+11.3.2 mnt = fc_mount(fc) ->  vfs_get_tree()
+================================================================================
+11.3.2.1 fc->ops->get_tree() -> hugetlbfs_get_tree() -> hugetlbfs_fill_super
+================================================================================
+
 0. data struct
 ================================================================================
 
@@ -407,6 +436,8 @@ struct mutex *hugetlb_fault_mutex_table
 0.4 struct hugepage_subpool
 ================================================================================
 
+created by hugepage_new_subpool() in hugetlbfs_fill_super().
+
     hugepage_subpool
     +------------------------------------+
     |hstate                              |
@@ -447,6 +478,7 @@ struct mutex *hugetlb_fault_mutex_table
 0.6 inode -> super_block -> subpool
 ================================================================================
 
+hugetlbfs_fill_super()
 
     inode              super_block       hugetlbfs_sb_info
     +-------------+    +------------+    +-----------------------+
@@ -460,13 +492,56 @@ struct mutex *hugetlb_fault_mutex_table
     |             |                      |                       |
     |             |                      |                       |
     |             |                      +-----------------------+
-    |i_data       | (address_space)
+    +-------------+
+
+0.7 vma_resv_map(), there are two cases
+================================================================================
+
+resv_map is probably created in hugetlbfs_get_inode().
+
+if vma->vm_flags & VM_MAYSHARE
+
+    inode
+    +-------------+
+    |i_mapping    |  = &i_data, for most cases, see comment in inode_resv_map
+    |i_data       |  (address_space)
     |             |      resv_map
     | private_data| ---->+----------------+
     |             |      |                |
     +-------------+      +----------------+
 
-0.7 hugetlb sysfs
+else
+
+    vma
+    +-------------+
+    |             |      resv_map
+    |private_data | ---->+----------------+
+    |             |      |                |
+    +-------------+      +----------------+
+
+
+0.8 fs_context
+================================================================================
+
+    fs_context
+    +------------------------------------+
+    |fs_type                             |  = &hugetlbfs_fs_type
+    |    (file_system_type *)            |
+    |ops                                 |  = &hugetlbfs_fs_context_ops
+    |    (file_system_type *)            |
+    |fs_private                          |
+    |    (void *) = hugetlbfs_fs_context |
+    |    +-------------------------------+
+    |    |hstate                         |
+    |    |    (struct hstate*)           |
+    |    |max_hpages                     |
+    |    |min_hpages                     |
+    |    |    (long)                     |
+    |    |                               |
+    +----+-------------------------------+
+
+
+0.8 hugetlb sysfs
 ================================================================================
 
 /sys/kernel/mm/hugepages                            hugepages_kobj
