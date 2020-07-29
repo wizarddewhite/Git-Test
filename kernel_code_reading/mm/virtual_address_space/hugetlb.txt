@@ -406,17 +406,17 @@ struct mutex *hugetlb_fault_mutex_table
     +------------------------------------+
 
 
-                                                       |<-  overcommit ->|
-                                                       .                 v
-   |<--          free        -->|<-- resv   -->|       .  |<-- surplus-->|
-   v                            v              v       v  v              v
-   |----------------------------+----------------------------------------|
-   ^                                                      ^              ^
-   |                                                      |              |
-   |<--                  persistent_huge_pages         -->|              |
-   |                                                                     |
-   |<--                      nr_huge_pages                            -->|
-   |                                                                     |
+                                                       |<-   overcommit  ->|
+                                                       |                   |
+   |<--          free        -->|<-- resv   -->|       |<-- surplus-->|    |
+   v                            v              v       v              v    v
+   |----------------------------+-------------------------------------+....|
+   ^                                                   ^              ^
+   |                                                   |              |
+   |<--                  persistent_huge_pages      -->|              |
+   |                                                                  |
+   |<--                      nr_huge_pages                         -->|
+   |                                                                  |
 
 
 0.1.1 struct hstate hstates[HUGE_MAX_HSTATE = 2]
