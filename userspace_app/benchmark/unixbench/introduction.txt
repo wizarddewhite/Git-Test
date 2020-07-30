@@ -1,0 +1,10 @@
+1. Source Code
+
+https://github.com/kdlucas/byte-unixbench
+
+2. Build and run
+
+make
+./Run
+
+For more usage, refer to UnixBench/USAGE
