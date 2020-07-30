@@ -552,3 +552,25 @@ else
     resv_hugepages
     surplus_hugepages
 
+0.9 how pages are allocated from hugetlbfs
+================================================================================
+
+First prepare huge pages.
+
+echo N > nr_hugepages
+
+set_max_huge_pages()
+    alloc_pool_huge_page()
+        page = alloc_fresh_huge_page()
+            alloc_buddy_huge_page()
+            prep_new_huge_page()
+        put_page(page)
+
+Then at page fault.
+
+hugetlb_fault()
+    hugetlb_no_page()
+        alloc_huge_page()
+            page = dequeue_huge_page_vma()
+            or
+            page = alloc_buddy_huge_page_with_mpol()
