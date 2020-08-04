@@ -4,6 +4,7 @@
 inject="no"
 result_dir="result"
 runtime="runc"
+times=1
 
 while getopts "dhr:t:i" opt; do
 	case "$opt" in
