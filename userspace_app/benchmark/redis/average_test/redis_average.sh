@@ -11,7 +11,7 @@ while getopts "dhr:t:" opt; do
 		result_dir=$OPTARG
 		;;
 	"h")
-		echo "Usage: analysis_redis.sh -r result_dir"
+		echo "Usage: redis_average.sh -r result_dir"
 		exit
 		;;
 	esac
