@@ -70,7 +70,7 @@ fn test_vector() {
     println!("Original vec:");
     let mut v5 = vec![100, 32, 57];
     for i in &v5 {
-        println!("{}", i);
+        println!("  {}", *i);
     }
 
     for i in &mut v5 {
@@ -78,7 +78,7 @@ fn test_vector() {
     }
     println!("After +50:");
     for i in &v5 {
-        println!("{}", i);
+        println!("  {}", *i);
     }
 
 }
