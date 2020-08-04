@@ -19,8 +19,12 @@ if {$argsCount == 3} {
 	set runtime [lindex $argv 2]
 }
 
+set cpu_s [expr {$idx * 2}]
+set cpu_e [expr {$cpu_s + 1}]
+
 # start redis
-spawn pouch run -m 2g --annotation io.alibaba.pouch.vm.passthru.cpus=2 --runtime=$runtime --name container-redis$idx -v $result_dir:/redis_result/ -d redis
+spawn pouch run -m 2g --cpuset-cpus=$cpu_s-$cpu_e --annotation io.alibaba.pouch.vm.passthru.cpus=2 \
+	--runtime=$runtime --name container-redis$idx -v $result_dir:/redis_result/ -d redis
 
 expect {
 	"Error: " {
@@ -32,7 +36,7 @@ expect {
 	}
 }
 
-sleep 1
+sleep 2
 
 spawn pouch exec -it container-redis$idx sh
 expect {

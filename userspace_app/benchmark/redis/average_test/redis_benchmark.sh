@@ -31,7 +31,7 @@ echo Total run $times instance
 mkdir -p $result_dir
 
 # run redis benchmark
-for ((i = 1; i <= $times; i++));
+for ((i = 0; i < $times; i++));
 do
 	if ! (($i % 5)); then
 		sleep 1
