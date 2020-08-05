@@ -106,7 +106,7 @@ If you want to build a release version, use
 let var = value;             // immutable
 let mut var = value;         // mutable
 
-let var: u32 = value;        // specify the type
+let var: u32 = value;        // define with type annotation
 
 let (x, y) = (1, 2);         // define x,y by pattern 
 let (_x: i32, _y) = (1, 2);  // not work
@@ -122,6 +122,8 @@ fn foo() {
 fn foo(x: i32) {
 }
 
+// statement vs expression
+// https://doc.rust-lang.org/book/ch03-03-how-functions-work.html#function-bodies-contain-statements-and-expressions
 fn foo(x: i32) -> i32 {
 	x                     // DO NOT append ';' at last
 }
@@ -139,18 +141,52 @@ let res = f(5);
 3.3 built-in type
 ================================================================================
 
-let y: bool = false;
-let x: char = 'x';
-let a: i32  = 8;
-
-3.3.1 array
+3.3.1 scalar types
 ================================================================================
 
+// integer
+let a: u32 = 10_000u32;
+let a: i32 = 8;
+let b = 10_000u32;
+
+// float
+let a = 2.0;
+let b: f32 = 3.0;
+
+// boolean
+let y: bool = false;
+
+// character
+let x: char = 'x';
+
+3.3.2 array
+================================================================================
+
+// must have same the type
+// and it is fixed length
 let a = [1, 2, 3];
+// type annotation of array
+let b: [i32; 5] = [1, 2, 3, 4, 5];
+// an array with 5 same value: 3
+let c: [i32; 5] = [3; 5];
+
+// access element in array
 println!("a has {} elements", a.len());
 println!("the second is {}", a[1]);
 
-3.3.2 slice
+3.3.3 tuple
+================================================================================
+
+// could have different types
+let y              = (1, "hello")
+let x: (i32, &str) = (1, "hello")
+println!("x value is {}", x.0);
+
+// destruct
+let (num, _) = x;
+println!("get number {}", num);
+
+3.3.4 slice
 ================================================================================
 
 Slice doesn't have ownership. (So it must be a reference?)
@@ -159,13 +195,7 @@ let a = [1, 2, 3, 4];
 let complete = &a[..];
 let middle = &a[1..4];
 
-3.3.3 tuple
-================================================================================
-
-let x: (i32, &str) = (1, "hello")
-println!("x value is {}", x.0);
-
-3.3.4 vector
+3.3.5 vector
 ================================================================================
 
 // different from array, vector is dynamic
@@ -186,7 +216,7 @@ for i in &v {
     println!("This is a reference to {}", i);
 }
 
-3.3.5 enum
+3.3.6 enum
 ================================================================================
 
 enum IpAddrKind {
@@ -204,7 +234,7 @@ enum GenericEnum<T> {
     Second(T),
 }
 
-3.3.6 struct
+3.3.7 struct
 ================================================================================
 
 
@@ -220,8 +250,10 @@ impl Rectangle {
     }
 }
 
+3.4 Control Flow
+================================================================================
 
-3.4 if
+3.4.1 if
 ================================================================================
 
 let x = 5;
@@ -242,9 +274,10 @@ let y = if x == 5 {
     15
 }; // y: i32
 
-3.5 loop
+3.4.2 loop
 ================================================================================
 
+// infinite loop
 loop {
     println!("Loop forever!");
 }
@@ -293,10 +326,73 @@ for (linenumber, line) in lines.enumerate() {
     }
 }
 
-3.6 Generic Types
+3.4.3 Pattern Match
 ================================================================================
 
-3.6.1 Function
+https://doc.rust-lang.org/book/ch06-02-match.html
+
+// value match
+```
+enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter,
+}
+
+fn value_in_cents(coin: Coin) -> u8 {
+    match coin {
+        Coin::Penny => 1,
+        Coin::Nickel => 5,
+        Coin::Dime => 10,
+        Coin::Quarter => 25,
+    }
+}
+
+```
+
+// value extract
+```
+enum IpAddr2 {
+    V4(String),
+    V6(String),
+}
+
+let home = IpAddr2::V4(String::from("127.0.0.1"));
+
+let addr = match home {
+    IpAddr2::V4(val) => val,
+    IpAddr2::V6(val) => val,
+};
+println!("\tthe text is {}", addr);
+```
+
+// if let just match one case and ignore the rest
+```
+fn main() {
+    let some_u8_value = Some(0u8);
+    match some_u8_value {
+        Some(3) => println!("three"),
+        _ => (),
+    }
+}
+```
+
+equals
+
+```
+fn main() {
+    let some_u8_value = Some(0u8);
+    if let Some(3) = some_u8_value {
+        println!("three");
+    }
+}
+```
+
+3.5 Generic Types
+================================================================================
+
+3.5.1 Function
 ================================================================================
 
 fn function<T>(param: T) -> T {}
@@ -307,7 +403,7 @@ fn function<T>(param: T) -> T
     where T: Trait
 {}
 
-3.6.2 Struct
+3.5.2 Struct
 ================================================================================
 
 struct Point<T> {
@@ -322,17 +418,17 @@ impl<T> Point<T> {
 // tuple struct, a more verbose way to use tuple
 struct Color(i32, i32, i32);
 
-3.7 trait
+3.6 trait
 ================================================================================
 
-3.7.1 define trait
+3.6.1 define trait
 ================================================================================
 
 pub trait Summary {
     fn summary(&self) -> String;
 }
 
-3.7.2 impl trait
+3.6.2 impl trait
 ================================================================================
 
 impl Summary for NewsArticle {
@@ -341,7 +437,7 @@ impl Summary for NewsArticle {
     }
 }
 
-3.7.3 trait parameter
+3.6.3 trait parameter
 ================================================================================
 
 fn notify(item: impl Summary) {
@@ -354,7 +450,7 @@ fn notify<T: Summary>(item: T) {
     item.summary();
 }
 
-3.7.4 conditional method by trait
+3.6.4 conditional method by trait
 ================================================================================
 
 pub trait Display {
@@ -367,7 +463,7 @@ impl<T: Summary> Display for T {
     }
 }
 
-3.8 Macros
+3.7 Macros
 ================================================================================
 https://doc.rust-lang.org/book/ch19-06-macros.html
 
@@ -385,7 +481,7 @@ https://doc.rust-lang.org/rust-by-example/macros/syntax.html
     - attribute-like macros
     - function-like macros
 
-3.8.0 expand macros
+3.7.0 expand macros
 ================================================================================
 
 For better understanding macro from others, you can use
@@ -397,7 +493,7 @@ Before doing this you need to install two things:
   rustup install nightly
   cargo install cargo-expand
 
-3.8.1 Declarative macros
+3.7.1 Declarative macros
 ================================================================================
 
 #[macro_export]
@@ -413,10 +509,10 @@ macro_rules! my_vec {
     };
 }
 
-3.8.2 custom #[derive] macros
+3.7.2 custom #[derive] macros
 ================================================================================
 
-3.9 Conditional Compilation
+3.8 Conditional Compilation
 ================================================================================
 
 https://doc.rust-lang.org/reference/conditional-compilation.html

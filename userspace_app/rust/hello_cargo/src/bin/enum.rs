@@ -86,6 +86,8 @@ fn test_message() {
     m2.call();
     if let Message::ChangeColor(x, y, z) = m2 {
         println!("Message::ChangeColor: {}, {}, {}", x, y, z);
+    } else {
+        println!("Not Message::ChangeColor");
     }
     println!("Can still access m is: {:#?}", m);
     println!("Can still access m2 is: {:#?}", m2);
