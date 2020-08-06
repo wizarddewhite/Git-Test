@@ -31,13 +31,14 @@ echo Total run $times instance
 
 mkdir -p $result_dir
 
+NOW=$(date +"%Y-%m-%d-%H%M")
 # run redis benchmark
 for ((i = 0; i < $times; i++));
 do
 	if ! (($i % 5)); then
 		sleep 1
 	fi
-    ( ./redis_solo.sh $i $PWD/$result_dir $runtime & )
+    ( ./redis_solo.sh $i $PWD/$result_dir $runtime >> $result_dir/$NOW & )
 done
 
 # inject oom?
