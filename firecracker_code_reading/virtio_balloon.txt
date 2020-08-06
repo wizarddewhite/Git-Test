@@ -140,6 +140,7 @@ VirtioDevice
    |    |epoll_manager                  |
    |    |    (EpollManager)             |
    |    +-------------------------------+
+   |                                    |
    |device_change_notifier              |
    |    (VirtioNotifier)                |
    |                                    |
@@ -147,3 +148,37 @@ VirtioDevice
    |                                    |
    |                                    |
    +------------------------------------+
+
+0.2.1 VirtioDevice -> Balloon
+================================================================================
+
+   VirtioDevice (src/virtio/src/device.rs)
+   +------------------------------------+
+   |device_type()                       |
+   |queue_max_sizes()                   |
+   |ctrl_queue_max_sizes()              |
+   |get_avail_features()                |
+   |set_acked_features()                |
+   |read_config()                       |
+   |write_config()                      |
+   |                                    |
+   |activate()                          |
+   |reset()                             |
+   |                                    |
+   |get_resource_requirements()         |
+   |set_resource()                      |
+   |                                    |
+   |remove()                            |
+   +------------------------------------+
+                      |
+                      |
+                      |
+                      v
+   Balloon
+   +------------------------------------+
+   |new()                               |
+   |set_size()                          |
+   |                                    |
+   |                                    |
+   +------------------------------------+
+
