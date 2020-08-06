@@ -1,0 +1,87 @@
+1. MmioV2Device
+================================================================================
+
+        Ok(MmioV2Device {
+            state: Mutex::new(state),
+            assigned_resources: resources,
+            mmio_cfg_res,
+            device_vendor,
+            driver_status: AtomicU32::new(DEVICE_INIT),
+            config_generation: AtomicU32::new(0),
+            interrupt_status: Arc::new(InterruptStatusRegister32::new()),
+        })
+
+1.1 impl DeviceIo for MmioV2Device
+================================================================================
+
+1.1.1 read(), configuration read
+================================================================================
+
+1.1.2 write(), configuration write
+================================================================================
+
+2. MmioV2DeviceState
+================================================================================
+
+        let state = MmioV2DeviceState::new(
+            device,
+            vm_fd,
+            vm_as,
+            irq_manager,
+            device_resources,
+            mmio_base,
+        )?;
+
+0. data struct
+================================================================================
+
+0.1 MmioV2Device
+================================================================================
+
+   MmioV2Device
+   +------------------------------------+
+   |state                               |
+   |    (MmioV2DeviceState)             |
+   |assigned_resources                  |
+   |    (DeviceResources)               |
+   |                                    |
+   |mmio_cfg_res                        |  one of the res in assigned_resources
+   |    (Resource)                      |
+   |                                    |
+   |                                    |
+   |device_vendor                       |
+   |    (u32)                           |
+   +------------------------------------+
+
+
+0.2 MmioV2DeviceState
+================================================================================
+
+   MmioV2DeviceState
+   +------------------------------------+
+   |device                              |
+   |    (VirtioDevice)                  |
+   |vm_fd                               |
+   |    (VmFd)                          |
+   |vm_as                               |
+   |    (AS)                            |
+   |device_resources                    |
+   |    (DeviceResources)               |
+   |queues                              |
+   |    (VirtioQueueConfig)             |
+   |    +-------------------------------+
+   |    |queue                          |
+   |    |    (Queue)                    |
+   |    |eventfd                        |
+   |    |    (EventFd)                  |
+   |    |notifier                       |
+   |    |    (VirtioNotifier)           |
+   |    |index                          |
+   |    |    (u16)                      |
+   |    +-------------------------------+
+   |                                    |
+   +------------------------------------+
+
+0.3 VirtioDeviceConfig VirtioQueueConfig
+================================================================================
+
