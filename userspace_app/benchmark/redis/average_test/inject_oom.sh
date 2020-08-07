@@ -20,7 +20,8 @@ set timeout 10
 #First argument is assigned to the variable name
 
 # start redis
-spawn pouch run -m 2g --runtime=$runtime --name oom-inject -v $oom_dir:/test/ -it redis sh
+spawn pouch run -m 16g --annotation io.alibaba.pouch.vm.passthru.cpus=2 --annotation io.alibaba.pouch.vm.passthru.memory="16Gi" \
+	--runtime=$runtime --name oom-inject -v $oom_dir:/test/ -it reg.docker.alibaba-inc.com/alibase/alios7u2 sh
 
 expect {
 	"#" {  }
@@ -30,13 +31,19 @@ expect {
 	}
 }
 
-# run a.out to trigger oom
-send "/test/a.out\r"
+# trigger oom
+send "/test/oom.sh /test/\r"
 
+set iter 1
 set timeout 10000
 expect {
 	"#" {
-		send_user "OOM injected\n"
+		if {$iter < 3} {
+			incr iter
+			send "/test/oom.sh /test/\r"
+			exp_continue
+		}
+		send_user "Test finished\n"
 	}
 	timeout {
 		send_user "!!! Test failed\n"
