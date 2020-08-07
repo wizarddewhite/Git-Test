@@ -28,7 +28,17 @@
 1.1.3 read_config()
 ================================================================================
 
-1.1.4 activate()
+1.1.4 activate(config: VirtioDeviceConfig)
+================================================================================
+1.1.4.1 let inflate = config.queues.remove(0)
+================================================================================
+1.1.4.2 let deflate = config.queues.remove(0)
+================================================================================
+1.1.4.3 let reporting = config.queues.remove(0)
+================================================================================
+1.1.4.4 let handler = BalloonEpollHandler{conffig, inflate, deflate, reporting, balloon_config}
+================================================================================
+1.1.4.5 device_info.register_event_handler(handler), add subscriber to epoll_manager
 ================================================================================
 
 0. data structure
@@ -144,7 +154,8 @@ VirtioDevice
    |device_change_notifier              |
    |    (VirtioNotifier)                |
    |                                    |
-   |                                    |
+   |subscriber_id                       |  = device_info.register_event_handler(BalloonEpollHandler);
+   |    (SubscriberId)                  |
    |                                    |
    |                                    |
    +------------------------------------+
@@ -182,3 +193,57 @@ VirtioDevice
    |                                    |
    +------------------------------------+
 
+0.3. BalloonEpollHandler
+================================================================================
+
+   BalloonEpollHandler
+   +------------------------------------+
+   |config                              |
+   |    (VirtioDeviceConfig)            |
+   |inflate                             |
+   |deflate                             |
+   |reporting                           |
+   |    (VirtioQueueConfig)             |
+   |balloon_config                      |
+   |    (VirtioBalloonConfig)           |
+   |                                    |
+   |                                    |
+   +------------------------------------+
+
+0.3.1 MutEventSubscriber -> BalloonEpollHandler
+================================================================================
+
+   MutEventSubscriber
+   +------------------------------------+
+   |init()                              |
+   |process()                           |
+   |    INFLATE_QUEUE_AVAIL_EVENT       |
+   |    DEFLATE_QUEUE_AVAIL_EVENT       |
+   |    REPORTING_QUEUE_AVAIL_EVENT     |
+   |                                    |
+   +------------------------------------+
+                      |
+                      |
+                      |
+                      v
+   BalloonEpollHandler
+   +------------------------------------+
+   |process_reporting_queue()           |
+   |process_queue()                     |
+   +------------------------------------+
+
+0.4 VirtioQueueConfig
+================================================================================
+
+   VirtioQueueConfig
+   +------------------------------------+
+   |index                               |
+   |    (u16)                           |
+   |queue                               |
+   |    (Queue)                         |
+   |eventfd                             |
+   |    (EventFd)                       |
+   |notifier                            |
+   |    (VirtioNotifier)                |
+   |                                    |
+   +------------------------------------+
