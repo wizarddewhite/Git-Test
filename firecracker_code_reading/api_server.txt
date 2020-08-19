@@ -1,0 +1,58 @@
+1. Call flow
+================================================================================
+
+ApiServer                                                       Vmm
+
+api_server = ApiServer::new()
+    api_server.bind_and_run()
+        self.handle_request(request)
+            ParsedRequest::try_from_request(request) {
+                Parse Request Type
+            self.check_request(request)
+            self.serve_vmm_action_request(request)
+                self.api_request_sender.send()       --->   run_vmm_action()
+                                                                from_api.try_recv()
+                                                                response = xxx, depends on request
+                                                                send_response(response)
+                self.vmm_response_receiver.recv()   <---            to_api.send(response)
+
+
+2. HttpServer test example
+================================================================================
+The file in http_server is an example for micro_http.
+
+'cargo run' for server side and use 
+
+curl --unix-socket /tmp/firecracker.socket -i -X PUT 'http://localhost/boot-source'
+
+to invoke server.
+
+0. Data Struct
+================================================================================
+
+0.1 ApiServer
+================================================================================
+
+    ApiServer
+    +-----------------------------+    
+    |vmm_shared_info              |
+    |     (InstanceInfo)          |
+    |api_request_sender           |
+    |     (VmmRequest)            |
+    |vmm_response_receiver        |
+    |     (VmmResponse)           |
+    |to_vmm_fd                    |
+    |     (EventFd)               |
+    +-----------------------------+    
+
+0.2 ApiServer <-> Vmm
+================================================================================
+
+    ApiServer                               Vmm
+    +-------------------------+             +-------------------------+
+    |                         |             |VmmService               |
+    |api_request_sender       |------------>|    from_api             |
+    |                         |             |                         |
+    |vmm_response_receiver    |<------------|    to_api               |
+    |                         |             |                         |
+    +-------------------------+             +-------------------------+
