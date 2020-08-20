@@ -1,0 +1,96 @@
+1. init_guest_memory()
+================================================================================
+1.1 AddressSpaceMgr::create_address_space(resource_manager, mem_size, mem_type)
+================================================================================
+1.1.1 regions.push(AddressSpaceRegion::create_default_memory_region())
+================================================================================
+1.1.2 for reg in regions.iter()
+================================================================================
+1.1.3 mmap_reg = reg.create_mmap_region()
+================================================================================
+1.1.3.1 mmap_reg = MmapRegion::build(file_offset, len, , perm_flags), do mmap
+================================================================================
+1.1.4 vm_memory.insert_region(mmap_reg.clone())
+================================================================================
+
+0. data struct
+================================================================================
+
+    Vm
+    +------------------------------------------+    
+    |fd                                        |
+    |     (VmFd)                               |
+    |                                          |
+    |device_manager                            |
+    |     (DeviceManager)                      |
+    |epoll_manager                             |
+    |     (EpolleManager)                      |
+    |                                          |
+    |resource_manager                          |
+    |     (ResourceManager)                    |
+    |     +------------------------------------+
+    |     |legacy_irq_pool                     |
+    |     |                                    |
+    |     |mmio_pool                           |
+    |     |                                    |
+    |     |mem_pool                            |
+    |     |   (AddressSpaceRegion)             |
+    |     |kvm_mem_slot_pool                   |
+    |     |                                    |
+    |     +------------------------------------+
+    |                                          |
+    |address_space                             |  AddressSpaceMgr::create_address_space
+    |     (AddressSpaceMgr)                    |
+    |     +------------------------------------+
+    |     |address_space                       |
+    |     |  (Option<AddressSpace>)            |
+    |     |  +---------------------------------+
+    |     |  |regions                          |
+    |     |  |   (Vec<AddressSpaceRegion>)     |
+    |     |  |   +-----------------------------+
+    |     |  |   |ty                           |
+    |     |  |   |   (AddressSpaceRegionType)  |  Default|High|IoBuffer|DeviceMemory
+    |     |  |   |base                         |
+    |     |  |   |   (GuestAddress)            |
+    |     |  |   |size                         |
+    |     |  |   |   (GuestUsize)              |
+    |     |  |   |file_offset                  |
+    |     |  |   |   (FileOffset)              |
+    |     |  |   |perm_flags                   |
+    |     |  |   |   (i32)                     |
+    |     |  |   |is_hugeshmem                 |
+    |     |  |   |is_hotplug                   |
+    |     |  |   |   (bool)                    |
+    |     |  |   |                             |
+    |     |  +---+-----------------------------+
+    |     |                                    |
+    |     |vm_as                               |
+    |     |(GuestAddressSpaceImpl)             |
+    |     |  +---------------------------------+
+    |     |  |regions                          |
+    |     |  |   (Vec<GuestRegionMmap>)        |
+    |     |  |   +-----------------------------+
+    |     |  |   |guest_base                   |  Guest Address
+    |     |  |   |   (GuestAddress)            |
+    |     |  |   |mapping                      |
+    |     |  |   |   (MmapRegion)              |
+    |     |  |   |   +-------------------------+
+    |     |  |   |   |addr                     |  Host Address
+    |     |  |   |   |    (u8*)                |
+    |     |  |   |   |size                     |
+    |     |  |   |   |file_offset              |
+    |     |  |   |   |prot                     |
+    |     |  |   |   |flags                    |
+    |     |  |   |   |                         |
+    |     |  |   |   +-------------------------+
+    |     |  |   |                             |
+    |     |  +---+-----------------------------+
+    |     |                                    |
+    |     |_base_to_slot                       |
+    |     |  (HashMap<u64, u32>)               |
+    |     +------------------------------------+
+    |                                          |
+    |vcpus_handlers                            |
+    |     (Vec<VcpuHandle>)                    |
+    |                                          |
+    +------------------------------------------+    
