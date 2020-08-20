@@ -682,7 +682,7 @@ If the Result is the Err variant, unwrap will call the panic! macro for us.
 5.2.2 expect()
 ================================================================================
 
-The same as unwrap(), except move verbose panic! message.
+The same as unwrap(), except more verbose panic! message.
 
     let f = File::open("hello.txt").expect("Failed to open hello.txt");
 
