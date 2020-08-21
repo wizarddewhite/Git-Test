@@ -723,7 +723,11 @@ fn read_username_from_file2() -> Result<String, io::Error> {
     Ok(s)
 }
 
-6. Closure
+6. Functional Language Feature
+================================================================================
+https://doc.rust-lang.org/book/ch13-00-functional-features.html
+
+6.1 Closure
 ================================================================================
 
 Compared with function:
@@ -747,31 +751,31 @@ FnMut can change the environment because it mutably borrows values.
 Fn borrows values from the environment immutably.
 
 
-7. Iterator
+6.2 Iterator
 ================================================================================
 
 https://www.twle.cn/c/yufei/rust/rust-basic-iterator.html
 
-8. Smart Pointer
+7. Smart Pointer
 ================================================================================
 
-8.1 Box<>
+7.1 Box<>
 ================================================================================
 
 let b = Box::new(5);
 
-8.2 Deref trait
+7.2 Deref trait
 ================================================================================
 
 implement * operation for customized Box.
 
-8.3 Drop trait
+7.3 Drop trait
 ================================================================================
 
-5. Project Management
+8. Project Management
 ================================================================================
 
-5.1 Packages & Crates
+8.1 Packages & Crates
 ================================================================================
 
 A crate is a binary or library. The crate root is a source file that the Rust
@@ -780,24 +784,24 @@ compiler starts from and makes up the root module of your crate.
 A package is one or more crates that provide a set of functionality. A package
 contains a Cargo.toml file that describes how to build those crates.
 
-5.2 Modules
+8.2 Modules
 ================================================================================
 
 Modules let us organize code within a crate into groups for readability and
 easy reuse
 
-5.3 Workspace
+8.3 Workspace
 ================================================================================
 
 
-5.4 Dependency
+8.4 Dependency
 ================================================================================
 Reference https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 
 [dependencies]
 name = "version"
 
-5.4.1 specify the version
+8.4.1 specify the version
 ================================================================================
 ^1.2.3  :=  >=1.2.3, <2.0.0
 ^1.2    :=  >=1.2.0, <2.0.0
@@ -816,13 +820,13 @@ name = "version"
 1.*   := >=1.0.0, <2.0.0
 1.2.* := >=1.2.0, <1.3.0
 
-5.4.2 specify the registry
+8.4.2 specify the registry
 ================================================================================
 
 [dependencies]
 some-crate = { version = "1.0", registry = "my-registry" }
 
-5.4.3 dependency from git
+8.4.3 dependency from git
 ================================================================================
 
 [dependencies]
@@ -836,7 +840,7 @@ Note:
 To access a private git repo, you may need to configure git authentication.
 https://doc.rust-lang.org/cargo/appendix/git-authentication.html
 
-5.4.4 local dependency
+8.4.4 local dependency
 ================================================================================
 
 [dependencies]
@@ -845,7 +849,7 @@ hello_utils = { path = "hello_utils" }
 [dependencies]
 hello_utils = { path = "hello_utils", version = "0.1.0" }
 
-5.4.4 platform specific dependency
+8.4.4 platform specific dependency
 ================================================================================
 
 [target.'cfg(windows)'.dependencies]
@@ -860,7 +864,7 @@ native = { path = "native/i686" }
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 native = { path = "native/x86_64" }
 
-5.4.5 feature specific dependency
+8.4.5 feature specific dependency
 ================================================================================
 
 [dependencies]
@@ -870,7 +874,7 @@ bar = { version = "1.0", optional = true }
 [features]
 fancy-feature = ["foo", "bar"]
 
-5.4.6 development dependency
+8.4.6 development dependency
 ================================================================================
 
 [dev-dependencies]
@@ -879,7 +883,7 @@ tempdir = "0.3"
 [target.'cfg(unix)'.dev-dependencies]
 mio = "0.0.1"
 
-5.4.7 choose feature
+8.4.7 choose feature
 ================================================================================
 
 [dependencies.awesome]
@@ -888,11 +892,11 @@ default-features = false # do not include the default features, and optionally
                          # cherry-pick individual features
 features = ["secure-password", "civet"]
 
-5.5 feature
+8.5 feature
 ================================================================================
 Reference: https://doc.rust-lang.org/cargo/reference/features.html
 
-5.5.1 definition
+8.5.1 definition
 ================================================================================
 
 Define two features: tastes, cook. The first one is the default feature, and
@@ -905,7 +909,7 @@ default = ["tastes"]
 tastes = []
 cook = []
 
-5.5.2 usage
+8.5.2 usage
 ================================================================================
 
 A crate depends on the restaurant, and also depends on the optional feature:
@@ -915,7 +919,7 @@ cook.
 path = "../restaurant"
 features = ["cook"]
 
-5.5.3 conditional compilation
+8.5.3 conditional compilation
 ================================================================================
 
 When we need to build an optional feature, we can specify the feature in
@@ -923,7 +927,7 @@ command line:
 
 cargo build --features "feature_name"
 
-5.6 registry
+8.6 registry
 ================================================================================
 https://doc.rust-lang.org/cargo/reference/registries.html
 
