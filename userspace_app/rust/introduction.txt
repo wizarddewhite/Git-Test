@@ -520,6 +520,17 @@ https://doc.rust-lang.org/reference/conditional-compilation.html
 4. Ownership
 ================================================================================
 
+Rust¡¯s central feature is ownership.
+
+Three ways to control memory at run time for a program language:
+
+  * garbage collection
+  * explicitly allocate and free
+  * through a system of ownership with a set of rules that the compiler checks
+    at compile time
+
+Rust takes the third one.
+
 4.1 Ownership
 ================================================================================
 
@@ -529,8 +540,22 @@ Rules:
   * There can only be one owner at a time.
   * When the owner goes out of scope, the value will be dropped.
 
+For variables, they could be allocated on two locations:
+
+  * stack
+  * heap
+
+For variables allocated on stack, usually we don't need to do more than move
+the stack pointer to get back those memory.
+
 For variables allocated on heap, Rust will return the memory automatically
 when the owner goes out of scope. The secret function to do this is -- drop().
+
+Based on this, we face a challenge for variables on heap at variable
+assignment. Because, if we call drop() for each variables on heap, double free
+happens. This is the reason for rust to solve the problem by ownership.
+
+> After assignment, the new one is valid and the old one is invalid.
 
 4.1.1 Ownership Movement
 ================================================================================
@@ -540,21 +565,31 @@ This is called a movement of ownership.
 https://kaisery.gitbooks.io/rust-book-chinese/content/content/Ownership%20ËùÓÐÈ¨.html
 
 ```
-fn take(v: Vec<i32>) {
-    // What happens here isn¡¯t important.
+fn take_ownership(v: Vec<i32>) {
+    // What happens here isn¡¯t important
 }
 
 let v = vec![1, 2, 3];
 
-take(v);
+take_ownership(v);
 
 println!("v[0] is: {}", v[0]); // error: use of moved value: `v`
 ```
 
+Reason:
+
+If we don't grab the ownership in "take_ownership", variable v would be freed
+twice. So rust think v is no longer available after "take_ownership".
+
+Rust calls this ownership is moved, which is basically introduced to solve
+double free for variables on the heap.
+
 4.1.2 Copy
 ================================================================================
-The exception is if the type implement Copy trait.
-Actually, more memory is used.
+The exception is if the type implement Copy trait. Actually, more memory is
+used. And I think those variables must be put on stack.
+
+Note: a type implement Drop() trait can't inherit Copy() trait.
 
 ```
 fn main() {
@@ -566,6 +601,17 @@ fn main() {
 
 fn double(x: i32) -> i32 {
     x * 2
+}
+```
+
+Or for a complex structure, clone() is used.
+
+```
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1.clone();
+
+    println!("s1 = {}, s2 = {}", s1, s2);
 }
 ```
 
