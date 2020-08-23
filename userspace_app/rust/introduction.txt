@@ -189,11 +189,16 @@ println!("get number {}", num);
 3.3.4 slice
 ================================================================================
 
-Slice doesn't have ownership. (So it must be a reference?)
+Slice doesn't have ownership, it let you reference a contiguous sequence of
+elements in a collection rather than the whole collection. So it must be a
+reference.
 
 let a = [1, 2, 3, 4];
 let complete = &a[..];
 let middle = &a[1..4];
+
+Also with the combination of reference, slice is useful to solve some run time
+error. See the detail example: https://doc.rust-lang.org/book/ch04-03-slices.html
 
 3.3.5 vector
 ================================================================================
@@ -632,11 +637,13 @@ let v2 = vec![1, 2, 3];
 let (v1, v2, answer) = foo(v1, v2);
 ```
 
-4.2 Borrow & Reference
+4.2 Ownership Borrow & Reference
 ================================================================================
 https://zhuanlan.zhihu.com/p/59998584
 
-Use reference to borrow the ownership
+Use reference to borrow the ownership, which means the function never own the
+variable and won't call drop when variable goes out of scope. That's why we
+call it borrow.
 
 ```
 fn foo(v1: &Vec<i32>, v2: &Vec<i32>) -> i32 {
@@ -663,6 +670,68 @@ let mut x = 5;
 }
 println!("{}", x);
 ```
+
+4.2.1.1 Restriction
+================================================================================
+
+There is restriction on (mutable) reference, which is actually a powerful tool
+to prevent data race at compile time.
+
+  * you can have only one mutable reference to a particular piece of data in a
+    particular scope.
+  * no mixture of mutable and immutable reference
+
+Here is some examples:
+
+Restriction 1:
+
+```
+fn main() {
+    let mut s = String::from("hello");
+
+    let r1 = &mut s;
+    let r2 = &mut s;  // cannot borrow `s` as mutable more than once at a time
+
+    println!("{}, {}", r1, r2);
+}
+```
+
+Restriction 2:
+```
+fn main() {
+    let mut s = String::from("hello");
+
+    let r1 = &s; // no problem
+    let r2 = &s; // no problem
+    let r3 = &mut s; // cannot borrow `s` as mutable because it is also
+                     // borrowed as immutable
+
+    println!("{}, {}, and {}", r1, r2, r3);
+}
+```
+
+4.2.2 Dangling reference
+================================================================================
+
+An example of dangling reference.
+
+```
+fn main() {
+    let reference_to_nothing = dangle();
+}
+
+fn dangle() -> &String {
+    let s = String::from("hello");
+
+    &s
+}
+```
+
+The reason:
+
+    Because s is created inside dangle, when the code of dangle is finished, s
+    will be deallocated. But we tried to return a reference to it. That means
+    this reference would be pointing to an invalid String.
 
 4.3 Lifetime
 ================================================================================
