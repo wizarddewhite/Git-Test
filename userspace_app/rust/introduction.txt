@@ -733,28 +733,210 @@ The reason:
     will be deallocated. But we tried to return a reference to it. That means
     this reference would be pointing to an invalid String.
 
-4.3 Lifetime
+4.3 Lifetime of Reference
 ================================================================================
 Refer to : https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html
 
-Every reference in Rust has a lifetime, which is the scope for which that
+Every **reference** in Rust has a lifetime, which is the scope for which that
 reference is valid.
 
-4.3.1 Definition
+Most of the time, lifetimes are implicit and inferred, just like most of the
+time, types are inferred.
+
+We must annotate lifetimes when the lifetimes of references could be related
+in a few different ways.
+
+4.3.1 How it works -- Borrow Check
 ================================================================================
 
-&i32        // a reference
+One of the strength of lifetime is to prevent dangling reference.
+
+Following is an example:
+
+```
+    {
+        let r;
+
+        {
+            let x = 5;
+            r = &x;
+        }
+
+        println!("r: {}", r);
+    }
+```
+
+The Rust compiler has a **borrow checker** that compares scopes to determine
+whether all borrows are valid.
+
+```
+    {
+        let r;                // ---------+-- 'a
+                              //          |
+        {                     //          |
+            let x = 5;        // -+-- 'b  |
+            r = &x;           //  |       |
+        }                     // -+       |
+                              //          |
+        println!("r: {}", r); //          |
+    }                         // ---------+
+```
+
+4.3.2 Annotation Syntax
+================================================================================
+
+One lifetime annotation by itself doesn¡¯t have much meaning, because the
+annotations are meant to tell Rust how generic lifetime parameters of multiple
+references relate to each other.
+
+While first, we need to know how Rust defines it.
+
+4.3.2.1 Lifetime annotation
+================================================================================
+
+&i32        // a reference with inferred lifetime
 &'a i32     // a reference with an explicit lifetime
 &'a mut i32 // a mutable reference with an explicit lifetime
 
-fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {}
 
+4.3.2.2 Lifetime annotation for function
+================================================================================
+
+```
+fn main() {
+    let string1 = String::from("abcd");
+    let string2 = "xyz";
+
+    let result = longest(string1.as_str(), string2);
+    println!("The longest string is {}", result);
+}
+
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+```
+
+The function signature tells Rust that:
+
+  * for some lifetime 'a, the function takes two parameters that live at least
+    as long as lifetime 'a
+  * return value will live at least as long as lifetime 'a
+
+These two help the borrow checker should reject any values that don't adhere
+to these constrains.
+
+When annotating lifetimes in functions, the annotations go in the function
+signature, not in the function body. Rust can analyze the code within the
+function without any help.
+
+How 'a is replaced with concrete lifetime:
+
+  When we pass concrete references to longest, the concrete lifetime that is
+  substituted for 'a is the part of the scope of x that overlaps with the
+  scope of y. In other words, the generic lifetime 'a will get the concrete
+  lifetime that is equal to the **smaller** of the lifetimes of x and y.
+  Because we¡¯ve annotated the returned reference with the same lifetime
+  parameter 'a, the returned reference will also be valid for the length of
+  the smaller of the lifetimes of x and y.
+
+4.3.2.3 Lifetime Annotations in Struct Definitions
+================================================================================
+
+It¡¯s possible for structs to hold references, but in that case we would need
+to add a lifetime annotation on every reference in the struct¡¯s definition.
+
+```
 struct ImportantExcerpt<'a> {
     part: &'a str,
 }
 
-4.3.1 prevent dangling reference
+fn main() {
+    let novel = String::from("Call me Ishmael. Some years ago...");
+    let first_sentence = novel.split('.').next().expect("Could not find a '.'");
+    let i = ImportantExcerpt {
+        part: first_sentence,
+    };
+}
+```
+
+This annotation means an instance of ImportantExcerpt can¡¯t outlive the
+reference it holds in its "part" field.
+
+
+4.3.2.4 Lifetime Annotations in Method Definitions
 ================================================================================
+
+```
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+
+impl<'a> ImportantExcerpt<'a> {
+    fn level(&self) -> i32 {
+        3
+    }
+
+    fn announce_and_return_part(&self, announcement: &str) -> &str {
+        println!("Attention please: {}", announcement);
+        self.part
+    }
+}
+```
+
+After applying elision rule, the definition looks like:
+
+```
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+
+impl<'a> ImportantExcerpt<'a> {
+    fn level(&'a self) -> i32 {
+        3
+    }
+
+    fn announce_and_return_part(&'a self, announcement: &'b str) -> &'a str {
+        println!("Attention please: {}", announcement);
+        self.part
+    }
+}
+```
+
+4.3.3 Lifetime Elision
+================================================================================
+
+The compiler uses three rules to figure out what lifetimes references have
+when there aren¡¯t explicit annotations.
+
+  * The first rule is that each parameter that is a reference gets its own
+    lifetime parameter. 
+  * The second rule is if there is exactly one input lifetime parameter, that
+    lifetime is assigned to all output lifetime parameters.
+  * The third rule is if there are multiple input lifetime parameters, but one
+    of them is &self or &mut self because this is a method, the lifetime of
+    self is assigned to all output lifetime parameters.
+
+Example 1:
+
+  Original code:  fn first_word(s: &str) -> &str {
+  Rule 1:         fn first_word(s: &'a str) -> &str {
+  Rule 2:         fn first_word(s: &'a str) -> &'a str {
+
+  After applying Rule 1/2, all references in this function signature have
+  lifetime.
+
+Example 2:
+
+  Original code:  fn longest(x: &str, y: &str) -> &str {
+  Rule 1:         fn longest(x: &'a str, y: &'b str) -> &str {
+  Rule 2 can't apply.
+
+  There still is un-certain lifetime in this function signature, so we have to
+  specify it or we would have compile error.
 
 5. Error
 ================================================================================
