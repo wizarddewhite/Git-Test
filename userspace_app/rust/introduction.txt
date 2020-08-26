@@ -1039,11 +1039,11 @@ let add_one_v4 = |x|               x + 1  ;
     1. type annotations for parameter and return value is optional
     2. if closure body is a single expression, curly brackets is optional
 
-6.1.2 Closure type to store a closure to a variable
+6.1.2 Closure's Type and Environment Capture
 ================================================================================
 
-Unlike functions, closures can capture values from the scope in which they¡¯re
-defined. 
+Unlike functions, closures can capture their environment from the scope in
+which they¡¯re defined. 
 
 All closures implement at least one of the traits: Fn, FnMut, or FnOnce, and
 each type specify environment variable ownership:
@@ -1073,6 +1073,10 @@ where
     value: Option<u32>,
 }
 ```
+
+Compiler would infer the type of capture value automatically. See this link
+for more example:
+https://doc.rust-lang.org/rust-by-example/fn/closures/capture.html.
 
 6.2 Iterator
 ================================================================================
