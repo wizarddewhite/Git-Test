@@ -13,16 +13,18 @@ https://doc.rust-lang.org/rust-by-example/macros.html
 Rust book
 https://kaisery.gitbooks.io/rust-book-chinese/content/
 
-1.1 Install & Setup environment
+1.1 Install & Configuration
 ================================================================================
 
 1.1.1 Install Rust
+================================================================================
 
 curl https://sh.rustup.rs -sSf | sh
 
 Add ~/.cargo/bin into your $PATH.
 
-1.1.2 Setup
+1.1.2 Setup Environment
+================================================================================
 
 Change rust source for fast access in Shanghai.
 
@@ -36,6 +38,19 @@ registry = "https://github.com/rust-lang/crates.io-index"
 replace-with = 'ustc'
 [source.ustc]
 registry = "git://mirrors.ustc.edu.cn/crates.io-index"
+
+1.1.3 Setup IDE
+================================================================================
+
+There are several IDE for rust, the one I choose is vim + coc-rust-analyzer.
+
+Refer https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/user/manual.adoc#vimneovim
+for more detail.
+
+There are two things to install:
+
+  * coc and its extension coc-rust-analyzer
+  * vim-lsp
 
 2. Build & run
 ================================================================================
