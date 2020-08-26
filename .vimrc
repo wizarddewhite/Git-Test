@@ -265,3 +265,28 @@ set mouse=a
 
 imap <silent> <leader>sob Signed-off-by: Wei Yang <richard.weiyang@gmail.com><Esc>
 imap <silent> <leader>rb Reviewed-by: Wei Yang <richard.weiyang@gmail.com><Esc>
+
+call plug#begin('~/.vim/plugged')
+" neoclide
+" Reference for coc https://www.chrisatmachine.com/Neovim/04-vim-coc/
+" After this change, use following command in vim to install rust-analyzer
+" :PluginInstall
+" :CocInstall coc-json coc-tsserver
+" :CocInstall coc-vimlsp
+" :CocInstall coc-rust-analyzer
+Plug 'neoclide/coc.nvim', {'branch': 'release'}
+Plug 'prabirshrestha/vim-lsp'
+Plug 'mattn/vim-lsp-settings'
+call plug#end()
+
+" Install missing plugins on Vim startup
+autocmd VimEnter *
+  \  if len(filter(values(g:plugs), '!isdirectory(v:val.dir)'))
+  \|   PlugInstall --sync | q
+  \| endif
+
+" GoTo code navigation. from https://github.com/neoclide/coc.nvim
+nmap <silent> gd <Plug>(coc-definition)
+nmap <silent> gy <Plug>(coc-type-definition)
+nmap <silent> gi <Plug>(coc-implementation)
+nmap <silent> gr <Plug>(coc-references)
