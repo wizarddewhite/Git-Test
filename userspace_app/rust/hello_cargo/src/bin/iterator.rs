@@ -34,6 +34,7 @@ fn main() {
 
     test_iter_find();
     test_map_fold();
+    test_three_types_iterator();
 }
 
 #[derive(PartialEq, Debug)]
@@ -131,4 +132,35 @@ fn test_map_fold() {
     // get value of each element, and do the sum
     println!("total number of vec {} ", 
         vec.iter().map(|v| v).fold(0, std::ops::Add::add));
+}
+
+fn test_three_types_iterator() {
+    let mut names = vec!["simple course", "course simple", "simple test"];
+
+    // immutable reference
+    for name in names.iter() {
+        println!("{}", name);
+    }
+    // names is still available
+    println!("{:?}", names);
+
+    // mutable reference
+    for name in names.iter_mut() {
+        println!("{}", name);
+        match name {
+            &mut "simple test" => {
+                *name = "not valid"
+            },
+            _ => {},
+        }
+    }
+    // names is still available
+    println!("{:?}", names);
+
+    // take ownership
+    for name in names.into_iter() {
+        println!("{}", name);
+    }
+    // names is still available
+    // println!("{:?}", names);
 }

@@ -1096,6 +1096,51 @@ https://doc.rust-lang.org/rust-by-example/fn/closures/capture.html.
 6.2 Iterator
 ================================================================================
 
+All iterators implement a trait named Iterator that is defined in the standard
+library.
+
+```
+pub trait Iterator {
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
+
+    // methods with default implementations elided
+}
+```
+
+The Iterator trait only requires implementors to define one method: the next
+method, which returns one item of the iterator at a time wrapped in Some and,
+when iteration is over, returns None
+
+6.2.1 Two categories of Iterator methods
+================================================================================
+The Iterator trait has a number of different methods with default
+implementations provided by the standard library.
+
+Basically we can classify methods into two categories:
+
+  * consuming adaptors
+  * iterator adaptors
+
+Only one consuming adaptor is allowed for on iterator and after that this
+iterator is not allowed to be used again -- consumed.
+
+Multiple calls to iterator adaptors could be chained. Iterator adaptors allow
+you to change iterators into different kinds of iterators.
+
+6.2.2 Type of Iterator
+================================================================================
+
+There are three types of iterator:
+
+  * into_iter(): takes ownership
+  * iter():      immutable reference
+  * iter_mut():  mutable reference
+
+These three types of iterator determines the value type we get from iterator.
+
+This link shows some interesting example for this.
 https://www.twle.cn/c/yufei/rust/rust-basic-iterator.html
 
 7. Smart Pointer
