@@ -175,12 +175,14 @@ vma: vm_area_struct
 
 When a process just allocate an anonymous page, the digram show the state.
 
-                  same_anon_vma                 same_vma
-             .......................      *************************
-             .                     .      *                       *
-     av      v                 avc v      v                vma    v
-     +-----------+             +-------------+             +-------------+
-     |           |<------------|anon_vma  vma|------------>|             |
+     +----------------------------------------------------------------------+
+     |                                                                      |
+     |            same_anon_vma                 same_vma                    |
+     |       .......................      *************************         |
+     v       .                     .      *                       *         |
+     av      v                 avc v      v                vma    v         |
+     +-----------+             +-------------+             +-------------+  |
+     |           |<------------|anon_vma  vma|------------>|     anon_vma|--+
      |           |             |             |             |             |
      +-----------+             +-------------+             +-------------+
              ^                     ^      ^                       ^
@@ -195,7 +197,7 @@ In initial version, these . and * are two link lists in avc structure:
    same_vma(*): all anon_vma structures relevant to a given vma
 
 So if this process allocate another anonymous page in the same area covered by
-this anon_vma but in another vma, the the state looks like this:
+this anon_vma but in another vma, the state looks like this:
 
 
 
@@ -224,7 +226,7 @@ this anon_vma but in another vma, the the state looks like this:
 
 Looks similar with the previous version, right? Just a little bit FAT.
 
-Now it is time to see what happens after fork.
+Now it is time to see what happens after fork(anon_vma_fork).
 
 
              .......................      *************************
@@ -431,7 +433,7 @@ This is still the same, do_anonymous_page() and anon_vma_fork() show this.
     page->mapping.
   * anon_vma_fork() will create new anon_vma but page->mapping is not changed
 
-The difference happends COW, this is the situation this commit tries to
+The difference happens on COW, this is the situation this commit tries to
 improve.
 
 Originally, page->mapping still points to only one anon_vma for the whole
