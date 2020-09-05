@@ -1,0 +1,113 @@
+1. setup_numabalancing(), __setup()
+================================================================================
+1.1 numabalancing_override = 1
+================================================================================
+
+1. numa_policy_init(), called by start_kernel()
+================================================================================
+1.1 policy_cache = kmem_cache_create("numa_policy")
+================================================================================
+1.2 sn_cache = kmem_cache_create("shared_policy_node")
+================================================================================
+1.3 preferred_node_policy[nid] = {}
+================================================================================
+1.4 do_set_mempolicy(MPOL_INTERLEAVE, 0, &interleave_nodes)
+================================================================================
+1.4.1 new = mpol_new()
+================================================================================
+1.4.2 mpol_set_nodemask(new, nodes, scratch)
+================================================================================
+1.4.3 current->mempolicy = new
+================================================================================
+1.5 check_numabalancing_enable()
+================================================================================
+1.5.1 set_numabalancing_state(numabalancing_default);
+================================================================================
+1.5.1.1 static_branch_enable(&sched_numa_balancing), enable numa balance
+================================================================================
+
+0. data struct
+================================================================================
+
+0.0 global variables
+================================================================================
+NUMA policy allows the user to give hints in which node(s) memory should
+be allocated
+
+enum {
+	MPOL_DEFAULT,
+	MPOL_PREFERRED,
+	MPOL_BIND,
+	MPOL_INTERLEAVE,
+	MPOL_LOCAL,
+	MPOL_MAX,	/* always last member of enum */
+};
+
+default_policy
+     (struct mempolic)
+preferred_node_policy[MAX_NUMNODES]
+     (struct mempolic)
+
+0.1 mempolicy
+================================================================================
+
+    mempolicy
+    +------------------------------+
+    |refcnt                        |
+    |    (atomic_t)                |
+    |mode                          |
+    |flags                         |
+    |    (unsigned short)          |
+    |v                             |
+    |   +--------------------------+
+    |   |preferred_node            |   MPOL_PREFERRED
+    |   |   (short)                |
+    |   |nodes                     |   MPOL_INTERLEAVE/MPOL_BIND
+    |   |   (nodemask_t)           |
+    |   +--------------------------+
+    |w                             |
+    |   +--------------------------+
+    |   |cpuset_mems_allowed       |
+    |   |user_nodemask             |
+    |   |   (nodemask_t)           |
+    +---+--------------------------+
+
+0.2 mempolicy_operations
+================================================================================
+
+    mempolicy
+    +------------------------------+
+    |create                        |
+    |                              |
+    |rebind                        |
+    |                              |
+    +------------------------------+
+
+0.2.1 mpol_ops(struct mempolicy_operations)
+================================================================================
+
+    mpol_ops
+                  +------------------------------+
+ MPOL_DEFAULT     |create                        |  = NULL
+                  |                              |
+                  |rebind                        |  = mpol_rebind_default
+                  |                              |
+                  +------------------------------+
+                  +------------------------------+
+ MPOL_INTERLEAVE  |create                        |  = mpol_new_interleave
+                  |                              |
+                  |rebind                        |  = mpol_rebind_nodemask
+                  |                              |
+                  +------------------------------+
+                  +------------------------------+
+ MPOL_PREFERRED   |create                        |  = mpol_new_preferred
+                  |                              |
+                  |rebind                        |  = mpol_rebind_preferred
+                  |                              |
+                  +------------------------------+
+                  +------------------------------+
+ MPOL_BIND        |create                        |  = mpol_new_bind
+                  |                              |
+                  |rebind                        |  = mpol_rebind_nodemask
+                  |                              |
+                  +------------------------------+
