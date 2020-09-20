@@ -372,6 +372,9 @@ unmap range [start, start + len]
     |anon_vma_chain                  |
     |   (sruct list_head)            |
     +--------------------------------+
+    |vm_ops                          |
+    |  (struct vm_operations_struct*)|
+    +--------------------------------+
 
 0.3 anon_vma / anon_vma_chain
 ================================================================================
