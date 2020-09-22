@@ -1,0 +1,22 @@
+The cgroup Kconfig (CGROUPS) is in init/Kconfig
+
+It contains
+
+  * MEMCG
+  * BLK_CGROUP
+  * CGROUP_SCHED
+  * CGROUP_PIDS
+  * CPUSETS
+  * CGROUP_DEVICE
+  * CGROUP_PERF
+  * ...
+
+While the main source code of cgroup is at kernel/cgroup as mentioned in
+kernel/Makefile. 
+
+obj-$(CONFIG_CGROUPS) += cgroup/
+
+For MEMCG:
+
+obj-$(CONFIG_MEMCG) += memcontrol.o vmpressure.o
+obj-$(CONFIG_MEMCG_SWAP) += swap_cgroup.o
