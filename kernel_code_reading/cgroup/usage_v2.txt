@@ -1,0 +1,38 @@
+1. Core Interface Files
+
+1.1 cgroup.type
+
+current type of cgroup(non-root).
+
+  * domain
+  * domain threaded
+  * threaded
+
+1.2 cgroup.controllers
+
+shows space separated list of all controllers available to the cgroup.
+
+1.3 cgroup.subtree_control
+
+shows space separated list of the controllers which are enabled to control
+resource distribution from the cgroup to its children.
+
+echo "+memory -cpu" > cgroup.subtree_control
+
+1.4 cgroup.procs
+
+lists the PIDs of all processes which belong to the cgroup one-per-line.
+
+1.5 cgroup.stat
+
+list status of the cgroup
+
+  * nr_descendants: Total number of visible descendant cgroups
+  * nr_dying_descendants: Total number of dying descendant cgroups
+
+
+0. Reference
+
+https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html
+https://lwn.net/Articles/679786/
+

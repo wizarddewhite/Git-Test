@@ -1,0 +1,635 @@
+1. init call flow
+================================================================================
+
+start_kernel
+    cgroup_init_early
+    cgroup_init
+
+2. cgroup_init_early
+================================================================================
+2.1 ctx.root = &cgrp_dfl_root
+================================================================================
+2.2 init_cgroup_root(&ctx)
+================================================================================
+2.2.1 init_cgroup_housekeeping(cgrp_dfl_root.cgrp), init a cgroup
+================================================================================
+2.3 cgrp_dfl_root.cgrp.self.flags |= CSS_NO_REF
+================================================================================
+2.4 init_task.cgroups = &init_css_set;
+================================================================================
+2.5 for_each_subsys(ss, i), assign id/name to each subsys, but only init early ones
+================================================================================
+2.6 ss->id = i
+================================================================================
+2.7 ss->name = cgroup_subsys_name[i]
+================================================================================
+2.8 ss->legacy_name = cgroup_subsys_name[i]
+================================================================================
+2.9 cgroup_init_subsys(ss, true), if ss->early_init
+================================================================================
+
+3. cgroup_init
+================================================================================
+3.1 cgroup_init_cftypes(NULL, cgroup_base_files), assign kf_ops
+================================================================================
+3.2 cgroup_init_cftypes(NULL, cgroup1_base_files)
+================================================================================
+3.3 cgroup_rstat_boot()
+================================================================================
+3.3.1 cgroup_rstat_init(&cgrp_dfl_root.cgrp)
+================================================================================
+3.3.1.1 cgrp_dfl_root.cgrp.rstat_cpu = alloc_percpu(), or &cgrp_dfl_root_rstat_cpu
+================================================================================
+3.3.1.2 rstatc->updated_children = cgrp
+================================================================================
+3.4 rcu_sync_enter_start(&cgroup_threadgroup_rwsem.rss)
+================================================================================
+3.5 get_user_ns(init_cgroup_ns.user_ns)
+================================================================================
+3.6 hash_add(css_set_table, &init_css_set.hlist, css_set_hash(init_css_set.subsys))
+================================================================================
+3.7 cgroup_setup_root(&cgrp_dfl_root)
+================================================================================
+3.7.1 percpu_ref_init(&root_cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
+================================================================================
+3.7.2 allocate_cgrp_cset_links(2 * css_set_count, &tmp_links)
+================================================================================
+3.7.2.1 kzalloc(sizeof(struct cgrp_cset_link))
+================================================================================
+3.7.3 cgroup_init_root_id(&cgrp_dfl_root)
+================================================================================
+3.7.3.1 id = idr_alloc_cyclic(&cgroup_hierarchy_idr, )
+================================================================================
+3.7.3.2 cgrp_dfl_root->hierarchy_id = id
+================================================================================
+3.7.4 cgrp_dfl_root.kf_root = kernfs_create_root(cgroup_kf_syscall_ops)
+================================================================================
+3.7.5 root_cgrp->ancestor_ids[0] = cgroup_id(root_cgrp);
+================================================================================
+3.7.6 css_populate_dir(&root_cgrp->self), create default files in a cgroup directory
+================================================================================
+3.7.6.1 cfts = cgroup_base_files, cgroup.procs, etc
+================================================================================
+3.7.6.2 cgroup_addrm_files(&cgrp->self, cgrp, cfts, true)
+================================================================================
+3.7.6.2.1 cgroup_add_file(css, cgrp, cft)
+================================================================================
+3.7.7 rebind_subsystems(&cgrp_dfl_root, 0)
+================================================================================
+3.7.7.1 kernfs_activate(root_cgrp->kn)
+================================================================================
+3.7.8 list_add(&cgrp_dfl_root->root_list, &cgroup_roots)
+================================================================================
+3.7.9 link_css_set(&tmp_links, cset, root_cgrp)
+================================================================================
+3.7.9.1 list_move_tail(&link->cset_link, &cgrp->cset_links) 
+================================================================================
+3.7.9.2 list_add_tail(&link->cgrp_link, &cset->cgrp_links) 
+================================================================================
+3.7.10 kernfs_activate(root_cgrp->kn)
+================================================================================
+3.8 cgroup_init_subsys(ss, false)
+================================================================================
+3.8.1 idr_init(&ss->css_idr)
+================================================================================
+3.8.2 css = ss->css_alloc(cgroup_css(&cgrp_dfl_root.cgrp, ss))
+================================================================================
+3.8.3 init_and_link_css(css, ss, &cgrp_dfl_root.cgrp)
+================================================================================
+3.8.4 css->id = cgroup_idr_alloc(&css->css_idr, css, )
+================================================================================
+3.8.5 onlie_css(css)
+================================================================================
+3.8.5.1 ss->css_online(css)
+================================================================================
+3.8.5.2 css->flags |= CSS_ONLINE;
+================================================================================
+3.8.5.3 rcu_assign_pointer(css->cgroup->subsys[ss->id], css);
+================================================================================
+3.9 list_add_tail(&init_css_set.e_cset_node[ssid], &cgrp_dfl_root.cgrp.e_csets[ssid])
+================================================================================
+3.10 cgrp_dfl_root.subsys_mask |= 1 << ss->id, mark online
+================================================================================
+3.11 cgroup_add_cftypes(ss, ss->dfl_cftypes)
+================================================================================
+3.11 cgroup_add_dfl_cftypes(ss, ss->dfl_cftypes)
+================================================================================
+3.11.1 cgroup_init_cftypes(ss, cfts), setup cft->kf_ops
+================================================================================
+3.11.2 cgroup_apply_cftypes(cfts, true)
+================================================================================
+3.11.2.1 cgroup_addrm_files(css, cgrp, cfts, )
+================================================================================
+3.11.2.2 kernfs_activate(root->kn)
+================================================================================
+3.11 cgroup_add_legacy_cftypes(ss, ss->legacy_cftypes)
+================================================================================
+3.12 ss->bind(init_css_set.subsys[ssid])
+================================================================================
+3.13 css_populate_dir(init_css_set.subsys[ssid]), add ss->cfts for each subsys
+================================================================================
+3.14 sysfs_create_mount_point(fs_kobj, "cgroup"), /sys/fs/cgroup
+================================================================================
+3.15 register_filesystem(&cgroup_fs_type)
+================================================================================
+3.16 register_filesystem(&cgroup2_fs_type)
+================================================================================
+3.17 proc_create_single("cgroups", , proc_cgroupstats_show), /proc/cgroups
+================================================================================
+3.18 register_filesystem(&cpuset_fs_type)
+================================================================================
+
+0. data struct
+================================================================================
+
+0.1 cgroup_subsys_id
+================================================================================
+
+#define SUBSYS(_x) _x ## _cgrp_id,
+enum cgroup_subsys_id {
+#include <linux/cgroup_subsys.h>
+	CGROUP_SUBSYS_COUNT,
+};
+
+
+enum cgroup_subsys_id {
+	cpuset_cgrp_id,
+	cpu_cgrp_id,
+	cpuacct_cgrp_id,
+	io_cgrp_id,
+	memory_cgrp_id,
+	devices_cgrp_id,
+	freezer_cgrp_id,
+	net_cls_cgrp_id,
+	perf_event_cgrp_id,
+	net_prio_cgrp_id,
+	hugetlb_cgrp_id,
+	pids_cgrp_id,
+	rdma_cgrp_id,
+	debug_cgrp_id,
+	CGROUP_SUBSYS_COUNT,
+};
+
+0.1 cgroup_subsys
+================================================================================
+
+0.1.1 cgroup_subsys[], an array of cgroup subsystem
+================================================================================
+
+#define SUBSYS(_x) [_x ## _cgrp_id] = &_x ## _cgrp_subsys,
+struct cgroup_subsys *cgroup_subsys[] = {
+#include <linux/cgroup_subsys.h>
+};
+
+Will be expanded to:
+
+struct cgroup_subsys *cgroup_subsys[] = {
+
+	SUBSYS(cpuset)
+	SUBSYS(cpu)
+	SUBSYS(cpuacct)
+	SUBSYS(io)
+	SUBSYS(memory)
+	SUBSYS(devices)
+	SUBSYS(freezer)
+	SUBSYS(net_cls)
+	SUBSYS(perf_event)
+	SUBSYS(net_prio)
+	SUBSYS(hugetlb)
+	SUBSYS(pids)
+	SUBSYS(rdma)
+	SUBSYS(debug)
+
+};
+
+struct cgroup_subsys *cgroup_subsys[] = {
+
+	[cpuset_cgrp_id]       =      cpuset_cgrp_subsys,
+	[cpu_cgrp_id]          =      cpu_cgrp_subsys,
+	[cpuacct_cgrp_id]      =      cpuacct_cgrp_subsys,
+	[io_cgrp_id]           =      io_cgrp_subsys,
+	[memory_cgrp_id]       =      memory_cgrp_subsys,
+	[devices_cgrp_id]      =      devices_cgrp_subsys,
+	[freezer_cgrp_id]      =      freezer_cgrp_subsys,
+	[net_cls_cgrp_id]      =      net_cls_cgrp_subsys,
+	[perf_event_cgrp_id]   =      perf_event_cgrp_subsys,
+	[net_prio_cgrp_id]     =      net_prio_cgrp_subsys,
+	[hugetlb_cgrp_id]      =      hugetlb_cgrp_subsys,
+	[pids_cgrp_id]         =      pids_cgrp_subsys,
+	[rdma_cgrp_id]         =      rdma_cgrp_subsys,
+	[debug_cgrp_id]        =      debug_cgrp_subsys,
+
+};
+
+0.2 cgroup_subsys_name
+================================================================================
+#define SUBSYS(_x) [_x ## _cgrp_id] = #_x,
+static const char *cgroup_subsys_name[] = {
+#include <linux/cgroup_subsys.h>
+};
+
+
+static const char *cgroup_subsys_name[] = {
+	[cpuset_cgrp_id]       =      cpuset,
+	[cpu_cgrp_id]          =      cpu,
+	[cpuacct_cgrp_id]      =      cpuacct,
+	[io_cgrp_id]           =      io,
+	[memory_cgrp_id]       =      memory,
+	[devices_cgrp_id]      =      devices,
+	[freezer_cgrp_id]      =      freezer,
+	[net_cls_cgrp_id]      =      net_cls,
+	[perf_event_cgrp_id]   =      perf_event,
+	[net_prio_cgrp_id]     =      net_prio,
+	[hugetlb_cgrp_id]      =      hugetlb,
+	[pids_cgrp_id]         =      pids,
+	[rdma_cgrp_id]         =      rdma,
+	[debug_cgrp_id]        =      debug,
+};
+
+0.3 cgroup_root
+================================================================================
+
+cgroup_init
+    cgroup_setup_root
+
+cgroup_roots(struct list_head)
+  |
+  |       cgroup_root
+  |       +-------------------------------+<----+
+  +------>|root_lists                     |     |
+          |    (struct list_head)         |     |
+          |name[]                         |     |
+          |    (char)                     |     |
+          |hierarchy_id                   |     |
+          |    (int)                      |     |
+          |                               |     |
+          |cgrp                           |     |
+          |    (struct cgroup)            |     |
+          |    +--------------------------+     |
+          |    |root                   ---|-----+
+          |    |   (struct cgroup_root*)  |
+          |    |                          |
+          |    |rstat_cpu                 |  = &cgrp_dfl_root_rstat_cpu
+          |    |(struct cgroup_rstat_cpu*)|
+          |    |                          |
+          |    |kn                        |  = kf_root->kn
+          |    |    (struct kernfs_node *)|
+          |    +--------------------------+
+          |cgrp_ancestor_id_storage       |  = cgroup_id() = cgrp->kn->id = kf_root->kn->id
+          |    (u64)                      |
+          |                               |
+          |subsys_mask                    |  bitmask of subsys attached
+          |    (unsigned int)             |
+          |                               |
+          |nr_cgrps                       |
+          |    (atomic_t)                 |
+          |root_list                      |
+          |    (struct list_head)         |
+          |                               |
+          |kf_root                        |
+          |    (struct kernfs_root*)      |
+          |    +--------------------------+
+          |    |cgroup_kf_syscall_ops     |
+          |    |   mkdir                  |  = cgroup_mkdir
+          |    |   rmdir                  |  = cgroup_rmdir
+          |    |   show_patch             |  = cgroup_show_path
+          |    |kn                        |
+          |    |   (struct kernfs_node*)  |
+          |    |   cgroup_base_files      |  
+          |    |   cgroup1_base_files     |  
+          |    |   "cgroup.procs"         |  = cgroup_kf_ops
+          |    |   "cgroup.threads"       |  = cgroup_kf_ops
+          |    |                          |  
+          |    +--------------------------+
+          |                               |
+          +-------------------------------+
+
+0.4 cgroup
+================================================================================
+
+    cgroup (cgrp_dfl_root.cgrp)
+    +--------------------------------------+<------------+
+    |root                                  |             |
+    |    (struct cgroup_root*)             |             |
+    |dom_cgrp                           ---|-------------+ if !threaded
+    |old_dom_cgrp                          |             |
+    |    (struct cgroup*)                  |             |
+    |                                      |             |
+    |rstat_cpu                             |             |
+    |    (struct cgroup_rstat_cpu* _percpu)|             |
+    |    +---------------------------------+             |
+    |    |updated_children              ---|-------------+
+    |    |updated_next                     |             |
+    |    |    (struct cgroup*)             |             |
+    |    |                                 |             |
+    |    |bsync                            |             |
+    |    |                                 |             |
+    |    |bstat                            |             |
+    |    |last_bstat                       |             |
+    |    |     (struct cgroup_base_stat)   |             |
+    |    |     +---------------------------+             |
+    |    |     |cputime                    |             |
+    |    |     |    (struct task_cputime)  |             |
+    |    |     |    +----------------------+             |
+    |    |     |    |stime                 |             |
+    |    |     |    |utime                 |             |
+    |    |     |    |    (u64)             |             |
+    |    |     |    |sum_exec_runtime      |             |
+    |    |     |    |    (unsigned long)   |             |
+    |    |     +----+----------------------+             |
+    |    |                                 |             |
+    |    +---------------------------------+             |
+    |rstat_css_list                        |             |
+    |    (struct list_head)                |             |
+    |                                      |             |
+    |self                                  |             |
+    |    (struct cgroup_subsys_state)      |             |
+    |    +---------------------------------+             |
+    |    |cgroup                        ---|-------------+
+    |    |    (struct cgroup*)             |
+    |    |ss                               |  = NULL
+    |    |    (struct cgroup_subsys*)      |
+    |    |id                               |  subsys unique id
+    |    |    (int)                        |
+    |    |refcnt                           |
+    |    |    (struct percpu_ref)          |
+    |    |    +----------------------------+
+    |    |    |release                     |  = css_release
+    |    |    |                            |
+    |    |    |                            |
+    |    |    +----------------------------+
+    |    |                                 |
+    |    |parent                           |
+    |    |    (struct cgroup_subsys_state*)|
+    |    |                                 |
+    |    |sibling                          |
+    |    |children                         |
+    |    |    (struct list_head)           |
+    |    |                                 |
+    |    +---------------------------------+
+    |                                      |
+    |                                      |  allocated by cgroup_subsys->css_alloc() and set by online_css()
+    |subsys[CGROUP_SUBSYS_COUNT]           |
+    |    (struct cgroup_subsys_state*)     |
+    |    +---------------------------------+
+    |    |cgroup                           |  = this cgrp
+    |    |    (struct cgroup*)             |
+    |    |ss                               |  = cgroup_subsys[i]
+    |    |    (struct cgroup_subsys*)      |
+    |    |                                 |
+    |    +---------------------------------+
+    |                                      |    cgrp_cset_link    cgrp_cset_link
+    |                                      |    +--------------+     +--------------+
+    |cset_links                         ---|--->|cset_link    -| --->|cset_link     |
+    |    (struct list_head)                |    |              |     |              |
+    |                                      |    |cset      --+ |     |cset     --+  |
+    |                                      |    +--------------+     +--------------+
+    |                                      |                 |                   |
+    |                                      |    init_css_set v       css_set     v
+    |                                      |    +--------------+     +--------------+
+    |                                      |    |              |     |              |
+    |                                      |    |              |     |              |
+    |                                      |    +--------------+     +--------------+
+    |                                      |
+    |                                      |    init_css_set          css_set
+    |e_csets[CGROUP_SUBSYS_COUNT]          |    +---------------+     +---------------+
+    |e_csets[0]                         ---|--->|e_cset_node[0] |---->|e_cset_node[0] |
+    |e_csets[1]                         ---|--->|e_cset_node[1] |---->|e_cset_node[1] |
+    |e_csets[2]                         ---|--->|e_cset_node[2] |---->|e_cset_node[2] |
+    |    (struct list_head)                |    |               |     |               |
+    |                                      |    +---------------+     +---------------+
+    |                                      |
+    |                                      |
+    |level                                 |
+    |max_depth                             |  = INT_MAX
+    |                                      |
+    |max_descendants                       |  = INT_MAX
+    |nr_descendants                        |
+    |nr_dying_descendants                  |
+    |    (int)                             |
+    |                                      |
+    |kn                                    |  = cgrp_dfl_root->kf_root->kn
+    |    (struct kernfs_node *)            |    or a child
+    |                                      |
+    |flags                                 |  CGRP_NOTIFY_ON_RELEASE | CGRP_CPUSET_CLONE_CHILDREN
+    |    (unsigned long)                   |  CGRP_FREEZE | CGRP_FROZEN
+    |                                      |
+    |procs_file                            |  cgroup.procs
+    |events_file                           |  cgroup.events
+    |    (struct cgroup_file)              |
+    |                                      |
+    |                                      |
+    |pidlists                              |
+    |    (struct list_head)                |
+    |pidlist_mutex                         |
+    |    (struct mutex)                    |
+    |                                      |
+    |release_agent_work                    |  = cgroup1_release_agent
+    |    (struct work_struct)              |
+    |                                      |
+    |ancestor_ids[]                        |
+    |    (u64)                             |
+    +--------------------------------------+
+
+0.5 cgroup_subsys
+================================================================================
+
+    cgroup_subsys
+    +-------------------------------+<----------------------------------------+
+    |name                           |                                         |
+    |legacy_name                    |                                         |
+    |    (char *)                   |                                         |
+    |css_idr                        |                                         |
+    |    (struct idr)               |                                         |
+    |                               |                                         |
+    |root                           |  = &cgrp_dfl_root                       |
+    |    (struct cgroup_root*)      |                                         |
+    |                               |                                         |
+    |dfl_cftypes                    |                                         |
+    |legacy_cftypes                 |                                         |
+    |    (struct cftype*)           |                                         |
+    |                               |    dfl_cftypes       legacy_cftypes     |
+    |                               |    +------------+    +------------+     |
+    |cfts                        ---|--->|node     ---|--->|node        |     |
+    |    (struct list_head)         |    |ss          |    |ss       ---|-----+
+    |                               |    |kf_ops      |    |kf_ops      |
+    |                               |    +------------+    +------------+    
+    |                               |
+    |css_alloc                      |
+    |css_online/offline             |
+    |css_released                   |
+    |css_free                       |
+    |css_reset                      |
+    |css_rstat_flush                |
+    |css_extra_stat_show            |
+    |                               |
+    |can_attach                     |
+    |cancel_attach                  |
+    |attach                         |
+    |post_attach                    |
+    |can_fork                       |
+    |cancel_fork                    |
+    |fork                           |
+    |exit                           |
+    |release                        |
+    |bind                           |
+    |                               |
+    +-------------------------------+
+
+0.5.1 cgroup/cgroup_subsys_state/cgroup_subsys
+================================================================================
+
+    cgroup
+    +--------------------------------------+<-----+
+    |                                      |      |
+    |subsys[CGROUP_SUBSYS_COUNT]           |      |
+    |    (struct cgroup_subsys_state*)     |      |
+    |[0]      [1]      [2]      [3]        |      |
+    |+--------+--------+--------+---------+|      |
+    ||cgroup--|cgroup--|cgroup--|cgroup---||------+
+    ||        |        |        |         ||
+    ||ss--+   |ss---+  |ss----+ |ss-----+ ||
+    ||    |   |     |  |      | |       | ||
+    ++--------+--------+--------+---------++
+          |         |         |         |    
+          v         v         v         v    
+     subsys    subsys    subsys    subsys    
+     +-------+ +-------+ +-------+ +-------+ 
+     |       | |       | |       | |       | 
+     |       | |       | |       | |       | 
+     +-------+ +-------+ +-------+ +-------+ 
+
+0.6 cftype
+================================================================================
+
+    cftype
+    +-------------------------------+
+    |name[MAX_CFTYPE_NAME]          |
+    |    (char)                     |
+    |ss                             |
+    |    (struct cgroup_subsys*)    |
+    |node                           |
+    |    (struct list_head)         |
+    |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops
+    |    (struct kernfs_ops*)       |
+    |                               |
+    |open                           |
+    |release                        |
+    |read|write_u64                 |
+    |read|write_s64                 |
+    |write                          |
+    |poll                           |
+    |                               |
+    |seq_show                       |
+    |seq_start|stop|next            |
+    |                               |
+    +-------------------------------+
+
+0.7 css_set, holding pointers to a set of cgroup_subsys_state
+================================================================================
+
+   css_set_table              css_set
+   +---------------+          +-------------------------------+
+   |               |     +--->|hlist                          |
+   |               |     |    |    (struct hlist_node)        |
+   +---------------+     |    |                               |
+   |css_set_hash() |-----+    |refcount                       |
+   |               |          |    (refcount_t)               |
+   +---------------+          |dom_cset                       |
+   |               |          |    (struct css_set*)          |
+   |               |          |dfl_cgrp                       |
+   +---------------+          |    (struct cgroup*)           |
+                              |                               |
+                              |subsys[CGROUP_SUBSYS_COUNT]    |
+                              |  (struct cgroup_subsys_state*)|
+                              |  +----------------------------+
+                              |  |ss                          |
+                              |  |    (struct cgroup_subsys*) |
+                              |  +----------------------------+
+                              |                               |
+                              |e_cset_node[CGROUP_SUBSYS_COUN]|
+                              |  (struct list_head)           |
+                              |                               |
+                              |tasks                          |
+                              |mg_tasks                       |
+                              |dying_tasks                    |
+                              |                               |
+                              |task_iters                     |
+                              |    (struct list_head)         |
+                              |                               |
+                              |cgrp_links                     |
+                              |    (struct list_head)         |
+                              +-------------------------------+
+
+0.7.1 init_css_set (struct css_set), used by init and its children by default
+================================================================================
+
+    init_task(struct task_struct)
+    +-------------------------------+
+    |cgroups                        |  = &init_css_set
+    |    (struct css_set)           |    +-------------------------+
+    +-------------------------------+    |subsys[]                 |  = assigned in cgroup_init_subsys()
+                                         |                         |    the same as cgrp_dfl_root.cgrp.subsys[]
+                                         |                         |
+                                         |                         |
+                                         +-------------------------+
+
+0.7.2 css_set_table, hash table for css_set
+================================================================================
+
+
+0.8 cgrp_cset_link
+================================================================================
+
+    cgrp_cset_link
+    +-------------------------------+
+    |cgrp                           |
+    |    (struct cgroup*)           |
+    |cset                           |
+    |    (struct css_set*)          |
+    |                               |
+    |cset_link                      |
+    |cgrp_link                      |
+    |    (struct list_head)         |
+    +-------------------------------+
+
+0.8.1 cgrp_cset_link <-> css_set and cgroup
+================================================================================
+
+ css_set
+ +--------------------+------------+-----------------------------+
+ |cgrp_links          |            |                             |
+ +--------------------+            |                             |
+    |                              |                             |
+    |                              |                             |
+    |      cgrp_cset_link          |     cgrp_cset_link          |
+    |      +--------------------+  |     +--------------------+  |
+    |      |cset            ----|--+     |cset             ---|--+
+    +----->|cgrp_link           |------->|cgrp_link           |
+           |cgrp  ---+          |        |cgrp  ---+          |
+           +--------------------+        +--------------------+
+                     |                             |
+           cgroup    v                   cgroup    v
+           +--------------------+        +--------------------+
+           |                    |        |                    |
+           +--------------------+        +--------------------+
+
+
+ cgroup
+ +--------------------+------------+-----------------------------+
+ |cset_links          |            |                             |
+ +--------------------+            |                             |
+    |                              |                             |
+    |                              |                             |
+    |      cgrp_cset_link          |     cgrp_cset_link          |
+    |      +--------------------+  |     +--------------------+  |
+    |      |cgrp            ----|--+     |cgrp             ---|--+
+    +----->|cset_link           |------->|cset_link           |
+           |cset  ---+          |        |cset  ---+          |
+           +--------------------+        +--------------------+
+                     |                             |
+           css_set   v                   css_set   v
+           +--------------------+        +--------------------+
+           |                    |        |                    |
+           +--------------------+        +--------------------+
+
