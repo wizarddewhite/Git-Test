@@ -1,0 +1,88 @@
+1. vm_stat
+================================================================================
+vm_stat is a mechanism to record vm status, it has several members
+
+  * atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS]
+  * atomic_long_t vm_numa_stat[NR_VM_NUMA_STAT_ITEMS]
+  * atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS]
+
+And with memcg introduced, there is memcg->vmstat too.
+
+2. vm_node_stat
+================================================================================
+
+2.0 members
+================================================================================
+
+
+2.1 hierachy
+================================================================================
+
+
+                         vm_node_stat[NR_VM_NODE_STAT_ITEMS]
+                             /                 \
+                         /                         \
+   pgdat                                    pgdat
+   +----------------------------+           +----------------------------+
+   |vm_stat[]                   |           |vm_stat[]                   |
+   |   (atomic_long_t)          |           |   (atomic_long_t)          |
+   |                            |           |                            |
+   |per_cpu_nodestats           |           |per_cpu_nodestats           |
+   |   +------------------------+           |   +------------------------+
+   |   |stat_threshold          |           |   |stat_threshold          |
+   |   |vm_node_stat_diff[]     |           |   |vm_node_stat_diff[]     |
+   |   |                        |           |   |                        |
+   +---+------------------------+           +---+------------------------+
+
+
+2.2 related helpers
+================================================================================
+
+__mod_node_page_state()
+
+3. vm_zone_stat
+================================================================================
+
+3.1 hierachy
+================================================================================
+
+                         vm_zone_stat[NR_VM_ZONE_STAT_ITEMS]
+                             /                 \
+                         /                         \
+   zone                                     zone
+   +----------------------------+           +----------------------------+
+   |vm_stat[]                   |           |vm_stat[]                   |
+   |   (atomic_long_t)          |           |   (atomic_long_t)          |
+   |                            |           |                            |
+   |per_cpu_pageset             |           |per_cpu_pageset             |
+   |   +------------------------+           |   +------------------------+
+   |   |stat_threshold          |           |   |stat_threshold          |
+   |   |vm_stat_diff[]          |           |   |vm_stat_diff[]          |
+   |   |                        |           |   |                        |
+   +---+------------------------+           +---+------------------------+
+
+3.2 related helpers
+================================================================================
+
+__mod_zone_page_stat
+
+4. memcg->vmstat
+================================================================================
+
+MEMCG_NR_STAT = NR_VM_NODE_STAT_ITEMS + 3
+
+so memcg->vmstat is a variant of vm_node_stat.
+
+Also it forms a hierachy.
+
+                         mem_cgroup                          
+                         +----------------------------+
+                         |vmstats[MEMCG_NR_STAT]      |
+                         |   (atomic_long_t)          |
+                         |                            |
+                         |vmstats_local               |
+                         |vmstats_percpu              |
+                         |   +------------------------+
+                         |   |stat[MEMCG_NR_STAT]     |
+                         |   |                        |
+                         +---+------------------------+
