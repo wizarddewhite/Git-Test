@@ -654,8 +654,8 @@ linked by css_create()
     +-------------------------------+
     |name[MAX_CFTYPE_NAME]          |
     |    (char)                     |
-    |ss                             |
-    |    (struct cgroup_subsys*)    |
+    |ss                             |  = NULL for core interface
+    |    (struct cgroup_subsys*)    |    non-NULL for subsys
     |node                           |
     |    (struct list_head)         |
     |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops

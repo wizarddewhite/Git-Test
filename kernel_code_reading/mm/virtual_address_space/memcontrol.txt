@@ -208,7 +208,7 @@ pn->lruvec_stat_local
 8.11.4 css_task_iter_end()
 ================================================================================
 
-9. soft_limit_tree
+9. soft_limit_tree manipulation
 ================================================================================
 
 9.1 __mem_cgroup_insert_exceeded
@@ -299,6 +299,34 @@ pn->lruvec_stat_local
 12.11.6.1 out_of_memory(&oc), kill the "best" process when we run out of memory
 ================================================================================
 
+13. memcg_write_event_control, write to cgroup.event_control
+================================================================================
+13.1 efd = simple_strtoul(buf, &endp, 10)
+================================================================================
+13.2 cfd = simple_strtoul(buf, &endp, 10)
+================================================================================
+13.3 event = kzalloc()
+================================================================================
+13.4 event->memcg = memcg
+================================================================================
+13.5 event->register_event/unregister_event = 
+================================================================================
+13.6 cfile_css = css_tryget_online_from_dir(cfile, &memory_cgrp_subsys)
+================================================================================
+13.6.1 kn = kernfs_node_from_dentry(dentry);
+================================================================================
+13.6.2 cgrp = rcu_dereference(*(void __rcu __force **)&kn->priv);
+================================================================================
+13.6.3 css = cgroup_css(cgrp, ss);
+================================================================================
+13.6.4 css_tryget_online(css)
+================================================================================
+13.7 event->register_event(memcg, event->eventfd, buf)
+================================================================================
+13.8 vfs_poll(efile.file, &event->pt)
+================================================================================
+13.9 list_add(&event->list, &memcg->event_list)
+================================================================================
 
 0. data struct
 ================================================================================
@@ -365,6 +393,11 @@ pn->lruvec_stat_local
     |soft_limit                           |  = PAGE_COUNTER_MAX
     |    (unsigned long)                  |
     |                                     |
+    |under_oom                            |  mem_cgroup_eventfd_list   mem_cgroup_eventfd_list 
+    |    (int)                            |  +-------------------+     +-------------------+
+    |oom_notify                        ---|->|list               |---->|list               |
+    |    (struct list_head)               |  |eventfd            |     |eventfd            |
+    |                                     |  +-------------------+     +-------------------+
     |                                     |
     |vmpressure                           |
     |    (struct vmpressure)              |
@@ -372,12 +405,38 @@ pn->lruvec_stat_local
     |    |scanned/tree_scanned            |
     |    |reclaimed/tree_reclaimed        |
     |    |   (unsigned long)              |
-    |    |events                          |
-    |    |   (struct list_head)           |
+    |    |events_lock                     |  vmpressure_event       vmpressure_event
+    |    |   (struct mutex)               |  +-------------------+  +-------------------+
+    |    |events                       ---|->|node               |->|node               |
+    |    |   (struct list_head)           |  |efd                |  |efd                |
+    |    |                                |  |                   |  |                   |
+    |    |                                |  +-------------------+  +-------------------+
+    |    |                                |
     |    |work                            |  = vmpressure_work_fn
     |    |   (struct work_struct)         |
-    |    |                                |
     |    +--------------------------------+
+    |                                     |
+    |thresholds/memsw_thresholds          |
+    |    (struct mem_cgroup_thresholds)   |
+    |    +--------------------------------+
+    |    |primary/spare                   |
+    |    |struct mem_cgroup_threshold_ary*|
+    |    |   +----------------------------+  +-------------+-------------+-------------+
+    |    |   |entries[]                   |  |eventfd      |eventfd      |eventfd      |
+    |    |   | struct mem_cgroup_threshold|  |threshold    |threshold    |threshold    |
+    |    |   |                            |  +-------------+-------------+-------------+
+    |    |   |                            |                 ^             ^
+    |    |   |                            |                 |             |
+    |    |   |current_threshold        ---|-----------------+             |
+    |    |   |size                     ---|-------------------------------+
+    |    |   |  (int)                     |
+    |    +---+----------------------------+
+    |                                     |
+    |                                     |  mem_cgroup_event    mem_cgroup_event
+    |event_list                           |  +----------------+  +----------------+
+    |    (struct list_head)             --|->|list            |->|list            |
+    |event_list_lock                      |  |memcg           |  |memcg           |
+    |    (spinlock_t)                     |  +----------------+  +----------------+
     |                                     |
     |memory_events/memory_events_local[]  |  = MEMCG_NR_MEMORY_EVENTS
     |    (atomic_long_t)                  |
@@ -527,12 +586,18 @@ linked by page_counter_init()
     |    (struct mem_cgroup*)             |
     |eventfd                              |
     |    (struct eventfd_ctx*)            |
-    |                                     |
+    |list                                 |
+    |    (struct list_head)               |
     |register_event/unregister_event      |
     |                                     |
-    |                                     |
-    |                                     |
-    |                                     |
+    |pt                                   |  = memcg_event_ptable_queue_proc
+    |    (poll_table)                     |
+    |wqh                                  |
+    |    (wait_queue_head_t)              |
+    |wait                                 |  = memcg_event_wake
+    |    (wait_queue_entry_t)             |
+    |remove                               |  = memcg_event_remove
+    |    (struct work_struct)             |
     +-------------------------------------+  
 
 0.4 mem_cgroup_tree_per_node
