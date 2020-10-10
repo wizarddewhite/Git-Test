@@ -499,11 +499,11 @@ cgroup_roots(struct list_head)
 0.4.1 cgroup hierarchy -> cgroup.self
 ================================================================================
 
-linked by cgroup_init_subsys()
+linked by cgroup_create()
 
                      cgroup
                      +--------------------------------------+
-                     |self                        <-----+   |
+                     |self                              ^   |
                      |    (struct cgroup_subsys_state)  |   |
                      |    +---------------------------------+
                      |    |cgroup                    ---+   |
@@ -523,7 +523,7 @@ linked by cgroup_init_subsys()
                                               |    ||                                                |
     cgroup                                    |    ||      cgroup                                    |
     +--------------------------------------+  |    ||      +--------------------------------------+  |
-    |self                       <------+   |  |    ||      |self                       <------+   |  |
+    |self                              ^   |  |    ||      |self                              ^   |  |
     |    (struct cgroup_subsys_state)  |   |  |    ||      |    (struct cgroup_subsys_state)  |   |  |
     |    +---------------------------------+  |    ||      |    +---------------------------------+  |
     |    |cgroup                    ---+   |  |    ||      |    |cgroup                    ---+   |  |
@@ -543,7 +543,7 @@ linked by css_create()
 
                      cgroup
                      +--------------------------------------+
-                     |subsys[id]                  <-----+   |
+                     |subsys[id]                        ^   |
                      |    (struct cgroup_subsys_state*) |   |
                      |    +---------------------------------+
                      |    |cgroup                    ---+   |
@@ -564,7 +564,7 @@ linked by css_create()
                                               |    ||                                                |
     cgroup                                    |    ||      cgroup                                    |
     +--------------------------------------+  |    ||      +--------------------------------------+  |
-    |self                       <------+   |  |    ||      |self                       <------+   |  |
+    |subsys[id]                        ^   |  |    ||      |subsys[id]                        ^   |  |
     |    (struct cgroup_subsys_state*) |   |  |    ||      |    (struct cgroup_subsys_state*) |   |  |
     |    +---------------------------------+  |    ||      |    +---------------------------------+  |
     |    |cgroup                    ---+   |  |    ||      |    |cgroup                    ---+   |  |
