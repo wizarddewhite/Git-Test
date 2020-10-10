@@ -197,6 +197,8 @@ static int virtio_uevent(struct device *_dv, struct kobj_uevent_env *env)
     |    (struct virtio_config_ops*)      |
     |vringh_config                        |
     |    (struct vringh_config_ops*)      |
+    |vq                                   |
+    |    (struct virtqueue*)              |
     |                                     |
     |priv                                 |
     |    (void *)                         |
