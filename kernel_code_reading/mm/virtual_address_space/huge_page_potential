@@ -1,0 +1,9 @@
+1. Making Huge Pages Actually Useful
+2. Mel Gorman: The What, The Why and the Where To of Anti-Fragmentation
+3. Mel Gorman: Supporting superpage allocation without additional hardware support
+4. Prudent Memory Reclamation in Procrastination-Based Synchroni
+5. Using Lifetime Predictors to Improve Memory Allocation Performance
+6. Learning-based Memory Allocation for C++ Server Workloads
+7. Controlling Physical Memory Fragmentation in Mobile Systems
+8. HawkEye: Efficient Fine-grained OS Support for Huge Pages
+9. MEGA: Overcoming Traditional Problems with OS Huge Page Management
