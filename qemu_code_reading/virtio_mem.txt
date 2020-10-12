@@ -1,0 +1,117 @@
+1. virtio_mem_device_realize
+================================================================================
+1.1 rb = vmem->memdev->mr.ram_block;
+================================================================================
+1.2 page_size = qemu_ram_pagesize(rb);
+================================================================================
+1.3 ram_block_discard_range(rb, 0, qemu_ram_get_used_length(rb)), unmap the whole range
+================================================================================
+1.4 virtio_mem_resize_usable_region(vmem, vmem->requested_size, true);
+================================================================================
+1.4.1 vmem->usable_region_size = newsize
+================================================================================
+1.5 vmem->bitmap_size = memory_region_size(&vmem->memdev->mr) / vmem->block_size;
+================================================================================
+1.6 vmem->bitmap = bitmap_new(vmem->bitmap_size);
+================================================================================
+1.7 virtio_init(vdev, TYPE_VIRTIO_MEM, VIRTIO_ID_MEM, sizeof(struct virtio_mem_config));
+================================================================================
+
+2. virtio_mem_plug_request()
+================================================================================
+2.1 type = virtio_mem_state_change_request(vmem, gpa, nb_blocks, true);
+================================================================================
+2.1.1 virtio_mem_valid_range(vmem, gpa, size)
+================================================================================
+2.1.2 virtio_mem_test_bitmap(vmem, gpa, size, !plug)
+================================================================================
+2.1.3 virtio_mem_set_block_state(vmem, gpa, size, plug)
+================================================================================
+2.1.4 vmem->size += size;
+================================================================================
+2.2 virtio_mem_send_response_simple(vmem, elem, type);
+================================================================================
+
+0. Data Struct
+================================================================================
+
+
+0.1 Device Model Hierarchy
+================================================================================
+
+     +--------------------------+                             +----------------------+
+     |   ObjectClass            | <-------------------------  |    Object            |
+     |     class_init           |                             |    instance_init     |
+     |                          |                             |(object_instance_init)|
+     +--------------------------+                             +----------------------+
+               |                                                        |
+               |                                                        |
+               |                                                        |
+               |                                                        |
+               v                                                        v
+     +--------------------------+                             +----------------------+
+     |   DeviceClass            |  <---------------------     |   DeviceState        |
+     |                          |                             |                      |
+     |     class_init           | = device_class_init         |      instance_init   | = device_initfn
+     |     realize              | = virtio_device_realize     |                      |
+     |     unrealize            | = virtio_device_unrealize   |                      |
+     +--------------------------+                             +----------------------+
+               |                                                        |
+               |                                                        |
+               |                                                        |
+               v                                                        v
+     +--------------------------+                             +----------------------+
+     |   VirtioDeviceClass      |  <---------------------     |   VirtIODevice       |
+     |                          |                             |                      |
+     |     class_init           | = virtio_device_class_init  |      instance_init   |
+     |     realize              | = virtio_mem_device_realize |                      |
+     |     unrealize            |                             |                      |
+     |     get_config           | = virtio_mem_get_config     |                      |
+     |     get_feature          | = virtio_mem_get_features   |                      |
+     |                          |                             |                      |
+     +--------------------------+                             +----------------------+
+               |                                                        |
+               |                                                        |
+               |                                                        |
+               v                                                        v
+     +--------------------------+                             +----------------------+
+     |   VirtIOMEMClass         |  <--------------------      |   VirtIOMEM          |
+     |                          |                             |                      |
+     |     class_init           | = virtio_mem_class_init     |      instance_init   | = virtio_mem_instance_init
+     |     realize              |                             |                      |
+     |     unrealize            |                             |                      |
+     |                          |                             |                      |
+     +--------------------------+                             +----------------------+
+
+0.2 VirtIOMEM
+================================================================================
+
+    VirtIOMEM
+    +-----------------------------+
+    |vq                           |
+    |    (VirtQueue*)             |
+    |memdev                       |  memory_region_size() ------------+
+    |    (HostMemoryBackend *)    |                                   |
+    |usable_region_size           |  -------------------------+       |  or = memory_region_size(&memdev->mr)
+    |                             |                  |< 256M >|       |
+    |requested_size               |  ----------------+ . . . .v       |
+    |size                         |  --------+       |                |  real plugged in guest
+    |addr                         |  v       v       v                v  gpa (virtio_mem_pci_set_addr)
+    |    (uint64_t)               |  +---------------+ - - - - - - - -+
+    |                             |  |               |                |
+    |                             |  +---------------+ - - - - - - - -+
+    |                             |
+    |block_size                   |  = VIRTIO_MEM_MIN_BLOCK_SIZE (2M)
+    |    (uint64_t)               |
+    |node                         |  = 0 by default
+    |    (uint32_t)               |
+    |                             |
+    |bitmap_size                  |
+    |    (int32_t)                |
+    |bitmap                       |  1bit per block_size indicates plug/unplug
+    |    (unsigned long *)        |
+    |                             |
+    |size_change_notifiers        |
+    |    (NotifierList)           |
+    +-----------------------------+
+
