@@ -106,6 +106,19 @@
 4.2.5 virtio_mem_mb_set_state(vm, mb_id, VIRTIO_MEM_MB_STATE_ONLINE)
 ================================================================================
 
+4.3 virtio_mem_mb_unplug_sb_online(vm, mb_id, sb_id, count)
+================================================================================
+4.3.1 alloc_contig_range(start_pfn, start_pfn + nr_pages, ), grab the pages by us
+================================================================================
+4.3.2 virtio_mem_set_fake_offline(start_pfn, nr_pages, true)
+================================================================================
+4.3.3 adjust_managed_page_count(pfn_to_page(start_pfn), -nr_pages);
+================================================================================
+4.3.4 virtio_mem_mb_unplug_sb(vm, mb_id, sb_id, count), let host release mem
+================================================================================
+4.3.5 virtio_mem_mb_set_state(vm, mb_id, VIRTIO_MEM_MB_STATE_ONLINE_PARTIAL)
+================================================================================
+
 5. add_memory_driver_managed(nid, addr, memory_block_size_bytes())
 ================================================================================
 5.1 add_memory_resource(nid, res) -.-.-> online_pages()
