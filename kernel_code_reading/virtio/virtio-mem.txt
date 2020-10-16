@@ -229,20 +229,21 @@ virtio_mem_devices
 ================================================================================
 
 
-      STATE_UNUSED                              STATE_UNUSED
-           |                                         ^
-           | plug_and_add()                          |\
-           |                                         | \  unplug_any_sb_online()
-           |                                         |  \
-           |\                                        |   + STATE_ONLINE_PARTIAL  --+
-  full MB  | \  partial MB                  full MB  |  ^                          |
-           |  v                                      | /  partial MB               |
-           |   + STATE_OFFLINE_PARTIAL               |/                            |
-           |  /                                      |                             | plug_any_sb() to full
-           | /  plug_any_sb()                        |                             |
-           |/                                        |  unplug_any_sb_online()     |
-           v                                         |                             |
-     STATE_OFFLINE        -------------->       STATE_ONLINE     <-----------------+
-
-                     virtio_mem_notify_online()
-                    
+      STATE_UNUSED                                          STATE_UNUSED
+           |                                                     ^
+           | plug_and_add()                                      |
+           |                                                     |
+           |                                                     |
+           |\                                                    |\
+  full     | \  partial                                          | \  unplug_any_sb_online()
+           |  \                                                  |  \
+           |   v STATE_OFFLINE_PARTIAL   <*-*-*-*-*-*-*          |   ^ STATE_ONLINE_PARTIAL  --+
+           |  /                                                  |  /                          |
+           | /  plug_any_sb()                            full    | /  partial                  |
+           |/                                                    |/                            |
+           |                                                     |                             | plug_any_sb() to full
+           |                                                     |                             |
+           |                             notify_offline()        |  unplug_any_sb_online()     |
+           v                             <*-*-*-*-*-*-*          |                             |
+     STATE_OFFLINE                       -------------->    STATE_ONLINE     <-----------------+
+                                         notify_online()
