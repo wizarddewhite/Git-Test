@@ -816,7 +816,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 7.3.3.6 init_currently_empty_zone(), init zone->frea_area[].free_list[]
 ================================================================================
 
-7.3.3.7 memmap_init(), looks this is the core function
+7.3.3.7 memmap_init() -> memmap_init_zone(, MIGRATE_MOVABLE), looks this is the core function
 ================================================================================
 
 7.4 node_set_state(nid, N_MEMORY)
@@ -850,6 +850,9 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 ================================================================================
 
 8.1.5 set_page_address(), set virtual to __va(pfn << PAGE_SHIFT)
+================================================================================
+
+8.2 set_pageblock_migratetype(page, migratetype), the initial migratetype is set here
 ================================================================================
 
 9. build_all_zonelists_init(), called by start_kernel()
