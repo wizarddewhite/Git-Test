@@ -1,0 +1,58 @@
+1. Namespace
+1.1 Create ns
+
+$ ip netns add new_ns
+
+1.2 Displace ns
+
+$ ip netns list
+
+1.3 Execute command in namespace
+
+$ ip netns exec new_ns bash  // following command would be in namespace new_ns
+
+$ ip netns exec new_ns ip link list // displace links in namespace new_ns
+
+2. veth
+
+2.1 Create veth pair (veth0 <-> veth1)
+
+$ ip link add veth0 type veth peer name veth1
+
+Verify with:
+
+$ ip link show
+
+2.2 Delete veth
+
+$ ip link delete veth0
+
+This seems to delete the pair.
+
+2.3 Show current veth devices
+
+$ ip link show type veth
+
+2.3.1 List pair of one veth
+
+ethtool -S veth_name
+
+2.4 Assign interface into namespace
+
+$ ip link set veth1 netns new_ns
+
+2.5 Assign ip to veth1
+
+$ ip netns exec new_ns ip addr add 10.1.1.1/24 dev veth1
+$ ip netns exec new_ns ip link set dev veth1 up
+
+2.6 Config default gateway in namespace new_ns
+
+$ ip netns exec new_ns ip route add default via 10.1.1.1
+
+After this it could ping host ip from namespace new_ns.
+
+0. Reference
+
+https://blog.scottlowe.org/2013/09/04/introducing-linux-network-namespaces/
+
