@@ -1,0 +1,55 @@
+1. Create macvtap interface
+
+$ ip link add link eth0 name macvtap0 type macvtap mode bridge
+
+2. Remove macvtap interface
+
+$ ip link delete macvtap0
+
+3. List macvtap interfaces
+
+$ ip link show type macvtap
+
+4. Set Mac device
+
+$ ip link set macvtap0 address 1a:46:0b:ca:bc:7b up
+
+0. Examples
+
+0.1 Setup two macvtap in its namespace respectively
+
+Now we could ping 10.1.1.1 and 10.1.1.2 from its NS.
+
+  +---------------------------------------------------------------------+
+  |                                                                     |
+  |           NS: tap0                         NS: tap1                 |
+  |         +---------------------+          +-------------------+      |
+  |         |                     |          |                   |      |
+  |         |                     |          |                   |      |
+  |         |                     |          |                   |      |
+  |         |   macvtap0          |          |   macvtap1        |      |
+  |         |   10.1.1.1          |          |   10.1.1.2        |      |
+  |         +---------------------+          +-------------------+      |
+  |                       \                       /                     |
+  |                            \              /                         |
+  |                                 \     /                             |
+  |                                enp0s3                               |
+  |                                                                     |
+  +---------------------------------------------------------------------+
+
+$ ip link add link enp0s3 name macvtap0 type macvtap mode bridge
+$ ip netns add tap0
+$ ip link set macvtap0 netns tap0
+$ ip netns exec tap0 ip link set lo up
+$ ip netns exec tap0 ip link set macvtap0 up
+$ ip netns exec tap0 ip addr add 10.1.1.1/24 dev macvtap0
+
+
+$ ip link add link enp0s3 name macvtap1 type macvtap mode bridge
+$ ip netns add tap1
+$ ip link set macvtap1 netns tap1
+$ ip netns exec tap1 ip link set lo up
+$ ip netns exec tap1 ip link set macvtap1 up
+$ ip netns exec tap1 ip addr add 10.1.1.2/24 dev macvtap1
+
+

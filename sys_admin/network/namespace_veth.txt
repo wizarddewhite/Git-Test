@@ -1,7 +1,8 @@
 1. Namespace
-1.1 Create ns
+1.1 Create/Delete ns
 
 $ ip netns add new_ns
+$ ip netns delete new_ns
 
 1.2 Displace ns
 
@@ -40,6 +41,12 @@ ethtool -S veth_name
 2.4 Assign interface into namespace
 
 $ ip link set veth1 netns new_ns
+
+2.4.1 Move interface back to default namespace
+
+This is really obvious but I didn't notice it at first glance.
+
+$ ip netns exec new_ns ip link set veth1 netns 1
 
 2.5 Assign ip to veth1
 
