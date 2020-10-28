@@ -1,0 +1,55 @@
+1. General Concept
+
+Current linux route strategy has two pars:
+
+  * route rule
+  * route table
+
+First linux would match rule and then select the route table to do routing.
+
+2. Route Rule
+
+2.1 List Rule
+
+$ ip rule
+0:      from all lookup local
+32766:  from all lookup main
+32767:  from all lookup default
+
+2.1 Add Rule
+
+$ ip rule add from 192.168.100.212 table PrivTel
+
+$ ip rule
+0:	from all lookup local
+32765:	from 192.168.100.212 lookup PrivTel
+32766:	from all lookup main
+32767:	from all lookup default
+
+This rule means packet from 192.168.100.212 would select PrivTel route table
+to do routing.
+
+And you could see this rule has index higher than main/default, which
+indicates this rule would be matched in advance.
+
+3. Route Table
+
+3.1 List Table
+
+$ cat /etc/iproute2/rt_tables
+
+3.2 List Table Content
+
+$ ip route list table main
+
+This would list the content of route table main.
+
+3.3 Add a new Table
+
+$ echo "101 PrivTel" >> /etc/iproute2/rt_tables
+
+3.4 Adjust Specific Table Content
+
+$ ip route add default via 192.168.0.1 dev enp0s5 table PrivTel
+
+This would add default rule in table PrivTel.
