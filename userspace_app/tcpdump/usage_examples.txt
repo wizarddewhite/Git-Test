@@ -20,6 +20,10 @@ $ tcpdump net 10.1.1.0/24
 
 $ tcpdump -n
 
+2.1 Display more detail
+
+$ tcpdump -vv -nn -e
+
 0. Reference
 
 https://danielmiessler.com/study/tcpdump/
