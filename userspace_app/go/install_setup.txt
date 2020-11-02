@@ -1,0 +1,13 @@
+1. Install
+
+$ yum install golang
+
+2. Setup
+
+$ mkdir -p $HOME/go
+$ echo 'export GOPATH=$HOME/go' >> $HOME/.bashrc
+
+
+0. Reference
+
+https://developer.fedoraproject.org/tech/languages/go/go-installation.html
