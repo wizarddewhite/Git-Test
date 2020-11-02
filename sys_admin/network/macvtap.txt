@@ -87,14 +87,14 @@ $ ip link add link enp0s3 name macvtap1 type macvtap mode bridge
 $ ip link set macvtap1 up
 $ ip addr add 10.1.1.2/24 dev macvtap1
 
-0.3 Cross node macvtap
+0.3 Cross node macvtap v1
 
   +----------------------------------------------+        +---------------------------+
   |                                              |        |                           |
   |      NS: tap0                                |        |                           |
   |    +-----------------+                       |        |                           |
   |    |default via      |                       |        |                           |
-  |    |  188.23.512.129 |                       |        |                           |
+  |    |  188.23.512.130 |                       |        |                           |
   |    |  dev macvtap0   |                       |        |                           |
   |    |                 |                       |        |                           |
   |    |                 |                       |        |                           |
@@ -115,15 +115,69 @@ Two extra steps:
   * leave one macvtap interface in default namespace
   * configure the default route in NS:tap0
 
+Example command line:
 
-0.4 Cross node macvtap both in namespace
+$ ip link add link eth0 name macvtap0 type macvtap mode bridge
+$ ip netns add tap0
+$ ip link set macvtap0 netns tap0
+$ ip netns exec tap0 ip link set lo up
+$ ip netns exec tap0 ip link set macvtap0 address 1a:46:0b:ca:bc:7b up
+$ ip netns exec tap0 ip addr add 188.23.512.129/26 dev macvtap0
+$ ip netns exec tap0 ip route add default via 188.23.512.130
+
+$ ip link add link eth0 name macvtap1 type macvtap mode bridge
+$ ip netns add tap1
+$ ip link set macvtap1 up
+$ ip addr add 188.23.512.130/26 dev macvtap1
+
+While this one would route the packet on host.
+
+0.4 Cross node macvtap v2
+
+  +----------------------------------------------+        +---------------------------+
+  |                                              |        |                           |
+  |      NS: tap0                                |        |                           |
+  |    +-----------------+                       |        |                           |
+  |    |default          |                       |        |                           |
+  |    |  dev macvtap0   |                       |        |                           |
+  |    |                 |                       |        |                           |
+  |    |                 |                       |        |                           |
+  |    |   macvtap0      |         macvtap1      |        |         macvtap0          |
+  |    |188.23.512.129/26|      188.23.512.130/26|        |      188.23.512.65/26     |
+  |    +-----------------+                       |        |                           |
+  |                  \             /             |        |            |              |
+  |                                              |        |                           |
+  |                      \      /                |        |            |              |
+  |                      eth0                    |        |         eth0              |
+  |                                              |        |                           |
+  +----------------------------------------------+        +---------------------------+
+
+Example command line:
+
+$ ip link add link eth0 name macvtap0 type macvtap mode bridge
+$ ip netns add tap0
+$ ip link set macvtap0 netns tap0
+$ ip netns exec tap0 ip link set lo up
+$ ip netns exec tap0 ip link set macvtap0 address 1a:46:0b:ca:bc:7b up
+$ ip netns exec tap0 ip addr add 188.23.512.129/26 dev macvtap0
+$ ip netns exec tap0 ip route add default dev macvtap0
+
+$ ip link add link eth0 name macvtap1 type macvtap mode bridge
+$ ip netns add tap1
+$ ip link set macvtap1 up
+$ ip addr add 188.23.512.130/26 dev macvtap1
+
+This one, we route the packet in NS:tap0 through macvtap0, which would be sent
+through eth0 directly.
+
+0.5 Cross node macvtap both in namespace
 
   +----------------------------------------------+        +----------------------------------------------+
   |                                              |        |                                              |
   |      NS: tap0                                |        |      NS: tap0                                |
   |    +-----------------+                       |        |    +-----------------+                       |
   |    |default via      |                       |        |    |default via      |                       |
-  |    |  188.23.512.129 |                       |        |    | 188.23.512.66   |                       |
+  |    |  188.23.512.130 |                       |        |    | 188.23.512.65   |                       |
   |    |  dev macvtap0   |                       |        |    |  dev macvtap0   |                       |
   |    |                 |                       |        |    |                 |                       |
   |    |                 |                       |        |    |                 |                       |
@@ -133,7 +187,7 @@ Two extra steps:
   |                  \             /             |        |                  \             /             |
   |                                              |        |                                              |
   |                      \      /                |        |                      \      /                |
-  |                      enp0s3                  |        |                      enp0s3                  |
+  |                        eth0                  |        |                        eth0                  |
   |                                              |        |                                              |
   +----------------------------------------------+        +----------------------------------------------+
 
