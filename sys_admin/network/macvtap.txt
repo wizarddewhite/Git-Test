@@ -86,3 +86,58 @@ $ ip netns exec tap0 ip addr add 10.1.1.1/24 dev macvtap0
 $ ip link add link enp0s3 name macvtap1 type macvtap mode bridge
 $ ip link set macvtap1 up
 $ ip addr add 10.1.1.2/24 dev macvtap1
+
+0.3 Cross node macvtap
+
+  +----------------------------------------------+        +---------------------------+
+  |                                              |        |                           |
+  |      NS: tap0                                |        |                           |
+  |    +-----------------+                       |        |                           |
+  |    |default via      |                       |        |                           |
+  |    |  188.23.512.129 |                       |        |                           |
+  |    |  dev macvtap0   |                       |        |                           |
+  |    |                 |                       |        |                           |
+  |    |                 |                       |        |                           |
+  |    |   macvtap0      |         macvtap1      |        |         macvtap0          |
+  |    |188.23.512.129/26|      188.23.512.130/26|        |      188.23.512.65/26     |
+  |    +-----------------+                       |        |                           |
+  |                  \             /             |        |            |              |
+  |                                              |        |                           |
+  |                      \      /                |        |            |              |
+  |                      enp0s3                  |        |         enp0s3            |
+  |                                              |        |                           |
+  +----------------------------------------------+        +---------------------------+
+
+The configuration is almost the same as 0.2 section.
+
+Two extra steps:
+
+  * leave one macvtap interface in default namespace
+  * configure the default route in NS:tap0
+
+
+0.4 Cross node macvtap both in namespace
+
+  +----------------------------------------------+        +----------------------------------------------+
+  |                                              |        |                                              |
+  |      NS: tap0                                |        |      NS: tap0                                |
+  |    +-----------------+                       |        |    +-----------------+                       |
+  |    |default via      |                       |        |    |default via      |                       |
+  |    |  188.23.512.129 |                       |        |    | 188.23.512.66   |                       |
+  |    |  dev macvtap0   |                       |        |    |  dev macvtap0   |                       |
+  |    |                 |                       |        |    |                 |                       |
+  |    |                 |                       |        |    |                 |                       |
+  |    |   macvtap0      |         macvtap1      |        |    |   macvtap0      |         macvtap1      |
+  |    |188.23.512.129/26|      188.23.512.130/26|        |    |188.23.512.66/26 |      188.23.512.65/26 |
+  |    +-----------------+                       |        |    +-----------------+                       |
+  |                  \             /             |        |                  \             /             |
+  |                                              |        |                                              |
+  |                      \      /                |        |                      \      /                |
+  |                      enp0s3                  |        |                      enp0s3                  |
+  |                                              |        |                                              |
+  +----------------------------------------------+        +----------------------------------------------+
+
+After this, we could access NS:tap0 in those two nodes from each other.
+
+Based on this topology, we could assign macvtap to guest. So guest could be
+accessed.
