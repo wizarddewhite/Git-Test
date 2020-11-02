@@ -1,0 +1,25 @@
+1. Behavior Control
+
+1.1. Specify interface
+
+$ tcpdump -i eth0
+
+1.2. Specify source/dest ip
+
+$ tcpdump src ip
+
+$ tcpdump dst ip
+
+1.3. Specify subnet
+
+$ tcpdump net 10.1.1.0/24
+
+2. Display Control
+
+2.1 Display ip instead of hostname
+
+$ tcpdump -n
+
+0. Reference
+
+https://danielmiessler.com/study/tcpdump/
