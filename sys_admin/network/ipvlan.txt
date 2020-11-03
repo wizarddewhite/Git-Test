@@ -1,0 +1,78 @@
+1. Create ipvlan interface
+
+$ ip link add link eth0 name ipvlan0 type ipvlan
+
+3. Example
+
+3.1 Local node:
+
+  +=============================================================+
+  |  Host: host1                                                |
+  |                                                             |
+  |   +----------------------+      +----------------------+    |
+  |   |   NS:ns0             |      |  NS:ns1              |    |
+  |   |                      |      |                      |    |
+  |   |                      |      |                      |    |
+  |   |        ipvl0         |      |         ipvl1        |    |
+  |   +----------#-----------+      +-----------#----------+    |
+  |              #                              #               |
+  |              ################################               |
+  |                              # eth0                         |
+  +==============================#==============================+
+
+
+	(a) Create two network namespaces - ns0, ns1
+		ip netns add ns0
+		ip netns add ns1
+
+	(b) Create two ipvlan slaves on eth0 (master device)
+		ip link add link eth0 ipvl0 type ipvlan mode l2
+		ip link add link eth0 ipvl1 type ipvlan mode l2
+
+	(c) Assign slaves to the respective network namespaces
+		ip link set dev ipvl0 netns ns0
+		ip link set dev ipvl1 netns ns1
+
+	(d) Now switch to the namespace (ns0 or ns1) to configure the slave devices
+		- For ns0
+			(1) ip netns exec ns0 bash
+			(2) ip link set dev ipvl0 up
+			(3) ip link set dev lo up
+			(4) ip -4 addr add $IPADDR dev ipvl0
+			(5) ip -4 route add default via $ROUTER dev ipvl0
+		- For ns1
+			(1) ip netns exec ns1 bash
+			(2) ip link set dev ipvl1 up
+			(3) ip link set dev lo up
+			(4) ip -4 addr add $IPADDR dev ipvl1
+			(5) ip -4 route add default via $ROUTER dev ipvl1
+
+3.2 Cross node:
+
+  +==================================+        +==================================+
+  |  Host: host1                     |        |  Host: host2                     |
+  |                                  |        |                                  |
+  |   +----------------------+       |        |   +----------------------+       |
+  |   |   NS:ns0             |       |        |   |   NS:ns0             |       |
+  |   |                      |       |        |   |                      |       |
+  |   |                      |       |        |   |                      |       |
+  |   |        ipvl0         |       |        |   |        ipvl0         |       |
+  |   +----------#-----------+       |        |   +----------#-----------+       |
+  |              #                   |        |              #                   |
+  |              #                   |        |              #                   |
+  |              # eth0              |        |              # eth0              |
+  +==============#===================+        +==============#===================+
+
+Command on host1
+
+$ ip link add link eth0 name ipvl0 type ipvlan # mode l2
+$ ip netns add ns0
+$ ip link set ipvl0 netns ns0
+$ ip netns exec ns0 ip link set lo up
+$ ip netns exec ns0 ip link set ipvl0 up
+$ ip netns exec ns0 ip addr add $IPADDR dev ipvl0
+$ ip netns exec ns0 ip route add default dev ipvl0
+
+0. Reference
+
+https://www.kernel.org/doc/Documentation/networking/ipvlan.txt
