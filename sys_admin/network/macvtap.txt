@@ -170,6 +170,38 @@ $ ip addr add 188.23.512.130/26 dev macvtap1
 This one, we route the packet in NS:tap0 through macvtap0, which would be sent
 through eth0 directly.
 
+0.4.1 Packet flow
+
+  +----------------------------------------------+
+  |                                              |
+  |      NS: tap0                                |
+  |    +-----------------+                       |
+  |    |default          |                       |
+  |    |  dev macvtap0   |                       |
+  |    |                 |                       |
+  |    |                 |                       |
+  |    |   macvtap0      |  IN3)   macvtap1      |
+  |    +-----------------+                       |
+  |                  \             /             |
+  |          OUT)                  IN2)          |
+  |                      \      /                |
+  |                      eth0                    |
+  |                       IN1)                   |
+  +----------------------------------------------+
+
+OUT
+
+   With default route, packet would go out of the node directly through
+   macvtap0:eth0
+
+IN
+
+   This one is a little tricky, packet would be routed on host.
+   1) packet accepted by eth0
+   2) packet is routed to macvtap1, since dst ip is to macvtap0 and there is
+      a route entry to this subnet through macvtap1
+   3) packet is received from macvtap0
+
 0.5 Cross node macvtap both in namespace
 
   +----------------------------------------------+        +----------------------------------------------+
