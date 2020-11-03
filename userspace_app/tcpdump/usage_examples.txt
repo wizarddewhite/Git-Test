@@ -10,6 +10,8 @@ $ tcpdump src ip
 
 $ tcpdump dst ip
 
+$ tcpdume host ip
+
 1.3. Specify subnet
 
 $ tcpdump net 10.1.1.0/24
