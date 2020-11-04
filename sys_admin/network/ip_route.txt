@@ -50,6 +50,12 @@ $ echo "101 PrivTel" >> /etc/iproute2/rt_tables
 
 3.4 Adjust Specific Table Content
 
+3.4.1 Add default entry
+
 $ ip route add default via 192.168.0.1 dev enp0s5 table PrivTel
 
 This would add default rule in table PrivTel.
+
+3.4.2 Add route to subnet
+
+$ ip route add ip/mask dev enp0s5
