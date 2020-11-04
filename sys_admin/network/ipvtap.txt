@@ -1,0 +1,27 @@
+1. Example
+
+1.1 Local node:
+
+  +==================================+
+  |  Host: host1                     |
+  |                                  |
+  |   +----------------------+       |
+  |   |   NS:ns0             |       |
+  |   |                      |       |
+  |   |                      |       |
+  |   |        ipvt0         |       |
+  |   +----------#-----------+       |
+  |              #                   |
+  |              #                   |
+  |              # eth0              |
+  +==============#===================+
+
+Command:
+
+$ ip link add link eth0 name ipvt0 type ipvtap # mode bridge
+$ ip netns add ns0
+$ ip link set ipvt0 netns ns0
+$ ip netns exec ns0 ip link set lo up
+$ ip netns exec ns0 ip link set ipvt0 up
+$ ip netns exec ns0 ip addr add $IPADDR dev ipvt0
+$ ip netns exec ns0 ip route add default dev ipvt0
