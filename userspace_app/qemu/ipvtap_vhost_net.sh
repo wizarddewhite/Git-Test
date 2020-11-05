@@ -41,8 +41,17 @@
 
 # after bootup, we need the following config in guest
 #
+# Version 1, works but not correct:
+#
 # ip addr add 10.1.1.1/26 dev ens3
 # ip route add 10.2.1.1 dev ens3
 # ip route add default via 10.2.1.1 dev ens3
 # arp -i ens3 -s 10.2.1.1 1a:46:0b:ca:bc:7b
+#
+# Version 2
+#
+# ip addr add 10.1.1.1/26 dev ens3
+# ip route add default dev ens3
+# ip link set ens3 arp off
+
 
