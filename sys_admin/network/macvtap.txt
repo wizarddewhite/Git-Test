@@ -227,3 +227,7 @@ After this, we could access NS:tap0 in those two nodes from each other.
 
 Based on this topology, we could assign macvtap to guest. So guest could be
 accessed.
+
+0. Internals
+
+https://suhu0426.github.io/Web/Presentation/20150203/index.html#macvlan
