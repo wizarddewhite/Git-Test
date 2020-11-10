@@ -359,3 +359,202 @@ static int dst_dev_event(struct notifier_block *this, unsigned long event,
 0. data structure
 ================================================================================
 
+0.1 net_device
+================================================================================
+
+   net_device
+   +---------------------------------------+
+   |name[IFNAMSIZ]                         |
+   |   (char)                              |
+   |name_node                              |
+   |   (struct netdev_name_node*)          |
+   |ifalias                                |
+   |   (struct dev_ifalias*)               |
+   +---------------------------------------+
+   |mem_end                                |
+   |mem_start                              |
+   |base_addr                              |
+   |   (unsigned long)                     |
+   |irq                                    |
+   |   (int)                               |
+   +---------------------------------------+
+   |state                                  |
+   |   (unsigned long)                     |
+   |dev_list                               |
+   |napi_list                              |
+   |unreg_list                             |
+   |close_list                             |
+   |ptype_all                              |
+   |ptype_specific                         |
+   |   (struct list_head)                  |
+   |adj_list                               |
+   |   +-----------------------------------+
+   |   |upper                              |
+   |   |lower                              |
+   |   |    (struct list_head)             |
+   |   +-----------------------------------+
+   |                                       |
+   |features                               |
+   |hw_features                            |
+   |wanted_features                        |
+   |vlan_features                          |
+   |hw_enc_features                        |
+   |mpls_features                          |
+   |gso_partial_features                   |
+   |   (netdev_features_t)                 |
+   |                                       |
+   |ifindex                                |
+   |group                                  |
+   |   (int)                               |
+   |                                       |
+   |stats                                  |
+   |   (struct net_device_stats)           |
+   |                                       |
+   |rx_dropped                             |
+   |tx_dropped                             |
+   |rx_nohandler                           |
+   |   (atomic_long_t)                     |
+   |carrier_up_count                       |
+   |carrier_down_count                     |
+   |   (atomic_t)                          |
+   |                                       |
+   |netdev_ops                             |
+   |   (struct net_device_ops*)            |
+   |ethtool_ops                            |
+   |   (struct ethtool_ops*)               |
+   |header_ops                             |
+   |   (struct header_ops*)                |
+   |                                       |
+   |                                       |
+   |                                       |
+   |mtu/min_mtu/max_mtu                    |
+   |   (unsigned int)                      |
+   |type                                   |
+   |hard_header_len                        |
+   |min_header_len                         |
+   |name_assign_type                       |
+   |needed_headroom/needed_tailroom        |
+   |   (short/char)                        |
+   |                                       |
+   |perm_addr[MAX_ADDR_LEN]                |
+   |addr_assign_type                       |
+   |addr_len                               |
+   |upper_level/lower_level                |
+   |   (char)                              |
+   |neigh_priv_len                         |
+   |dev_id                                 |
+   |dev_port                               |
+   |   (short)                             |
+   |                                       |
+   |ip_ptr                                 |
+   |   (struct in_device*)                 |
+   |ip6_ptr                                |
+   |   (struct inet6_dev*)                 |
+   |                                       |  // receive path
+   |dev_addr                               |
+   |   (char *)                            |
+   |_rx                                    |
+   |   (struct netdev_rx_queue*)           |
+   |num_rx_queues/real_num_rx_queues       |
+   |   (unsigned int)                      |
+   |rx_handler                             |
+   |   (rx_handler_func_t)                 |
+   |rx_handler_data                        |
+   |   (void *)                            |
+   |ingress_queue                          |
+   |   (struct netdev_queue*)              |
+   |broadcast[MAX_ADDR_LEN]                |
+   |   (unsigned char)                     |
+   |                                       |
+   |                                       |  // transmit path
+   |_tx                                    |
+   |   (struct netdev_queue*)              |
+   |num_tx_queues/real_num_tx_queues       |
+   |   (unsigned int)                      |
+   |qdisc                                  |  = &noop_qdisc
+   |   (struct Qdisc*)                     |
+   |tx_queue_len                           |
+   |   (unsigned int)                      |
+   |                                       |
+   |dev                                    |
+   |   (struct device)                     |
+   |phydev                                 |
+   |   (struct phy_device*)                |
+   |                                       |
+   |                                       |
+   |                                       |
+   |                                       |
+   |                                       |
+   +---------------------------------------+
+
+0.2 netdev_queue
+================================================================================
+
+   netdev_queue
+   +---------------------------------------+
+   |dev                                    |
+   |    (struct net_device*)               |
+   |qdisc                                  |
+   |qdisc_sleeping                         |
+   |    (struct Qdisc*)                    |
+   |tx_maxrate                             |
+   |trans_timeout                          |
+   |    (unsigned long)                    |
+   |sb_dev                                 |
+   |    (struct net_device*)               |
+   |trans_start                            |
+   |    (unsigned long)                    |
+   |state                                  |
+   |    (unsigned long)                    |
+   |                                       |
+   |_xmit_lock                             |
+   |    (spinlock_t)                       |
+   |                                       |
+   |                                       |
+   |                                       |
+   +---------------------------------------+
+
+0.3 Qdisc
+================================================================================
+
+   Qdisc
+   +---------------------------------------+
+   |enqueue                                |
+   |dequeue                                |
+   |    ()                                 |
+   |ops                                    |
+   |    (struct Qdisc_ops*)                |
+   |stab                                   |
+   |    (struct qdisc_size_table*)         |
+   |hash                                   |
+   |    (struct hlist_node)                |
+   |handle                                 |
+   |parent                                 |
+   |    (u32)                              |
+   |dev_queue                              |
+   |    (struct netdev_queue*)             |
+   |q                                      |
+   |    (struct qdisc_skb_head)            |
+   |                                       |
+   |                                       |
+   |                                       |
+   |                                       |
+   +---------------------------------------+
+
+0.4 net_device / netdev_queue / Qdisc
+================================================================================
+
+   net_device
+   +---------------------------------------+<-----+
+   |_tx                                    |      |
+   |  (struct netdev_queue*)               |      |
+   |  +------------------------------------+<--+  |
+   |  |dev                             ----|------+
+   |  |    (struct net_device*)            |   |
+   |  |qdisc                               |   |
+   |  |    (struct Qdisc*)                 |   |
+   |  |    +-------------------------------+   |
+   |  |    |dev_queue                  ----|---+
+   |  |    |    (struct netdev_queue)      |
+   |  |    |                               |
+   +--+----+-------------------------------+
