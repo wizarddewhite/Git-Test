@@ -110,5 +110,46 @@
                 |    (netdev_features_t)                |
                 |mc_filter                              |
                 | (DECLARE_BITMAP(MACVLAN_MC_FILTER_SZ))|
+                |hlist                                  |
+                |    (struct hlist_node)                |
+                |                                       |
                 |                                       |
                 +---------------------------------------+
+
+0.2 macvlan_dev under one net_device
+================================================================================
+
+               net_device(eth0)
+               +------------------------------+
+               |                              |
+               |rx_handler_data               |  = macvlan_port
+               +------------------------------+    (struct macvlan_port*)
+                                                   +----------------------------------+
+                                                   |vlan_hash[MACVLAN_HASH_SIZE]      |
+                                                   |   (struct hlist_head)            |
+                                                   +----------------------------------+
+                                                                      |
+                                                                      |
+                                                                      |
+                net_device(macvlan0)                                  |
+                +---------------------------+<--+                     |
+                |                           |   |                     |
+                |                           |   |                     |
+  macvlan_dev   +---------------------------+   |                     |
+                |dev                     ---|---+                     |
+                |lowerdev                   |  = eth0                 |
+                |hlist                   ---|-------------------------+
+                |    (struct hlist_node)    |                         |
+                +---------------------------+                         |
+                                                                      |
+                                                                      |
+                net_device(macvlan1)                                  |
+                +---------------------------+<--+                     |
+                |                           |   |                     |
+                |                           |   |                     |
+  macvlan_dev   +---------------------------+   |                     |
+                |dev                     ---|---+                     |
+                |lowerdev                   |  = eth0                 |
+                |hlist                   ---|-------------------------+
+                |    (struct hlist_node)    |                         |
+                +---------------------------+                         |
