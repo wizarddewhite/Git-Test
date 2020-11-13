@@ -216,7 +216,7 @@ qdisc_base
 7.2 do_softirq()
 ================================================================================
 
-8. process_backlog(napi, quota)
+8. process_backlog(napi, quota), napi->poll function
 ================================================================================
 8.0 sd = container_of(napi, struct softnet_data, backlog)
 ================================================================================
@@ -285,5 +285,9 @@ And then processed by process_backlog()
      |                                       |
      |backlog                                |  parameter to process_backlog()
      |    (struct napi_struct)               |
+     |    +----------------------------------+
+     |    |poll                              |  = process_backlog()
+     |    |                                  |
+     |    +----------------------------------+
      |                                       |
      +---------------------------------------+
