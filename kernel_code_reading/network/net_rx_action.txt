@@ -77,6 +77,10 @@
 ================================================================================
 3.1.5 deliver_skb(skb, pt_prev, orig_dev), for each ptype_all / dev->ptype_all
 ================================================================================
+3.1.5.1 refcount_inc(&skb->users)
+================================================================================
+3.1.5.2 pt_prev->func(skb, skb->dev, pt_prev, orig_dev)
+================================================================================
 3.1.6 rx_handler = rcu_dereference(skb->dev->rx_handler);
 ================================================================================
 3.1.7 rx_handler(&skb), assigned by netdev_rx_handler_register()
@@ -87,7 +91,9 @@
 ================================================================================
 3.1.10 deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type, &orig_dev->ptype_specific);
 ================================================================================
-3.1.10.1 deliver_skb(skb, pt_prev, orig_dev), when ptype->type match
+3.1.10.1 continue if (ptype->type != type)
+================================================================================
+3.1.10.2 deliver_skb(skb, pt_prev, orig_dev), when ptype->type match
 ================================================================================
 
 0. data structure
@@ -211,6 +217,8 @@ After have two:
 ================================================================================
 ; http://bbs.chinaunix.net/thread-1933943-1-1.html
 
+These two lists are adjusted via dev_add_pack(pt)
+
   ptype_all(struct list_head), all with type ETH_P_ALL
   +---------+      +---------+      +---------+      
   |         | ---->|         | ---->|         | ---->
@@ -220,7 +228,7 @@ After have two:
   ptype_base(struct list_head)[16], a very raw hash list
                                     with various packet types
   +---------+      +---------+      +---------+ 
-  |         | ---->|         | ---->|         | 
+  |         | ---->|ip_rcv   | ---->|arp_rcv  | 
   +---------+      +---------+      +---------+ 
   |         |      ip_packet_type   arp_packet_type
   +---------+
@@ -235,3 +243,16 @@ After have two:
   |         |
   +---------+
 
+0.2.1 packet_type
+================================================================================
+
+     packet_type
+     +---------------------------------------+
+     |type                                   |
+     |    (__be16)                           |
+     |dev                                    |
+     |    (struct net_device*)               |
+     |func                                   |
+     |                                       |
+     |                                       |
+     +---------------------------------------+
