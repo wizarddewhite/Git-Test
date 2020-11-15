@@ -288,6 +288,38 @@ And then processed by process_backlog()
      |    +----------------------------------+
      |    |poll                              |  = process_backlog()
      |    |                                  |
+     |    |poll_list                         |
+     |    |    (struct list_head)            |
+     |    |state                             |
+     |    |    (unsigned long)               |
+     |    |weight                            |
+     |    |defer_hard_irqs_count             |
+     |    |    (int)                         |
+     |    |dev                               |
+     |    |    (struct net_device*)          |
+     |    |gro_bitmask                       |  = 0
+     |    |    (unsigned long)               |
+     |    |gro_hash[GRO_HASH_BUCKETS]        |
+     |    |    (struct gro_list)             |
+     |    |    +-----------------------------+
+     |    |    |list                         |
+     |    |    |    (struct list_head)       |
+     |    |    |                             |
+     |    |    |count                        |  = 0
+     |    |    +-----------------------------+
+     |    |skb                               |
+     |    |    (struct sk_buff*)             |
+     |    |rx_list                           |
+     |    |    (struct list_head)            |
+     |    |rx_count                          |
+     |    |    (int)                         |
+     |    |dev_list                          |
+     |    |    (struct list_head)            |
+     |    |napi_hash_node                    |
+     |    |    (struct hlist_node)           |
+     |    |napi_id                           |
+     |    |    (unsigned int)                |
+     |    |                                  |
      |    +----------------------------------+
      |                                       |
      +---------------------------------------+
