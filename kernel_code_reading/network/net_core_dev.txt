@@ -467,3 +467,17 @@ static int __init net_dev_init(void)
    |    |    (struct class*)               |
    |    |                                  |
    +----+----------------------------------+
+
+0.5 net_device call flow
+================================================================================
+
+    ndev = alloc_netdev()
+             |
+             v
+    register_netdev(ndev)
+        ndev->netdev_ops->ndo_init(dev)
+             |
+             v
+    dev_activate(ndev)
+        attach_default_qdisc(dev), get real qdisc
+

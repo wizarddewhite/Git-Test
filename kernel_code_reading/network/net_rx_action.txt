@@ -256,3 +256,18 @@ These two lists are adjusted via dev_add_pack(pt)
      |                                       |
      |                                       |
      +---------------------------------------+
+
+0.3 call flow
+================================================================================
+
+    __napi_schedule(napi) / ____napi_schedule()           netif_rx[_ni]()
+        from driver, schedule for recv
+          \                                                  /
+                    \                                 /
+                               \                 /
+                                       \   /
+                              net_rx_action()
+                                  napi->poll()
+                                      netif_receive_skb()
+                                          deliver_skb()
+                                              ptype->func()

@@ -90,3 +90,28 @@
 4.1.1.1 return ops->ndo_start_xmit(skb, dev), driver takes it
 ================================================================================
 
+0. Call flow
+================================================================================
+
+    dev_queue_xmit()
+        txq = netdev_core_pick_tx(dev, skb, sb_dev);
+        q = rcu_dereference_bh(txq->qdisc);
+        __dev_xmit_skb(skb, q, dev)
+            q->enqueue(skb, q, )
+            __qdisc_run(q)
+                __netif_schedule(q), queue to softnet_data
+
+                |
+                v
+
+    net_tx_action()
+
+                |
+                v
+
+    dev_hard_start_xmit(skb, dev, txq)
+
+                |
+                v
+
+    dev->netdev_ops->ndo_start_xmit(skb, dev), driver handle it
