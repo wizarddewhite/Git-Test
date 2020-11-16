@@ -44,6 +44,7 @@ func main() {
 	app.Name = "cli test"
 	app.Usage = usage
 	app.Commands = cliCommands
+	app.EnableBashCompletion = true
 
 	err := app.Run(os.Args)
 	if err != nil {
