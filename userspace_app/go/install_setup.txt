@@ -7,6 +7,22 @@ $ yum install golang
 $ mkdir -p $HOME/go
 $ echo 'export GOPATH=$HOME/go' >> $HOME/.bashrc
 
+3. Get package
+
+This would download package and install it.
+
+$ go get github.com/kata-containers/kata-containers
+
+This one just download package.
+
+$ go get -d github.com/kata-containers/kata-containers
+
+4. Vim IDE
+
+https://tpaschalis.github.io/vim-go-setup/
+
+$ git clone https://github.com/fatih/vim-go.git ~/.vim/pack/plugins/start/vim-go
+open up vim and run :GoInstallBinaries
 
 0. Reference
 
