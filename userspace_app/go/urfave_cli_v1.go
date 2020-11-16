@@ -9,8 +9,16 @@ import (
 	"github.com/urfave/cli"
 )
 
+var usage = fmt.Sprintf(`%s runtime
+
+%s is a command line program for running applications packaged
+according to the Open Container Initiative (OCI).`, "cli", "cli")
+
 func main() {
 	app := cli.NewApp()
+
+	app.Name = "cli test"
+	app.Usage = usage
 
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
