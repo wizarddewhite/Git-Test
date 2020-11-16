@@ -38,6 +38,27 @@ var cliCommands = []cli.Command{
 	},
 }
 
+var cliBeforeSubcommands = beforeSubcommands
+
+func beforeSubcommands(c *cli.Context) error {
+	fmt.Println("###Before Subcommand")
+	return nil
+}
+
+var cliAfterSubcommands = afterSubcommands
+
+func afterSubcommands(c *cli.Context) error {
+	fmt.Println("---After Subcommand")
+	return nil
+}
+
+var cliCommandNotFound = commandNotFound
+
+func commandNotFound(c *cli.Context, command string) {
+	fmt.Printf("Invalid command %q \n", command)
+	os.Exit(1)
+}
+
 func main() {
 	app := cli.NewApp()
 
@@ -45,6 +66,9 @@ func main() {
 	app.Usage = usage
 	app.Commands = cliCommands
 	app.EnableBashCompletion = true
+	app.Before = cliBeforeSubcommands
+	app.After = cliAfterSubcommands
+	app.CommandNotFound = cliCommandNotFound
 
 	err := app.Run(os.Args)
 	if err != nil {
