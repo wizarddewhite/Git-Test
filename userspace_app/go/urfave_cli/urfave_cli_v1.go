@@ -26,6 +26,7 @@ var cliCommands = []cli.Command{
 			},
 		},
 		Action: func(c *cli.Context) error {
+			fmt.Println(c.GlobalString("country"))
 			name := "Nefertiti"
 			if c.String("lang") == "spanish" {
 				fmt.Println("Hola", name)
@@ -69,6 +70,14 @@ func main() {
 	app.Before = cliBeforeSubcommands
 	app.After = cliAfterSubcommands
 	app.CommandNotFound = cliCommandNotFound
+
+	app.Flags = []cli.Flag{
+		&cli.StringFlag{
+			Name:  "country",
+			Value: "chn",
+			Usage: "country",
+		},
+	}
 
 	err := app.Run(os.Args)
 	if err != nil {
