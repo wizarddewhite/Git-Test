@@ -1,0 +1,113 @@
+1. parse runtime configuration, configuration.toml -> RuntimeConfig
+================================================================================
+beforeSubcommands
+    configFile, runtimeConfig = katautils.LoadConfiguration
+        config = initConfig(oci.RuntimeConfig)
+        tomlConf := decodeConfig("/etc/kata-containers/configuration.toml")
+        updateRuntimeConfig("/etc/kata-containers/configuration.toml",
+			tomlConf, config, ), from toml to oci
+    c.App.Metadata["runtimeConfig"] = runtimeConfig
+    c.App.Metadata["configFile"] = configFile
+
+2. parse oci configuration, config.json -> compatOCISpec
+================================================================================
+runCLICommand
+    runtimeConfig := context.App.Metadata["runtimeConfig"].(oci.RuntimeConfig)
+    run(ctx, context.Args().First(), ..., runtimeConfig)
+        create(ctx, containerID, bundle, ..., runtimeConfig)
+            ociSpec := compatoci.ParseConfigJSON(bundlePath)
+            containerType := oci.ContainerType(ociSpec)
+                switch containerType
+                    process = vc.PodSandbox -> katautils.CreateSandbox
+                    process = vc.PodContainer -> katautils.CreateContainer
+            createPIDFile(ctx, pidFilePath, process.Pid)
+        start(ctx, containerID)
+
+ParseConfigJSON(bundlePath)
+    configPath := getConfigPath(bundlePath)
+        filepath.Join(bundlePath, "config.json")
+    configByte = ioutil.ReadFile(configPath)
+    json.Unmarshal(configByte, &compSpec)
+
+0. Data Struct
+================================================================================
+
+0.1 oci.RuntimeConfig
+================================================================================
+
+    RuntimeConfig
+    +----------------------------------------------+
+    |HypervisorType                                |  qemu/acrn/firecracker
+    |    (vc.HypervisorType)                       |
+    |HypervisorConfig                              |
+    |    (vc.HypervisorConfig)                     |
+    |                                              |
+    |NetmonConfig                                  |
+    |    (vc.NetmonConfig)                         |
+    |                                              |
+    |AgentType                                     |  noop/kata
+    |    (vc.AgentType)                            |
+    |AgentConfig                                   |
+    |    (interface{})                             |
+    |                                              |
+    |ProxyType                                     | noopProxy/noProxy/kataProxy
+    |    (vc.ProxyType)                            |
+    |ProxyConfig                                   |
+    |    (vc.ProxyConfig)                          |
+    |    +-----------------------------------------+
+    |    |Path(string)                             |
+    |    |Debug(bool)                              |
+    |    |                                         |
+    |    +-----------------------------------------+
+    |                                              |
+    |ShimType                                      |  noopShim/kataShim
+    |    (vc.ShimType)                             |
+    |ShimConfig                                    |
+    |    (vc.ShimConfig)                           |
+    |                                              |
+    |InterNetworkModel                             | DefaultModel/MacVtapModel
+    |    (vc.NetInterworkingModel)                 | TCFilterModel
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
+
+0.2 compatOCISpec
+================================================================================
+
+    compatOCISpec
+    +----------------------------------------------+
+    |spec.Spec                                     |
+    |    +-----------------------------------------+
+    |    |Version "ociVersion"                     |
+    |    |    (string)                             |
+    |    |Process "process"                        |
+    |    |    (*Process)                           |
+    |    |Root    "root"                           |
+    |    |    (*Root)                              |
+    |    |Hostname "hostname"                      |
+    |    |    (string)                             |
+    |    |Mount    "mounts"                        |
+    |    |    ([]Mount)                            |
+    |    |Hooks    "hooks"                         |
+    |    |    (*Hooks)                             |
+    |    |Annotations "annotations"                |
+    |    |    (map[string]string)                  |
+    |    |Linux   "linux"                          |
+    |    |    (*Linux)                             |
+    |    |                                         |
+    |    |VM      "vm"                             |
+    |    |    (*VM)                                |
+    |    |                                         |
+    |    |                                         |
+    |    |                                         |
+    |    +-----------------------------------------+
+    |Process                                       |
+    |    (*compatOCIProcess)                       |
+    |    +-----------------------------------------+
+    |    |specs.Process                            |
+    |    |                                         |
+    |    |                                         |
+    |    |Capabilities                             |
+    |    |    (interface{})                        |
+    |    |                                         |
+    +----+-----------------------------------------+
