@@ -16,6 +16,7 @@ runCLICommand
     run(ctx, context.Args().First(), ..., runtimeConfig)
         create(ctx, containerID, bundle, ..., runtimeConfig)
             ociSpec := compatoci.ParseConfigJSON(bundlePath)
+            katautils.HandleFactory(ctx, vci, &runtimeConfig)
             containerType := oci.ContainerType(ociSpec)
                 switch containerType
                     process = vc.PodSandbox -> katautils.CreateSandbox
@@ -23,11 +24,46 @@ runCLICommand
             createPIDFile(ctx, pidFilePath, process.Pid)
         start(ctx, containerID)
 
+2.1 ParseConfigJSON()
+================================================================================
 ParseConfigJSON(bundlePath)
     configPath := getConfigPath(bundlePath)
         filepath.Join(bundlePath, "config.json")
     configByte = ioutil.ReadFile(configPath)
     json.Unmarshal(configByte, &compSpec)
+
+2.2 katautils.CreateSandbox(ctx, vci, ociSpec, runtimeConfig, )
+================================================================================
+    sandboxConfig = oci.SandboxConfig(ociSpec, runtimeConfig, bundlePath,
+		    containerID, )
+        containerConfig, = ContainerConfig(ocispec, bundlePath, cid, console, detach)
+        networkConfig = networkConfig(ocispec, runtimeConfig)
+    SetupNetworkNamespace(&sandboxConfig.NetworkConfig)
+        testutils.NewNS()
+    EnterNetNS(sandboxConfig.NetworkConfig.NetNSPath)
+    sandbox = vci.CreateSandbox(ctx, sandboxConfig)
+        CreateSandbox(ctx, sandboxConfig, impl.factory)
+            createSandboxFromConfig(ctx, sandboxConfig, factory)
+                s = createSandbox(ctx, sandboxConfig, factory)
+                    createAssets(ctx, &sandboxConfig)
+                    s = newSandbox(ctx, sandboxConfig, factory)
+                        agent = newAgent(sandboxConfig.AgentType) -> kataAgent
+                        hypervisor = newHypervisor(sandboxConfig.HypervisorType) -> qemu
+                        s.devManager = deviceManager.NewDeviceManager()
+                        s.hypervisor.createSandbox() -> qemu.createSandbox()
+                    s.agent.createSandbox(s) -> kataAgent.createSandbox()
+                    s.setSandboxState(types.StateReady)
+                s.createNetwork()
+                    s.network.Add(s.ctx, &s.config.NetworkConfig, s, )
+                s.createCgroupManager()
+                s.setupSandboxCgroup()
+                s.startVM()
+                    s.network.Run(s.networkNS.NetNsPath, )
+                        s.hypervisor.startSandbox()
+                s.postCreatedNetwork()
+                s.getAndStoreGuestDetails()
+                s.createContainers()
+                s.storeSandbox()
 
 0. Data Struct
 ================================================================================
@@ -111,3 +147,134 @@ ParseConfigJSON(bundlePath)
     |    |    (interface{})                        |
     |    |                                         |
     +----+-----------------------------------------+
+
+0.3 SandboxConfig
+================================================================================
+
+    SandboxConfig
+    +----------------------------------------------+
+    |ID                                            |  = ContainerID
+    |    (string)                                  |
+    |Hostname                                      |  = ocispec.HostName
+    |    (string)                                  |
+    |HypervisorType                                |  = runtime.HypervisorType
+    |    (HypervisorType)                          |
+    |HypervisorConfig                              |  = runtime.HypervisorConfig
+    |    (HypervisorConfig)                        |
+    |                                              |
+    |AgentType                                     |  = runtime.AgentType
+    |    (AgentType)                               |
+    |AgentConfig                                   |  = runtime.AgentConfig
+    |    (interface{})                             |
+    |                                              |
+    |ProxyType                                     |  = runtime.ProxyType
+    |    (ProxyType)                               |
+    |ProxyConfig                                   |  = runtime.ProxyConfig
+    |    (ProxyConfig)                             |
+    |                                              |
+    |ShimType                                      |  = runtime.ShimType
+    |    (ShimType)                                |
+    |ShimConfig                                    |  = runtime.ShimConfig
+    |    (interface{})                             |
+    |                                              |
+    |NetworkConfig                                 |
+    |    (NetworkConfig)                           |
+    |                                              |
+    |Annotations                                   |
+    |    (map[string]string)                       |
+    |                                              |
+    |Containers                                    |  = {containerConfig}
+    |    ([]ContainerConfig)                       |
+    |                                              |
+    |                                              |
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
+
+0.4 ContainerConfig
+================================================================================
+
+    ContainerConfig
+    +----------------------------------------------+
+    |ID                                            |  = ContainerID
+    |    (string)                                  |
+    |Annotations                                   |
+    |    (map[string]string)                       |
+    |Mounts                                        |  = containerMounts(ocispec)
+    |    ([]Mount)                                 |
+    |RootFs                                        |  = vc.RootFs{Target: ocispec.Root.Path, }
+    |    (RootFs)                                  |
+    |DeviceInfo                                    |  = containerDeviceInfos(ocispec)
+    |    ([]config.DeviceInfo)                     |
+    |Resources                                     |
+    |    (specs.LinuxResources)                    |
+    |CustomSpec                                    |  = &ocispec
+    |    (*specs.Spec)                             |
+    |Cmd                                           |
+    |    (types.Cmd)                               |
+    |    +-----------------------------------------+
+    |    |Args                                     |  = ocispec.Process.Args
+    |    |    ([]string)                           |
+    |    |User                                     |
+    |    |    (string)                             |
+    |    |WorkDir                                  |  = ocispec.Process.Cwd
+    |    |    (string)                             |
+    |    |Interactive                              |  = ocispec.Process.Terminal
+    |    |    (bool)                               |
+    |    |                                         |
+    +----+-----------------------------------------+
+
+0.5 NetworkConfig
+================================================================================
+
+    NetworkConfig
+    +----------------------------------------------+
+    |NetNSPath                                     |
+    |    (string)                                  |
+    |NetmonConfig                                  |
+    |    (NetmonConfig)                            |
+    |InterworkingModel                             |  = runtime.InterNetworkModel
+    |    (NetInterworkingModel)                    |
+    |                                              |
+    +----------------------------------------------+
+
+0.6 Sandbox
+================================================================================
+
+globalSandboxList
+
+    Sandbox
+    +----------------------------------------------+
+    |id                                            |
+    |    (string)                                  |
+    |factory                                       |
+    |    (Factory)                                 |
+    |hypervisor                                    |
+    |    (hypervisor) {}interface                  |
+    |    +-----------------------------------------+
+    |    |createSandbox()                          |
+    |    |startSandbox()                           |
+    |    |                                         |
+    |    |                                         |
+    |    +-----------------------------------------+
+    |agent                                         |
+    |    (agent)                                   |
+    |                                              |
+    |network                                       |
+    |    (Network)                                 |
+    |networkNS                                     |
+    |    (NetworkNamespace)                        |
+    |    +-----------------------------------------+
+    |    |NetNsPath                                | .config.NetworkConfig.NetNSPath
+    |    |NetNsCreated                             | .config.NetworkConfig.NetNsCreated
+    |    +-----------------------------------------+
+    |config                                        |
+    |    (*SandboxConfig)                          |
+    |state                                         |
+    |    (types.SandboxState)                      |
+    |containers                                    |
+    |    (map[string]*Container)                   |
+    |                                              |
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
