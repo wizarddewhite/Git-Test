@@ -1,0 +1,21 @@
+1. Get source
+
+$ go get -d -u github.com/kata-containers/runtime
+
+2. Build
+
+$ cd $GOPATH/src/github.com/kata-containers/runtime
+$ make && sudo -E PATH=$PATH make install
+
+3. Quick Run
+
+3.1 Prepare Bundle
+
+$ bundle="/tmp/bundle"
+$ rootfs="$bundle/rootfs"
+$ mkdir -p "$rootfs" && (cd "$bundle" && kata-runtime spec)
+$ sudo docker export $(sudo docker create busybox) | tar -C "$rootfs" -xvf -
+
+3.2 Run
+
+sudo kata-runtime --log=/dev/stdout run --bundle "$bundle" foo
