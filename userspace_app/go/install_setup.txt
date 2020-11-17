@@ -1,6 +1,8 @@
 1. Install
 
-$ yum install golang
+Refer to this link:
+
+https://golang.org/doc/install?download=go1.15.5.linux-amd64.tar.gz
 
 2. Setup
 
@@ -23,6 +25,40 @@ https://tpaschalis.github.io/vim-go-setup/
 
 $ git clone https://github.com/fatih/vim-go.git ~/.vim/pack/plugins/start/vim-go
 open up vim and run :GoInstallBinaries
+
+4.1 Cheatsheet
+
+  :GoRun :GoBuild :GoInstall   
+  
+  :GoDef          # goto definition of object under cursor   
+  gd              # also has the same effect
+  Ctrl-O / Ctrl-I # hop back to your source file/return to definition
+  
+  :GoDoc          # opens up a side window for quick documentationn   
+  K               # also has the same effect
+  
+     
+  :GoTest         # run every *_test.go file and report results   
+  :GoTestFunc     # or just test the function under your cursor   
+  :GoCoverage     # check your test coverage   
+  :GoAlternate	# switch bewteen your test case and implementation   
+  
+  :GoImport       # manage and name your imports   
+  :GoImportAs   
+  :GoDrop   
+     
+  :GoRename       # precise renaming of identifiers   
+     
+  :GoLint         # lint your code   
+  :GoVer   
+  :GoErrCheck   
+     
+  :GoAddTags      # manage your tags   
+  :GoRemoveTags
+
+4.2 Vim-go Tutorial
+
+https://github.com/fatih/vim-go-tutorial
 
 0. Reference
 
