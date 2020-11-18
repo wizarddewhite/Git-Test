@@ -71,7 +71,29 @@ func real_type_of_interface() {
 	fmt.Println(t, ok)
 }
 
+func Print(i interface{}) {
+	switch i.(type) {
+	case string:
+		fmt.Printf("type is string,value is:%v\n", i.(string))
+	case float64:
+		fmt.Printf("type is float32,value is:%v\n", i.(float64))
+	case int:
+		fmt.Printf("type is int,value is:%v\n", i.(int))
+	}
+}
+
+func use_switch_to_match_type() {
+	var i interface{}
+	i = "hello"
+	Print(i)
+	i = 100
+	Print(i)
+	i = 1.29
+	Print(i)
+}
+
 func main() {
 	// generic_type()
-	real_type_of_interface()
+	// real_type_of_interface()
+	use_switch_to_match_type()
 }
