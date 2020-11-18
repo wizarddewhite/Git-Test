@@ -13,6 +13,7 @@ type Setting struct {
 }
 
 type Config struct {
+	ID       string  `json:"id"`
 	Port     uint16  `json:"port"`
 	Settings Setting `json:"settings"`
 }
@@ -22,6 +23,7 @@ func simple_test() {
 	config := &Config{}
 	decoder := json.NewDecoder(file)
 	decoder.Decode(config)
+	fmt.Println(config.ID)
 	fmt.Println(config.Port)
 	fmt.Println(config.Settings.ID)
 }
