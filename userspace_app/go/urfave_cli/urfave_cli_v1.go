@@ -14,9 +14,23 @@ var usage = fmt.Sprintf(`%s runtime
 %s is a command line program for running applications packaged
 according to the Open Container Initiative (OCI).`, "cli", "cli")
 
+var listIfacesCommand = cli.Command{
+	Name:      "list-ifaces",
+	Usage:     "list network interfaces in a container",
+	ArgsUsage: `list-ifaces <container-id>`,
+	Flags:     []cli.Flag{},
+	Action: func(c *cli.Context) error {
+		fmt.Println("List interface in ", c.Args().First())
+		return nil
+	},
+}
+
 var networkCLICommand = cli.Command{
 	Name:  "network",
 	Usage: "manage interfaces and routes for container",
+	Subcommands: []cli.Command{
+		listIfacesCommand,
+	},
 	Action: func(c *cli.Context) error {
 		fmt.Println("Adjust network interface")
 		return nil
