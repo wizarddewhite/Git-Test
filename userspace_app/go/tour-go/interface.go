@@ -53,6 +53,25 @@ func generic_type() {
 	fmt.Println(b.Abb())
 }
 
+func real_type_of_interface() {
+	var i interface{}
+	i = "hello"
+
+	s := i.(string)
+	fmt.Println(s)
+
+	s, ok := i.(string)
+	fmt.Println(s, ok)
+
+	f, ok := i.(float64)
+	fmt.Println(f, ok)
+
+	i = 100
+	t, ok := i.(int)
+	fmt.Println(t, ok)
+}
+
 func main() {
-	generic_type()
+	// generic_type()
+	real_type_of_interface()
 }
