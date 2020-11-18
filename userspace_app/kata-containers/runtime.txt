@@ -68,7 +68,7 @@ ParseConfigJSON(bundlePath)
 0. Data Struct
 ================================================================================
 
-0.1 oci.RuntimeConfig
+0.1 oci.RuntimeConfig, parsed from configuration.toml
 ================================================================================
 
     RuntimeConfig
@@ -107,7 +107,7 @@ ParseConfigJSON(bundlePath)
     |                                              |
     +----------------------------------------------+
 
-0.2 compatOCISpec
+0.2 compatOCISpec, parsed from config.json
 ================================================================================
 
     compatOCISpec
@@ -278,3 +278,15 @@ globalSandboxList
     |                                              |
     |                                              |
     +----------------------------------------------+
+
+0. Configurations relationship
+================================================================================
+
+    configuration.toml                        config.json
+            |                                      |
+            v                                      v
+    oci.RuntimeConfig                         compatOCISpec
+            |                                      |
+            v                                      v
+    SandboxConfig                             ContainerConfig
+
