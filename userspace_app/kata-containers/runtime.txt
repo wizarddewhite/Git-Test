@@ -4,6 +4,7 @@ beforeSubcommands
     configFile, runtimeConfig = katautils.LoadConfiguration
         config = initConfig(oci.RuntimeConfig)
         tomlConf := decodeConfig("/etc/kata-containers/configuration.toml")
+        config.InterNetworkModel.SetModel(tomlConf.Runtime.InterNetworkModel)
         updateRuntimeConfig("/etc/kata-containers/configuration.toml",
 			tomlConf, config, ), from toml to oci
     c.App.Metadata["runtimeConfig"] = runtimeConfig
@@ -32,16 +33,23 @@ ParseConfigJSON(bundlePath)
     configByte = ioutil.ReadFile(configPath)
     json.Unmarshal(configByte, &compSpec)
 
-2.2 katautils.CreateSandbox(ctx, vci, ociSpec, runtimeConfig, )
+3. katautils.CreateSandbox(ctx, vci, ociSpec, runtimeConfig, )
 ================================================================================
     sandboxConfig = oci.SandboxConfig(ociSpec, runtimeConfig, bundlePath,
 		    containerID, )
         containerConfig, = ContainerConfig(ocispec, bundlePath, cid, console, detach)
         networkConfig = networkConfig(ocispec, runtimeConfig)
+            netConf vc.NetworkConfig
+            netConf.InterworkingModel = runtimeConfig.InterNetworkModel
+            return netConf
+        sandboxConfig = vc.SandboxConfig {}
+        return sandboxConfig
     SetupNetworkNamespace(&sandboxConfig.NetworkConfig)
         testutils.NewNS()
     EnterNetNS(sandboxConfig.NetworkConfig.NetNSPath)
     sandbox = vci.CreateSandbox(ctx, sandboxConfig)
+3.1 vci.CreateSandbox()
+================================================================================
         CreateSandbox(ctx, sandboxConfig, impl.factory)
             createSandboxFromConfig(ctx, sandboxConfig, factory)
                 s = createSandbox(ctx, sandboxConfig, factory)
@@ -54,7 +62,7 @@ ParseConfigJSON(bundlePath)
                     s.agent.createSandbox(s) -> kataAgent.createSandbox()
                     s.setSandboxState(types.StateReady)
                 s.createNetwork()
-                    s.network.Add(s.ctx, &s.config.NetworkConfig, s, )
+                    s.network.Add(s.ctx, &s.config.NetworkConfig, s, ) <-
                 s.createCgroupManager()
                 s.setupSandboxCgroup()
                 s.startVM()
@@ -179,6 +187,14 @@ ParseConfigJSON(bundlePath)
     |                                              |
     |NetworkConfig                                 |
     |    (NetworkConfig)                           |
+    |    +-----------------------------------------+
+    |    |NetNSPath                                |
+    |    |    (string)                             |
+    |    |NetmonConfig                             |
+    |    |    (NetmonConfig)                       |
+    |    |InterworkingModel                        |  = runtime.InterNetworkModel
+    |    |    (NetInterworkingModel)               |
+    |    +-----------------------------------------+
     |                                              |
     |Annotations                                   |
     |    (map[string]string)                       |
@@ -224,20 +240,6 @@ ParseConfigJSON(bundlePath)
     |    |                                         |
     +----+-----------------------------------------+
 
-0.5 NetworkConfig
-================================================================================
-
-    NetworkConfig
-    +----------------------------------------------+
-    |NetNSPath                                     |
-    |    (string)                                  |
-    |NetmonConfig                                  |
-    |    (NetmonConfig)                            |
-    |InterworkingModel                             |  = runtime.InterNetworkModel
-    |    (NetInterworkingModel)                    |
-    |                                              |
-    +----------------------------------------------+
-
 0.6 Sandbox
 ================================================================================
 
@@ -267,6 +269,9 @@ globalSandboxList
     |    +-----------------------------------------+
     |    |NetNsPath                                | .config.NetworkConfig.NetNSPath
     |    |NetNsCreated                             | .config.NetworkConfig.NetNsCreated
+    |    |Endpoints                                |
+    |    |    ([]Endpoint)                         |
+    |    |                                         |
     |    +-----------------------------------------+
     |config                                        |
     |    (*SandboxConfig)                          |

@@ -1,0 +1,91 @@
+1. addIfaceCommand
+================================================================================
+    networkModifyCommand(ctx, context.Args().First(), context.Args().Get(1), interfaceType, true)
+        f = os.Open(input)
+        json.NewDecoder(f).Decode(inf)
+        resultingInf = vci.AddInterface(ctx, sandboxID, inf)
+
+1.2 AddInterface(ctx, sandboxID, inf), api
+================================================================================
+    toggleInterface(ctx, sandboxID, inf, true)
+        s = fetchSandbox(ctx, sandboxID)
+        s.AddInterface(inf)
+
+1.2.1 s.AddInterface(inf)
+================================================================================
+    netInfo = s.generateNetInfo(inf)
+        hw = net.ParseMAC(inf.HwAddr)
+    endpoint = createEndpoint(netInfo, len(s.networkNS.Endpoints), s.config.NetworkConfig.InterworkingModel)
+        endpoint = createMacvtapNetworkEndpoint(netInfo)
+        endpoint = createIPVlanNetworkEndpoint(netInfo)
+    endpoint.SetProperties(netInfo)
+    doNetNS(s.networkNS.NetNSPath, func() {
+        endpoint.HotAttach(s.hypervisor)
+    })
+    s.agent.updateInterface(inf), send to kata-agent
+
+2. Network.Add(cts, config, sandbox, hotplug)
+================================================================================
+    createEndpointsFromScan(config.NetNSPath, config)
+        ip link show
+        createEndpoint(netInfo, idx, )
+            endpoint = createVhostUserEndpoint(netInfo, socketPath)
+            endpoint = createMacvtapNetworkEndpoint(netInfo)
+            endpoint = createIPVlanNetworkEndpoint(idx, netInfo.Iface.Name)
+    endpoint.Attach(s)
+        endpoint.VMFds = createMacvtapFds(endpoint.EndpointProperties.Iface.Index, int(h.hypervisorConfig().NumVCPUs))
+        endpoint.VhostFds = createVhostFds(int(h.hypervisorConfig().NumVCPUs))
+        h.addDevice(endpoint, netDev)
+
+0. Data Struct
+================================================================================
+
+0.1 vcTypes.Interface, json config
+================================================================================
+
+    vcTypes.Interface
+    +----------------------------------------------+
+    |Device                                        |
+    |Name                                          |
+    |    (string)                                  |
+    |IPAddress                                     |
+    |    ([]*IPAddress)                            |
+    |HwAddr                                        |
+    |    (string)                                  |
+    |LinkType                                      |
+    |    (string)                                  | veth/macvtap/vlan/macvlan
+    |Mtu                                           |
+    |    (uint64)                                  |
+    |                                              |
+    +----------------------------------------------+
+
+0.2 NetworkInfo
+================================================================================
+
+    NetworkInfo
+    +----------------------------------------------+
+    |Iface                                         |
+    |    (NetlinkIface)                            |
+    |    +-----------------------------------------+
+    |    |Type                                     |  macvtap/veth/ipvlan
+    |    |    (string)                             |
+    |    |netlink.LinkAttrs                        |
+    |    |    +------------------------------------+
+    |    |    |Name                                |
+    |    |    |    (string)                        |
+    |    |    |HardwareAddr                        |  mac addr
+    |    |    |    (net.HardwareAddr)              |
+    |    |    |MTU                                 |
+    |    |    |                                    |
+    |    +----+------------------------------------+
+    |Addrs                                         |  ip addr
+    |    ([]netlink.Addr)                          |
+    |Routes                                        |
+    |    ([]netlink.Route)                         |
+    |DNS                                           |
+    |    (DNSInfo)                                 |
+    |Neighbors                                     |
+    |    ([]netlink.Neigh)                         |
+    |                                              |
+    +----------------------------------------------+
+
