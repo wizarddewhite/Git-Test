@@ -35,7 +35,8 @@
     endpoint.Attach(s)
         endpoint.VMFds = createMacvtapFds(endpoint.EndpointProperties.Iface.Index, int(h.hypervisorConfig().NumVCPUs))
         endpoint.VhostFds = createVhostFds(int(h.hypervisorConfig().NumVCPUs))
-        h.addDevice(endpoint, netDev)
+        h.addDevice(endpoint, netDev) -> qemu.addDevice()
+            q.qemuConfig.Devices = q.arch.appendNetwork(q.qemuConfig.Devices, v)
 
 0. Data Struct
 ================================================================================

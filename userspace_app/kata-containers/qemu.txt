@@ -1,0 +1,79 @@
+1. createSandbox
+================================================================================
+
+    q.config = *hypervisorConfig
+    q.arch = newQemuArch(q.config)
+    q.setup(id, hypervisorConfig)
+        q.arch.setBridges(q.state.Bridges)
+        q.arch.bridges(q.config.DefaultBridges)
+            q.Bridges = genericBridges(number, q.machineType)
+    machine = q.getQemuMachine()
+    devices, ioThread = q.buildDevices(initrdPath)
+
+2. startSandbox()
+================================================================================
+    vmPath := filepath.Join(q.store.RunVMStoragePath(), q.id)
+    q.setupVirtiofsd()
+    govmmQemu.LaunchQemu(q.qemuConfig, newQMPLogger())
+        ...
+        config.appendDevices()
+            config.qemuParams = append(config.qemuParams, d.QemuParams(config)...)
+        ...
+	LaunchCustomQemu(ctx, config.Path, config.qemuParams, config.fds, nil, logger)
+
+0. Data Struct
+================================================================================
+0.1 qemu
+================================================================================
+    qemu
+    +----------------------------------------------+
+    |id                                            |
+    |    (string)                                  |
+    |config                                        |
+    |    (HypervisorConfig)                        |
+    |arch                                          |
+    |    (qemuArch)                                |
+    |    +-----------------------------------------+
+    |    |                                         |
+    |    +-----------------------------------------+
+    |                                              |
+    |state                                         |
+    |    (QemuState)                               |
+    |    +-----------------------------------------+
+    |    |Bridges                                  |
+    |    |    ([]types.Bridge)                     |
+    |    |    +------------------------------------+
+    |    |    |ID (string)                         |
+    |    |    |Addr (int)                          |
+    |    |    |Type (Type) "pci/pcie"              |
+    |    |    |                                    |
+    |    |    +------------------------------------+
+    |    |HotpluggedVCPUs                          |
+    |    |    ([]CPUDevice)                        |
+    |    |HotpluggedMemory                         |
+    |    |    (int)                                |
+    |    |                                         |
+    |    +-----------------------------------------+
+    |                                              |
+    |qemuConfig                                    |
+    |    (govmmQemu.Config)                        |
+    |    +-----------------------------------------+
+    |    |Path                                     |
+    |    |Name                                     |
+    |    |UUID                                     |
+    |    |    (string)                             |
+    |    |Machine                                  |
+    |    |    (Machine)                            |
+    |    |    +------------------------------------+
+    |    |    |Type                                |
+    |    |    |Acceleration                        |
+    |    |    |Option                              |
+    |    |    +------------------------------------+
+    |    |Kernel                                   |
+    |    |    (Kernel)                             |
+    |    |Memory                                   |
+    |    |    (Memory)                             |
+    |    |Devices                                  |
+    |    |    ([]Device)                           |
+    |    |                                         |
+    +----+-----------------------------------------+
