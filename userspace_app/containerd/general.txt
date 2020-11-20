@@ -130,11 +130,31 @@ $ crictl ps -a
 CONTAINER ID        IMAGE               CREATED             STATE               NAME                ATTEMPT
 1128073c47d9e       busybox             2 minutes ago       Running             busybox             0
 
+3.3 Delete Pod
+
+crictl rmp pod_id
+
+3.4 Delete Container
+
+crictl rm container_id
+
 4. Build
 
 https://github.com/containerd/containerd/blob/master/BUILDING.md
 
 The steps are clear, just follow.
+
+Gernally, just make is fine.
+
+5. View containerd log
+
+Containerd log is collected by systemd.
+
+$ journalctl -u containerd.service
+
+List log with specific level
+
+$ journalctl -u containerd.service -p info
 
 0. Reference
 
