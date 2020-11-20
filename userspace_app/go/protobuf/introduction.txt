@@ -1,0 +1,45 @@
+1. Github
+
+https://github.com/protocolbuffers/protobuf
+
+2. Build & Install
+
+https://github.com/protocolbuffers/protobuf/blob/master/src/README.md
+
+$ git clone https://github.com/protocolbuffers/protobuf.git
+$ cd protobuf
+$ git submodule update --init --recursive
+$ ./autogen.sh
+$ ./configure
+$ make
+$ make check
+$ sudo make install
+$ sudo ldconfig # refresh shared library cache.
+
+After this, the protobuf facility is install on your sysem.
+
+3. Example
+
+There is an example under the source file. The README.md has the detail
+information.
+
+In case you want to build the go version, "make go" is enough.
+
+And there is an explanation document,
+https://developers.google.com/protocol-buffers/docs/gotutorial
+
+3.1 Define protocol buffer
+
+The message type is defined in addressbook.proto.
+
+3.2 Compile protocol buffer
+
+Then use protoc to generate code for specific language.
+
+For example, for golang, the command is:
+
+$ protoc $PROTO_PATH --go_out=tutorial addressbook.proto
+
+This would generate addressbook.pb.go, which would be used in go project.
+
+3.3 Read/Write message with protocol
