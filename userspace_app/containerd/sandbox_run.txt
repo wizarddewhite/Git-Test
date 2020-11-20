@@ -1,0 +1,51 @@
+1. RunPodSandbox(ctx, r)
+================================================================================
+config = r.GetConfig()
+    m.Config  (PodSandboxConfig)
+    id := util.GenerateID()
+    metadata := config.GetMetadata()
+    name := makeSandboxName(metadata)
+    c.sandboxNameIndex.Reserve(name, id)
+    sandbox = sandboxstore.NewSandbox(metadata, status)
+    image = c.ensureImageExists(ctx, c.config.SandboxImage, config)
+    containerdImage = c.toContainerdImage(ctx, *image)
+    ociRuntime = c.getSandboxRuntime(config, r.GetRuntimeHandler())
+
+    sandbox.NetNS = netns.NewNetNS()
+    sandbox.NetNSPath = sandbox.NetNS.GetPath()
+    c.setupPodNetwork(ctx, &sandbox)
+
+1.1 setupPodNetwork(ctx, sandbox)
+================================================================================
+opts = cniNamespaceOpts(id, config)
+result = c.netPlugin.Setup(ctx, id, path, opts)
+
+0. Data Struct
+================================================================================
+
+0.1 PodSandboxConfig, a structure with protobuf
+================================================================================
+
+    PodSandboxConfig
+    +----------------------------------------------+
+    |Metadata                                      |
+    |    (*PodSandboxMetadata)                     |
+    |Hostname                                      |
+    |    (string)                                  |
+    |LogDirectory                                  |
+    |    (string)                                  |
+    |DnsConfig                                     |
+    |    (*DNSConfig)                              |
+    |PortMapping                                   |
+    |    ([]*PortMapping)                          |
+    |Labels                                        |
+    |Annotations                                   |
+    |    (map[string]string)                       |
+    |Linux                                         |
+    |    (*LinuxPodSandboxConfig)                  |
+    |                                              |
+    +----------------------------------------------+
+
+0.2 cni.NamespaceOpts
+================================================================================
+

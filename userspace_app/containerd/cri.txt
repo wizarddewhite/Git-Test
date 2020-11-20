@@ -1,0 +1,54 @@
+1. init()
+================================================================================
+config = criconfig.DefaultConfig()
+    CniConfig: CniConfig{
+    	NetworkPluginBinDir:       "/opt/cni/bin",
+    	NetworkPluginConfDir:      "/etc/cni/net.d",
+    	NetworkPluginMaxConfNum:   1, // only one CNI plugin config file will be loaded
+    	NetworkPluginConfTemplate: "",
+    },
+plugin.Register(&plugin.Registration{
+	Type:   plugin.GRPCPlugin,
+	ID:     "cri",
+	Config: &config,
+	Requires: []plugin.Type{
+		plugin.ServicePlugin,
+	},
+	InitFn: initCRIService,
+})
+
+2. initCRIService()
+================================================================================
+client, err := containerd.New()
+s := server.NewCRIService(c, client)
+    lables = label.NewStore()
+    c.initPlatform()
+        c.netPlugin, err = cni.New(cni.WithMinNetworkCount(networkAttachCount),
+            cni.WithPluginConfDir(c.config.NetworkPluginConfDir),
+            cni.WithPluginMaxConfNum(c.config.NetworkPluginMaxConfNum),
+            cni.WithPluginDir([]string{c.config.NetworkPluginBinDir}))
+    c.cniNetConfMonitor = newCNINetConfSyncer(c.config.NetworkPluginConfDir, c.netPlugin, c.cniLoadOptions())
+s.Run()
+
+
+
+
+0. Data Struct
+================================================================================
+
+0.1 criService
+================================================================================
+
+    criService
+    +----------------------------------------------+
+    |config                                        |
+    |    (criconfig.Config)                        |
+    |                                              |
+    |netPlugin                                     |
+    |    (cni.CNI)                                 |
+    |                                              |
+    |cniNetConfMonitor                             |
+    |    (*cniNetConfSyncer)                       |
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
