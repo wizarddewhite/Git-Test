@@ -156,6 +156,8 @@ List log with specific level
 
 $ journalctl -u containerd.service -p info
 
+$ journalctl -u containerd.service --since "5 min ago"
+
 0. Reference
 
 Debugging Kubernetes nodes with crictl
