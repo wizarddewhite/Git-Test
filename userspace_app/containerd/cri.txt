@@ -19,6 +19,8 @@ plugin.Register(&plugin.Registration{
 
 2. initCRIService()
 ================================================================================
+c = criconfig.Config{}
+servicesOpts := getServicesOpts(ic)
 client, err := containerd.New()
 s := server.NewCRIService(c, client)
     lables = label.NewStore()
@@ -28,6 +30,7 @@ s := server.NewCRIService(c, client)
             cni.WithPluginMaxConfNum(c.config.NetworkPluginMaxConfNum),
             cni.WithPluginDir([]string{c.config.NetworkPluginBinDir}))
     c.cniNetConfMonitor = newCNINetConfSyncer(c.config.NetworkPluginConfDir, c.netPlugin, c.cniLoadOptions())
+    c.baseOCISpecs, err = loadBaseOCISpecs(&config)
 s.Run()
 
 
@@ -44,11 +47,76 @@ s.Run()
     |config                                        |
     |    (criconfig.Config)                        |
     |                                              |
-    |netPlugin                                     |
-    |    (cni.CNI)                                 |
+    |netPlugin                                     |  = defaultCNIConfig()
+    |    (cni.CNI) interface {}                    |
     |                                              |
     |cniNetConfMonitor                             |
     |    (*cniNetConfSyncer)                       |
     |                                              |
+    |client                                        |
+    |    (*containerd.Client)                      |
+    |                                              |
+    +----------------------------------------------+
+
+0.2 cri.Config, an element in criService
+================================================================================
+
+    Config
+    +----------------------------------------------+
+    |RootDir                                       |
+    |    (string)                                  |
+    |ContainerdEndpoint                            |
+    |ContainerdRootDir                             |
+    |    (string)                                  |
+    |PluginConfig                                  |
+    |    +-----------------------------------------+
+    |    |ContainerdConfig                         |
+    |    |                                         |
+    |    |                                         |
+    |    |CniConfig                                |
+    |    |    +------------------------------------+
+    |    |    |NetworkPluginBinDir                 |  = "/opt/cni/bin"
+    |    |    |NetworkPluginConfDir                |  = "/etc/cni/net.d"
+    |    |    |NetworkPluginConfTemplate           |  = ""
+    |    |    |    (string)                        |
+    |    |    |NetworkPluginMaxConfNum             |  = 1
+    |    |    |    (int)                           |
+    |    |    +------------------------------------+
+    |    |                                         |
+    |    |                                         |
+    |    +-----------------------------------------+
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
+
+0.3 libcni, assign to criService.netPlugin
+================================================================================
+
+    libcni
+    +----------------------------------------------+
+    |config                                        |
+    |    +-----------------------------------------+
+    |    |pluginDirs                               |  = "/opt/cni/bin"
+    |    |    ([]string)                           |
+    |    |pluginConfDir                            |  = "/etc/cni/net.d"
+    |    |prefix                                   |  = "eth"
+    |    |    (string)                             |
+    |    |pluginMaxConfNum                         |  = 1
+    |    |    (int)                                |
+    |    +-----------------------------------------+
+    |cniConfig                                     |  = cnilibrary.CNIConfig
+    |    (cnilibrary.CNI)  interface{}             |
+    |    +-----------------------------------------+
+    |    |Path                                     |  = pluginDirs
+    |    |    ([]string)                           |
+    |    |exec                                     |
+    |    |    (invoke.Exec)                        |
+    |    |cacheDir                                 |
+    |    +-----------------------------------------+
+    |                                              |
+    |networkCount                                  |  = 1
+    |    (int)                                     |
+    |networks                                      |
+    |    ([]*Network)                              |
     |                                              |
     +----------------------------------------------+
