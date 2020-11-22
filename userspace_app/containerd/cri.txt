@@ -26,9 +26,10 @@ s := server.NewCRIService(c, client)
     lables = label.NewStore()
     c.initPlatform()
         c.netPlugin, err = cni.New(cni.WithMinNetworkCount(networkAttachCount),
-            cni.WithPluginConfDir(c.config.NetworkPluginConfDir),
-            cni.WithPluginMaxConfNum(c.config.NetworkPluginMaxConfNum),
-            cni.WithPluginDir([]string{c.config.NetworkPluginBinDir}))
+          cni.WithPluginConfDir(c.config.NetworkPluginConfDir),
+          cni.WithPluginMaxConfNum(c.config.NetworkPluginMaxConfNum),
+          cni.WithPluginDir([]string{c.config.NetworkPluginBinDir}))
+            cni.WithPluginDir("/opt/cni/bin/")
     c.cniNetConfMonitor = newCNINetConfSyncer(c.config.NetworkPluginConfDir, c.netPlugin, c.cniLoadOptions())
         watcher := fsnotify.NewWatcher()
         os.MkdirAll(confDir, 0700)
@@ -38,8 +39,6 @@ s := server.NewCRIService(c, client)
             WithDefaultConf(), parse from /etc/cni/net.d/
     c.baseOCISpecs, err = loadBaseOCISpecs(&config)
 s.Run()
-
-
 
 
 0. Data Struct
@@ -111,11 +110,11 @@ s.Run()
     |    |    (int)                                |
     |    +-----------------------------------------+
     |cniConfig                                     |  = cnilibrary.CNIConfig
-    |    (cnilibrary.CNI)  interface{}             |
+    |    (cnilibrary.CNI)  interface{}             |  WithPluginDir("/opt/cni/bin")
     |    +-----------------------------------------+
     |    |Path                                     |  = pluginDirs
-    |    |    ([]string)                           |
-    |    |exec                                     |
+    |    |    ([]string)                           |  "/opt/cni/bin"
+    |    |exec                                     |  assigned in addNetwork() -> ensureExec()
     |    |    (invoke.Exec)                        |
     |    |cacheDir                                 |
     |    +-----------------------------------------+
@@ -129,7 +128,6 @@ s.Run()
     |    |    (string)                             |
     |    |cni                                      |
     |    |    (cnilibrary.CNI)                     |
-    |    |                                         |
     |    |config                                   |
     |    |    (*cnilibrary.NetworkConfigList)      |
     |    |    +------------------------------------+
@@ -138,13 +136,23 @@ s.Run()
     |    |    |    (string)                        |
     |    |    |Plugins                             |
     |    |    |    ([]*NetworkConf)                |
+    |    |    |    +-------------------------------+
+    |    |    |    |Network                        |  parsed from /etc/cni/net.d/*.conf
+    |    |    |    |   (*types.NetConf)            |
+    |    |    |    |   +---------------------------+
+    |    |    |    |   |CNIVersion                 |
+    |    |    |    |   |Name                       |
+    |    |    |    |   |Type                       |  used to serch bin under /opt/cni/bin
+    |    |    |    |   |IPAM                       |
+    |    |    |    |   |                           |
+    |    |    |    |   |                           |
+    |    |    |    +---+---------------------------+
     |    |    |                                    |
     |    +----+------------------------------------+
     |    |ifName                                   |
     |    |    (string)                             |
     |    |cni                                      |
     |    |    (cnilibrary.CNI)                     |
-    |    |                                         |
     |    |config                                   |
     |    |    (*cnilibrary.NetworkConfigList)      |
     |    |                                         |

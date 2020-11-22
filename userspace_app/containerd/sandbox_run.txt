@@ -18,7 +18,20 @@ config = r.GetConfig()
 1.1 setupPodNetwork(ctx, sandbox)
 ================================================================================
 opts = cniNamespaceOpts(id, config)
-result = c.netPlugin.Setup(ctx, id, path, opts)
+result = c.netPlugin.Setup(ctx, id, path, opts) -> libcni.Setup()
+for _, network = range c.Networks() -> libcni.Networks()
+    network.Attach(ctx, ns) -> Netowrk.Attach()
+        CNIConfig.AddNetworkList(ctx, list, rt)
+            c.addNetwork(ctx, list.Name, list.CNIVersion, net, result, rt)
+                c.ensureExec()
+                    c.exec = &invoke.DefaultExec{}
+                pluginPath = c.exec.FindInPath(), e.g. /opt/cni/bin/loopback
+                newConf, = buildOneConfig(name, cniVersion, net, prevResult, rt), the parameter passed to exec file
+                invoke.ExecPluginWithResult(ctx, pluginPath, newConf)
+                    RawExec.ExecPlugin()
+                        c = exec.CommandContext(ctx, pluginPath)
+                        c.Env = environ
+                        c.Run()  <- execute the command with parameter
 
 0. Data Struct
 ================================================================================
