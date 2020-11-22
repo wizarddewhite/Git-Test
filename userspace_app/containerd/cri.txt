@@ -30,6 +30,12 @@ s := server.NewCRIService(c, client)
             cni.WithPluginMaxConfNum(c.config.NetworkPluginMaxConfNum),
             cni.WithPluginDir([]string{c.config.NetworkPluginBinDir}))
     c.cniNetConfMonitor = newCNINetConfSyncer(c.config.NetworkPluginConfDir, c.netPlugin, c.cniLoadOptions())
+        watcher := fsnotify.NewWatcher()
+        os.MkdirAll(confDir, 0700)
+        watcher.Add(confDir)
+        netPlugin.Load(cni.WithLoNetwork, cni.WithDefaultConf)
+            WithLoNetwork(), lo link config
+            WithDefaultConf(), parse from /etc/cni/net.d/
     c.baseOCISpecs, err = loadBaseOCISpecs(&config)
 s.Run()
 
@@ -116,7 +122,30 @@ s.Run()
     |                                              |
     |networkCount                                  |  = 1
     |    (int)                                     |
-    |networks                                      |
+    |networks                                      |  WithLoNetwork() / WithDefaultConf()
     |    ([]*Network)                              |
-    |                                              |
-    +----------------------------------------------+
+    |    +-----------------------------------------+
+    |    |ifName                                   |  = "lo"
+    |    |    (string)                             |
+    |    |cni                                      |
+    |    |    (cnilibrary.CNI)                     |
+    |    |                                         |
+    |    |config                                   |
+    |    |    (*cnilibrary.NetworkConfigList)      |
+    |    |    +------------------------------------+
+    |    |    |Name                                |
+    |    |    |CNIVersion                          |
+    |    |    |    (string)                        |
+    |    |    |Plugins                             |
+    |    |    |    ([]*NetworkConf)                |
+    |    |    |                                    |
+    |    +----+------------------------------------+
+    |    |ifName                                   |
+    |    |    (string)                             |
+    |    |cni                                      |
+    |    |    (cnilibrary.CNI)                     |
+    |    |                                         |
+    |    |config                                   |
+    |    |    (*cnilibrary.NetworkConfigList)      |
+    |    |                                         |
+    +----+-----------------------------------------+
