@@ -9,7 +9,9 @@ $ make && sudo -E PATH=$PATH make install
 
 3. Quick Run
 
-3.0 Install Binary
+3.0 Install Kata
+
+3.0.1 kata runtime
 
 There is a page in repo to show you how to install the whole project. (Not
 only kata-runtime)
@@ -28,6 +30,18 @@ $ sudo -E dnf -y install kata-runtime kata-proxy kata-shim
 ```
 
 BTW, you need to adjust the repo link based on you os version.
+
+3.0.1 related bins
+
+Besides kata-runtime itself, you also need to install other utilities.
+
+https://github.com/kata-containers/runtime/releases
+
+3.0.2 Final Check
+
+$ kata-runtime kata-check
+
+Would tell you whether the system is ready.
 
 3.1 Prepare Bundle
 
