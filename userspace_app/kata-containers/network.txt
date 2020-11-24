@@ -38,6 +38,11 @@
         h.addDevice(endpoint, netDev) -> qemu.addDevice()
             q.qemuConfig.Devices = q.arch.appendNetwork(q.qemuConfig.Devices, v)
 
+3. NetDevice.QemuParams(config), called during config.appendDevices() to generate qemu command line parameter
+================================================================================
+netdevParams = netdev.QemuNetdevParams(config)
+deviceParams = netdev.QemuDeviceParams(config)
+
 0. Data Struct
 ================================================================================
 

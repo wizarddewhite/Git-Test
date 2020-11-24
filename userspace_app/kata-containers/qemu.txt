@@ -21,6 +21,14 @@
         ...
 	LaunchCustomQemu(ctx, config.Path, config.qemuParams, config.fds, nil, logger)
 
+3. qemu.addDevice()
+================================================================================
+q.qemuConfig.Devices = q.arch.appendNetwork(q.qemuConfig.Devices, v)
+    qemuArchBase.appendNetwork(devices, endpoint)
+        d = genericNetwork(endpoint, )
+        devices = append(devices, d)
+        return devices
+
 0. Data Struct
 ================================================================================
 0.1 qemu
@@ -32,10 +40,25 @@
     |config                                        |
     |    (HypervisorConfig)                        |
     |arch                                          |
-    |    (qemuArch)                                |
+    |    (qemuArch  interface{})                   |
+    |    (qemuAmd64)                               |
     |    +-----------------------------------------+
-    |    |                                         |
-    |    +-----------------------------------------+
+    |    |vmFactory                                |
+    |    |    (bool)                               |
+    |    |qemuArchBase                             |
+    |    |    +------------------------------------+
+    |    |    |machineType                         |
+    |    |    |    (string)                        |
+    |    |    |memoryOffset                        |
+    |    |    |    (uint32)                        |
+    |    |    |vhost                               |
+    |    |    |disableNvdimm                       |
+    |    |    |dax                                 |
+    |    |    |    (bool)                          |
+    |    |    |networkIndex                        |  number of index
+    |    |    |    (int)                           |
+    |    |    |                                    |
+    |    +----+------------------------------------+
     |                                              |
     |state                                         |
     |    (QemuState)                               |
