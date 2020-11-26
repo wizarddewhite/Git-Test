@@ -90,3 +90,22 @@ $ sudo rm -rf ${ROOTFS_DIR}
 $ cd $GOPATH/src/github.com/kata-containers/osbuilder/rootfs-builder
 $ export distro=fedora
 $ script -fec 'sudo -E GOPATH=$GOPATH USE_DOCKER=true SECCOMP=no ./rootfs.sh ${distro}'
+
+6. Modify an image
+
+Another way to have a private image is to do some adjustment based on a
+current image. 
+
+$ modprobe nbd max_part=8
+$ qemu-nbd --connect=/dev/nbd0 /var/lib/vz/images/100/vm-100-disk-1.qcow2
+$ fdisk /dev/nbd0 -l
+$ mount /dev/nbd0p1 /mnt/somepoint/
+
+Now you could modify the contend in /mount/somepoint/
+
+After doing so, unmout and disconnect.
+
+$ umount /mnt/somepoint/
+$ qemu-nbd --disconnect /dev/nbd0
+$ rmmod nbd
+
