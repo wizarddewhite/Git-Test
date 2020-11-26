@@ -80,3 +80,13 @@ And then two steps are necessary:
   * Adjust /etc/containerd/config.toml to support kata-runtime
   * use "-r kata" to start pod with kata-runtime
 
+5. Create and install rootfs and initrd image
+
+https://github.com/kata-containers/documentation/blob/master/Developer-Guide.md#create-and-install-rootfs-and-initrd-image
+
+$ go get -d -u github.com/kata-containers/osbuilder
+$ export ROOTFS_DIR=${GOPATH}/src/github.com/kata-containers/osbuilder/rootfs-builder/rootfs
+$ sudo rm -rf ${ROOTFS_DIR}
+$ cd $GOPATH/src/github.com/kata-containers/osbuilder/rootfs-builder
+$ export distro=fedora
+$ script -fec 'sudo -E GOPATH=$GOPATH USE_DOCKER=true SECCOMP=no ./rootfs.sh ${distro}'
