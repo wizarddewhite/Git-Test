@@ -158,6 +158,19 @@ $ journalctl -u containerd.service -p info
 
 $ journalctl -u containerd.service --since "5 min ago"
 
+6. CNI related file and configurations
+
+containerd use CNI for network related setup.
+
+It has two things:
+
+  * Executable files: /opt/cni/bin/*
+  * Configuration files: /etc/cni/net.d/*
+
+Generally, the configuration file would select the proper executable file to
+do the network setup. The field to choose the executable file in configuration
+file is "type".
+
 0. Reference
 
 Debugging Kubernetes nodes with crictl
