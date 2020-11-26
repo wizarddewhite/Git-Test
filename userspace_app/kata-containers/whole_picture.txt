@@ -49,6 +49,12 @@ $ kata-runtime kata-check
 
 Would tell you whether the system is ready.
 
+3.0.3 Related Configurations
+
+Kata configuration file is /etc/kata-containers/configuration.toml.
+
+Also we could use "kata-runtime kata-env" to show current status.
+
 3.1 Prepare Bundle
 
 $ bundle="/tmp/bundle"
