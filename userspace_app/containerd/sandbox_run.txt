@@ -19,19 +19,35 @@ config = r.GetConfig()
 ================================================================================
 opts = cniNamespaceOpts(id, config)
 result = c.netPlugin.Setup(ctx, id, path, opts) -> libcni.Setup()
-for _, network = range c.Networks() -> libcni.Networks()
-    network.Attach(ctx, ns) -> Netowrk.Attach()
-        CNIConfig.AddNetworkList(ctx, list, rt)
-            c.addNetwork(ctx, list.Name, list.CNIVersion, net, result, rt)
-                c.ensureExec()
-                    c.exec = &invoke.DefaultExec{}
-                pluginPath = c.exec.FindInPath(), e.g. /opt/cni/bin/loopback
-                newConf, = buildOneConfig(name, cniVersion, net, prevResult, rt), the parameter passed to exec file
-                invoke.ExecPluginWithResult(ctx, pluginPath, newConf)
-                    RawExec.ExecPlugin()
-                        c = exec.CommandContext(ctx, pluginPath)
-                        c.Env = environ
-                        c.Run()  <- execute the command with parameter
+    for _, network = range c.Networks() -> libcni.Networks()
+        network.Attach(ctx, ns) -> Netowrk.Attach()
+            CNIConfig.AddNetworkList(ctx, list, rt)
+                c.addNetwork(ctx, list.Name, list.CNIVersion, net, result, rt)
+                    c.ensureExec()
+                        c.exec = &invoke.DefaultExec{}
+                    pluginPath = c.exec.FindInPath(), e.g. /opt/cni/bin/loopback
+                    newConf, = buildOneConfig(name, cniVersion, net, prevResult, rt), the parameter passed to exec file
+                    invoke.ExecPluginWithResult(ctx, pluginPath, newConf)
+                        RawExec.ExecPlugin()
+                            c = exec.CommandContext(ctx, pluginPath)
+                            c.Env = environ
+                            c.Run()  <- execute the command with parameter
+    libcni.GetCNIResultFromResults(results)
+
+1.1.1 ExecPluginWithResult() argument example
+================================================================================
+invoke.ExecPluginWithResult() will path 3 things
+
+  * bin file path
+  * stdin data
+  * env
+
+For example, the those data could be:
+
+/opt/cni/bin/ipvlan
+{\"cniVersion\":\"0.3.0\",\"ipam\":{\"routes\":[{\"dst\":\"0.0.0.0/0\"}],\"subnet\":\"10.10.0.0/16\",\"type\":\"host-local\"},\"master\":\"enp0s3\",\"name\":\"mynet\",\"type\":\"ipvtap\"}
+[CNI_ARGS=K8S_POD_NAMESPACE=default;K8S_POD_NAME=nginx-runsc-sandbox;K8S_POD_INFRA_CONTAINER_ID=a2f38e65a30264d97a4f2241a33797e4eb6ff0ba0c3067f188fbc42955cf4052;IgnoreUnknown=1 CNI_PATH=/opt/cni/bin LANG=zh_CN.UTF-8 PATH=/opt/containerd/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/var/lib/snapd/snap/bin INVOCATION_ID=5defce033e7d4d10922260a83b2d282c LD_LIBRARY_PATH=/opt/containerd/lib: CNI_CONTAINERID=a2f38e65a30264d97a4f2241a33797e4eb6ff0ba0c3067f188fbc42955cf4052 CNI_NETNS=/var/run/netns/cni-cb38f97e-6957-09c3-03f7-b869d79b065d JOURNAL_STREAM=8:1398068 CNI_COMMAND=ADD CNI_IFNAME=eth0]
+
 
 0. Data Struct
 ================================================================================

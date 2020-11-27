@@ -142,7 +142,7 @@ s.Run()
     |    |    |    |   +---------------------------+
     |    |    |    |   |CNIVersion                 |
     |    |    |    |   |Name                       |
-    |    |    |    |   |Type                       |  used to serch bin under /opt/cni/bin
+    |    |    |    |   |Type                       |  used to search bin under /opt/cni/bin
     |    |    |    |   |IPAM                       |
     |    |    |    |   |                           |
     |    |    |    |   |                           |
