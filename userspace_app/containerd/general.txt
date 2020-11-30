@@ -130,6 +130,10 @@ $ crictl ps -a
 CONTAINER ID        IMAGE               CREATED             STATE               NAME                ATTEMPT
 1128073c47d9e       busybox             2 minutes ago       Running             busybox             0
 
+Execute a command in the container
+
+$ crictl exec -it 05b8f5865c6d5 bash
+
 3.3 Delete Pod
 
 crictl rmp pod_id
