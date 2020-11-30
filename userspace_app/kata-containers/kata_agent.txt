@@ -1,0 +1,28 @@
+1. createSandbox()
+================================================================================
+k.setupSharedPath(sandbox)
+    /run/kata-containers/shared/sandboxes/$sbx_id/mounts/
+    /run/kata-containers/shared/sandboxes/$sbx_id/shared/
+k.configure(sandbox.hypervisor, )
+    k.internalConfigure()
+
+2. startSandbox()
+================================================================================
+k.startProxy(sandbox)
+k.getDNS(sandbox)
+k.check()
+interfaces = generateVCNetworkStructures(sandbox.networkNS)
+k.updateInterfaces(interfaces)
+
+0. Data Struct
+================================================================================
+
+0.1 kataAgent
+================================================================================
+
+    kataAgent
+    +----------------------------------------------+
+    |                                              |
+    |                                              |
+    |                                              |
+    +----------------------------------------------+
