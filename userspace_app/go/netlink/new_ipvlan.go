@@ -11,6 +11,7 @@ func main() {
 			MTU:         1500,
 			Name:        "foo",
 			ParentIndex: 2,
+			TxQLen:      50,
 		},
 		Mode: netlink.IPVLAN_MODE_L2,
 	}
