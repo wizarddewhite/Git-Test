@@ -1,0 +1,60 @@
+1. Start Pod and run container
+
+Reference
+https://kubernetes.io/zh/docs/reference/kubectl/cheatsheet/
+https://kubernetes.io/zh/docs/reference/kubectl/overview/#%E7%A4%BA%E4%BE%8B-%E5%B8%B8%E7%94%A8%E6%93%8D%E4%BD%9C
+
+1.1 Pod Config file
+With the following config file: pod.yaml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vcont-yw-host1
+  labels:
+    run: vcont-yw
+spec:
+  runtimeClassName: kata
+  containers:
+  - name: vcont-yw
+    image: k8s.net/sandbox/kernel/vcontainer-perf:fio-seq-f0badf27
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: vcont-store
+      mountPath: /vcont
+  volumes:
+  - name: vcont-store
+    hostPath:
+      path: /vcont
+      type: Directory
+```
+
+1.2 Start Pod
+
+$ kubectl apply -f pod.yaml
+
+Then you could list pods with:
+
+$ kubectl get pods
+
+If you want to delete the pod, you could
+
+$ kubectl delete -f pod.yaml
+$ kubectl delete pod <pod-name>
+
+1.3 Execute command in container
+
+Single container case
+
+$ kubectl exec <pod-name> -- ls
+
+Multi-container case
+
+$ kubectl exec <pod-name> -c container -- ls
+
+1.4 Get events from pod
+
+$ kubectl get events
+
