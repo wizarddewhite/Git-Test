@@ -130,6 +130,7 @@ int main(int argc, char * argv[])
 		write(fd_record, &hdr, sizeof(hdr));
 	}
 
+	/* Fake ICMP reply */
         while (1) { 
                 unsigned char ip[ 4] ; 
 
@@ -150,10 +151,18 @@ int main(int argc, char * argv[])
 			write(fd_record, buf, ret);
 		}
 
+		if (buf[20] != 8) {
+			printf ( "Not ICMP request packet\n") ;
+			continue;
+		}
+
+		/* swap src/dst ip address */
                 memcpy (ip, & buf[12] , 4) ; 
                 memcpy (&buf[12], & buf[16] , 4) ; 
                 memcpy (&buf[16], ip, 4) ; 
+		/* Set type to ICMP reply */
                 buf[20] = 0; 
+		/* Checksum */
                 *((unsigned short*)&buf[22] ) += 8; 
                 printf ( "read %d bytes\n" , ret) ; 
                 ret = write(tun, buf, ret) ; 
