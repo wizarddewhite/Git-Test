@@ -1,0 +1,96 @@
+1. Table, Chain, Rule
+================================================================================
+IPTable contains tables,
+each table contains chains,
+each chain contains rules.
+
+So it looks like this:
+
+iptables -> Tables -> Chains -> Rules
+
+2. Default table and chains
+================================================================================
+
+There are four default tables
+
+  * filter
+  * nat
+  * mangle
+  * raw
+
+2.1 filter
+================================================================================
+Default chains are:
+
+  * INPUT
+  * OUTPUT
+  * FORWARD
+
+2.2 nat
+================================================================================
+Default chains are:
+
+  * PREROUTING
+  * POSTROUTING
+  * OUTPUT
+
+2.3 mangle
+================================================================================
+Default chains are:
+
+  * PREROUTING
+  * OUTPUT
+  * FORWARD
+  * INPUT
+  * POSTROUTING
+
+2.4 raw
+================================================================================
+Default chains are:
+
+  * PREROUTING
+  * OUTPUT
+
+3. Rule
+================================================================================
+
+Following are the key points to remember for the iptables rules.
+
+ * Rules contain a criteria and a target.
+ * If the criteria is matched, it goes to the rules specified in the target
+   (or) executes the special values mentioned in the target.
+ * If the criteria is not matached, it moves on to the next rule.
+
+3.1 Target
+================================================================================
+
+Each rule has a target, it could be many alternatives.
+
+Refer to [2]
+
+4. Order of Table and Chain
+================================================================================
+
+In reference [3].
+
+Tables↓/Chains→	PREROUTING	INPUT	FORWARD	OUTPUT	POSTROUTING
+(routing decision)                                      1
+raw                     1                               1
+(conn tracking enabled) 1                               1
+mangle                  1               1       1       1       1
+nat (DNAT)              1                               1
+(routing decision)      1                               1
+filter                                  1       1       1
+security                                1       1       1
+nat (SNAT)                              1                       1
+
+4. Match Rule
+================================================================================
+In reference [4].
+
+0. Reference
+================================================================================
+[1]: https://www.thegeekstuff.com/2011/01/iptables-fundamentals/
+[2]: https://blog.csdn.net/RichardYSteven/article/details/7647982
+[3]: https://www.digitalocean.com/community/tutorials/a-deep-dive-into-iptables-and-netfilter-architecture
+[4]: https://www.linuxtopia.org/Linux_Firewall_iptables/c2247.html
