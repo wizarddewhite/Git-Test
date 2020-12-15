@@ -1,3 +1,21 @@
+0. IP packet out and get route
+================================================================================
+
+ip_route_output_key_hash(net, fl4, skb)
+    fib_result res
+    ip_route_output_key_hash_rcu(net, fl4, &res, skb)
+        fib_lookup(net, fl4, res, 0)
+        fib_select_path(net, res, fl4, skb)
+        rt = __mkroute_output(res, fl4, orig_oif, dev_out, flags)
+            rt = rt_dst_alloc(dev_out, )
+                rt = dst_alloc()
+                rt->dst.output = ip_output
+            rt_set_nexthop(rt, fl4->daddr, res)
+        return rt
+skb_dst_set(skb, &rt->dst)
+dst_output(net, sk, sbk)
+    skb_dst(skb)->output(net, sk, skb)
+
 1. ip_route_output_flow(net, flp4, sk)
 ================================================================================
 1.1 rt = __ip_route_output_key(net, flp4) -> ip_route_output_key_hash(net, flp, NULL)
@@ -36,7 +54,83 @@
 2.4.6 rth = __mkroute_output(res, fl4, orig_oif, dev_out, flags)
 ================================================================================
 
+3. IP packet receive and get route
+================================================================================
 
+deliver_skb()
+    pt_prev->func() -> ip_rcv()
+        ip_rcv_core()
+        ip_rcv_finish()
+            ip_rcv_finish_core()
+                ip_route_input_noref()
+                    fib_result res;
+                    ip_route_input_rcu(skb, daddr, saddr, tos, dev, &res); -> ip_route_input_slow
+                        fib_lookup(net, fl4, res, 0)
+                    :forward
+                        ip_mkroute_input(skb, res, in_dev, daddr, saddr, tos, flkeys)
+                            rt = rt_dst_alloc()
+                            rt->dst.input = ip_forward
+                            rt_set_nexthop(rth, daddr, res, )
+                            skb_dst_set(skb, &rt->dst)
+                    :local
+                        rt = rt_dst_alloc()
+                            rt->dst.input = ip_local_deliver
+                        skb_dst_set(skb, &rt->dst)
+            dst_input()
+                skb_dst(skb)->input(skb);
+
+4. ip_rcv_finish_core(net, sk, skb, dev, hint)
+================================================================================
+4.1 ip_route_use_hint(skb, ,dev, hint)
+================================================================================
+4.2 ip_route_input_noref(skb, daddr, saddr, tos, dev)
+================================================================================
+4.2.1 struct fib_result res;
+================================================================================
+4.2.2 err = ip_route_input_rcu(skb, daddr, saddr, tos, dev, &res);
+================================================================================
+4.2.2.1 handle multicast packet
+================================================================================
+4.2.2.2 ip_route_input_slow(skb, daddr, saddr, tos, dev, res)
+================================================================================
+4.3 rt = skb_rtable(skb)
+================================================================================
+4.4 return NET_RX_SUCCESS
+================================================================================
+
+5. ip_route_input_slow(skb, daddr, saddr, tos, dev, res)
+================================================================================
+5.1 skb_dst_drop(skb);
+================================================================================
+5.2 fib4_rules_early_flow_dissect(net, skb, &fl4, &_flkeys)
+================================================================================
+5.3 fib_lookup(net, &fl4, res, 0)
+================================================================================
+5.3.1 tb = net->ipv4.fib_main
+================================================================================
+5.3.2 fib_table_lookup(tb, fl4, res, flags), main table?
+================================================================================
+5.3.3 tb = net->ipv4.fib_default
+================================================================================
+5.3.4 fib_table_lookup(tb, fl4, res, flags), default table?
+================================================================================
+5.4 ip_mkroute_input(skb, res, in_dev, daddr, saddr, tos, flkeys)
+================================================================================
+
+6. fib_table_lookup(tb, flp, res, fib_flags)
+================================================================================
+6.1 t = tb->tb_data
+================================================================================
+6.2 key = ntohl(flp->daddr)
+================================================================================
+6.3 key_vector *pn = t->kv
+================================================================================
+6.4 cindex = 0
+================================================================================
+6.5 n = get_child_rcu(pn, cindex)
+================================================================================
+6.6 index = get_cindex(key, n)
+================================================================================
 
 0. Data Struct
 ================================================================================
@@ -55,7 +149,7 @@
    |    |flowic_mark                       |
    |    |   (__u32)                        |
    |    |flowic_tos                        |
-   |    |flowic_scope                      |
+   |    |flowic_scope                      |  = RT_SCOPE_UNIVERSE
    |    |flowic_proto                      |
    |    |flowic_flags                      |
    |    |   (__u8)                         |
@@ -119,8 +213,44 @@
    |                                       |
    +---------------------------------------+
 
-0.2 rtable
+0.1.1 fib_info
 ================================================================================
+
+   fib_info
+   +---------------------------------------+<--------+
+   |fib_hash                               |         |
+   |fib_lhash                              |         |
+   |    (struct hlist_node)                |         |
+   |fib_net                                |         |
+   |    (struct net*)                      |         |
+   |fib_treeref                            |         |
+   |    (int)                              |         |
+   |fib_dead | fib_protocol | fib_scope    |         |
+   |    (unsigned char)                    |         |
+   |fib_tb_id                              |         |
+   |fib_priority                           |         |
+   |    (u32)                              |         |
+   |fib_nhs                                |         |
+   |    (int)                              |         |
+   |                                       |         |
+   |fib_nh[0]                              |         |
+   |    (struct fib_nh)                    |         |
+   |    +----------------------------------+         |
+   |    |nh_parent                      ---|---------+
+   |    |    (struct fib_info*)            |
+   |    |nh_dev                            |
+   |    |    (struct net_device*)          |
+   |    |nh_oif                            |
+   |    |    (int)                         |
+   |    |nh_gw | nh_saddr                  |
+   |    |    (__be32)                      |
+   |    |                                  |
+   |    |                                  |
+   +----+----------------------------------+
+
+0.2 rtable, assigned to skb->_skb_refdst
+================================================================================
+; could be retrieved by skb_rtable(skb)
 
    rtable
    +---------------------------------------+
@@ -149,7 +279,7 @@
    |    (int)                              |
    |rt_flags                               |
    |    (unsigned int)                     |
-   |rt_type                                |
+   |rt_type                                |  = UNICAST|LOCAL|BROADCAST|NAT
    |    (__u16)                            |
    |rt_is_input                            |
    |rt_uses_gateway                        |
@@ -171,3 +301,47 @@
    +---------------------------------------+
 
 
+0.4 fib_table, a member of netns_ipv4
+================================================================================
+
+   struct net
+   +------------------------------+
+   |ipv4                          |
+   |    (struct netns_ipv4)       |
+   |    +-------------------------+
+   |    |fib_main                 |
+   |    |fib_default              |        struct fib_table
+   |    |    (struct fib_table*)  |------->+---------------------------------------+
+   |    |                         |        |tb_num_default                         |
+   +----+-------------------------+        |     (int)                             |
+                                           |tb_id                                  |
+                                           |     (u32)                             |
+                                           |tb_hlist                               |
+                                           |     (struct hlist_node)               |
+                                           |tb_data                                |  -> trie
+                                           |     (unsigned long*)                  |
+                                           |__data[]                               |
+                                           |     (unsigned long)                   |
+                                           |                                       |
+                                           +---------------------------------------+
+
+0.4.1 trie
+================================================================================
+
+   trie
+   +---------------------------------------+
+   |kv[1]                                  |
+   |     (struct key_vector)               |
+   |     +---------------------------------+
+   |     |key                              |
+   |     |    (t_key|unsigned int)         |
+   |     |pos                              |
+   |     |bits                             |
+   |     |slen                             |
+   |     |    (unsigned char)              |
+   |     |=================================|
+   |     |leaf                             |  LEAF
+   |     |   (struct hlist_head)           |
+   |     |tnode[0]                         |  TNODE
+   |     |   (struct key_vectora*)         |
+   +-----+---------------------------------+
