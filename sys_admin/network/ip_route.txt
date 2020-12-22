@@ -58,4 +58,10 @@ This would add default rule in table PrivTel.
 
 3.4.2 Add route to subnet
 
+Route through interface.
+
 $ ip route add ip/mask dev enp0s5
+
+Specify the src addr, if interface has several address.
+
+$ ip route add ip/mask dev enp0s5 via ipA
