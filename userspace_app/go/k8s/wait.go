@@ -18,5 +18,8 @@ func main() {
 
 	// run process() every 4 seconds
 	klog.Info("Starting process")
-	wait.Until(process, 2*time.Second, stopCh)
+	go wait.Until(process, 2*time.Second, stopCh)
+
+	<-stopCh
+	klog.Info("Receive signal and quit")
 }
