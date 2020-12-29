@@ -1,0 +1,36 @@
+1. Reference
+
+https://github.com/kubernetes/sample-controller
+
+2. Client-go arch
+
+https://github.com/kubernetes/sample-controller/blob/master/docs/controller-client-go.md
+
+2.1 Client-go component
+
+  * Reflector: ListAndWatch() and add object to Delta Fifo queue
+  * Informer:  processLoop() pops object from Delt Fifo queue and invoke controller
+  * Indexer:   provides indexing function
+
+2.2 Custom Controller component
+
+  * Informer reference
+  * Indexer reference:      retrieve object from it
+  * Resource Event Handler: callback for Informer to deliver object to controller
+  * Work queue:             resource event handler puts object's key into it
+  * Process Item:           use Index reference process item in work queue
+
+3. Use this example
+
+# assumes you have a working kubeconfig, not required if operating in-cluster
+go build -o sample-controller .
+./sample-controller -kubeconfig=$HOME/.kube/config
+
+# create a CustomResourceDefinition
+kubectl create -f artifacts/examples/crd.yaml
+
+# create a custom resource of type Foo
+kubectl create -f artifacts/examples/example-foo.yaml
+
+# check deployments created through the custom resource
+kubectl get deployments
