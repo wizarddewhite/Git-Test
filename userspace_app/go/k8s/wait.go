@@ -26,8 +26,25 @@ func until() {
 	klog.Info("Receive signal and quit")
 }
 
+func poll_until() {
+	count := 5
+
+	// PollImmediateUntil tries a condition func until it returns true
+	wait.PollImmediateUntil(100*time.Millisecond,
+		func() (bool, error) {
+			fmt.Println("poll immediate until ", count)
+			count--
+			if count != 0 {
+				return false, nil
+			}
+			return true, nil
+		},
+		stopCh)
+}
+
 func main() {
-	until()
+	// until()
+	poll_until()
 }
 
 func init() {
