@@ -1,0 +1,104 @@
+1. Generating code with code generator
+
+1.1 File arch
+
+What we need is these tree files.
+
+$ tree -L 3 kubernetes-test-controller/lib/testresource/
+kubernetes-test-controller/lib/testresource/
+├── generated
+└── v1beta1
+    ├── doc.go
+    ├── register.go
+    └── types.go
+
+1.2 Generate code
+
+Assume we download code-generator at the same directory as kubernetes-test-controller
+
+1.2.1 modify module path
+
+~/code-generator $ go mod edit -replace=insujang.github.io/kubernetes-test-controller=../kubernetes-test-controller
+ 
+1.2.2 Generate code
+
+~/code-generator $ ./generate-groups.sh all \
+    insujang.github.io/kubernetes-test-controller/lib/testresource/generated \
+    insujang.github.io/kubernetes-test-controller/lib testresource:v1beta1 \
+    --go-header-file ./hack/boilerplate.go.txt --output-base ..
+Generating deepcopy funcs
+Generating clientset for testresource:v1beta1 at insujang.github.io/lib/testresource/generated/clientset
+Generating listers for testresource:v1beta1 at insujang.github.io/lib/testresource/generated/listers
+Generating informers for testresource:v1beta1 at insujang.github.io/lib/testresource/generated/informers
+
+Parameters:
+
+  * all is the target
+  * 2nd is the module name to be imported
+  * 3rd and 4th is the location of source.
+  * --output-base specify the generated code location, otherwise will be in GOPATH
+
+Now take a look at the generated files:
+
+$ tree -L 3 ../insujang.github.io/kubernetes-test-controller/lib/
+../insujang.github.io/kubernetes-test-controller/lib/
+└── testresource
+    ├── generated
+    │  ├── clientset
+    │  ├── informers
+    │  └── listers
+    └── v1beta1
+        └── zz_generated.deepcopy.go
+
+1.2.3 Move files together
+
+Then move the files together:
+
+$ cp -r ../insujang.github.io/kubernetes-test-controller/lib/testresource/* ../kubernetes-test-controller/lib/testresource/
+$ rm -r ../insujang.github.io
+
+After this, the file arch looks:
+
+$ tree -L 3 kubernetes-test-controller/lib/testresource/
+kubernetes-test-controller/lib/testresource/
+├── generated
+│     ├── clientset
+│     │     └── versioned
+│     ├── informers
+│     │     └── externalversions
+│     └── listers
+│         └── testresource
+└── v1beta1
+    ├── doc.go
+    ├── register.go
+    ├── types.go
+    └── zz_generated.deepcopy.go
+
+2. Custom controller based on generated code and client-go
+
+The core structure Controller:
+
+type Controller struct {
+	kubeclientset          kubernetes.Interface
+	apiextensionsclientset apiextensionsclientset.Interface
+	testresourceclientset  testresourceclienteset.Interface
+	informer               cache.SharedIndexInformer
+	lister                 testresourcelisters.TestResourceLister
+	recorder  record.EventRecorder
+	workqueue workqueue.RateLimitingInterface
+}
+
+apiextensionsclientset: add CRD and check status
+testresourceclientset:  create and update CRD object
+informer:               wait sync and add event handler
+recorder:               broadcast event
+workqueue:              for further process
+
+0. Reference
+
+This one is based on this reference:
+https://insujang.github.io/2020-02-13/programming-kubernetes-crd/
+
+The project github
+https://github.com/insujang/kubernetes-test-controller.git
+

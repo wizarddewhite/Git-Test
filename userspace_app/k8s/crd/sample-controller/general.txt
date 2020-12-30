@@ -1,6 +1,10 @@
 1. Reference
 
+The official one:
 https://github.com/kubernetes/sample-controller
+
+A better one:
+https://insujang.github.io/2020-02-13/programming-kubernetes-crd/
 
 2. Client-go arch
 
@@ -34,3 +38,8 @@ kubectl create -f artifacts/examples/example-foo.yaml
 
 # check deployments created through the custom resource
 kubectl get deployments
+
+4. Code Generate
+
+./hack/update-codegen.sh
+
