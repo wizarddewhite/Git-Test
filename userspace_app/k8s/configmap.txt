@@ -1,0 +1,26 @@
+1. Create configmap
+
+$ kubectl create configmap <map-name> <data-source>
+
+Example:
+
+$ cat game.property
+enemies=aliens
+lives=3
+enemies.cheat=true
+enemies.cheat.level=noGoodRotten
+secret.code.passphrase=UUDDLRLRBABAS
+secret.code.allowed=true
+secret.code.lives=30
+
+$ kubectl create configmap game-config --from-file=game.property
+
+
+2. Get information from configmap
+
+$ kubectl get configmap <map-name> -o yaml
+
+$ kubectl describe configmaps <map-name>
+
+0. Reference
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/
