@@ -1,0 +1,38 @@
+1. make
+
+hack/dockerized ...
+
+->
+
+docker exec kubevirt-bazel-server /entrypoint.sh \
+       DOCKER_PREFIX=index.docker.io/myrepo DOCKER_TAG=mybuild \
+       IMAGE_PULL_POLICY= VERBOSITY= \
+       ./hack/build-manifests.sh && hack/bazel-fmt.sh && \
+       hack/bazel-build.sh
+
+This means the build is done in container via:
+
+  * ./hack/build-manifests.sh
+  * ./hack/bazel-fmt.sh
+  * ./hack/bazel-build.sh
+
+The first two are preparation and the last one does the real build.
+
+1. make push
+
+hack/dockerized ... ./hack/bazel-push-images.sh
+
+->
+
+docker exec kubevirt-bazel-server /entrypoint.sh \
+       ... \
+       hach/bazel-push-images.sh
+
+->
+
+        bazel run \
+            --config=${ARCHITECTURE} \
+            --define container_prefix=${docker_prefix} \
+            --define image_prefix=${image_prefix} \
+            --define container_tag=${tag} \
+            //:push-${target}
