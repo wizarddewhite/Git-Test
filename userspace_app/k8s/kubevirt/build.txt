@@ -76,3 +76,63 @@ http_archive(
 
 go/def.bzl defines the rule go_binary.
 
+4. rsync daemon
+
+rsync daemon is used by hack/dockerized
+
+4.1 /etc/rsyncd.conf in kubevirt/builder
+
+$ cat /etc/rsyncd.conf
+gid = 0
+uid = 0
+log file = /dev/stdout
+reverse lookup = no
+[build]
+    hosts allow = *
+    read only = false
+    path = /root/go/src/kubevirt.io/kubevirt/
+    comment = input sources
+[out]
+    hosts allow = *
+    read only = false
+    path = /root/go/src/kubevirt.io/kubevirt/_out
+    comment = build output
+[vendor]
+    hosts allow = *
+    read only = false
+    path = /root/go/src/kubevirt.io/kubevirt/vendor
+    comment = vendor directory
+
+4.2 rsync step in dockerized
+
+4.2.1 sync project to container
+
+rsync ${KUBEVIRT_DIR}/${RSYNCTEMP} "rsync://root@127.0.0.1:${RSYNCD_PORT}/build/${RSYNCTEMP}"
+
+kubevirt is synced to /root/go/src/kubevirt.io/kubevirt/
+
+4.2.2 sync project to container again?
+
+_rsync \
+    --delete \
+    --exclude 'bazel-bin' \
+    --exclude 'bazel-genfiles' \
+    --exclude 'bazel-kubevirt' \
+    --exclude 'bazel-out' \
+    --exclude 'bazel-testlogs' \
+    --exclude 'cluster-up/cluster/**/.kubectl' \
+    --exclude 'cluster-up/cluster/**/.oc' \
+    --exclude 'cluster-up/cluster/**/.kubeconfig' \
+    --exclude "_out" \
+    --exclude ".vagrant" \
+    --exclude ".bazeldnf" \
+    ${KUBEVIRT_DIR}/ \
+    "rsync://root@127.0.0.1:${RSYNCD_PORT}/build"
+
+--delete:  delete extraneous files from dest dirs
+--exclude: not sync this file
+
+4.2.3 copy out from container
+
+OUT_DIR=$KUBEVIRT_DIR/_out
+_rsync --delete "rsync://root@127.0.0.1:${RSYNCD_PORT}/out" ${OUT_DIR}
