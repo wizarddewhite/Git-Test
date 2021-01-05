@@ -136,3 +136,12 @@ _rsync \
 
 OUT_DIR=$KUBEVIRT_DIR/_out
 _rsync --delete "rsync://root@127.0.0.1:${RSYNCD_PORT}/out" ${OUT_DIR}
+
+5. Debug build process
+
+Add bash script in following files, those would be synced into container and
+executed:
+
+hack/dockerized
+hack/bazel-build.sh
+
