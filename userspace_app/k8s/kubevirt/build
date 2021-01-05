@@ -18,7 +18,7 @@ This means the build is done in container via:
 
 The first two are preparation and the last one does the real build.
 
-1. make push
+2. make push
 
 hack/dockerized ... ./hack/bazel-push-images.sh
 
@@ -36,3 +36,43 @@ docker exec kubevirt-bazel-server /entrypoint.sh \
             --define image_prefix=${image_prefix} \
             --define container_tag=${tag} \
             //:push-${target}
+
+3. hack/bazel-build.sh
+
+bazel build \
+    --config=${ARCHITECTURE} \
+    --stamp \
+    //tools/csv-generator/...
+
+```
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["csv-generator.go"],
+    importpath = "kubevirt.io/kubevirt/tools/csv-generator",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pkg/virt-operator/creation/components:go_default_library",
+        "//pkg/virt-operator/creation/csv:go_default_library",
+        "//tools/util:go_default_library",
+    ],
+)
+```
+
+3.1 load(@io_bazel_rules_go//go:def.bzl, "go_binary", "go_library")
+
+io_bazel_rules_go is defined in WORKSPACE
+
+http_archive(
+    name = "io_bazel_rules_go",
+    sha256 = "08369b54a7cbe9348eea474e36c9bbb19d47101e8860cec75cbf1ccd4f749281",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.24.0/rules_go-v0.24.0.tar.gz",
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.24.0/rules_go-v0.24.0.tar.gz",
+        "https://storage.googleapis.com/builddeps/08369b54a7cbe9348eea474e36c9bbb19d47101e8860cec75cbf1ccd4f749281",
+    ],
+)
+
+go/def.bzl defines the rule go_binary.
+
