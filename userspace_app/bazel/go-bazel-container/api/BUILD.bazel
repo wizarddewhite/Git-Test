@@ -31,3 +31,25 @@ container_image(
     base = ":go_image",
     ports = ["8080:8080"],
 )
+
+load("@io_bazel_rules_docker//contrib:push-all.bzl", "docker_push")
+
+docker_push(
+    name = "push-other-images",
+    bundle = ":build-other-images",
+)
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_bundle",
+    "container_image",
+    "container_push",
+)
+
+container_bundle(
+    name = "build-other-images",
+    images = {
+        # cmd images
+        "index.docker.io/shyw13/api_image:v0.1": "//api:go_image",
+    },
+)
