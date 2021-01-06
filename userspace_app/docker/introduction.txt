@@ -141,3 +141,28 @@ CMD ["/bin/bash"]
 The same as above
 
 docker build -t myorg/base:centos7.2.x64-ngx-java8 .
+
+4.4 Push Image
+
+Refer to: https://ithelp.ithome.com.tw/articles/10191139
+
+4.4.1 Register Account on Docker Hub
+
+4.4.2 Login DockerHub
+
+$ docker login
+
+4.4.3 Add tag to the image
+
+$ docker tag ${image_name}:${tag} ${DockerHub_account}/image_name
+
+4.4.4 Push image
+
+$ docker push ${DockerHub_account}/image_name
+
+PS: seems need to create the repo on DockerHub first
+
+4.4.5 Remove local image and pull from DockerHub
+
+$ docker rmi ${DockerHub_account}/image_name
+$ docker pull ${DockerHub_account}/image_name
