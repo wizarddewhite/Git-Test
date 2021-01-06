@@ -53,3 +53,13 @@ container_bundle(
         "index.docker.io/shyw13/api_image:v0.1": "//api:go_image",
     },
 )
+
+# alternative
+container_push(
+    name = "push-container-image",
+    format = "Docker",
+    image = "//api:go_image",
+    registry = "index.docker.io/shyw13",
+    repository = "api_image",
+    tag = "v0.2",
+)
