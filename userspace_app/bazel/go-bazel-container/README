@@ -1,6 +1,50 @@
+1. Build
 
+$ bazel build //api:api
 
+2. Run
+
+$ bazel run //api:api
+
+And do in another terminal:
+
+$ curl http://localhost:8080/hello/Everyone
+{"Message":"Hello","Name":"Everyone"}
+
+3. Embed in container image and run
+
+3.1 Build it in container image
+
+$ bazel build //api:go_image
+
+The output is bazel-bin/api/go_image-layer.tar
+
+3.2 Run it with bazel
+
+$ bazel run //api:go_image
+
+Then you could see a docker image:
+
+$ docker images | grep bazel
+bazel/api                                 go_image             192a06e8e015        51 years ago        23.2MB
+
+Then try to test this:
+
+$ curl http://localhost:8080/hello/Everyone
+{"Message":"Hello","Name":"Everyone"}
+
+PS: //api:api-container doesn't work as expected
+
+3.3 Run it with docker 
+
+After you see the docker image, you could run docker manually:
+
+$ docker run --rm -it -p8080:8080 bazel/api:go_image
 
 0. Reference
 
+Explanation in detail steps:
+https://dev.to/schoren/create-container-images-with-bazel-47am
+
+Working example:
 https://www.grahambrooks.com/software-development/2020/04/05/go-bazel-container.html
