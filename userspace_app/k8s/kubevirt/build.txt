@@ -26,7 +26,7 @@ hack/dockerized ... ./hack/bazel-push-images.sh
 
 docker exec kubevirt-bazel-server /entrypoint.sh \
        ... \
-       hach/bazel-push-images.sh
+       hack/bazel-push-images.sh
 
 ->
 
@@ -37,12 +37,122 @@ docker exec kubevirt-bazel-server /entrypoint.sh \
             --define container_tag=${tag} \
             //:push-${target}
 
+->
+
+push-other-images
+push-virt-operator
+push-virt-api
+push-virt-controller
+push-virt-handler
+push-virt-launcher
+push-conformance
+
+Those rules are defined in BUILD.bazel
+
+2.1 push-other-images
+
+load("@io_bazel_rules_docker//contrib:push-all.bzl", "docker_push")
+
+docker_push(
+    name = "push-other-images",
+    bundle = ":build-other-images",
+)
+
+container_bundle(
+    name = "build-other-images",
+    images = {
+        # cmd images
+        "$(container_prefix)/$(image_prefix)example-hook-sidecar:$(container_tag)": "//cmd/example-hook-sidecar:example-hook-sidecar-image",
+        "$(container_prefix)/$(image_prefix)example-cloudinit-hook-sidecar:$(container_tag)": "//cmd/example-cloudinit-hook-sidecar:example-cloudinit-hook-sidecar-image",
+        "$(container_prefix)/$(image_prefix)subresource-access-test:$(container_tag)": "//cmd/subresource-access-test:subresource-access-test-image",
+        # container-disk images
+        "$(container_prefix)/$(image_prefix)alpine-container-disk-demo:$(container_tag)": "//containerimages:alpine-container-disk-image",
+        "$(container_prefix)/$(image_prefix)cirros-container-disk-demo:$(container_tag)": "//containerimages:cirros-container-disk-image",
+        "$(container_prefix)/$(image_prefix)cirros-custom-container-disk-demo:$(container_tag)": "//containerimages:cirros-custom-container-disk-image",
+        "$(container_prefix)/$(image_prefix)fedora-cloud-container-disk-demo:$(container_tag)": "//containerimages:fedora-cloud-container-disk-image",
+        "$(container_prefix)/$(image_prefix)microlivecd-container-disk-demo:$(container_tag)": "//containerimages:microlivecd-container-disk-image",
+        "$(container_prefix)/$(image_prefix)virtio-container-disk:$(container_tag)": "//containerimages:virtio-container-disk-image",
+        # Customized container-disk images
+        "$(container_prefix)/$(image_prefix)fedora-sriov-lane-container-disk:$(container_tag)": "//containerimages:fedora-sriov-lane-container-disk-image",
+        # testing images
+        "$(container_prefix)/$(image_prefix)disks-images-provider:$(container_tag)": "//images/disks-images-provider:disks-images-provider-image",
+        "$(container_prefix)/$(image_prefix)cdi-http-import-server:$(container_tag)": "//images/cdi-http-import-server:cdi-http-import-server-image",
+        "$(container_prefix)/$(image_prefix)nfs-server:$(container_tag)": "//images/nfs-server:nfs-server-image",
+        "$(container_prefix)/$(image_prefix)vm-killer:$(container_tag)": "//images/vm-killer:vm-killer-image",
+        "$(container_prefix)/$(image_prefix)winrmcli:$(container_tag)": "//images/winrmcli:winrmcli-image",
+    },
+)
+
+2.2 push-virt-operator
+
+container_push(
+    name = "push-virt-operator",
+    format = "Docker",
+    image = "//cmd/virt-operator:virt-operator-image",
+    registry = "$(container_prefix)",
+    repository = "$(image_prefix)virt-operator",
+    tag = "$(container_tag)",
+)
+
+2.3 push-virt-api
+container_push(
+    name = "push-virt-api",
+    format = "Docker",
+    image = "//cmd/virt-api:virt-api-image",
+    registry = "$(container_prefix)",
+    repository = "$(image_prefix)virt-api",
+    tag = "$(container_tag)",
+)
+
+2.4 push-virt-controller
+container_push(
+    name = "push-virt-controller",
+    format = "Docker",
+    image = "//cmd/virt-controller:virt-controller-image",
+    registry = "$(container_prefix)",
+    repository = "$(image_prefix)virt-controller",
+    tag = "$(container_tag)",
+)
+
+2.5 push-virt-handler
+container_push(
+    name = "push-virt-handler",
+    format = "Docker",
+    image = "//cmd/virt-handler:virt-handler-image",
+    registry = "$(container_prefix)",
+    repository = "$(image_prefix)virt-handler",
+    tag = "$(container_tag)",
+)
+
+2.6 push-virt-launcher
+container_push(
+    name = "push-virt-launcher",
+    format = "Docker",
+    image = "//cmd/virt-launcher:virt-launcher-image",
+    registry = "$(container_prefix)",
+    repository = "$(image_prefix)virt-launcher",
+    tag = "$(container_tag)",
+)
+
+2.7 push-conformance
+container_push(
+    name = "push-conformance",
+    testonly = True,
+    format = "Docker",
+    image = "//tests:conformance_image",
+    registry = "$(container_prefix)",
+    repository = "$(image_prefix)conformance",
+    tag = "$(container_tag)",
+)
+
 3. hack/bazel-build.sh
 
 bazel build \
     --config=${ARCHITECTURE} \
     --stamp \
     //tools/csv-generator/...
+
+Then take a look into tools/csv-generator/BUILD.bazel
 
 ```
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
