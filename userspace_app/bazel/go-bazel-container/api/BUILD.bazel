@@ -72,6 +72,7 @@ go_image(
     importpath = "github.com/grahambrooks/go-bazel-container",
 )
 
+# docker run -p8080:8080 bazel/api:api-container
 container_image(
     name = "api-container",
     base = ":go_image",
