@@ -263,6 +263,40 @@ executed:
 hack/dockerized
 hack/bazel-build.sh
 
+6. //cmd/virt-operator:virt-operator-image
+
+genrule(
+    name = "get-version",
+    srcs = [],
+    outs = [".version"],
+    cmd = "grep ^STABLE_BUILD_SCM_REVISION bazel-out/stable-status.txt | cut -d' ' -f2 >$@",
+    stamp = 1,
+    visibility = ["//visibility:public"],
+)
+
+container_image(
+    name = "version-container",
+    base = "//:passwd-image",
+    directory = "/",
+    files = ["//:get-version"],
+)
+
+container_image(
+    name = "virt-operator-image",
+    architecture = select({
+        "@io_bazel_rules_go//go/platform:linux_ppc64le": "ppc64le",
+        "//conditions:default": "amd64",
+    }),
+    base = ":version-container",
+    directory = "/usr/bin/",
+    entrypoint = ["/usr/bin/virt-operator"],
+    files = [
+        ":virt-operator",
+        "//tools/csv-generator",
+    ],
+    user = "1001",
+    visibility = ["//visibility:public"],
+)
 
 0. Reference
 
