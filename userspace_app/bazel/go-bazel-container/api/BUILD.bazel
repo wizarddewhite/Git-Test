@@ -17,6 +17,12 @@ go_binary(
 )
 
 load("@io_bazel_rules_docker//go:image.bzl", "go_image")
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_bundle",
+    "container_image",
+    "container_push",
+)
 
 go_image(
     name = "go_image",
@@ -24,7 +30,6 @@ go_image(
     visibility = ["//visibility:public"],
     importpath = "github.com/grahambrooks/go-bazel-container",
 )
-load("@io_bazel_rules_docker//container:container.bzl", "container_push", "container_image")
 
 container_image(
     name = "api-container",
@@ -34,27 +39,24 @@ container_image(
 
 load("@io_bazel_rules_docker//contrib:push-all.bzl", "docker_push")
 
+# push images in bundle to DockerHub
 docker_push(
-    name = "push-other-images",
-    bundle = ":build-other-images",
+    name = "push-docker-image",
+    bundle = ":build-docker-images",
 )
 
-load(
-    "@io_bazel_rules_docker//container:container.bzl",
-    "container_bundle",
-    "container_image",
-    "container_push",
-)
-
+# could push a list of images
+# DockerHub/image_name : target_name
 container_bundle(
-    name = "build-other-images",
+    name = "build-docker-images",
     images = {
         # cmd images
         "index.docker.io/shyw13/api_image:v0.1": "//api:go_image",
     },
 )
 
-# alternative
+# alternative to docker_push()
+# push an individual docker image
 container_push(
     name = "push-container-image",
     format = "Docker",
