@@ -1,5 +1,6 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
+## Build Binary
 go_library(
     name = "go_default_library",
     srcs = ["main.go"],
@@ -24,6 +25,7 @@ load(
     "container_push",
 )
 
+## Build Image
 go_image(
     name = "go_image",
     embed = [":go_default_library"],
@@ -38,6 +40,8 @@ container_image(
 )
 
 load("@io_bazel_rules_docker//contrib:push-all.bzl", "docker_push")
+
+## Push Image
 
 # push images in bundle to DockerHub
 docker_push(
