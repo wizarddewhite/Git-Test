@@ -1,3 +1,11 @@
+0. Prepare env
+
+$ export DOCKER_PREFIX=index.docker.io/myrepo
+$ export DOCKER_TAG=mybuild
+
+DOCKER_PREFIX defines the docker hub account. You need to login the docker hub
+account before pushing images.
+
 1. make
 
 hack/dockerized ...
@@ -255,3 +263,7 @@ executed:
 hack/dockerized
 hack/bazel-build.sh
 
+
+0. Reference
+
+https://github.com/kubevirt/kubevirt/blob/master/docs/getting-started.md
