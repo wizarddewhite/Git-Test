@@ -64,6 +64,7 @@ container_image(
     visibility = ["//visibility:public"],
 )
 
+# go_image
 go_image(
     name = "go_image",
     base = ":passwd-image",
@@ -72,11 +73,23 @@ go_image(
     importpath = "github.com/grahambrooks/go-bazel-container",
 )
 
+# container_image based on go_image
 # docker run -p8080:8080 bazel/api:api-container
 container_image(
     name = "api-container",
     base = ":go_image",
     ports = ["8080:8080"],
+)
+
+# container_image based on passwd-image, which is on top of fedora
+# docker run -p8080:8080 bazel/api:api-container-fedora
+container_image(
+    name = "api-container-fedora",
+    base = ":passwd-image",
+    directory = "/usr/bin",
+    entrypoint = ["/usr/bin/api"],
+    files = [":api"],
+    user = "1001",
 )
 
 load("@io_bazel_rules_docker//contrib:push-all.bzl", "docker_push")
