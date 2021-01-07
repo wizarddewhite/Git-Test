@@ -17,6 +17,36 @@ go_binary(
     visibility = ["//visibility:public"],
 )
 
+load("@io_bazel_rules_docker//contrib:passwd.bzl", "passwd_entry", "passwd_file")
+load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+
+## Custom base layer
+
+passwd_entry(
+    name = "nonroot-user",
+    gid = 1001,
+    home = "/home/nonroot-user",
+    shell = "/bin/bash",
+    uid = 1001,
+    username = "nonroot-user",
+)
+
+passwd_file(
+    name = "passwd",
+    entries = [
+        ":nonroot-user",
+    ],
+)
+
+pkg_tar(
+    name = "passwd-tar",
+    srcs = [":passwd"],
+    mode = "0644",
+    package_dir = "etc",
+    visibility = ["//visibility:public"],
+)
+
+
 load("@io_bazel_rules_docker//go:image.bzl", "go_image")
 load(
     "@io_bazel_rules_docker//container:container.bzl",
@@ -26,8 +56,17 @@ load(
 )
 
 ## Build Image
+container_image(
+    name = "passwd-image",
+    base = "@go_image_base//image",
+    tars = [":passwd-tar"],
+    user = "1001",
+    visibility = ["//visibility:public"],
+)
+
 go_image(
     name = "go_image",
+    base = ":passwd-image",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],
     importpath = "github.com/grahambrooks/go-bazel-container",
