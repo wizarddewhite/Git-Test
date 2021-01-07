@@ -58,7 +58,7 @@ load(
 ## Build Image
 container_image(
     name = "passwd-image",
-    base = "@go_image_base//image",
+    base = "@shyw13//image",
     tars = [":passwd-tar"],
     user = "1001",
     visibility = ["//visibility:public"],

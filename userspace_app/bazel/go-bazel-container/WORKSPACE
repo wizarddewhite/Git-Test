@@ -70,3 +70,16 @@ go_repository(
     sum = "h1:gnP5JzjVOuiZD07fKKToCAOjS0yOpj/qPETTXCCS6hw=",
     version = "v1.7.3",
 )
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_pull",
+)
+
+# Pull base image
+container_pull(
+    name = "shyw13",
+    registry = "index.docker.io",
+    repository = "shyw13/api_image",
+    tag = "v0.1",
+)
