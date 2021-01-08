@@ -1,3 +1,10 @@
+0. Preparation
+
+$ git clone https://github.com/insujang/kubernetes-test-controller.git
+$ git clone https://github.com/kubernetes/code-generator
+$ cd code-generator
+$ git checkout v0.17.0
+
 1. Generating code with code generator
 
 1.1 File arch
@@ -18,6 +25,7 @@ Assume we download code-generator at the same directory as kubernetes-test-contr
 
 1.2.1 modify module path
 
+$ cd code-generator
 ~/code-generator $ go mod edit -replace=insujang.github.io/kubernetes-test-controller=../kubernetes-test-controller
  
 1.2.2 Generate code
@@ -93,6 +101,18 @@ testresourceclientset:  create and update CRD object
 informer:               wait sync and add event handler
 recorder:               broadcast event
 workqueue:              for further process
+
+2.1 Build controller
+
+$ cd kubernetes-test-controller/cmd/controller
+$ go build
+
+2.2 Run controller
+
+$ export KUBECONFIG="/root/.kube/config"
+$ ./controller
+
+PS: set KUBECONFIG to the correct kubernetes configure file.
 
 0. Reference
 
