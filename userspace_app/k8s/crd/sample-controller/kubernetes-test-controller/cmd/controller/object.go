@@ -17,6 +17,7 @@ func (c *Controller) CreateObject() error {
 			Command:        "echo Hello World!",
 			CustomProperty: "asdasd=1234",
 		},
+		Status: "yw-unknown",
 	}
 
 	_, err := c.testresourceclientset.InsujangV1beta1().TestResources(corev1.NamespaceDefault).Create(object)
