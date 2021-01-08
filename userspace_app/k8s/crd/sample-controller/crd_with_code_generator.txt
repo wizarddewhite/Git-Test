@@ -19,6 +19,33 @@ kubernetes-test-controller/lib/testresource/
     ├── register.go
     └── types.go
 
+1.1.1 types.go <-> create_custom_resource.yaml
+
+type TestResourceSpec struct {
+	Command        string `json:"command"`
+	CustomProperty string `json:"customProperty"`
+}
+type TestResource struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   TestResourceSpec `json:"spec"`
+	Status string           `json:"status"`
+}
+
+```
+apiVersion: insujang.github.io/v1beta1
+kind: TestResource
+metadata:
+        name: example-tr
+spec:
+        command: "echo Hello World!"
+        customProperty: "asdasd1234"
+```
+
+We can see the struct TestResourceSpec defined in code could be mapped to the
+definition in yaml.
+
 1.2 Generate code
 
 Assume we download code-generator at the same directory as kubernetes-test-controller

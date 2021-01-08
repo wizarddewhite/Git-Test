@@ -69,10 +69,10 @@ func NewController() *Controller {
 	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: c.objectAddedCallback,
 		UpdateFunc: func(oldObject, newObject interface{}) {
-			klog.Infof("Updated: %v", newObject)
+			klog.Infof("Updated: %#v", newObject)
 		},
 		DeleteFunc: func(object interface{}) {
-			klog.Infof("Deleted: %v", object)
+			klog.Infof("Deleted: %#v", object)
 		},
 	})
 	informerFactory.Start(wait.NeverStop)

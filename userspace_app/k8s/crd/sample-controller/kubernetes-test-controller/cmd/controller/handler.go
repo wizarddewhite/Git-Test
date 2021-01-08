@@ -37,7 +37,7 @@ func (c *Controller) Run() {
 const statusMessage = "HANDLED"
 
 func (c *Controller) objectAddedCallback(object interface{}) {
-	klog.Infof("Added: %v", object)
+	klog.Infof("Added: %#v", object)
 	resource := object.(*testresourcev1beta1.TestResource)
 
 	// If the object is in the desired state, end callback.
