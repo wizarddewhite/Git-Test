@@ -6,5 +6,5 @@ spec:
         command: "echo Hello World!"
         customProperty: "asdasd1234"
 status:
-        "unknown-yaml"
+        status: "unknown-yaml"
 

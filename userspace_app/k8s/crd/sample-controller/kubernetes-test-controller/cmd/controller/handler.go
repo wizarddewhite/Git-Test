@@ -41,13 +41,13 @@ func (c *Controller) objectAddedCallback(object interface{}) {
 	resource := object.(*testresourcev1beta1.TestResource)
 
 	// If the object is in the desired state, end callback.
-	if resource.Status == statusMessage {
+	if resource.Status.Status == statusMessage {
 		return
 	}
 
 	// If the object is not handled yet, handle it by modifying its Status.
 	copy := resource.DeepCopy()
-	copy.Status = statusMessage
+	copy.Status.Status = statusMessage
 	_, err := c.testresourceclientset.InsujangV1beta1().TestResources(corev1.NamespaceDefault).Update(copy)
 	if err != nil {
 		klog.Errorf(err.Error())

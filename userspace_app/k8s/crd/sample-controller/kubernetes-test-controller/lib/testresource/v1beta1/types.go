@@ -19,6 +19,11 @@ type TestResourceSpec struct {
 	CustomProperty string `json:"customProperty"`
 }
 
+// TestResourceStatus specifies the 'status' of TestResource CRD.
+type TestResourceStatus struct {
+	Status string `json:"status"`
+}
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -27,8 +32,8 @@ type TestResource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   TestResourceSpec `json:"spec"`
-	Status string           `json:"status"`
+	Spec   TestResourceSpec   `json:"spec"`
+	Status TestResourceStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
