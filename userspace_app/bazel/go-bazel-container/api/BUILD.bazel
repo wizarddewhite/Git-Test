@@ -118,7 +118,7 @@ container_push(
     name = "push-container-image",
     format = "Docker",
     image = "//api:go_image",
-    registry = "index.docker.io/shyw13",
-    repository = "api_image",
-    tag = "v0.2",
+    registry = "my.private.io/sandbox",
+    repository = "shyw13/api_image",
+    tag = "latest",
 )
