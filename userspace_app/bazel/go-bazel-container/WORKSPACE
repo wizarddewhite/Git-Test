@@ -34,11 +34,11 @@ gazelle_dependencies()
 # rules_docker
 http_archive(
     name = "io_bazel_rules_docker",
-    sha256 = "4521794f0fba2e20f3bf15846ab5e01d5332e587e9ce81629c7f96c793bb7036",
-    strip_prefix = "rules_docker-0.14.4",
+    sha256 = "5ec37b55cba408b9c9a72e07543a30b53a50feed6b135ed4b4184e543a0911c7",
+    strip_prefix = "rules_docker",
     urls = [
-        "https://github.com/bazelbuild/rules_docker/releases/download/v0.14.4/rules_docker-v0.14.4.tar.gz",
-        "https://storage.googleapis.com/builddeps/4521794f0fba2e20f3bf15846ab5e01d5332e587e9ce81629c7f96c793bb7036",
+        "https://github.com/RichardWeiYang/rules_docker/releases/download/v0.14.4-1/rules_docker-v0.14.4-1.tar.gz",
+        # "http://localhost:8000/rules_docker-0.14.4.tar.gz",
     ],
 )
 
