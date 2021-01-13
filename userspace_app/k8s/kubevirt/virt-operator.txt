@@ -79,6 +79,13 @@
 
 2. app.kubeVirtController = NewKubeVirtController()
 ================================================================================
+c.kubeVirtExpectations = util.Expectations {
+    ServiceAccount: 
+	contoller.NewUIDTrackingControllerExpectations(
+	    contoller.NewControllerExpectationsWithName("ServiceAccount")
+	)
+}
+
 kubeVirtInformer.AddEventHandler
 	AddFunc:    c.addKubeVirt,
 	DeleteFunc: c.deleteKubeVirt,
@@ -121,11 +128,38 @@ c.informers.ServiceAccount.AddEventHandler(cache.ResourceEventHandlerFuncs{
 ================================================================================
 3.3.2.2 kv := obj.(*v1.KubeVirt)
 ================================================================================
+3.3.2.3 c.kubeVirtExpectations.SatisfiedExpectations(key)
+================================================================================
+3.3.2.4 c.syncDeployment(kvCopy)
+================================================================================
+3.3.2.5 operatorutil.SetConditionTimestamps(kv, kvCopy)
+================================================================================
 
-0. KubeVirt
+4. Expectations.SatisfiedExpectations(key string), eg: kubevirt/kubevirt
+================================================================================
+4.1 e.ServiceAccount.SatisfiedExpectations(key) && ...  -> ControllerExpectations.SatisfiedExpectations(key)
+================================================================================
+4.1.1 exp, exists, err := ControllerExpectations.GetExpectations(key)
+================================================================================
+4.1.1.1 exp, exists, err := ControllerExpectations.GetByKey(key) -> cache.GetByKey(key)
+================================================================================
+4.1.1.1.1 c.cacheStorage.Get(key) -> threadSafeMap.Get(key)
+================================================================================
+4.1.2 exp.Fulfilled() -> ControlleeExpectations.Fulfilled()
+================================================================================
+4.1.3 exp.isExpired()
+================================================================================
+
+0. data struct
+================================================================================
+0.1 KubeVirt
 ================================================================================
    KubeVirt
    +---------------------------------+
+   |metav1.TypeMeta                  |
+   |metav1.ObjectMeta                |
+   |                                 |
+   |                                 |
    |Spec                             |
    |    (KubeVirtSpec)               |
    |    +----------------------------+
@@ -151,5 +185,39 @@ c.informers.ServiceAccount.AddEventHandler(cache.ResourceEventHandlerFuncs{
    |    |TargetDeploymentID          |
    |    |                            |
    |    |Phase                       |  "Deploying" "Deployed" "Deleting" "Deleted"
-   |    |                            |
-   +----+----------------------------+
+   |    |Conditions                  |
+   |    |    ([]KubeVirtCondition)   |
+   |    |    +-----------------------+
+   |    |    |Type                   |
+   |    |    |Status                 |
+   |    |    |LastProbeTime          |
+   |    |    |LastTransitionTime     |
+   |    |    |Reason                 |
+   |    |    |                       |
+   |    |    |                       |
+   +----+----+-----------------------+
+
+0.2 UIDTrackingControllerExpectations
+================================================================================
+
+   UIDTrackingControllerExpectations
+   +---------------------------------+
+   |ControllerExpectationsInterface  |
+   |ControllerExpectations           |
+   |    +----------------------------+
+   |    |name                        |
+   |    |cache.Store                 |  = cache.NewStore(ExpKeyFunc)
+   |    |    +-----------------------+
+   |    |    |cacheStorage           |  = NewThreadSafeStore()
+   |    |    |   +-------------------+
+   |    |    |   |items              |
+   |    |    |   | (map[s]interface) |
+   |    |    |   |                   |
+   |    |    |   +-------------------+
+   |    |    |keyFunc                |  = keyFunc
+   |    +----+-----------------------+
+   |uidStoreLock                     |
+   |                                 |
+   |uidStore                         |  = cache.NewStore(UIDSetKeyFunc)
+   |    (cache.Store)                |
+   +---------------------------------+
