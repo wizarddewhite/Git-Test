@@ -1,0 +1,155 @@
+1. service.Service
+================================================================================
+
+   service.Service (&VirtOperatorApp)
+   +---------------------------------+
+   |AddFlags                         |
+   |Run                              |
+   |                                 |
+   +---------------------------------+
+   |service.ServiceListen            |
+   |    +----------------------------+
+   |    |Name                        |
+   |    |BindAddress                 |  = "0.0.0.0"
+   |    |Port                        |  = 8186
+   |    |                            |
+   |    +----------------------------+
+   |clientSet                        |  = kubecli.GetKubevirtClient()
+   |restClient                       |  = clientSet.RestClient()
+   |informerFactory                  |  = NewKubeInformerFactory()
+   |kubeVirtController               |  = NewKubeVirtController()
+   |kubeVirtRecorder                 |  = app.getNewRecorder()
+   |                                 |
+   |operatorNamespace                |  = clientutil.GetNamespace() = "kubevirt"
+   |                                 |
+   |kubeVirtInformer                 |  = informerFactory.KubeVirt()
+   |kubeVirtCache                    |  = kubeVirtInformer.GetStore()
+   |                                 |
+   |stores                           |  = util.Stores{}
+   |    +----------------------------+
+   |    |ServiceAccountCache         |
+   |    |ClusterRoleCache            |
+   |    |                            |
+   |    |    (cache.Store)           |
+   |    +----------------------------+
+   |informers                        |  = util.Informers{}
+   |    +----------------------------+
+   |    |ServiceAccount              |
+   |    |ClusterRole                 |
+   |    |                            |
+   |    |                            |
+   |    |                            |
+   |    |                            |
+   |    | (cache.SharedIndexInformer)|
+   |    +----------------------------+
+   |                                 |
+   |LeaderElection                   |  = DefaultLeaderElectionConfiguration()
+   |aggregatorClient                 |  = clientset.NewForConfigOrDie()
+   |operatorCertManager              |
+   +---------------------------------+
+
+1. KubeVirtController
+================================================================================
+
+   KubeVirtController
+   +---------------------------------+
+   |clientset                        |  = app.clientSet
+   |    (KubevirtClient)             |
+   |queue                            |
+   |    (RateLimitingInterface)      |
+   |kubeVirtInformer                 |  = app.kubeVirtInformer
+   |    (cache.SharedIndexInformer)  |
+   |recorder                         |  = app.kubeVirtRecorder
+   |    (EventRecorder)              |
+   |stores                           |  = app.stores
+   |    (util.Stores)                |
+   |informers                        |  = app.informers
+   |    (util.Informers)             |
+   |kubeVirtExpectations             |
+   |    (util.Expectations)          |
+   |installStrategyMap               |
+   |                                 |
+   |operatorNamespace                |  = app.operatorNamespace
+   |    (string)                     |
+   |aggregatorClient                 |
+   |    (APIServiceInterface)        |
+   |statusUpdater                    |
+   |    (KVStatusUpdater)            |
+   +---------------------------------+
+
+2. app.kubeVirtController = NewKubeVirtController()
+================================================================================
+kubeVirtInformer.AddEventHandler
+	AddFunc:    c.addKubeVirt,
+	DeleteFunc: c.deleteKubeVirt,
+	UpdateFunc: c.updateKubeVirt,
+
+informers.Namespace.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	AddFunc: func(obj interface{}) {
+		c.genericAddHandler(obj, nil)
+	},
+	UpdateFunc: func(oldObj, newObj interface{}) {
+		c.genericUpdateHandler(oldObj, newObj, nil)
+	},
+
+
+c.informers.ServiceAccount.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	AddFunc: func(obj interface{}) {
+		c.genericAddHandler(obj, c.kubeVirtExpectations.ServiceAccount)
+	},
+	DeleteFunc: func(obj interface{}) {
+		c.genericDeleteHandler(obj, c.kubeVirtExpectations.ServiceAccount)
+	},
+	UpdateFunc: func(oldObj, newObj interface{}) {
+		c.genericUpdateHandler(oldObj, newObj, c.kubeVirtExpectations.ServiceAccount)
+	},
+})
+
+3. app.kubeVirtController.Run()
+================================================================================
+3.1 cache.WaitForCacheSync(stopCh, c.kubeVirtInformer.HasSynced)
+================================================================================
+3.2 cache.WaitForCacheSync(stopCh, c.informers.ServiceAccount.HasSynced)
+================================================================================
+3.3 c.runWorker -> c.Execute()
+================================================================================
+3.3.1 key, quit := c.queue.Get()
+================================================================================
+3.3.2 c.execute(key.(string))
+================================================================================
+3.3.2.1 obj, exists, err := c.kubeVirtInformer.GetStore().GetByKey(key)
+================================================================================
+3.3.2.2 kv := obj.(*v1.KubeVirt)
+================================================================================
+
+0. KubeVirt
+================================================================================
+   KubeVirt
+   +---------------------------------+
+   |Spec                             |
+   |    (KubeVirtSpec)               |
+   |    +----------------------------+
+   |    |ImageTag                    |
+   |    |ImageRegistry               |
+   |    |                            |
+   |    |Configuration               |
+   |    |    (KubeVirtConfiguration) |
+   |    |    +-----------------------+
+   |    |    |CPUModel               |
+   |    |    |CPURequest             |
+   |    |    |MachineType            |
+   |    |    |                       |
+   |    |    |                       |
+   |    +----+-----------------------+
+   |Status                           |
+   |    (KubeVirtStatus)             |
+   |    +----------------------------+
+   |    |OperatorVersion             |
+   |    |TargetKubeVirtRegistry      |
+   |    |TargetKubeVirtVersion       |
+   |    |TargetDeploymentConfig      |
+   |    |TargetDeploymentID          |
+   |    |                            |
+   |    |Phase                       |  "Deploying" "Deployed" "Deleting" "Deleted"
+   |    |                            |
+   +----+----------------------------+
