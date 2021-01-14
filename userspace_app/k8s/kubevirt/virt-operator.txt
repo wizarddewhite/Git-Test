@@ -21,8 +21,37 @@ Execute()
                             batch.Jobs().Create(job)   ->  virt-operator --dump-install-strategy
 
 virt-operator --dump-install-strategy
+with 4 envs:
+    OperatorImageEnvName:   "OPERATOR_IMAGE"
+    TargetInstallNamespace: "TARGET_INSTALL_NAMESPACE"
+    TargetImagePullPolicy:  "TARGET_IMAGE_PULL_POLICY"
+    TargetDeploymentConfig: "TARGET_DEPLOYMENT_CONFIG"
 
-
+Execute()
+    installstrategy.DumpInstallStrategyToConfigMap(app.clientSet, app.operatorNamespace)
+        config, err := util.GetConfigFromEnv(), get KubeVirtDeploymentConfig, passed via env
+        configMap = NewInstallStrategyConfigMap(config, addMonitorServiceResources, operatorNamespace)
+            strategy = GenerateCurrentInstallStrategy(config, )
+                strategy := &InstallStrategy{}
+                crd = components.NewVirtualMachineInstanceCrd()
+                crd = components.NewVirtualMachineInstanceCrd
+                crd = components.NewPresetCrd
+                crd = components.NewReplicaSetCrd
+                crd = components.NewVirtualMachineCrd
+                crd = components.NewVirtualMachineInstanceMigrationCrd
+                crd = components.NewVirtualMachineSnapshotCrd
+                crd = components.NewVirtualMachineSnapshotContentCrd
+                crd = components.NewVirtualMachineRestoreCrd
+                strategy.crds = append(strategy.crds, crd)
+                strategy.services += NewPrometheusService()
+                strategy.services += NewApiServerService(), Service "virt-api"
+                strategy.services += NewOperatorWebhookService(), Service "kubevirt.io:virt-operator"
+                strategy.deployments += NewApiServerDeployment(), Deployment "virt-api"
+                strategy.deployments += NewControllerDeployment(), Deployment "virt-controller"
+                strategy.daemonSets += NewHandlerDaemonSet(), DaemonSet "virt-handler"
+                strategy.apiService += NewVirtAPIAPIServices()
+            configMap := &corev1.ConfigMap{Data: "manifests": strategy}
+        clientset.CoreV1().ConfigMaps().Create(configMap)
 
 2. app.kubeVirtController = NewKubeVirtController()
 ================================================================================
@@ -129,9 +158,9 @@ c.informers.ServiceAccount.AddEventHandler(cache.ResourceEventHandlerFuncs{
 
 6. installstrategy.DumpInstallStrategyToConfigMap(app.clientSet, app.operatorNamespace)
 ================================================================================
-6.1 config, err := util.GetConfigFromEnv(), get KubeVirtDeploymentConfig
+6.1 config, err := util.GetConfigFromEnv(), get KubeVirtDeploymentConfig, passed via env
 ================================================================================
-6.2 configMap, err := NewInstallStrategyConfigMap(config, addMonitorServiceResources, operatorNamespace)
+6.2 configMap = NewInstallStrategyConfigMap(config, addMonitorServiceResources, operatorNamespace)
 ================================================================================
 6.2.1 strategy = GenerateCurrentInstallStrategy(config, )
 ================================================================================
@@ -159,19 +188,21 @@ c.informers.ServiceAccount.AddEventHandler(cache.ResourceEventHandlerFuncs{
 ================================================================================
 6.2.1.11 strategy.services += NewPrometheusService()
 ================================================================================
-6.2.1.12 strategy.services += NewApiServerService()
+6.2.1.12 strategy.services += NewApiServerService(), Service "virt-api"
 ================================================================================
-6.2.1.13 strategy.services += NewOperatorWebhookService()
+6.2.1.13 strategy.services += NewOperatorWebhookService(), Service "kubevirt.io:virt-operator"
 ================================================================================
-6.2.1.14 strategy.deployments += NewApiServerDeployment()
+6.2.1.14 strategy.deployments += NewApiServerDeployment(), Deployment "virt-api"
 ================================================================================
-6.2.1.15 strategy.deployments += NewControllerDeployment()
+6.2.1.15 strategy.deployments += NewControllerDeployment(), Deployment "virt-controller"
 ================================================================================
-6.2.1.16 strategy.daemonSets += NewHandlerDaemonSet()
+6.2.1.16 strategy.daemonSets += NewHandlerDaemonSet(), DaemonSet "virt-handler"
 ================================================================================
 6.2.1.17 strategy.apiService += NewVirtAPIAPIServices()
 ================================================================================
 6.2.2 configMap := &corev1.ConfigMap{Data: "manifests": strategy}
+================================================================================
+6.3 clientset.CoreV1().ConfigMaps().Create(configMap)
 ================================================================================
 
 0. data struct
