@@ -19,6 +19,19 @@ Execute()
                         targetStrategy = c.loadInstallStrategy(kv)
                             job = c.generateInstallStrategyJob(config)
                             batch.Jobs().Create(job)   ->  virt-operator --dump-install-strategy
+                            or... after virt-operator --dump-install-strategy
+                            strategy, ok := c.getInstallStrategyFromMap(config, kv.Generation)
+
+                        # below is down after virt-operator --dump-install-strategy
+                        synced = installstrategy.SyncAll(c.queue, kv, targetStrategy, c.stores, c.clientset, c.aggregatorClient, &c.kubeVirtExpectations)
+                            createOrUpdateCrds(kv, targetStrategy)
+                            createOrUpdateRbac(kv, targetStrategy), serviceAccount, clusterRole, RoleBinding
+                            createOrUpdateAPIServices(kv, targetStrategy)
+                            createOrUpdateService(kv, targetStrategy), "virt-api"
+                            # create Deployments
+                            syncDeployment(), create "virt-api" deployment
+                            syncDeployment(), create "virt-controller" deployment
+                            syncDaemonSet(),  create "virt-handler" daemonset
 
 virt-operator --dump-install-strategy
 with 4 envs:
