@@ -67,7 +67,10 @@ Execute()
         dataVolumesReady, isWaitForFirstConsumer, = c.handleSyncDataVolumes(vmi, dataVolumes)
         templatePod = c.templateService.RenderLaunchManifest(vmi)
             /usr/bin/virt-launcher --qemu-timeout 5m --kubevirt-share-dir xx \
-                --ephemeral-disk-dir xxx --container-disk-dir xxx
+                --name xx --namespace xx \
+                --kubevirt-share-dir "/var/run/kubevirt" \
+                --ephemeral-disk-dir "/var/run/kubevirt-ephemeral-disks" \
+                --container-disk-dir "/var/run/kubevirt/container-disks"
             return pod
         pod = c.clientset.CoreV1().Pods().Create(templatePod)
 
@@ -108,7 +111,22 @@ Execute()
    |                                 |
    |templateService                  |
    |     (services.TemplateService)  |
+   |    +----------------------------|
+   |    |launcherImage               |
+   |    |virtShareDir                |  = "/var/run/kubevirt"
+   |    |virtLibDir                  |  = "/var/lib/kubevirt"
+   |    |ephemeralDiskDir            |  = "/var/run/kubevirt-ephemeral-disks"
+   |    |containerDiskDir            |  = "/var/run/kubevirt/container-disks"
+   |    |hotplugDiskDir              |  = "/var/run/kubevirt/hotplug-disks"
+   |    |     (string)               |
+   |    |                            |
+   |    +----------------------------|
    |launcherImage                    |
+   |virtShareDir                     |  = "/var/run/kubevirt"
+   |virtLibDir                       |  = "/var/lib/kubevirt"
+   |ephemeralDiskDir                 |  = "/var/run/kubevirt-ephemeral-disks"
+   |containerDiskDir                 |  = "/var/run/kubevirt/container-disks"
+   |hotplugDiskDir                   |  = "/var/run/kubevirt/hotplug-disks"
    |     (string)                    |
    |                                 |
    |clusterConfig                    |
