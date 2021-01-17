@@ -1,0 +1,194 @@
+1. Arch
+================================================================================
+virt-controller --launcher-image xxx --port 8443 -v x
+
+Execute()
+    app = VirtControllerApp{}
+    app.initCommon()
+        app.templateService = service.NewTemplateService(launcherImage)
+        app.vmiController = NewVMIController()
+        app.nodeController = NewNodeController()
+        app.migrationController = NewMigrationController()
+    app.initReplicaSet()
+        app.rsController = NewVMIReplicaSet()
+    app.initVirtualMachines()
+        app.vmController = NewVMController()
+    app.initDisruptionBudgetController()
+    app.initEvacuationController()
+    app.initSnapshotController()
+    app.initRestoreController()
+    app.Run()
+        app.onStartedLeading()
+            app.evacuationController.Run(vca.evacuationControllerThreads, stop)
+            app.disruptionBudgetController.Run(vca.disruptionBudgetControllerThreads, stop)
+            app.nodeController.Run(vca.nodeControllerThreads, stop)
+            app.vmiController.Run(vca.vmiControllerThreads, stop)
+            app.rsController.Run(vca.rsControllerThreads, stop)
+            app.vmController.Run(vca.vmControllerThreads, stop)
+            app.migrationController.Run(vca.migrationControllerThreads, stop)
+            app.snapshotController.Run(vca.snapshotControllerThreads, stop)
+            app.restoreController.Run(vca.restoreControllerThreads, stop)
+
+2. nodeController.Run()
+================================================================================
+2.1 NodeController.runWorker() -> Execute() -> execute()
+================================================================================
+
+
+3. rsController.Run()
+================================================================================
+3.1 VMIReplicaSet.runWorker() -> Execute() -> execute()
+================================================================================
+
+4. vmController.Run()
+================================================================================
+4.1 VMController.runWorker() -> Execute() -> execute()
+================================================================================
+    obj = c.vmiVMInformer.GetStore().GetByKey(key)
+    vm = obj.(*virtv1.VirtualMachine)
+    cm = controller.NewVirtualMachineControllerRefManager()
+    vmiObj = c.vmiInformer.GetStore().GetByKey(vmKey)
+    vmi = vmiObj.(*virtv1.VirtualMachineInstance)
+    vmi = cm.ClaimVirtualMachineByName(vmi)
+    c.startStop(vm, vmi)
+        runStrategy = vm.RunStrategy()
+        c.startVMI(vm)
+            vmi = c.setupVMIFromVM(vm)
+            vmi = c.clientset.VirtualMachineInstance().Create(vmi)
+    c.updateStatus(vm, vmi, )
+
+5. vmiController.Run()
+================================================================================
+5.1 VMIController.runWorker() -> Execute() -> execute()
+================================================================================
+    obj = c.vmiInformer.GetStore().GetByKey(key)
+    vmi = obj.(*virtv1.VirtualMachineInstance)
+    c.sync(vmi, pod, )
+        dataVolumesReady, isWaitForFirstConsumer, = c.handleSyncDataVolumes(vmi, dataVolumes)
+        templatePod = c.templateService.RenderLaunchManifest(vmi)
+            /usr/bin/virt-launcher --qemu-timeout 5m --kubevirt-share-dir xx \
+                --ephemeral-disk-dir xxx --container-disk-dir xxx
+            return pod
+        pod = c.clientset.CoreV1().Pods().Create(templatePod)
+
+
+0. Data Structure
+================================================================================
+
+0.1 VirtControllerApp
+================================================================================
+
+   VirtControllerApp
+   +---------------------------------+
+   |                                 |
+   |informerFactory                  |  = controller.NewKubeInformerFactory()
+   |     (KubeInformerFactory)       |
+   |kubeVirtInformer                 |  = app.informerFactory.KubeVirt()
+   |crdInformer                      |  = app.informerFactory.CRD()
+   |configMapInformer                |  = app.informerFactory.ConfigMap()
+   |kvPodInformer                    |  = app.informerFactory.KubeVirtPod()
+   |nodeInformer                     |  = app.informerFactory.KubeVirtNode()
+   |vmiInformer                      |  = app.informerFactory.VMI()
+   |rsInformer                       |  = app.informerFactory.VMIReplicaSet()
+   |vmInformer                       |  = app.informerFactory.VirtualMachine()
+   |persistentVolumeClaimInformer    |
+   |dataVolumeInformer               |
+   |     (SharedIndexInformer)       |
+   |                                 |
+   |vmController                     |
+   |     (VMController)              |
+   |vmiController                    |
+   |     (VMIController)             |
+   |nodeController                   |
+   |     (NodeController)            |
+   |migrationController              |
+   |     (MigrationController)       |
+   |rsController                     |
+   |     (VMIReplicaSet)             |
+   |                                 |
+   |templateService                  |
+   |     (services.TemplateService)  |
+   |launcherImage                    |
+   |     (string)                    |
+   |                                 |
+   |clusterConfig                    |
+   |     (ClusterConfig)             |
+   |                                 |
+   +---------------------------------+
+
+0.2 VMIController
+================================================================================
+
+   VMIController
+   +---------------------------------+
+   |vmiInformer                      |
+   |   AddFunc                       |  = c.addVirtualMachine
+   |   DeleteFunc                    |  = c.deleteVirtualMachine
+   |   UpdateFunc                    |  = c.updateVirtualMachine
+   |podInformer                      |
+   |   AddFunc                       |  = c.addPod
+   |   DeleteFunc                    |  = c.deletePod
+   |   UpdateFunc                    |  = c.updatePod
+   |dataVolumeInformer               |
+   |   AddFunc                       |  = c.addDataVolume
+   |   DeleteFunc                    |  = c.deleteDataVolume
+   |   UpdateFunc                    |  = c.updateDataVolume
+   |                                 |
+   +---------------------------------+
+
+0.3 NodeController
+================================================================================
+
+   NodeController
+   +---------------------------------+
+   |vmiInformer                      |
+   |   AddFunc                       |  = c.addVirtualMachine
+   |   DeleteFunc                    |  = 
+   |   UpdateFunc                    |  = c.updateVirtualMachine
+   |nodeInformer                     |
+   |   AddFunc                       |  = c.addNode
+   |   DeleteFunc                    |  = c.deleteNode
+   |   UpdateFunc                    |  = c.updateNode
+   |                                 |
+   +---------------------------------+
+
+0.4 VMIReplicaSet
+================================================================================
+
+   VMIReplicaSet
+   +---------------------------------+
+   |vmiInformer                      |
+   |   AddFunc                       |  = c.addVirtualMachine
+   |   DeleteFunc                    |  = c.deleteVirtualMachine
+   |   UpdateFunc                    |  = c.updateVirtualMachine
+   |vmiRSInformer                    |
+   |   AddFunc                       |  = c.addReplicaSet
+   |   DeleteFunc                    |  = c.deleteReplicaSet
+   |   UpdateFunc                    |  = c.updateReplicaSet
+   |                                 |
+   +---------------------------------+
+
+0.5 VMController
+================================================================================
+
+   VMController
+   +---------------------------------+
+   |vmiInformer                      |
+   |   AddFunc                       |  = c.addVirtualMachine
+   |   DeleteFunc                    |  = c.deleteVirtualMachine
+   |   UpdateFunc                    |  = c.updateVirtualMachine
+   |vmInformer                       |
+   |   AddFunc                       |  = c.addVm
+   |   DeleteFunc                    |  = c.deleteVm
+   |   UpdateFunc                    |  = c.updateVm
+   |dataVolumeInformer               |
+   |   AddFunc                       |  = c.addDataVolume
+   |   DeleteFunc                    |  = c.deleteDataVolume
+   |   UpdateFunc                    |  = c.updateDataVolume
+   |pvcInformer                      |
+   |   AddFunc                       |  = 
+   |   DeleteFunc                    |  = 
+   |   UpdateFunc                    |  = 
+   |                                 |
+   +---------------------------------+
+
