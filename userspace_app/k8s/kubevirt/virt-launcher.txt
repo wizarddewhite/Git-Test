@@ -1,0 +1,46 @@
+1. Arch
+================================================================================
+/usr/bin/virt-launcher --qemu-timeout 5m \
+    --name xx --namespace xx \
+    --kubevirt-share-dir "/var/run/kubevirt" \
+    --ephemeral-disk-dir "/var/run/kubevirt-ephemeral-disks" \
+    --container-disk-dir "/var/run/kubevirt/container-disks"
+
+main()
+    vm = v1.NewVMIReferenceFromNameWithNS(namespace, name)
+    initializeDirs(virtShareDir, ephemeralDiskDir, containerDiskDir, hotplugDiskDir, uid)
+    util.SetupLibvirt()
+        qemuConf = os.OpenFile("/etc/libvirt/qemu.conf"), adjust cgroup and hugepage
+        libvirtConf = os.OpenFile("/etc/libvirt/libvirtd.conf"), log to stderr
+    util.StartLibvirt()
+        cmd := exec.Command("/usr/sbin/libvirtd")
+        cmd.Start()
+    domainName := vmi.Namespace + vmi.Name
+    util.StartVirtlog()
+        cmd := exec.Command("/usr/sbin/virtlogd", "-f /etc/libvirt/virtlogd.conf")
+        cmd.Start()
+        logfile = "/var/log/libvirt/qemu/%s.log", domainName
+    domainConn = createLibvirtConnection()
+        libvirtUri := "qemu:///system"
+        domainConn, err := virtcli.NewConnection(libvirtUri, "", "", 10*time.Second)
+            virConn, err = newConnection(uri, user, pass)
+                virConn, err := libvirt.NewConnectWithAuth(uri, auth, 0)
+            lvConn = &LibvirtConnection{virtConn, }
+            return lvConn
+        return domainConn
+    domainManager = virtwrap.NewLibvirtDomainManager(domainConn, virtShareDir)
+    options = cmdserver.NewServerOptions(*useEmulation)
+    cmdclient.SetLegacyBaseDir(*virtShareDir)
+    # client can use this to tell virt-launcher to start/stop vm
+    cmdServerDone = startCmdServer(cmdclient.UninitializedSocketOnGuest(),
+                    "/var/run/kubevirt/socks/launcher-init-sock"
+		    domainManager, stopChan, options)
+        cmdserver.RunServer()
+    startDomainEventMonitoring(notifier, *virtShareDir, domainConn, events, )
+    markReady()
+        rename "/var/run/kubevirt/socks/launcher-init-sock"
+    domain = waitForDomainUUID(qemuTimeout, events, signalStopChan, domainManager)
+    mon = virtlauncher.NewProcessMonitor()
+        monitor{domain.Spec.UUID, finalShutdownCallback, gracefulShutdownCallback}
+    mon.RunForever()
+        mon.monitorLoop(startTimeout, signalStopChan)
