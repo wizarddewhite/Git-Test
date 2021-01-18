@@ -25,7 +25,7 @@ main()
         domainConn, err := virtcli.NewConnection(libvirtUri, "", "", 10*time.Second)
             virConn, err = newConnection(uri, user, pass)
                 virConn, err := libvirt.NewConnectWithAuth(uri, auth, 0)
-            lvConn = &LibvirtConnection{virtConn, }
+            lvConn = &LibvirtConnection{virtConn, user, pass, uri: "qemu:///system", }
             return lvConn
         return domainConn
     domainManager = virtwrap.NewLibvirtDomainManager(domainConn, virtShareDir)
@@ -35,7 +35,11 @@ main()
     cmdServerDone = startCmdServer(cmdclient.UninitializedSocketOnGuest(),
                     "/var/run/kubevirt/socks/launcher-init-sock"
 		    domainManager, stopChan, options)
-        cmdserver.RunServer()
+        done = cmdserver.RunServer(socketPath), setup grpc server
+        client = cmdclient.NewClient(socketPath), setup grpc client
+        client.Ping()
+        # VirtLauncherClient <-> Launcher
+        return done
     startDomainEventMonitoring(notifier, *virtShareDir, domainConn, events, )
     markReady()
         rename "/var/run/kubevirt/socks/launcher-init-sock"
