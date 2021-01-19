@@ -28,6 +28,11 @@ main()
             lvConn = &LibvirtConnection{virtConn, user, pass, uri: "qemu:///system", }
             return lvConn
         return domainConn
+    notifier = notifyclient.NewNotifier(*virtShareDir), "/var/run/kubevirt"
+        return &Notifier{
+             pipeSocketPath:   filepath.Join(virtShareDir, "domain-notify-pipe.sock"),
+             legacySocketPath: filepath.Join(virtShareDir, "domain-notify.sock"),
+        }, for notify what to who?
     domainManager = virtwrap.NewLibvirtDomainManager(domainConn, virtShareDir)
     options = cmdserver.NewServerOptions(*useEmulation)
     cmdclient.SetLegacyBaseDir(*virtShareDir)
@@ -45,6 +50,11 @@ main()
             agentPoller = agentpoller.CreatePoller()
                 p = AgentPoller {}
                 p.workers = append(p.workers, PollerWorker{})
+            domainConn.DomainEventLifecycleRegister()
+                l.Connect.DomainEventLifecycleRegister()
+            domainConn.DomainEventDeviceAddedRegister()
+            domainConn.DomainEventDeviceRemovedRegister()
+            domainConn.AgentEventLifecycleRegister()
     markReady()
         rename "/var/run/kubevirt/socks/launcher-init-sock"
     domain = waitForDomainUUID(qemuTimeout, events, signalStopChan, domainManager)
@@ -53,16 +63,52 @@ main()
     mon.RunForever()
         mon.monitorLoop(startTimeout, signalStopChan)
 
+2. eventCallback(domainConn, libvirtEvent, notifier), triggered by cb registered in StartDomainNotifier()
+================================================================================
+d, err := domainConn.LookupDomainByName(util.DomainFromNamespaceName(domain.ObjectMeta.Namespace, domain.ObjectMeta.Name))
+status, reason, err := d.GetState()
+domain.SetState(util.ConvState(status), util.ConvReason(status, reason))
+spec, err := util.GetDomainSpecWithRuntimeInfo(status, d)
+domain.Spec = spec
 
-2. virt-handler <-> virt-launcher
+if libvirtEvent.Event.Event == libvirt.DOMAIN_EVENT_DEFINED
+   && libvirt.DomainEventDefinedDetailType(libvirtEvent.Event.Detail) == libvirt.DOMAIN_EVENT_DEFINED_ADDED
+    event = watch.Event{Type: watch.Added, Object: domain}
+    notifier.SendDomainEvent(event)
+if libvirtEvent.Event.Event == libvirt.DOMAIN_EVENT_STARTED
+   && libvirt.DomainEventStartedDetailType(libvirtEvent.Event.Detail) == libvirt.DOMAIN_EVENT_STARTED_MIGRATED
+    event := watch.Event{Type: watch.Added, Object: domain}
+    notifier.SendDomainEvent(event)
+
+notifier.SendDomainEvent(watch.Event{})
+    notifier.connect()
+        socketPath := n.detectSocketPath()
+        conn, err := grpcutil.DialSocketWithTimeout(socketPath, 5)
+        client = notifyv1.NewNotifyClient(conn)
+        notifier.conn = conn
+        notifier.v1client = client
+    request = notifyv1.DomainEventRequest {
+		DomainJSON: domainJSON,
+		StatusJSON: statusJSON,
+		EventType:  string(event.Type),
+	}
+    response = notifier.v1client.HandleDomainEvent(ctx, &request)
+        notifyClient::HandleDomainEvent()
+            grpc.Invoke(ctx, "/kubevirt.notify.v1.Notify/HandleDomainEvent") --> virt-handler::Notify::HandleDomainEvent
+
+
+3. virt-handler <-> virt-launcher
 ================================================================================
 
-     virt-handler               virt-launcher
-
-    LifecycleHandler            cmdserver.RunServer()
-      cmdclient.
-    VirtLauncherClient    --->  Launcher
-
+   virt-handler                         virt-launcher
+   +----------------------+             +---------------------------+
+   |   LifecycleHandler   |             | cmdserver.RunServer()     |
+   |     cmdclient.       |   send cmd  |                           |
+   |   VirtLauncherClient |    --->     | Launcher                  |
+   |                      |             |                           |
+   |                      |   rcv stat  |                           |
+   |   Notify             |    <---     | notifyClient              |
+   +----------------------+             +---------------------------+
 
 0. Data Struct
 ================================================================================
@@ -98,6 +144,15 @@ main()
    |    (string)                     |
    |agentStore                       |  = agentpoller.NewAsyncAgentStore()
    |    (AsyncAgentStore)            |
+   |    +----------------------------+
+   |    |store                       |
+   |    |    (sync.Map)              |
+   |    |AgentUpdated                |
+   |    |    (chan AgentUpdatedEvent)|
+   |    |    +-----------------------+
+   |    |    |Type(AgentCommand)     |
+   |    |    |DomainInfo             |
+   |    +----+-----------------------+
    |                                 |
    |workers                          |  ticker exec with executeAgentCommands()
    |    ([]PollerWorker)             |  con.QemuAgentCommand()
@@ -114,3 +169,22 @@ main()
    |    +----------------------------+
    |    |AgentCommands               |  = []AgentCommand{GET_USERS}
    +----+----------------------------+
+
+
+0.3 Notifier, used in eventCallback()
+================================================================================
+   Notifier
+   +---------------------------------+
+   |conn                             |  setup in Notifier::connect()
+   |    (*grpc.ClientConn)           |
+   |v1client                         |
+   |    (notifyv1.NotifyClient)      |
+   |    +----------------------------+
+   |    |cc                          |  = conn
+   |    |    (*grpc.ClientConn)      |
+   |    +----------------------------+
+   |                                 |
+   |pipeSocketPath                   |  = "/var/run/kubevirt/domain-notify-pipe.sock"
+   |legacySocketPath                 |  = "/var/run/kubevirt/domain-notify.sock"
+   |    (string)                     |
+   +---------------------------------+
