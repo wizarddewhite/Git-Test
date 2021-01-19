@@ -48,3 +48,15 @@ main()
         monitor{domain.Spec.UUID, finalShutdownCallback, gracefulShutdownCallback}
     mon.RunForever()
         mon.monitorLoop(startTimeout, signalStopChan)
+
+
+2. virt-handler <-> virt-launcher
+================================================================================
+
+     virt-handler               virt-launcher
+
+    LifecycleHandler            cmdserver.RunServer()
+      cmdclient.
+    VirtLauncherClient    --->  Launcher
+
+
