@@ -41,6 +41,10 @@ main()
         # VirtLauncherClient <-> Launcher
         return done
     startDomainEventMonitoring(notifier, *virtShareDir, domainConn, events, )
+        notifier.StartDomainNotifier(domainConn, )
+            agentPoller = agentpoller.CreatePoller()
+                p = AgentPoller {}
+                p.workers = append(p.workers, PollerWorker{})
     markReady()
         rename "/var/run/kubevirt/socks/launcher-init-sock"
     domain = waitForDomainUUID(qemuTimeout, events, signalStopChan, domainManager)
@@ -60,3 +64,53 @@ main()
     VirtLauncherClient    --->  Launcher
 
 
+0. Data Struct
+================================================================================
+0.1 LibvirtConnection, instance of cli.Connection
+================================================================================
+
+   LibvirtConnection
+   +---------------------------------+
+   |user/pass/uri                    |
+   |    (string)                     |
+   |Connect                          |  = libvirt.NewConnectWithAuth("qemu:///system")
+   |    (libvirt.Connect)            |
+   |                                 |
+   |domainEventCallbacks             |
+   |                                 |
+   |domainDeviceAddedEventCallbacks  |
+   |domainDeviceRemovedEventCallbacks|
+   |                                 |
+   |agentEventCallbacks              |
+   |                                 |
+   +---------------------------------+
+
+0.2 AgentPoller
+================================================================================
+
+   AgentPoller
+   +---------------------------------+
+   |Connection                       |
+   |    (cli.Connection)             |
+   |VmiUID                           |
+   |    (types.UID)                  |
+   |domainName                       |
+   |    (string)                     |
+   |agentStore                       |  = agentpoller.NewAsyncAgentStore()
+   |    (AsyncAgentStore)            |
+   |                                 |
+   |workers                          |  ticker exec with executeAgentCommands()
+   |    ([]PollerWorker)             |  con.QemuAgentCommand()
+   |    +----------------------------+
+   |    |AgentCommands               |  a list of commands executed on guestAgent
+   |    |    ([]AgentCommand)        |
+   |    |CallTick                    |
+   |    +----------------------------+
+   |    |AgentCommands               |  = []AgentCommand{GET_AGENT}
+   |    +----------------------------+
+   |    |AgentCommands               |  = []AgentCommand{GET_INTERFACES, GET_OSINFO, GET_TIMEZONE, GET_HOSTNAME}
+   |    +----------------------------+
+   |    |AgentCommands               |  = []AgentCommand{GET_FILESYSTEM}
+   |    +----------------------------+
+   |    |AgentCommands               |  = []AgentCommand{GET_USERS}
+   +----+----------------------------+
