@@ -72,5 +72,6 @@ func RemoveUser(request *restful.Request, response *restful.Response) {
 
 func main() {
 	restful.Add(New())
+	http.Handle("/swagger-ui/", http.StripPrefix("/swagger-ui/", http.FileServer(http.Dir("."))))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
