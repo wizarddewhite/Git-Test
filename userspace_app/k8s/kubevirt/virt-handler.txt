@@ -83,9 +83,17 @@ go c.vmiSourceInformer.Run(stopCh)
 go c.vmiTargetInformer.Run(stopCh)
 c.runWorker() -> c.Execute()
     key = c.Queue.Get()
-    c.execute(key.(string))
-        vmi, vmiExists, err := d.getVMIFromCache(key)
-        domain, domainExists, domainCachedUID, err := d.getDomainFromCache(key)
+
+1.2.1 c.execute()
+================================================================================
+c.execute(key.(string))
+    vmi, vmiExists, err := d.getVMIFromCache(key)
+    domain, domainExists, domainCachedUID, err := d.getDomainFromCache(key)
+    c.defaultExecute(key, vmi, vmiExists, domain, domainExists)
+        c.processVmShutdown()
+        c.processVmDelete()
+        c.processVmCleanup()
+        d.updateVMIStatus()
 
 1.3 app.runServer(errCh, consoleHandler, lifecycleHandler)
 ================================================================================
