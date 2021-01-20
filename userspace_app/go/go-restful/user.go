@@ -5,6 +5,7 @@ import (
 	"github.com/emicklei/go-restful"
 	"log"
 	"net/http"
+	"strings"
 )
 
 type User struct {
@@ -32,6 +33,16 @@ func New() *restful.WebService {
 	service.Route(service.GET("/").To(func(req *restful.Request, resp *restful.Response) {
 		resp.WriteAsJson(Info{Version: "0.1", Date: "2020.1.20"})
 	}))
+
+	restful.Filter(func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
+		log.Println("processing url: ", req.Request.URL)
+		if !strings.HasPrefix(req.Request.URL.String(), "/admin") {
+			// request is permitted, so proceed with filter chain.
+			chain.ProcessFilter(req, resp)
+			return
+		}
+		resp.WriteErrorString(http.StatusUnauthorized, "Not Allowed")
+	})
 
 	return service
 }
