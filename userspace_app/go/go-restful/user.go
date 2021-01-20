@@ -28,6 +28,7 @@ func New() *restful.WebService {
 
 func FindUser(request *restful.Request, response *restful.Response) {
 	id := request.PathParameter("user-id")
+	log.Println("Find user: ", id)
 	// here you would fetch user from some persistence system
 	usr := User{Id: id, Name: "John Doe"}
 	response.WriteEntity(usr)
