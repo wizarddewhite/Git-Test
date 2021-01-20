@@ -12,13 +12,19 @@ type User struct {
 	Id, Name string
 }
 
+type Resource struct {
+	Name  string
+	Group string
+}
 type Info struct {
-	Version string
-	Date    string
+	Version   string
+	Date      string
+	Resources []Resource
 }
 
 func New() *restful.WebService {
 	service := new(restful.WebService)
+	service.Doc("YW test webservice")
 	service.
 		Path("/users").
 		Consumes(restful.MIME_XML, restful.MIME_JSON).
@@ -30,8 +36,15 @@ func New() *restful.WebService {
 	service.Route(service.PUT("/{user-id}").To(CreateUser))
 	service.Route(service.DELETE("/{user-id}").To(RemoveUser))
 
-	service.Route(service.GET("/").To(func(req *restful.Request, resp *restful.Response) {
-		resp.WriteAsJson(Info{Version: "0.1", Date: "2020.1.20"})
+	service.Route(service.GET("/").Writes(Info{}).To(func(req *restful.Request, resp *restful.Response) {
+		info := Info{Version: "0.1", Date: "2020.1.20"}
+		info.Resources = []Resource{
+			{
+				Name:  "add",
+				Group: "admin",
+			},
+		}
+		resp.WriteAsJson(info)
 	}))
 
 	restful.Filter(func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
