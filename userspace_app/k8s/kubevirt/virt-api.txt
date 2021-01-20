@@ -14,7 +14,11 @@ app.Execute() -> virtAPIApp::Execute()
 
         # retrieve Informers
         webhookInformers := webhooks.GetInformers()
-        kubeInformerFactory := controller.NewKubeInformerFactory(app.virtCli.RestClient(), app.virtCli, app.aggregatorClient, app.namespace)
+        kubeInformerFactory := controller.NewKubeInformerFactory(
+		app.virtCli.RestClient(),
+		app.virtCli,
+		app.aggregatorClient,
+		app.namespace)
         configMapInformer := kubeInformerFactory.ConfigMap()
         crdInformer := kubeInformerFactory.CRD()
         authConfigMapInformer := kubeInformerFactory.ApiAuthConfigMap()
@@ -42,9 +46,29 @@ app.Execute() -> virtAPIApp::Execute()
                     subws.Path("/apis/%s/%s")
 
                     subresourceApp := rest.NewSubresourceAPIApp(app.virtCli, app.consoleServerPort, app.handlerTLSConfiguration, app.clusterConfig)
+                        SubresourceAPIApp{
+                            statusUpdater: status.NewVMStatusUpdater(virtCli)
+                        }
 
                     "restart" -> subresourceApp.RestartVMRequestHandler
                     "start" -> subresourceApp.StartVMRequestHandler
                     "stop" -> subresourceApp.StopVMRequestHandler
                 restful.Filter(filter.RequestLoggingFilter())
             server.ListenAndServeTLS()
+
+2. SubresourceAPIApp::RestartVMRequestHandler, by change VM State
+================================================================================
+vm = app.fetchVirtualMachine(name, namespace)
+    vm, err := app.virtCli.VirtualMachine(namespace).Get(name, &k8smetav1.GetOptions{})
+vmi = app.virtCli.VirtualMachineInstance(namespace).Get(name, &k8smetav1.GetOptions{})
+bodyString = getChangeRequestJson(vm,
+	v1.VirtualMachineStateChangeRequest{Action: v1.StopRequest, UID: &vmi.UID},
+	v1.VirtualMachineStateChangeRequest{Action: v1.StartRequest})
+    test = "{ "op": "test", "path": "/status/stateChangeRequests", "value": %s}"
+    update = "{ "op": "add", "path": "/status/stateChangeRequests", "value": %s}"
+    return "[%s, %s]", test, update
+app.statusUpdater.PatchStatus(vm, types.JSONPatchType, []byte(bodyString))
+    VMStatusUpdater::PatchStatus(vm, types.JSONPatchType, bytes)
+        updater::patchWithSubresource(obj, pt, data)
+            updater::patchStatusUnstructured(obj, patchType, data)
+                updater.cli.VirtualMachine(a.GetNamespace()).PatchStatus(a.GetName(), patchType, data)
