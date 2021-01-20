@@ -16,7 +16,8 @@ func New() *restful.WebService {
 	service.
 		Path("/users").
 		Consumes(restful.MIME_XML, restful.MIME_JSON).
-		Produces(restful.MIME_XML, restful.MIME_JSON)
+		Produces(restful.MIME_JSON)
+		// Produces(restful.MIME_XML, restful.MIME_JSON)
 
 	service.Route(service.GET("/{user-id}").To(FindUser))
 	service.Route(service.POST("").To(UpdateUser))
