@@ -1,0 +1,50 @@
+1. arch
+================================================================================
+virt-api --port 8443 --console-server-port 8168 --subresource-only -v verbosity
+
+app = virt_api.NewVirtApi()
+service.Setup(app)
+app.Execute() -> virtAPIApp::Execute()
+    app.ConfigureOpenAPIService()
+        webservice at /swagger
+    app.Run()
+        app.readRequestHeader()
+        app.prepareCertManager()
+        app.registerMutatingWebhook()
+
+        # retrieve Informers
+        webhookInformers := webhooks.GetInformers()
+        kubeInformerFactory := controller.NewKubeInformerFactory(app.virtCli.RestClient(), app.virtCli, app.aggregatorClient, app.namespace)
+        configMapInformer := kubeInformerFactory.ConfigMap()
+        crdInformer := kubeInformerFactory.CRD()
+        authConfigMapInformer := kubeInformerFactory.ApiAuthConfigMap()
+        kubevirtCAConfigInformer := kubeInformerFactory.KubeVirtCAConfigMap()
+        kubeVirtInformer := kubeInformerFactory.KubeVirt()
+
+        # run Informers
+        go webhookInformers.VMIInformer.Run(stopChan)
+        go webhookInformers.VMIPresetInformer.Run(stopChan)
+        go webhookInformers.NamespaceLimitsInformer.Run(stopChan)
+        go webhookInformers.VMRestoreInformer.Run(stopChan)
+        go kubeVirtInformer.Run(stopChan)
+        go configMapInformer.Run(stopChan)
+        go crdInformer.Run(stopChan)
+        go authConfigMapInformer.Run(stopChan)
+        go kubevirtCAConfigInformer.Run(stopChan)
+
+        cache.WaitForCacheSync()
+
+        app.startTLS(kubeInformerFactory, stopChan)
+            app.setupTLS()
+            app.Compose()
+                app.composeSubresources()
+                    subws = new(restful.WebService)
+                    subws.Path("/apis/%s/%s")
+
+                    subresourceApp := rest.NewSubresourceAPIApp(app.virtCli, app.consoleServerPort, app.handlerTLSConfiguration, app.clusterConfig)
+
+                    "restart" -> subresourceApp.RestartVMRequestHandler
+                    "start" -> subresourceApp.StartVMRequestHandler
+                    "stop" -> subresourceApp.StopVMRequestHandler
+                restful.Filter(filter.RequestLoggingFilter())
+            server.ListenAndServeTLS()
