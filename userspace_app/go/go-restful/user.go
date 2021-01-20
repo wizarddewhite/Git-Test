@@ -11,6 +11,11 @@ type User struct {
 	Id, Name string
 }
 
+type Info struct {
+	Version string
+	Date    string
+}
+
 func New() *restful.WebService {
 	service := new(restful.WebService)
 	service.
@@ -23,6 +28,10 @@ func New() *restful.WebService {
 	service.Route(service.POST("").To(UpdateUser))
 	service.Route(service.PUT("/{user-id}").To(CreateUser))
 	service.Route(service.DELETE("/{user-id}").To(RemoveUser))
+
+	service.Route(service.GET("/").To(func(req *restful.Request, resp *restful.Response) {
+		resp.WriteAsJson(Info{Version: "0.1", Date: "2020.1.20"})
+	}))
 
 	return service
 }
