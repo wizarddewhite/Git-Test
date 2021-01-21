@@ -149,5 +149,23 @@ DomainWatcher::List()
     list.Items = appent(list.Items, *domain)
     return &list
 
+4. Notify::HandleDomainEvent(), grpc called by virt-launcher
+================================================================================
+err := json.Unmarshal(request.DomainJSON, domain)
+err := json.Unmarshal(request.StatusJSON, status)
+n.EventChan <- watch.Event{Type: watch.Added, Object: domain}
+n.EventChan <- watch.Event{Type: watch.Modified, Object: domain}
+n.EventChan <- watch.Event{Type: watch.Deleted, Object: domain}
 
+And this EventChan is handled in:
+PS, this how callback works
 
+domainInformer.Run() -> sharedIndexInformer::Run()
+    s.controller.Run() -> controller::Run()
+        r = NewReflector()
+        r.Run() -> Reflector::Run()
+            r.ListAndWatch()
+                w = r.listerWatcher.Watch(options), this is DomainWatcher
+                r.watchHandler(w watch.Interface)
+                    w.ResultChan() -> DomainWatcher::ResultChan()
+                        d.eventChan
