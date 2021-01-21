@@ -60,6 +60,16 @@ Execute()
         c.syncReadyConditionFromVMI(vm, vmi)
         c.statusUpdater.UpdateStatus(vm)
 
+4.1.1 c.startVMI(vm)
+================================================================================
+vmi := c.setupVMIFromVM(vm)
+vmi = c.clientset.VirtualMachineInstance().Create(vmi)
+
+4.1.1 c.stopVMI(vm)
+================================================================================
+err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.ObjectMeta.Name, &v1.DeleteOptions{})
+
+
 5. vmiController.Run()
 ================================================================================
 5.1 VMIController.runWorker() -> Execute() -> execute()
