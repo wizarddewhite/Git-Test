@@ -72,3 +72,22 @@ app.statusUpdater.PatchStatus(vm, types.JSONPatchType, []byte(bodyString))
         updater::patchWithSubresource(obj, pt, data)
             updater::patchStatusUnstructured(obj, patchType, data)
                 updater.cli.VirtualMachine(a.GetNamespace()).PatchStatus(a.GetName(), patchType, data)
+
+
+3. List of webservice 
+================================================================================
+
+"restart"    subresourceApp.RestartVMRequestHandler
+"migrate"    subresourceApp.MigrateVMRequestHandler
+"start"      subresourceApp.StartVMRequestHandler
+"stop"       subresourceApp.StopVMRequestHandler
+"pause"      subresourceApp.PauseVMRequestHandler
+"unpause"    subresourceApp.UnpauseVMRequestHandler
+"console"    subresourceApp.ConsoleRequestHandler
+"vnc"        subresourceApp.VNCRequestHandler
+"guestinfo"  subresourceApp.GuestOSInfo
+"rename"     subresourceApp.RenameVMRequestHandler
+"userlist"   subresourceApp.UserList
+"filesystemlist"     subresourceApp.FilesystemList
+
+"healthz"    healthz.KubeConnectionHealthzFuncFactory(app.clusterConfig)
