@@ -113,3 +113,17 @@ server := &http.Server{
 	TLSConfig: app.serverTLSConfig,
 }
 errCh <- server.ListenAndServeTLS("", "")
+
+2. LifecycleHandler::PauseHandler(request, response)
+================================================================================
+vmi, code = getVMI(request, lh.vmiInformer)
+sockFile = cmdclient.FindSocketOnHost(vmi)
+client = cmdclient.NewClient(sockFile)
+    conn, err := grpcutil.DialSocket(socketPath)
+    return NewClientWithInfoClient(infoClient, conn)
+client.PauseVirtualMachine(vmi)
+
+
+
+
+
