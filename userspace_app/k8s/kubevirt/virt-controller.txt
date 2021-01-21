@@ -55,7 +55,10 @@ Execute()
         c.startVMI(vm)
             vmi = c.setupVMIFromVM(vm)
             vmi = c.clientset.VirtualMachineInstance().Create(vmi)
+        c.stopVMI(vm)
     c.updateStatus(vm, vmi, )
+        c.syncReadyConditionFromVMI(vm, vmi)
+        c.statusUpdater.UpdateStatus(vm)
 
 5. vmiController.Run()
 ================================================================================
@@ -73,6 +76,7 @@ Execute()
                 --container-disk-dir "/var/run/kubevirt/container-disks"
             return pod
         pod = c.clientset.CoreV1().Pods().Create(templatePod)
+    c.updateStatus(vmi, pod, )
 
 
 0. Data Structure
