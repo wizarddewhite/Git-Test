@@ -16,6 +16,17 @@ app.Run()
     vmSourceSharedInformer = {vmiSourceLabel}
     vmTargetSharedInformer = {vmiTargetLabel}
     domainSharedInformer = virtcache.NewSharedInformer()
+        lw = newListWatchFromNotify(virtShareDir, watchdogTimeout, recorder,)
+            d := &DomainWatcher{
+            	backgroundWatcherStarted: false,
+            	virtShareDir:             virtShareDir,
+            	watchdogTimeout:          watchdogTimeout,
+            	recorder:                 recorder,
+            	vmiStore:                 vmiStore,
+            	unresponsiveSockets:      make(map[string]int64),
+            	resyncPeriod:             resyncPeriod,
+            }
+        informer = cache.NewSharedInformer(lw, &api.Domain{})
     os.MkdirAll("/var/run/kubevirt-private/network-info-cache")
     cmdclient.SetPodsBaseDir("/pods")
     cmdclient.SetLegacyBaseDir(app.VirtShareDir)
@@ -123,7 +134,20 @@ client = cmdclient.NewClient(sockFile)
     return NewClientWithInfoClient(infoClient, conn)
 client.PauseVirtualMachine(vmi)
 
-
+3. domainInformer.Run(stopCh)
+================================================================================
+DomainWatcher::List()
+    d.startBackground()
+        // start a thread to handle stuff
+        // start notifyserver
+        notifyserver.RunServer()
+            grpcServer = grpc.NewServer()
+            notifyServer = Notify {}
+            RegisterNotifyServer(grpcServer, notifyServer)
+    domains = d.listAllKnownDomains()
+    list = api.DomainList{}
+    list.Items = appent(list.Items, *domain)
+    return &list
 
 
 
