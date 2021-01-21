@@ -76,7 +76,7 @@ err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.Obj
 ================================================================================
     obj = c.vmiInformer.GetStore().GetByKey(key)
     vmi = obj.(*virtv1.VirtualMachineInstance)
-    c.sync(vmi, pod, )
+    c.sync(vmi, pod, dataVolumes)
         dataVolumesReady, isWaitForFirstConsumer, = c.handleSyncDataVolumes(vmi, dataVolumes)
         templatePod = c.templateService.RenderLaunchManifest(vmi)
             /usr/bin/virt-launcher --qemu-timeout 5m --kubevirt-share-dir xx \
@@ -85,6 +85,7 @@ err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.Obj
                 --ephemeral-disk-dir "/var/run/kubevirt-ephemeral-disks" \
                 --container-disk-dir "/var/run/kubevirt/container-disks"
             return pod
+        c.podExpectations.ExpectCreations(vmiKey, 1)
         pod = c.clientset.CoreV1().Pods().Create(templatePod)
     c.updateStatus(vmi, pod, )
 
