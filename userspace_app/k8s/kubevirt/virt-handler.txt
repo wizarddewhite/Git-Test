@@ -106,7 +106,7 @@ c.execute(key.(string))
         c.processVmCleanup()
         d.updateVMIStatus()
 
-1.3 app.runServer(errCh, consoleHandler, lifecycleHandler)
+1.3 app.runServer(errCh, consoleHandler, lifecycleHandler), restful server invoked by virt-api
 ================================================================================
 ws := new(restful.WebService)
 ws.Route(ws.GET("/v1/namespaces/{namespace}/virtualmachineinstances/{name}/console").To(consoleHandler.SerialHandler))

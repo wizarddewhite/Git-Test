@@ -56,7 +56,36 @@ app.Execute() -> virtAPIApp::Execute()
                 restful.Filter(filter.RequestLoggingFilter())
             server.ListenAndServeTLS()
 
-2. SubresourceAPIApp::RestartVMRequestHandler, by change VM State
+3. List of webservice 
+================================================================================
+There are at least two categories of API, based on the target of object
+
+  * vm
+  * vmi
+
+Generally, these two categories would be handled differently.
+
+For vms:
+
+    "restart"    subresourceApp.RestartVMRequestHandler
+    "migrate"    subresourceApp.MigrateVMRequestHandler
+    "start"      subresourceApp.StartVMRequestHandler
+    "stop"       subresourceApp.StopVMRequestHandler
+    "rename"     subresourceApp.RenameVMRequestHandler
+
+For vms:
+
+    "pause"      subresourceApp.PauseVMRequestHandler
+    "unpause"    subresourceApp.UnpauseVMRequestHandler
+    "console"    subresourceApp.ConsoleRequestHandler
+    "vnc"        subresourceApp.VNCRequestHandler
+    "guestinfo"  subresourceApp.GuestOSInfo
+    "userlist"   subresourceApp.UserList
+    "filesystemlist"     subresourceApp.FilesystemList
+
+"healthz"    healthz.KubeConnectionHealthzFuncFactory(app.clusterConfig)
+
+3.1 SubresourceAPIApp::RestartVMRequestHandler, by change VM State
 ================================================================================
 vm = app.fetchVirtualMachine(name, namespace)
     vm, err := app.virtCli.VirtualMachine(namespace).Get(name, &k8smetav1.GetOptions{})
@@ -73,21 +102,32 @@ app.statusUpdater.PatchStatus(vm, types.JSONPatchType, []byte(bodyString))
             updater::patchStatusUnstructured(obj, patchType, data)
                 updater.cli.VirtualMachine(a.GetNamespace()).PatchStatus(a.GetName(), patchType, data)
 
-
-3. List of webservice 
+3.2 subresourceApp.PauseVMIRequestHandler
 ================================================================================
-
-"restart"    subresourceApp.RestartVMRequestHandler
-"migrate"    subresourceApp.MigrateVMRequestHandler
-"start"      subresourceApp.StartVMRequestHandler
-"stop"       subresourceApp.StopVMRequestHandler
-"pause"      subresourceApp.PauseVMRequestHandler
-"unpause"    subresourceApp.UnpauseVMRequestHandler
-"console"    subresourceApp.ConsoleRequestHandler
-"vnc"        subresourceApp.VNCRequestHandler
-"guestinfo"  subresourceApp.GuestOSInfo
-"rename"     subresourceApp.RenameVMRequestHandler
-"userlist"   subresourceApp.UserList
-"filesystemlist"     subresourceApp.FilesystemList
-
-"healthz"    healthz.KubeConnectionHealthzFuncFactory(app.clusterConfig)
+validate = 
+getURL = 
+app.putRequestHandler(request, response, validate, getURL)
+    url, conn, statusErr = app.prepareConnection(request, validate, getURL)
+        vmiName := request.PathParameter("name")
+        namespace := request.PathParameter("namespace")
+        vmi = app.fetchVirtualMachineInstance(vmiName, namespace)
+        conn = app.getVirtHandlerConnForVMI(vmi)
+            kubecli.NewVirtHandlerClient(app.virtCli).Port(app.consoleServerPort).ForNode(vmi.Status.NodeName)
+                &virtHandler{
+                    client:          client,
+                    virtHandlerPort: 0,
+                    namespace:       "",
+                }.Port().ForNode(vmi.Status.NodeName)
+                    conn = virtHandlerConn{}
+                    pod = v.getVirtHandler(nodeName, ), one virt-handler per node
+                    conn.pod = pod
+                    conn.port = v.virtHandlerPort
+                    return conn
+        url = getURL(vmi, conn)
+            conn.PauseURI(vmi) -> virtHandlerConn::PauseURI()
+            fmt.Sprintf(pauseTemplateURI, formatIpForUri(ip), port, vmi.ObjectMeta.Namespace, vmi.ObjectMeta.Name), nil
+            "https://%s:%v/v1/namespaces/%s/virtualmachineinstances/%s/pause"
+    conn.Put(url, app.handlerTLSConfiguration) -> virtHandlerConn::Put()
+        client = http.Client{}
+        req = http.NewRequest(http.MethodPut, url)
+        client.Do(req)
