@@ -1,0 +1,36 @@
+1. Download
+
+```
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+```
+
+2. Prerequest
+
+```
+install libvirt:           yum install libvirt
+add user to libvirt group: sudo usermod -a -G libvirt $(whoami)
+turn off swap:             besides /etc/fstab, disable systemd too
+disable firewall:          systemctl disable firewalld.service
+start docker:              systemctl enable docker.service
+start kubelete:            systemctl enable kubelete.service
+disable selinux:           https://www.strongdm.com/docs/architecture/deployment/selinux
+```
+
+3. Start
+
+```
+minikube start --alsologtostderr -v=1 --driver=kvm2
+```
+
+Or just emulate
+
+```
+minikube start --alsologtostderr -v=1 --driver=none
+```
+
+4. Stop
+
+```
+minikube stop
+```
