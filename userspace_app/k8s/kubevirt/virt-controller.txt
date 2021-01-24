@@ -31,8 +31,11 @@ Execute()
 
 2. nodeController.Run()
 ================================================================================
-2.1 NodeController.runWorker() -> Execute() -> execute()
+2.1 NodeController.runWorker() -> Execute() -> execute(key)
 ================================================================================
+obj = c.nodeInformer.GetStore().GetByKey(key)
+nodeName = key
+node = obj.(*v1.Node)
 
 
 3. rsController.Run()
@@ -76,14 +79,44 @@ err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.Obj
 ================================================================================
     obj = c.vmiInformer.GetStore().GetByKey(key)
     vmi = obj.(*virtv1.VirtualMachineInstance)
+    pod = c.currentPod(vmi)
+        pods = c.listPodsFromNamespace(vmi.Namespace), pod controlled by vmi
+    dataVolumes, err := c.listMatchingDataVolumes(vmi), vmi.Spec.Volumes
     c.sync(vmi, pod, dataVolumes)
         dataVolumesReady, isWaitForFirstConsumer, = c.handleSyncDataVolumes(vmi, dataVolumes)
         templatePod = c.templateService.RenderLaunchManifest(vmi)
-            /usr/bin/virt-launcher --qemu-timeout 5m --kubevirt-share-dir xx \
+            volumeMounts:
+              - name: "ephemeral-disks"
+                mountPath: "/var/run/kubevirt-ephemeral-disks"
+              - name: "container-disks"
+                mountPath: "/var/run/kubevirt/container-disks"
+              - name: "libvirt-runtime"
+                mountPath: "/var/run/libvirt"
+              - name: "sockets"
+                mountPath: "/var/run/kubevirt/sockets"
+            volumes:
+            - name: "sockets"
+              emptyDir: {}
+            command = /usr/bin/virt-launcher --qemu-timeout 5m --kubevirt-share-dir xx \
                 --name xx --namespace xx \
                 --kubevirt-share-dir "/var/run/kubevirt" \
                 --ephemeral-disk-dir "/var/run/kubevirt-ephemeral-disks" \
                 --container-disk-dir "/var/run/kubevirt/container-disks"
+            compute = Container{
+                Name: "compute"
+                Image: "virt-launcher"
+                Command: command
+                VolumeMounts: volumeMounts
+            
+            volumes:
+            - name: "virt-bin-share-dir"
+              emptyDir: {}
+            - name: "ephemeral-disks"
+              emptyDir: {}
+            - name: "container-disks"
+              emptyDir: {}
+            - name: "libvirt-runtime"
+              emptyDir: {}
             return pod
         c.podExpectations.ExpectCreations(vmiKey, 1)
         pod = c.clientset.CoreV1().Pods().Create(templatePod)
@@ -127,7 +160,7 @@ err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.Obj
    |templateService                  |
    |     (services.TemplateService)  |
    |    +----------------------------|
-   |    |launcherImage               |
+   |    |launcherImage               |  = "virt-launcher"
    |    |virtShareDir                |  = "/var/run/kubevirt"
    |    |virtLibDir                  |  = "/var/lib/kubevirt"
    |    |ephemeralDiskDir            |  = "/var/run/kubevirt-ephemeral-disks"
@@ -224,4 +257,240 @@ err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.Obj
    |   UpdateFunc                    |  = 
    |                                 |
    +---------------------------------+
+
+0.6 vm.yaml -> vmi.yaml
+================================================================================
+Eg vm.yaml
+
+apiVersion: kubevirt.io/v1alpha3
+kind: VirtualMachine
+metadata:
+  name: testvm
+spec:
+  running: false
+  template:
+    metadata:
+      labels: 
+        kubevirt.io/size: small
+        kubevirt.io/domain: testvm
+    spec:
+      domain:
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: rootfs
+          - disk:
+              bus: virtio
+            name: cloudinit
+          interfaces:
+          - name: default
+            masquerade: {}
+        resources:
+          requests:
+            memory: 64M
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+        - name: rootfs
+          containerDisk:
+            image: kubevirt/cirros-registry-disk-demo
+        - name: cloudinit
+          cloudInitNoCloud:
+            userDataBase64: SGkuXG4=
+
+   vmi
+   +-------------------------+
+   |Kind                     |  = "VirtualMachineInstance"
+   |                         |
+   |ObjectMeta               |
+   |    Name                 |  = vm.ObjectMeta.Name
+   |    GenerateName         |  = ""
+   |    Namespace            |  = vm.ObjectMeta.Namespace
+   |    Labels               |  = vm.Spec.Template.ObjectMeta.Labels
+   |    SelfLink             |  = fmt.Sprintf("/apis/%s/namespaces/%s/virtualmachineinstances/%s", GroupVersion.String(), namespace, name),
+   |Spec                     |  = vm.Spec.Template.Spec
+   |                         |
+   +-------------------------+
+
+0.7 vmi.yaml -> pod.yaml
+================================================================================
+yaml output for virt-launcher.
+
+# minikube kubectl -- describe pod/virt-launcher-testvm-46sj2
+Name:         virt-launcher-testvm-46sj2
+Namespace:    default
+Priority:     0
+Node:         localhost.localdomain/10.0.2.15
+Start Time:   Sun, 24 Jan 2021 17:28:14 +0800
+Labels:       kubevirt.io=virt-launcher
+              kubevirt.io/created-by=c792fb7f-e459-4fa9-9e75-90beb4776f3e
+              kubevirt.io/domain=testvm
+              kubevirt.io/size=small
+Annotations:  kubevirt.io/domain: testvm
+              traffic.sidecar.istio.io/kubevirtInterfaces: k6t-eth0
+Status:       Running
+IP:           172.17.0.10
+IPs:
+  IP:           172.17.0.10
+Controlled By:  VirtualMachineInstance/testvm
+Init Containers:
+  container-disk-binary:
+    Container ID:  docker://07b524e399370f3c53039716bb5e75da6396a924375e6f6b79bc5fa98c62c44e
+    Image:         index.docker.io/kubevirt/virt-launcher@sha256:cadfb07ba28197a656fdad4fd9c44b238172cdc02631094ca7e958d003ae6efe
+    Image ID:      docker-pullable://kubevirt/virt-launcher@sha256:cadfb07ba28197a656fdad4fd9c44b238172cdc02631094ca7e958d003ae6efe
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      /usr/bin/cp
+      /usr/bin/container-disk
+      /init/usr/bin/container-disk
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Sun, 24 Jan 2021 17:28:15 +0800
+      Finished:     Sun, 24 Jan 2021 17:28:15 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  40M
+    Requests:
+      cpu:        10m
+      memory:     1M
+    Environment:  <none>
+    Mounts:
+      /init/usr/bin from virt-bin-share-dir (rw)
+  volumerootfs-init:
+    Container ID:  docker://d6ee5925c045934f7a41df75ec8b34dffa888de89ce3e57c33cb53f558768e62
+    Image:         kubevirt/cirros-registry-disk-demo
+    Image ID:      docker-pullable://kubevirt/cirros-registry-disk-demo@sha256:657bfaaea4720e494058da55b35b302065d384576d49fa17be32d10e8ddfe2e7
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      /usr/bin/container-disk
+    Args:
+      --no-op
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Sun, 24 Jan 2021 17:28:21 +0800
+      Finished:     Sun, 24 Jan 2021 17:28:21 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  40M
+    Requests:
+      cpu:        10m
+      memory:     1M
+    Environment:  <none>
+    Mounts:
+      /usr/bin from virt-bin-share-dir (rw)
+      /var/run/kubevirt-ephemeral-disks/container-disk-data/c792fb7f-e459-4fa9-9e75-90beb4776f3e from container-disks (rw)
+Containers:
+  compute:
+    Container ID:  docker://25c6f29de023018163845c2ea22799afeec97c9bb0da7dfeee56cc505c3a49b3
+    Image:         index.docker.io/kubevirt/virt-launcher@sha256:cadfb07ba28197a656fdad4fd9c44b238172cdc02631094ca7e958d003ae6efe
+    Image ID:      docker-pullable://kubevirt/virt-launcher@sha256:cadfb07ba28197a656fdad4fd9c44b238172cdc02631094ca7e958d003ae6efe
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      /usr/bin/virt-launcher
+      --qemu-timeout
+      5m
+      --name
+      testvm
+      --uid
+      c792fb7f-e459-4fa9-9e75-90beb4776f3e
+      --namespace
+      default
+      --kubevirt-share-dir
+      /var/run/kubevirt
+      --ephemeral-disk-dir
+      /var/run/kubevirt-ephemeral-disks
+      --container-disk-dir
+      /var/run/kubevirt/container-disks
+      --grace-period-seconds
+      45
+      --hook-sidecars
+      0
+      --less-pvc-space-toleration
+      10
+      --ovmf-path
+      /usr/share/OVMF
+      --use-emulation
+    State:          Running
+      Started:      Sun, 24 Jan 2021 17:28:22 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      devices.kubevirt.io/tun:  1
+    Requests:
+      cpu:                      100m
+      devices.kubevirt.io/tun:  1
+      memory:                   242382920
+    Environment:                <none>
+    Mounts:
+      /var/run/kubevirt-ephemeral-disks from ephemeral-disks (rw)
+      /var/run/kubevirt/container-disks from container-disks (rw)
+      /var/run/kubevirt/sockets from sockets (rw)
+      /var/run/libvirt from libvirt-runtime (rw)
+  volumerootfs:
+    Container ID:  docker://52e3e81a17715e1e98575e88819125db8dde3b9cb17f41041920a4e58340065b
+    Image:         kubevirt/cirros-registry-disk-demo
+    Image ID:      docker-pullable://kubevirt/cirros-registry-disk-demo@sha256:657bfaaea4720e494058da55b35b302065d384576d49fa17be32d10e8ddfe2e7
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      /usr/bin/container-disk
+    Args:
+      --copy-path
+      /var/run/kubevirt-ephemeral-disks/container-disk-data/c792fb7f-e459-4fa9-9e75-90beb4776f3e/disk_0
+    State:          Running
+      Started:      Sun, 24 Jan 2021 17:28:30 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  40M
+    Requests:
+      cpu:        10m
+      memory:     1M
+    Environment:  <none>
+    Mounts:
+      /usr/bin from virt-bin-share-dir (rw)
+      /var/run/kubevirt-ephemeral-disks/container-disk-data/c792fb7f-e459-4fa9-9e75-90beb4776f3e from container-disks (rw)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  sockets:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  virt-bin-share-dir:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  libvirt-runtime:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  ephemeral-disks:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  container-disks:
+    Type:        EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:      
+    SizeLimit:   <unset>
+QoS Class:       Burstable
+Node-Selectors:  kubevirt.io/schedulable=true
+Tolerations:     node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                 node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
 
