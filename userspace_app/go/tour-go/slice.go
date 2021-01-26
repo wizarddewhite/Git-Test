@@ -59,10 +59,24 @@ func append_slice() {
 	printSlice("b", b)
 }
 
+type Caps []string
+
+func (c Caps) show() {
+	for _, cap := range c {
+		fmt.Println(cap)
+	}
+}
+
+func methodOnSlice() {
+	var c = []string{"eat", "fly", "hide"}
+	Caps(c).show()
+}
+
 func main() {
 	//create_slice()
-	make_slice()
+	// make_slice()
 	//append_slice()
+	methodOnSlice()
 }
 
 func printSlice(s string, x []int) {
