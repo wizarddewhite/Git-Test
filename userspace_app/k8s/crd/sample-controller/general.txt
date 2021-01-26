@@ -43,3 +43,6 @@ kubectl get deployments
 
 ./hack/update-codegen.sh
 
+4.1 Example
+
+Refer to: crd_with_code_generator.txt
