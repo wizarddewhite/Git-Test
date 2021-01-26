@@ -2,6 +2,19 @@ package main
 
 import "fmt"
 
+type Caps [3]string
+
+func (c Caps) show() {
+	for _, cap := range c {
+		fmt.Println(cap)
+	}
+}
+
+func methodOnArray() {
+	var c = [3]string{"eat", "fly", "hide"}
+	Caps(c).show()
+}
+
 func main() {
 	var a [2]string
 	a[0] = "Hello"
@@ -22,4 +35,5 @@ func main() {
 	c[0] = "test"
 	fmt.Println(c)
 
+	methodOnArray()
 }
