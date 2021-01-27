@@ -1,0 +1,135 @@
+1. Deploy
+
+1.1 Deploy virt-operator
+
+```
+export VERSION=$(curl -s https://api.github.com/repos/kubevirt/kubevirt/releases | grep tag_name | grep -v -- '-rc' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
+
+kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/kubevirt-operator.yaml
+(or in source code directory "kubectl create -f _out/manifests/release/kubevirt-operator.yaml")
+```
+
+1.1.1 Use emulation
+
+```
+# use emulation if not kvm
+kubectl create configmap kubevirt-config -n kubevirt --from-literal debug.useEmulation=true
+```
+
+1.2 Create kubevirt CR
+
+```
+kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/kubevirt-cr.yaml
+(or in source code directory "kubectl create -f _out/manifests/release/kubevirt-cr.yaml")
+```
+
+1.3 Check Deployment Status
+
+```
+kubectl get kubevirt.kubevirt.io/kubevirt -n kubevirt -o=jsonpath="{.status.phase}"
+```
+
+If it shows "Deployed", it means done.
+
+Or
+
+```
+$ kubectl wait --timeout=180s --for=condition=Available -n kubevirt kv/kubevirt
+kubevirt.kubevirt.io/kubevirt condition met
+```
+
+Means done too.
+
+1.4 View Related Components
+
+```
+# minikube kubectl -- get all -n kubevirt
+NAME                                   READY   STATUS    RESTARTS   AGE
+pod/virt-api-76b44ffc65-ngghj          1/1     Running   0          9m16s
+pod/virt-api-76b44ffc65-pzgpf          1/1     Running   0          9m16s
+pod/virt-controller-84b5d4b779-nstzk   1/1     Running   0          8m52s
+pod/virt-controller-84b5d4b779-zfvv4   1/1     Running   0          8m52s
+pod/virt-handler-w8mtz                 1/1     Running   0          8m52s
+pod/virt-operator-867fcd786d-tj7wc     1/1     Running   0          15m
+pod/virt-operator-867fcd786d-whm8k     1/1     Running   0          15m
+ 
+NAME                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+service/kubevirt-operator-webhook     ClusterIP   10.105.50.125   <none>        443/TCP   9m16s
+service/kubevirt-prometheus-metrics   ClusterIP   10.106.66.51    <none>        443/TCP   9m17s
+service/virt-api                      ClusterIP   10.109.48.243   <none>        443/TCP   9m17s
+ 
+NAME                          DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+daemonset.apps/virt-handler   1         1         1       1            1           <none>          8m52s
+ 
+NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/virt-api          2/2     2            2           9m16s
+deployment.apps/virt-controller   2/2     2            2           8m52s
+deployment.apps/virt-operator     2/2     2            2           15m
+ 
+NAME                                         DESIRED   CURRENT   READY   AGE
+replicaset.apps/virt-api-76b44ffc65          2         2         2       9m16s
+replicaset.apps/virt-controller-84b5d4b779   2         2         2       8m52s
+replicaset.apps/virt-operator-867fcd786d     2         2         2       15m
+ 
+NAME                            AGE     PHASE
+kubevirt.kubevirt.io/kubevirt   9m22s   Deployed
+```
+
+1.5 Install virtctl
+
+```
+curl -L -o virtctl https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/virtctl-${VERSION}-${ARCH}
+chmod +x virtctl
+sudo install virtctl /usr/local/bin
+```
+
+2. Remove
+
+```
+$ export RELEASE=v0.17.0
+$ kubectl delete -n kubevirt kubevirt kubevirt --wait=true # --wait=true should anyway be default
+$ kubectl delete apiservices v1alpha3.subresources.kubevirt.io # this needs to be deleted to avoid stuck terminating namespaces
+$ kubectl delete mutatingwebhookconfigurations virt-api-mutator # not blocking but would be left over
+$ kubectl delete validatingwebhookconfigurations virt-api-validator # not blocking but would be left over
+$ kubectl delete -f https://github.com/kubevirt/kubevirt/releases/download/${RELEASE}/kubevirt-operator.yaml --wait=false
+```
+
+To get the RELEASE value for a running kubevirt:
+
+```
+# kubectl describe deployment/virt-operator -n kubevirt | grep KUBEVIRT_VERSION
+      KUBEVIRT_VERSION:        v0.34.2
+```
+
+More detail refer to:
+
+https://kubevirtlegacy.gitbook.io/user-guide/installation/updating-and-deleting-installs#deleting-kubevirt
+
+3. VM Operations
+
+3.1 Create
+
+```
+# Creating a virtual machine
+$ kubectl apply -f https://raw.githubusercontent.com/kubevirt/demo/master/manifests/vm.yaml
+ 
+# After deployment you can manage VMs using the usual verbs:
+$ kubectl describe vm testvm
+```
+
+3.2 Start
+
+```
+# To start a VM you can use, this will create a VM instance (VMI)
+$ virtctl start testvm
+ 
+# The interested reader can now optionally inspect the instance
+$ kubectl describe vmi testvm
+```
+
+3.3 Access console
+
+```
+# Connect to the serial console
+$ ./virtctl console testvm
+```
