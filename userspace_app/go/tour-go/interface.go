@@ -108,6 +108,13 @@ func (a *NopAb) Abb() float64 {
 	return 0.0
 }
 
+var _ Ab = &AbImpl{}
+
+type AbImpl struct {
+	Val float64
+	NopAb
+}
+
 func main() {
 	// generic_type()
 	// real_type_of_interface()
