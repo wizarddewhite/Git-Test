@@ -115,8 +115,20 @@ type AbImpl struct {
 	NopAb
 }
 
+func (a *AbImpl) Abs() float64 {
+	return a.Val
+}
+
+func test_AbImpl() {
+	var a AbImpl
+	a.Val = 9.8
+	fmt.Println(a.Abs())
+	fmt.Println(a.Abb())
+}
+
 func main() {
 	// generic_type()
 	// real_type_of_interface()
-	use_switch_to_match_type()
+	// use_switch_to_match_type()
+	test_AbImpl()
 }
