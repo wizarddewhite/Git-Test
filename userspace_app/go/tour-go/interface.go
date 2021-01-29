@@ -92,6 +92,22 @@ func use_switch_to_match_type() {
 	Print(i)
 }
 
+type Ab interface {
+	Abser
+	Abber
+}
+
+var _ Ab = &NopAb{}
+
+type NopAb struct{}
+
+func (a *NopAb) Abs() float64 {
+	return 0.0
+}
+func (a *NopAb) Abb() float64 {
+	return 0.0
+}
+
 func main() {
 	// generic_type()
 	// real_type_of_interface()
