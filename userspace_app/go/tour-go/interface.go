@@ -111,10 +111,11 @@ func (a *NopAb) Abb() float64 {
 var _ Ab = &AbImpl{}
 
 type AbImpl struct {
-	Val float64
-	NopAb
+	Val   float64
+	NopAb // embed a struct which implements the interface
 }
 
+// while the method could be override
 func (a *AbImpl) Abs() float64 {
 	return a.Val
 }
@@ -126,9 +127,32 @@ func test_AbImpl() {
 	fmt.Println(a.Abb())
 }
 
+type eIntf struct {
+	Val   float64
+	Abber // embed an interface
+}
+
+func test_embedInterface() Abber {
+	var tx eIntf
+	tx.Val = 9.0
+	tx.Abber = &Vertex{0.0, 0.0} // assign to a real interface struct
+	fmt.Println("tx.Abb() ", tx.Abb())
+
+	tx2 := eIntf{
+		Val: 9.0,
+		// panic if not assigned a real interface struct
+		// Abber: &Vertex{0.0, 0.0},
+	}
+	if tx2.Abber != nil {
+		fmt.Println("tx2.Abb() ", tx2.Abb())
+	}
+	return tx
+}
+
 func main() {
 	// generic_type()
 	// real_type_of_interface()
 	// use_switch_to_match_type()
-	test_AbImpl()
+	// test_AbImpl()
+	test_embedInterface()
 }
