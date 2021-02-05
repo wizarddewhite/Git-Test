@@ -165,6 +165,13 @@ code-generator.
 
 This is retrieved from informerFactory.
 
+3. Generate CRD yaml from code
+
+$ cd kubernetes-test-controller
+$ GOFLAGS= controller-gen crd:allowDangerousTypes=true paths=./lib/testresource/v1beta1/
+
+Then the crd yaml would be generated in ./config/crd/ directory.
+
 0. Reference
 
 This one is based on this reference:
