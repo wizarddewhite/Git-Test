@@ -2,14 +2,32 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	testresourcev1beta1 "insujang.github.io/kubernetes-test-controller/lib/testresource/v1beta1"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/klog"
 )
+
+func patchValidation(crd *apiextensions.CustomResourceDefinition) error {
+	name := crd.Spec.Names.Singular
+
+	validation, ok := CRDsValidation[name]
+	if !ok {
+		return nil
+	}
+	crvalidation := apiextensions.CustomResourceValidation{}
+	err := k8syaml.NewYAMLToJSONDecoder(strings.NewReader(validation)).Decode(&crvalidation)
+	if err != nil {
+		return fmt.Errorf("Couldn't decode validation for %s, %v", name, err)
+	}
+	crd.Spec.Validation = &crvalidation
+	return nil
+}
 
 func (c *Controller) doesCRDExist() (bool, error) {
 	crd, err := c.apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(testresourcev1beta1.Name, metav1.GetOptions{})
@@ -58,21 +76,6 @@ func (c *Controller) CreateCRD() error {
 				Kind:       testresourcev1beta1.Kind,
 				ShortNames: []string{testresourcev1beta1.ShortName},
 			},
-			Validation: &apiextensions.CustomResourceValidation{
-				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
-					Type: "object",
-					Properties: map[string]apiextensions.JSONSchemaProps{
-						"spec": {
-							Type: "object",
-							Properties: map[string]apiextensions.JSONSchemaProps{
-								"command":        {Type: "string", Pattern: "^(echo).*"},
-								"customProperty": {Type: "string"},
-							},
-							Required: []string{"command", "customProperty"},
-						},
-					},
-				},
-			},
 			AdditionalPrinterColumns: []apiextensions.CustomResourceColumnDefinition{
 				{
 					Name:     "command",
@@ -81,6 +84,10 @@ func (c *Controller) CreateCRD() error {
 				},
 			},
 		},
+	}
+
+	if err := patchValidation(crd); err != nil {
+		klog.Fatalf(err.Error())
 	}
 
 	_, err := c.apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(crd)
