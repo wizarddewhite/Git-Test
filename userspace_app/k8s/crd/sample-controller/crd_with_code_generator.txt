@@ -165,12 +165,29 @@ code-generator.
 
 This is retrieved from informerFactory.
 
-3. Generate CRD yaml from code
+3. Automatic generate CRD validation
+
+Now we can generate the CRD validation code from the CRD definition in
+types.go instead of write by hand.
+
+This is done by two steps:
+
+  * generate crd.yaml from types.go by controller-gen
+  * extract validation part in crd.yaml and put into validations_generated.go
+
+3.1 Generate CRD yaml from code
 
 $ cd kubernetes-test-controller
 $ GOFLAGS= controller-gen crd:allowDangerousTypes=true paths=./lib/testresource/v1beta1/
 
 Then the crd yaml would be generated in ./config/crd/ directory.
+
+3.2 Extract validation part
+
+This is done by the tool validation-generator.go, which is copied from
+kubevirt.
+
+The output file is validations_generated.go which would be used by crd.go.
 
 0. Reference
 
