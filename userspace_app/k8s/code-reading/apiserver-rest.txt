@@ -1,0 +1,37 @@
+1. registerResourceHandlers(path, storage, ws)
+================================================================================
+// Create Route for actions
+case: "GET"
+case: "PATCH"
+case: "POST"
+case: "PUT"
+
+2. POST -> restfulCreateResource()
+================================================================================
+handlers.CreateResource(r, &scope, admit)(res.ResponseWriter, req.Request)
+
+3. PUT -> restfulUpdateResource()
+================================================================================
+handlers.UpdateResource(r, &scope, admit)(res.ResponseWriter, req.Request)
+
+0. Data Struct
+================================================================================
+
+0.1 action
+================================================================================
+
+    action
+    +------------------------------+
+    |Verb                          |  = "GET", "PUT", "POST"
+    |Path                          |
+    |    (string)                  |
+    |Params                        |
+    |    ([]*restful.Parameter)    |
+    |Namer                         |
+    |    (handlers.ScopeNamer)     |
+    |                              |
+    +------------------------------+
+
+0. Reference
+================================================================================
+http://yangxikun.github.io/kubernetes/2020/01/30/kubernetes-apiserver-concurrent-safe.html
