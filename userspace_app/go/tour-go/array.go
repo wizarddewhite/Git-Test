@@ -38,6 +38,31 @@ func test_on_array() {
 	methodOnArray()
 }
 
+func test_two_dim_array() {
+	n := 2
+	m := 3
+	//动态创建二维数组
+	grid := make([][]int, n)
+	for i := 0; i < n; i++ {
+		grid[i] = make([]int, m)
+
+		for j := 0; j < m; j++ {
+			grid[i][j] = i*m + j
+		}
+	}
+	/*
+		012
+		345
+	*/
+	for i := 0; i < n; i++ {
+		for j := 0; j < m; j++ {
+			fmt.Print(grid[i][j])
+		}
+		fmt.Println()
+	}
+}
+
 func main() {
-	test_on_array()
+	// test_on_array()
+	test_two_dim_array()
 }
