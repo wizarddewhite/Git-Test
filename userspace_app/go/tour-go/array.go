@@ -15,7 +15,7 @@ func methodOnArray() {
 	Caps(c).show()
 }
 
-func main() {
+func test_on_array() {
 	var a [2]string
 	a[0] = "Hello"
 	a[1] = "World"
@@ -36,4 +36,8 @@ func main() {
 	fmt.Println(c)
 
 	methodOnArray()
+}
+
+func main() {
+	test_on_array()
 }
