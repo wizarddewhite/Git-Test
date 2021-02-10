@@ -73,8 +73,14 @@ func newCommand() *cobra.Command {
 			}
 			return nil
 		},
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Inside rootCmd PersistentPreRun with args: %v\n", args)
+		},
 		Run: func(c *cobra.Command, args []string) {
 			fmt.Println("command run: ", args)
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Inside rootCmd PersistentPostRun with args: %v\n", args)
 		},
 	}
 
