@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -27,8 +28,14 @@ func newCommand() *cobra.Command {
 		Use:   "cobra_cmd",
 		Short: "cobra command",
 		Long:  "cobra command for test",
-		Run: func(c *cobra.Command, _ []string) {
-			fmt.Println("command run")
+		Args: func(c *cobra.Command, args []string) error {
+			if len(args) < 1 {
+				return errors.New("requires a color argument")
+			}
+			return nil
+		},
+		Run: func(c *cobra.Command, args []string) {
+			fmt.Println("command run: ", args)
 		},
 	}
 
