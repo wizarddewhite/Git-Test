@@ -33,7 +33,8 @@ func New() *restful.WebService {
 		// Produces(restful.MIME_XML, restful.MIME_JSON)
 
 	service.Route(service.GET("/{user-id}").To(FindUser).
-		Param(service.QueryParameter("pretty", "If 'true', then the output is pretty printed.")))
+		Param(service.QueryParameter("pretty", "If 'true', then the output is pretty printed.")).
+		Param(service.QueryParameter("detail", "If 'true', then the output is detail.")))
 	service.Route(service.POST("").To(UpdateUser))
 	service.Route(service.PUT("/{user-id}").To(CreateUser))
 	service.Route(service.DELETE("/{user-id}").To(RemoveUser))
@@ -66,9 +67,13 @@ func FindUser(request *restful.Request, response *restful.Response) {
 	id := request.PathParameter("user-id")
 	log.Println("Find user: ", id)
 	pretty := request.QueryParameter("pretty")
+	detail := request.QueryParameter("detail")
 	// here you would fetch user from some persistence system
 	if pretty == "true" {
 		log.Println("pretty")
+	}
+	if detail == "true" {
+		log.Println("detail")
 	}
 	usr := User{Id: id, Name: "John Doe"}
 	response.WriteEntity(usr)

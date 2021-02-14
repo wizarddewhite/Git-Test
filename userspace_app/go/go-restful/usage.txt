@@ -10,6 +10,10 @@ curl http://localhost:8080/users/richard
 
 curl http://localhost:8080/users/richard\?pretty\=true
 
+one more parameter
+
+curl http://localhost:8080/users/richard\?pretty\=true\&detail\=true
+
 2. Post root
 
 curl -X PUT -H "Accept: application/json"  \
