@@ -1,0 +1,14 @@
+1. Get root "/"
+
+curl http://localhost:8080/users/
+
+2. Get User
+
+curl http://localhost:8080/users/richard
+
+2. Post root
+
+curl -X PUT -H "Accept: application/json"  \
+	     -H 'content-type: application/json' \
+	     -d '{"Id": "richard","Name": "john"}' \
+	     http://localhost:8080/users/richard
