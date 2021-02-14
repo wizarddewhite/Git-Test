@@ -16,6 +16,7 @@ type Resource struct {
 	Name  string
 	Group string
 }
+
 type Info struct {
 	Version   string
 	Date      string
@@ -31,7 +32,8 @@ func New() *restful.WebService {
 		Produces(restful.MIME_JSON)
 		// Produces(restful.MIME_XML, restful.MIME_JSON)
 
-	service.Route(service.GET("/{user-id}").To(FindUser))
+	service.Route(service.GET("/{user-id}").To(FindUser).
+		Param(service.QueryParameter("pretty", "If 'true', then the output is pretty printed.")))
 	service.Route(service.POST("").To(UpdateUser))
 	service.Route(service.PUT("/{user-id}").To(CreateUser))
 	service.Route(service.DELETE("/{user-id}").To(RemoveUser))
@@ -63,12 +65,17 @@ func New() *restful.WebService {
 func FindUser(request *restful.Request, response *restful.Response) {
 	id := request.PathParameter("user-id")
 	log.Println("Find user: ", id)
+	pretty := request.QueryParameter("pretty")
 	// here you would fetch user from some persistence system
+	if pretty == "true" {
+		log.Println("pretty")
+	}
 	usr := User{Id: id, Name: "John Doe"}
 	response.WriteEntity(usr)
 }
 
 func UpdateUser(request *restful.Request, response *restful.Response) {
+	log.Println("update User: ")
 	usr := new(User)
 	err := request.ReadEntity(usr)
 	// here you would update the user with some persistence system
@@ -82,6 +89,7 @@ func UpdateUser(request *restful.Request, response *restful.Response) {
 func CreateUser(request *restful.Request, response *restful.Response) {
 	usr := User{Id: request.PathParameter("user-id")}
 	err := request.ReadEntity(usr)
+	log.Println("create User: ", request.PathParameter("user-id"))
 	// here you would create the user with some persistence system
 	if err == nil {
 		response.WriteEntity(usr)

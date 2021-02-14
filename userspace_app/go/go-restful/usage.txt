@@ -6,6 +6,10 @@ curl http://localhost:8080/users/
 
 curl http://localhost:8080/users/richard
 
+2.1 With Parameter: pretty
+
+curl http://localhost:8080/users/richard\?pretty\=true
+
 2. Post root
 
 curl -X PUT -H "Accept: application/json"  \
