@@ -1,5 +1,9 @@
 1. registerResourceHandlers(path, storage, ws)
 ================================================================================
+lister, isLister := storage.(rest.Lister)
+
+1.1 install actions
+================================================================================
 // Create Route for actions
 case: "GET"
 case: "PATCH"
@@ -13,6 +17,18 @@ handlers.CreateResource(r, &scope, admit)(res.ResponseWriter, req.Request)
 3. PUT -> restfulUpdateResource()
 ================================================================================
 handlers.UpdateResource(r, &scope, admit)(res.ResponseWriter, req.Request)
+
+4. LIST -> restfulListResource(lister, watcher, reqScope, false, a.minRequestTimeout)
+================================================================================
+handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.ResponseWriter, req.Request)
+4.1 namespace, err := scope.Namer.Namespace(req)
+================================================================================
+4.2 metainternalversionscheme.ParameterCodec.DecodeParameters(req.URL.Query(), scope.MetaGroupVersion, &opts); err != nil {
+================================================================================
+4.3 result, err := r.List(ctx, &opts), what is this?
+================================================================================
+4.4 transformResponseObject(ctx, scope, trace, req, w, http.StatusOK, outputMediaType, result)
+================================================================================
 
 0. Data Struct
 ================================================================================
