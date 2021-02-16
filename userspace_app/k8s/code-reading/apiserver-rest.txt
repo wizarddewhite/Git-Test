@@ -1,3 +1,26 @@
+1. Call flow and how storage is got
+================================================================================
+New()
+  s := CustomResourceDefinitions{}
+  apiResourceConfig = c.GenericConfig.MergedResourceConfig
+  apiGroupInfo = genericapiserver.NewDefaultAPIGroupInfo()
+  storage[""] = customResourceDefinitionStorage
+  apiGroupInfo.VersionedResourcesStorageMap[v1.SchemeGroupVersion.Version] = storage
+  InstallAPIGroup(apiGroupInfo)
+
+
+InstallAPIGroup(apiGroupInfo)
+  InstallAPIGroups(apiGroupInfos)
+    s.installAPIResources(apiGroupInfo)
+      apiGroupVersion = s.getAPIGroupVersion(apiGroupInfo)
+        storage[] = apiGroupInfo.VersionedResourcesStorageMap[]
+        version.Storage = storage
+      apiGroupVersion.InstallREST(s.Handler.GoRestfulContainer)
+        installer := &APIInstaller{}
+        installer.Install()
+          ws := a.newWebService()
+          a.registerResourceHandlers(path, a.group.Storage[path], ws)
+
 1. registerResourceHandlers(path, storage, ws)
 ================================================================================
 lister, isLister := storage.(rest.Lister)
@@ -30,6 +53,21 @@ handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.Response
 4.4 transformResponseObject(ctx, scope, trace, req, w, http.StatusOK, outputMediaType, result)
 ================================================================================
 
+5. apiservicerest.NewRESTStorage()
+================================================================================
+5.1 apiGroupInfo = genericapiserver.NewDefaultAPIGroupInfo()
+================================================================================
+5.2 storage
+================================================================================
+5.3 apiServiceREST := apiservicestorage.NewREST(aggregatorscheme.Scheme, restOptionsGetter)
+================================================================================
+5.3.1 store genericregistry.Store{}
+================================================================================
+5.3.2 return &REST{store}
+================================================================================
+5.4 storage["apiservices"] = apiServiceREST
+================================================================================
+
 0. Data Struct
 ================================================================================
 
@@ -47,6 +85,80 @@ handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.Response
     |    (handlers.ScopeNamer)     |
     |                              |
     +------------------------------+
+
+0.2 APIInstaller
+================================================================================
+
+    APIInstaller
+    +------------------------------+
+    |group                         |
+    |    (*APIGroupVersion)        |
+    |    +-------------------------+
+    |    |Storage                  |  copied from APIGroupInfo.VersionedResourcesStorageMap
+    |    |    (map[]rest.Storage)  |
+    |    |    +--------------------+
+    |    |    |New()               |
+    |    |    +--------------------+
+    |    |GroupVersion             |
+    |    |                         |
+    |    |Serializer               |
+    |    |ParameterCodec           |
+    |    |                         |
+    |    |Typer                    |
+    |    |Creater                  |
+    |    |Convertor                |
+    |    |                         |
+    |    +-------------------------+
+    |                              |
+    |                              |
+    |                              |
+    +------------------------------+
+
+0.3 APIGroupInfo
+================================================================================
+
+    APIGroupInfo
+    +------------------------------+
+    |Scheme                        |
+    |ParameterCodec                |
+    |                              |
+    |VersionedResourcesStorageMap  | customresourcedefinition.NewREST()
+    |(map[string]map[]rest.Storage)| apiservicerest.NewRESTStorage()
+    |                              |
+    +------------------------------+
+
+0.4 REST -> store
+================================================================================
+
+    REST
+    +------------------------------+
+    |*genericregistry.Store        |
+    |  +---------------------------+
+    |  |NewFunc                    |
+    |  |NewListFunc                |
+    |  |KeyRootFunc                |
+    |  |KeyFunc                    |
+    |  |ObjectNameFunc             |
+    |  |TTLFunc                    |
+    |  |PredicateFunc              |
+    |  |DestroyFunc                |
+    |  |                           |
+    |  |                           |
+    |  |                           |
+    |  |Storage                    |
+    |  |   (DryRunnableStorage)    |
+    |  |   +-----------------------+
+    |  |   |Codec                  |
+    |  |   |   (runtime.Codec)     |
+    |  |   |Storage                |
+    |  |   |   (storage.Interface) |
+    |  |   |   +-------------------+
+    |  |   |   |Create()/Delete()  |
+    |  |   |   |Watch()/WatchList()|
+    |  |   |   |Get()              |
+    |  |   |   |List()             |
+    |  |   |   |                   |
+    +--+---+---+-------------------+
 
 0. Reference
 ================================================================================
