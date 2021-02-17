@@ -15,8 +15,11 @@ InstallAPIGroup(apiGroupInfo)
       apiGroupVersion = s.getAPIGroupVersion(apiGroupInfo)
         storage[] = apiGroupInfo.VersionedResourcesStorageMap[]
         version.Storage = storage
+        return version
       apiGroupVersion.InstallREST(s.Handler.GoRestfulContainer)
-        installer := &APIInstaller{}
+        installer := &APIInstaller{
+          group: apiGroupVersion
+        }
         installer.Install()
           ws := a.newWebService()
           a.registerResourceHandlers(path, a.group.Storage[path], ws)
@@ -57,15 +60,17 @@ handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.Response
 ================================================================================
 5.1 apiGroupInfo = genericapiserver.NewDefaultAPIGroupInfo()
 ================================================================================
-5.2 storage
+5.2 storage = map[string]rest.Storage{}
 ================================================================================
-5.3 apiServiceREST := apiservicestorage.NewREST(aggregatorscheme.Scheme, restOptionsGetter)
+5.3 apiServiceREST := apiservicestorage.NewREST(aggregatorscheme.Scheme, restOptionsGetter), &REST{genericregistry.Store}
 ================================================================================
-5.3.1 store genericregistry.Store{}
+5.3.1 store = &genericregistry.Store{}
 ================================================================================
 5.3.2 return &REST{store}
 ================================================================================
-5.4 storage["apiservices"] = apiServiceREST
+5.4 storage["apiservices"] = apiServiceREST (*REST)
+================================================================================
+5.5 apiGroupInfo.VersionedResourcesStorageMap[] = storage
 ================================================================================
 
 0. Data Struct
