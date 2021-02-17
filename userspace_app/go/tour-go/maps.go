@@ -26,6 +26,18 @@ func main() {
 		fmt.Println("No such element")
 	}
 
+	// iterate map
+	fmt.Println("--- Iterate with name")
+	for name := range m {
+		fmt.Println(name, m[name])
+	}
+
+	// iterate map
+	fmt.Println("--- Iterate with name and data")
+	for name, data := range m {
+		fmt.Println(name, data)
+	}
+
 	delete(m, "AT&T Labs")
 
 	v, ok = m["AT&T Labs"]
