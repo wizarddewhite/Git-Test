@@ -8,6 +8,19 @@ New()
   apiGroupInfo.VersionedResourcesStorageMap[v1.SchemeGroupVersion.Version] = storage
   InstallAPIGroup(apiGroupInfo)
 
+RunAggregator()
+  serverConfig = genericapiserver.NewRecommendedConfig(aggregatorscheme.Codecs)
+	return &RecommendedConfig{
+		Config: *NewConfig(codecs),
+	}
+  config = apiserver.Config {
+    GenericConfig: serverConfig
+  }
+  config.Complete().NewWithDelegate()
+    config.GenericConfig.Complete()
+      RecommendedConfig.Config.Complete()
+    apiGroupInfo = apiservicerest.NewRESTStorage(c.GernericConfig., c.GenericConfig.RESTOptionsGetter)
+    InstallAPIGroup(apiGroupInfo)
 
 InstallAPIGroup(apiGroupInfo)
   InstallAPIGroups(apiGroupInfos)
@@ -51,7 +64,17 @@ handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.Response
 ================================================================================
 4.2 metainternalversionscheme.ParameterCodec.DecodeParameters(req.URL.Query(), scope.MetaGroupVersion, &opts); err != nil {
 ================================================================================
-4.3 result, err := r.List(ctx, &opts), what is this?
+4.3 result, err := r.List(ctx, &opts), r is of type REST, so the func is Store.List()
+================================================================================
+4.3.1 out = Store.ListPredicate(ctx, Store.PredicateFunc(label, field), options)
+================================================================================
+4.3.1.1 e.Storage.List()
+================================================================================
+4.3.1.1.1 DryRunnableStorage.Storage.List(ctx, key, opts, listObj), implementation of DryRunnableStorage.Storage?
+================================================================================
+4.3.2 Store.Decorator(out)
+================================================================================
+4.3.3 return out
 ================================================================================
 4.4 transformResponseObject(ctx, scope, trace, req, w, http.StatusOK, outputMediaType, result)
 ================================================================================
@@ -64,9 +87,27 @@ handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.Response
 ================================================================================
 5.3 apiServiceREST := apiservicestorage.NewREST(aggregatorscheme.Scheme, restOptionsGetter), &REST{genericregistry.Store}
 ================================================================================
-5.3.1 store = &genericregistry.Store{}
+5.3.1 store = &genericregistry.Store{
+  NewFunc:                  func() runtime.Object { return &apiregistration.APIService{} },
+  NewListFunc:              func() runtime.Object { return &apiregistration.APIServiceList{} },
+  PredicateFunc:            apiservice.MatchAPIService,
+  DefaultQualifiedResource: apiregistration.Resource("apiservices"),
+  
+  CreateStrategy: strategy,
+  UpdateStrategy: strategy,
+  DeleteStrategy: strategy,
+  
+  // TODO: define table converter that exposes more than name/creation timestamp
+  TableConvertor: rest.NewDefaultTableConvertor(apiregistration.Resource("apiservices")),
+}
 ================================================================================
-5.3.2 return &REST{store}
+5.3.2 options = generic.StoreOptions{}
+================================================================================
+5.3.3 store.CompleteWithOptions(options)
+================================================================================
+5.3.3.1 opts, err := options.RESTOptions.GetRESTOptions(e.DefaultQualifiedResource)
+================================================================================
+5.3.4 return &REST{store}
 ================================================================================
 5.4 storage["apiservices"] = apiServiceREST (*REST)
 ================================================================================
@@ -164,6 +205,29 @@ handlers.ListResource(r, rw, &scope, forceWatch, minRequestTimeout)(res.Response
     |  |   |   |List()             |
     |  |   |   |                   |
     +--+---+---+-------------------+
+
+0.5 apiserver.Config
+================================================================================
+
+    Config
+    +------------------------------+
+    |GenericConfig                 |
+    |  (*RecommendedConfig)        |
+    |  +---------------------------+
+    |  |Config                     |
+    |  |  +------------------------+
+    |  |  |                        |
+    |  |  |                        |
+    |  |  |                        |
+    |  |  |                        |
+    |  |  |                        |
+    |  |  |                        |
+    |  |  +------------------------+
+    |  |                           |
+    |  +---------------------------+
+    |ExtraConfig                   |
+    |                              |
+    +------------------------------+
 
 0. Reference
 ================================================================================
