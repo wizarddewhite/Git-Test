@@ -26,6 +26,20 @@ func initPassword() string {
 	str := string(buf) // E.g. "3i[g0|)z"
 	return str
 }
+
+func initMAC() string {
+	rand.Seed(time.Now().UnixNano())
+	buf := make([]byte, 6)
+	_, err := rand.Read(buf)
+	if err != nil {
+		return ""
+	}
+	// Set the local bit
+	buf[0] |= 2
+	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
+}
+
 func main() {
-	fmt.Println("vim-go:", initPassword())
+	//	fmt.Println("vim-go:", initPassword())
+	fmt.Println("vim-go:", initMAC())
 }
