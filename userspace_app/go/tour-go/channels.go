@@ -16,7 +16,7 @@ func non() {
 	fmt.Println(<-a)
 }
 
-func main() {
+func test_channel() {
 	a := []int{7, 2, 8, -9, 4, 0}
 
 	c := make(chan int)
@@ -26,4 +26,8 @@ func main() {
 
 	fmt.Println(x, y, x+y)
 	non()
+}
+
+func main() {
+	test_channel()
 }
