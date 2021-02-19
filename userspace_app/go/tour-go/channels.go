@@ -28,6 +28,29 @@ func test_channel() {
 	non()
 }
 
+func consumer1(in chan int) {
+	for val := range in {
+		fmt.Println("consumer1 see ", val)
+	}
+}
+
+func consumer2(in chan int) {
+	for val := range in {
+		fmt.Println("consumer2 see ", val)
+	}
+}
+
+func multi_consumer() {
+	c := make(chan int)
+	go consumer1(c)
+	go consumer2(c)
+
+	for i := 0; i < 10; i++ {
+		c <- i
+	}
+}
+
 func main() {
-	test_channel()
+	// test_channel()
+	multi_consumer()
 }
