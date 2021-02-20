@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 
 	"github.com/ghodss/yaml"
 )
@@ -39,6 +40,21 @@ func in_mem() {
 	*/
 }
 
+func from_file() {
+	dat, _ := ioutil.ReadFile("person.yaml")
+	fmt.Print(string(dat))
+	fmt.Printf("Type is %T\n", dat)
+
+	var per Person
+	err := yaml.Unmarshal(dat, &per)
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+		return
+	}
+	fmt.Println(per)
+}
+
 func main() {
-	in_mem()
+	// in_mem()
+	from_file()
 }
