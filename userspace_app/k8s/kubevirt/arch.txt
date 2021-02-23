@@ -1,38 +1,41 @@
 
-    virt-api                           virt-controller
-    +-------------------------+        +-------------------------+
-    | WebService              |        |                         |
-    |    vm:                  |        | VMController.runWorker  |
-    |    "restart"            |------->|     c.startVMI(vm, vmi) |
-    |                         |        |     c.stopVMI(vmi)      |
-    |                         |        |           |             |
-    |    vmi:                 |        |           v             |
-    |    "pause"              |---+    | VMIController.runWorker |
-    |                         |   |    |     Pods().Create()     |
-    +-------------------------+   |    |     Pods().Delete()     |
-                                  |    |                         |
-                                  |    +-------------------------+
-    +-----------------------------+
-    |                      
-    |    virt-handler                                         virt-launcher
-    |    +-----------------------------------------+          +----------------------------------------+
-    |    |                                         |          |                                        |
-    |    | WebService                              |          |   cmdserver.RunServer()                |
-    +--->|    "pause"                              |          |        |                               |
-         |     |                                   |   cmd    |        |                               |
-         |     v                                   |   grpc   |        v                               |
-         | VirtLauncherClient.PauseVirtualMachine  |   --->   |   Launcher.PauseVirtualMachine()       |
-         |                                         |          |      l.domainManager.PauseVMI()        |  libvirt api
-         |                                         |          |                                        |
-         |                                         |          |                                        |
-         |                                         |          |                                        |
-         | notifyserver.RunServer()                |          |   Notifier.SendDomainEvent             |
-         |        |                                |   stat   |          |                             |
-         |        v                                |   grpc   |          v                             |
-         | Notify.HandleDomainEvent                |   <---   |   notifyClient.HandleDomainEvent()     |
-         |                                         |          |                                        |
-         |                                         |          |                                        |
-         |                                         |          |                                        |
-         |                                         |          |                                        |
-         +-----------------------------------------+          +----------------------------------------+
+                         virt-api                           virt-controller
+                         +-------------------------+        +-------------------------+
+                         | WebService              |        |                         |
+                         |    vm:                  |        | VMController.runWorker  |
+                         |    "restart"            |------->|     c.startVMI(vm, vmi) |
+                         |                         |        |     c.stopVMI(vmi)      |
+  Cluster Level          |                         |        |           |             |
+                         |    vmi:                 |        |           v             |
+                         |    "pause"              |---+    | VMIController.runWorker |
+                         |                         |   |    |     Pods().Create()     |
+                         +-------------------------+   |    |     Pods().Delete()     |
+                                                       |    |                         |
+                                                       |    +-------------------------+
+                         +-----------------------------+
+                         |                      
+                 -- - -- |- -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - -- - --
+                         |                      
+                         |                      
+   Host Level            |    virt-handler                                         virt-launcher
+                         |    +-----------------------------------------+          +----------------------------------------+
+                         |    |                                         |          |                                        |
+                         |    | WebService                              |          |   cmdserver.RunServer()                |
+                         +--->|    "pause"                              |          |        |                               |
+                              |     |                                   |   cmd    |        |                               |
+                              |     v                                   |   grpc   |        v                               |
+                              | VirtLauncherClient.PauseVirtualMachine  |   --->   |   Launcher.PauseVirtualMachine()       |
+                              |                                         |          |      l.domainManager.PauseVMI()        |  libvirt api
+                              |                                         |          |                                        |
+                              |                                         |          |                                        |
+                              |                                         |          |                                        |
+                              | notifyserver.RunServer()                |          |   Notifier.SendDomainEvent             |
+                              |        |                                |   stat   |          |                             |
+                              |        v                                |   grpc   |          v                             |
+                              | Notify.HandleDomainEvent                |   <---   |   notifyClient.HandleDomainEvent()     |
+                              |                                         |          |                                        |
+                              |                                         |          |                                        |
+                              |                                         |          |                                        |
+                              |                                         |          |                                        |
+                              +-----------------------------------------+          +----------------------------------------+
 
