@@ -1,4 +1,14 @@
 
+                                          virt-operator
+                                          +---------------------+
+                                          |                     |  Manage the deployment of KubeVirt
+                                          |                     |  Bring up:
+                                          |                     |  * virt-api
+                                          |                     |  * virt-controller
+                                          |                     |  * virt-handler
+                                          +---------------------+
+
+
                          virt-api                           virt-controller
                          +-------------------------+        +-------------------------+
                          | WebService              |        |                         |
