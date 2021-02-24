@@ -101,6 +101,7 @@ c.execute(key.(string))
     vmi, vmiExists, err := d.getVMIFromCache(key)
     domain, domainExists, domainCachedUID, err := d.getDomainFromCache(key)
     c.defaultExecute(key, vmi, vmiExists, domain, domainExists)
+	// based on domain and vmi, do operate on vm
         c.processVmShutdown()
         c.processVmDelete()
         c.processVmCleanup()
