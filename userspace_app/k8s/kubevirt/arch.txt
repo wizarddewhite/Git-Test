@@ -1,8 +1,8 @@
 
                                           virt-operator
                                           +---------------------+
-                                          |                     |  Manage the deployment of KubeVirt
-                                          |                     |  Bring up:
+                                          |KubeVirtController   |  Manage the deployment of KubeVirt
+                                          |    .Run()           |  Bring up:
                                           |                     |  * virt-api
                                           |                     |  * virt-controller
                                           |                     |  * virt-handler

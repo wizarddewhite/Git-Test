@@ -63,15 +63,20 @@ node = obj.(*v1.Node)
         c.syncReadyConditionFromVMI(vm, vmi)
         c.statusUpdater.UpdateStatus(vm)
 
-4.1.1 c.startVMI(vm)
+4.1.1 c.startStop(vm, vmi)
+================================================================================
+
+4.1.1.1 c.startVMI(vm)
 ================================================================================
 vmi := c.setupVMIFromVM(vm)
 vmi = c.clientset.VirtualMachineInstance().Create(vmi)
 
-4.1.1 c.stopVMI(vm)
+4.1.1.2 c.stopVMI(vm)
 ================================================================================
 err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.ObjectMeta.Name, &v1.DeleteOptions{})
 
+4.1.2 c.updateStatus(vm, vmi, createErr)
+================================================================================
 
 5. vmiController.Run()
 ================================================================================

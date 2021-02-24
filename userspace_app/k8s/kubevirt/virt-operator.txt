@@ -123,6 +123,8 @@ c.informers.ServiceAccount.AddEventHandler(cache.ResourceEventHandlerFuncs{
 ================================================================================
 3.3.2.5 operatorutil.SetConditionTimestamps(kv, kvCopy)
 ================================================================================
+3.3.2.6 c.statusUpdater.UpdateStatus(kvCopy)
+================================================================================
 
 4. Expectations.SatisfiedExpectations(key string), eg: kubevirt/kubevirt
 ================================================================================
