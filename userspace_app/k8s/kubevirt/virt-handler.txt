@@ -11,8 +11,8 @@ service.Setup(app)
 app.Run()
     app.virtCli = kubecli.GetKubevirtClient()
     app.markNodeAsUnschedulable(logger)
-    vmiSourceLabel
-    vmiTargetLabel
+    vmiSourceLabel = labels.Parse(fmt.Sprintf(v1.NodeNameLabel+" in (%s)", app.HostOverride))
+    vmiTargetLabel = labels.Parse(fmt.Sprintf(v1.MigrationTargetNodeNameLabel+" in (%s)", app.HostOverride))
     vmSourceSharedInformer = {vmiSourceLabel}
     vmTargetSharedInformer = {vmiTargetLabel}
     domainSharedInformer = virtcache.NewSharedInformer()
