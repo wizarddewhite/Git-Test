@@ -18,7 +18,7 @@ func process() {
 }
 
 func until() {
-	// run process() every 4 seconds
+	// run process() every 4 seconds until stopCh signaled
 	klog.Info("Starting process")
 	go wait.Until(process, 2*time.Second, stopCh)
 

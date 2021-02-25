@@ -13,6 +13,7 @@ func main() {
 	klog.Info("pass...")
 
 	_, err := os.Open("file_never_exist")
+	// this would crash the program
 	utilruntime.Must(err)
 	klog.Info("pass...")
 }
