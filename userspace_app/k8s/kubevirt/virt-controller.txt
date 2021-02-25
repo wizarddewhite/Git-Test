@@ -63,7 +63,7 @@ node = obj.(*v1.Node)
         c.syncReadyConditionFromVMI(vm, vmi)
         c.statusUpdater.UpdateStatus(vm)
 
-4.1.1 c.startStop(vm, vmi)
+4.1.1 c.startStop(vm, vmi), based on vm.StateChangeRequest or vmi state
 ================================================================================
 
 4.1.1.1 c.startVMI(vm)
@@ -78,7 +78,7 @@ err = c.clientset.VirtualMachineInstance(vm.ObjectMeta.Namespace).Delete(vmi.Obj
 4.1.2 c.updateStatus(vm, vmi, createErr)
 ================================================================================
 
-5. vmiController.Run()
+5. vmiController.Run(), based on vmi and vmi's pod, create "virt-launcher" if necessary
 ================================================================================
 5.1 VMIController.runWorker() -> Execute() -> execute()
 ================================================================================
