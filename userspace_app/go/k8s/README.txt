@@ -7,11 +7,16 @@ Usually, we need go env for test.
 
 2. Run
 
-For most examples, I think the following command would give you what expected.
+There are two class of examples:
+
+   * util
+   * in-cluster
+
+Examples in util/, they could be run out side cluster. So we just need to run:
 
 $ go run xxx.go
 
-For cases run in cluster, we should specify the environment:
+For examples in-cluster/, we should run in cluster and specify the environment:
 
 e.g.
 
