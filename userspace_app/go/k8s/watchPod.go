@@ -118,12 +118,74 @@ func informerPod() {
 	cache.WaitForCacheSync(wait.NeverStop, sharedInformer.HasSynced)
 }
 
+func informerPod_fieldselector() {
+	selector := fields.ParseSelectorOrDie("spec.nodeName=" + "localhost.localdomain")
+	sharedInformer := cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.FieldSelector = selector.String()
+				return coreClient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.FieldSelector = selector.String()
+				return coreClient.CoreV1().Pods(v1.NamespaceAll).Watch(context.TODO(), options)
+			},
+		},
+		&v1.Pod{},
+		0,
+		cache.Indexers{},
+	)
+
+	sharedInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    addFunc,
+		DeleteFunc: nil,
+		UpdateFunc: nil,
+	})
+
+	sharedInformer.Run(wait.NeverStop)
+
+	cache.WaitForCacheSync(wait.NeverStop, sharedInformer.HasSynced)
+}
+
+func informerPod_labelselector() {
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	// show how to format the label selector
+	label, err := labels.Parse(fmt.Sprintf("k8s-app notin (kube-dns)"))
+	if err != nil {
+		panic(err)
+	}
+	sharedInformer := cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = label.String()
+				return coreClient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = label.String()
+				return coreClient.CoreV1().Pods(v1.NamespaceAll).Watch(context.TODO(), options)
+			},
+		},
+		&v1.Pod{},
+		0,
+		cache.Indexers{},
+	)
+
+	sharedInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    addFunc,
+		DeleteFunc: nil,
+		UpdateFunc: nil,
+	})
+
+	sharedInformer.Run(wait.NeverStop)
+
+	cache.WaitForCacheSync(wait.NeverStop, sharedInformer.HasSynced)
+}
+
 func main() {
-	// Label, err := labels.Parse(fmt.Sprintf("vmk8s.io/nodeName"+" in (%s)", hostName))
-	// if err != nil {
-	// 	panic(err)
-	// }
-	informerPod()
+	// informerPod()
+
+	// informerPod_fieldselector()
+	informerPod_labelselector()
 
 	select {}
 }
