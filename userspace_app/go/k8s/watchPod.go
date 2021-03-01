@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -43,7 +44,8 @@ func init() {
 	}
 
 	config.GroupVersion = &testGroupVersion
-	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
+	// config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
+	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
