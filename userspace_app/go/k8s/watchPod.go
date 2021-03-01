@@ -88,13 +88,20 @@ func NewListWatchFromClient(c cache.Getter, resource string, namespace string, f
 func addFunc(obj interface{}) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err == nil {
-		fmt.Println(key)
+		fmt.Println("Get Pod: ", key)
 	}
 }
 
 func informerPod() {
 	sharedInformer := cache.NewSharedIndexInformer(
-		NewListWatchFromClient(restClient, "pods", v1.NamespaceAll, fields.Everything(), labels.Everything()),
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return coreClient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return coreClient.CoreV1().Pods(v1.NamespaceAll).Watch(context.TODO(), options)
+			},
+		},
 		&v1.Pod{},
 		0,
 		cache.Indexers{},
