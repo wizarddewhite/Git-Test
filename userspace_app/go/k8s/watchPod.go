@@ -46,6 +46,7 @@ func init() {
 	config.GroupVersion = &testGroupVersion
 	// config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
 	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	// config.APIPath = "/apis"
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
