@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -19,9 +21,13 @@ import (
 )
 
 var (
-	coreClient *kubernetes.Clientset
-	restClient *rest.RESTClient
-	hostName   string
+	Scheme = runtime.NewScheme()
+	Codecs = serializer.NewCodecFactory(Scheme)
+
+	coreClient       *kubernetes.Clientset
+	restClient       *rest.RESTClient
+	hostName         string
+	testGroupVersion = schema.GroupVersion{Group: "apps", Version: "v1"}
 )
 
 func init() {
@@ -36,6 +42,11 @@ func init() {
 		panic(err)
 	}
 
+	config.GroupVersion = &testGroupVersion
+	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
+	if config.UserAgent == "" {
+		config.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
 	restClient, err = rest.RESTClientFor(config)
 	if err != nil {
 		panic(err)
