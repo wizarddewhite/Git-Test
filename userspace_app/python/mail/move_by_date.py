@@ -1,4 +1,10 @@
 #!/usr/bin/python
+
+# Example:
+#
+# for i in {2..3}; 
+# do  printf -v i "2020%02d01\n" $i && ./move_by_date.py --mailbox kvm --month $i;
+# done
 from datetime import datetime, timedelta
 import mailbox
 from dateutil.parser import parse
