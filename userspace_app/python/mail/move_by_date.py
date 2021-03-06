@@ -43,7 +43,7 @@ if __name__ == "__main__":
     parser.add_argument('--mailbox', metavar='path', required=True,
                         help='the file of mailbox copy mail from')
     parser.add_argument('--month', metavar='date', required=True,
-                        help='the month of mail to extract')
+                        help='the date of mail to extract in month granularity')
     args = parser.parse_args()
 
     month = parse(args.month)
