@@ -50,6 +50,10 @@ type EmbedFieldPointer struct {
 	Meta
 }
 
+func (efp *EmbedFieldPointer) embedded_method() {
+	efp.type_show()
+}
+
 func embeded_field_pointer() {
 	var efp EmbedFieldPointer
 	var tp Type
@@ -67,6 +71,9 @@ func embeded_field_pointer() {
 	// embedded field's method
 	efp.type_show()
 	efp.Type.type_show() // the same effect
+
+	efp.Kind = "efp Kind from"
+	efp.embedded_method()
 }
 
 func main() {
