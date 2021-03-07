@@ -21,6 +21,10 @@ type Type struct {
 	Kind string
 }
 
+func (t Type) type_show() {
+	fmt.Println("type_show: ", t.Kind)
+}
+
 type EmbedField struct {
 	Type
 	Meta
@@ -35,9 +39,38 @@ func embeded_field() {
 	ef.Kind = "field"
 
 	fmt.Println(ef)
+
+	// embedded field's method
+	ef.type_show()
+	ef.Type.type_show()
+}
+
+type EmbedFieldPointer struct {
+	*Type
+	Meta
+}
+
+func embeded_field_pointer() {
+	var efp EmbedFieldPointer
+	var tp Type
+
+	fmt.Println("")
+
+	efp.Name = "embed"
+	efp.Meta.Name = "embed"
+
+	efp.Type = &tp
+	efp.Kind = "efp Kind"
+
+	fmt.Println(efp)
+
+	// embedded field's method
+	efp.type_show()
+	efp.Type.type_show() // the same effect
 }
 
 func main() {
 	// print_struct()
-	embeded_field()
+	// embeded_field()
+	embeded_field_pointer()
 }
