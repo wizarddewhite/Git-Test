@@ -22,3 +22,7 @@ e.g.
 
 $ export KUBECONFIG=/root/.kube/config
 $ go run listPod.go
+
+0. Reference
+
+https://github.com/PegasusWang/books-1/tree/master/dev-ops/kubernetes
