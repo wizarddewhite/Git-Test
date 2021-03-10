@@ -24,6 +24,14 @@ var (
 	podName = "coredns-74ff55c5b-zjtwz"
 )
 
+type patchParam struct {
+	ClientSet    *kubernetes.Clientset
+	PodName      string
+	OperatorType string
+	OperatorPath string
+	OperatorData string
+}
+
 //  patchStringValue specifies a patch operation for a string.
 type patchStringValue struct {
 	Op    string `json:"op"`
@@ -38,11 +46,14 @@ type patchUInt32Value struct {
 	Value uint32 `json:"value"`
 }
 
-func jsonpatchPod(clientSet *kubernetes.Clientset, podName string) error {
+func jsonpatchPod(param patchParam) error {
+	clientSet := param.ClientSet
+	podName := param.PodName
+
 	payload := []patchStringValue{{
-		Op:    "add",
-		Path:  "/metadata/labels/test",
-		Value: "abc",
+		Op:    param.OperatorType,
+		Path:  param.OperatorPath,
+		Value: param.OperatorData,
 	}}
 
 	// retrieve the pod first
@@ -63,9 +74,22 @@ func jsonpatchPod(clientSet *kubernetes.Clientset, podName string) error {
 
 func jsonPatch_test(clientset *kubernetes.Clientset) {
 	fmt.Printf("Patch pod %v \n", podName)
-	err := jsonpatchPod(clientset, podName)
-	if err != nil {
-		panic(err.Error())
+
+	params := []patchParam{
+		{
+			ClientSet:    clientset,
+			PodName:      "coredns-74ff55c5b-zjtwz",
+			OperatorType: "add",
+			OperatorPath: "/metadata/labels/test",
+			OperatorData: "abcd",
+		},
+	}
+
+	for _, param := range params {
+		err := jsonpatchPod(param)
+		if err != nil {
+			panic(err.Error())
+		}
 	}
 }
 
