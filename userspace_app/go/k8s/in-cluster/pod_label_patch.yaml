@@ -1,0 +1,4 @@
+# kubectl patch pod coredns-74ff55c5b-zjtwz -n kube-system --patch "$(cat pod_label_patch.yaml)"
+metadata:
+        labels:
+            node: localhost
