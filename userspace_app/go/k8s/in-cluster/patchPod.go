@@ -83,9 +83,12 @@ func jsonPatch_test(clientset *kubernetes.Clientset) {
 		{
 			ClientSet:    clientset,
 			PodName:      "coredns-74ff55c5b-zjtwz",
-			OperatorType: "remove",
+			OperatorType: "add",
 			OperatorPath: "/metadata/labels/",
-			OperatorData: map[string]string{"test": "abcd"},
+			OperatorData: map[string]string{
+				"test": "abcd",
+				"user": "name",
+			},
 		},
 		{
 			ClientSet:    clientset,
