@@ -29,7 +29,7 @@ type patchParam struct {
 	PodName      string
 	OperatorType string
 	OperatorPath string
-	OperatorData string
+	OperatorData map[string]string
 }
 
 //  patchStringValue specifies a patch operation for a string.
@@ -50,11 +50,17 @@ func jsonpatchPod(param patchParam) error {
 	clientSet := param.ClientSet
 	podName := param.PodName
 
-	payload := []patchStringValue{{
-		Op:    param.OperatorType,
-		Path:  param.OperatorPath,
-		Value: param.OperatorData,
-	}}
+	var payloads []interface{}
+
+	for key, value := range param.OperatorData {
+		payload := patchStringValue{
+			Op:    param.OperatorType,
+			Path:  param.OperatorPath + key,
+			Value: value,
+		}
+
+		payloads = append(payloads, payload)
+	}
 
 	// retrieve the pod first
 	_, err := clientSet.CoreV1().Pods("kube-system").Get(context.TODO(), podName, metav1.GetOptions{})
@@ -62,7 +68,7 @@ func jsonpatchPod(param patchParam) error {
 		return err
 	}
 
-	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes, _ := json.Marshal(payloads)
 	// to add a pod label
 	_, err = clientSet.
 		CoreV1().
@@ -77,16 +83,16 @@ func jsonPatch_test(clientset *kubernetes.Clientset) {
 		{
 			ClientSet:    clientset,
 			PodName:      "coredns-74ff55c5b-zjtwz",
-			OperatorType: "add",
-			OperatorPath: "/metadata/labels/test",
-			OperatorData: "abcd",
+			OperatorType: "remove",
+			OperatorPath: "/metadata/labels/",
+			OperatorData: map[string]string{"test": "abcd"},
 		},
 		{
 			ClientSet:    clientset,
 			PodName:      "coredns-74ff55c5b-zjtwz",
 			OperatorType: "aaa",
-			OperatorPath: "/metadata/labels/test",
-			OperatorData: "abcd",
+			OperatorPath: "/metadata/labels/",
+			OperatorData: map[string]string{"test": "abcd"},
 		},
 	}
 
