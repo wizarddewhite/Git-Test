@@ -57,8 +57,7 @@ func jsonpatchPod(param patchParam) error {
 	}}
 
 	// retrieve the pod first
-	pod, err := clientSet.CoreV1().Pods("kube-system").Get(context.TODO(), podName, metav1.GetOptions{})
-	fmt.Println("Get Pod: ", pod.Name)
+	_, err := clientSet.CoreV1().Pods("kube-system").Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -73,7 +72,6 @@ func jsonpatchPod(param patchParam) error {
 }
 
 func jsonPatch_test(clientset *kubernetes.Clientset) {
-	fmt.Printf("Patch pod %v \n", podName)
 
 	params := []patchParam{
 		{
@@ -83,12 +81,24 @@ func jsonPatch_test(clientset *kubernetes.Clientset) {
 			OperatorPath: "/metadata/labels/test",
 			OperatorData: "abcd",
 		},
+		{
+			ClientSet:    clientset,
+			PodName:      "coredns-74ff55c5b-zjtwz",
+			OperatorType: "aaa",
+			OperatorPath: "/metadata/labels/test",
+			OperatorData: "abcd",
+		},
 	}
 
 	for _, param := range params {
 		err := jsonpatchPod(param)
 		if err != nil {
-			panic(err.Error())
+			fmt.Printf("%s OP on %s failed (%s)\n",
+				param.OperatorType, param.OperatorPath,
+				err.Error())
+		} else {
+			fmt.Printf("%s OP on %s succeed\n",
+				param.OperatorType, param.OperatorPath)
 		}
 	}
 }
