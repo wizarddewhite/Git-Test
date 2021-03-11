@@ -76,8 +76,15 @@ func embeded_field_pointer() {
 	efp.embedded_method()
 }
 
+func nil_obj() {
+	var efp *EmbedFieldPointer
+	efp = nil
+	efp.type_show()
+}
+
 func main() {
 	// print_struct()
 	// embeded_field()
 	embeded_field_pointer()
+	// nil_obj()
 }
