@@ -1,0 +1,34 @@
+1. Volume
+
+https://kubernetes.io/docs/concepts/storage/volumes
+
+Volume configuration would pass the directory to container in pod.
+
+Eg:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis
+spec:
+  containers:
+  - name: redis
+    image: redis
+    volumeMounts:
+    - name: redis-storage
+      mountPath: /data/redis
+    - name: test-mount
+      mountPath: /data/test
+  volumes:
+  - name: redis-storage
+    emptyDir: {}
+  - name: test-mount
+    hostPath:
+      path: /home/richard/minikube
+```
+
+There are several types of volume. In above example, they are
+
+  * emptyDir
+  * hostPath
