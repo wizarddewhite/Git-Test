@@ -1,0 +1,42 @@
+1. Get Current DS config
+
+$ kubectl get daemonset my-ds -n my-ns -o yaml > my-ds.yaml
+
+2. Get Change history
+
+$ kubectl rollout history daemonset my-ds -n my-ns
+
+3. Update DaemonSet
+
+3.1 Update Policy
+
+There are two update policy
+
+  * RollingUpdate
+  * OnDelete
+
+The first one is automatic, the second one is manual. You need to kill a pod
+to update after change the DaemonSet config.
+
+3.2 Get Current Policy
+
+$ kubectl get ds/my-ds -o go-template='{{.spec.updateStrategy.type}}{{"\n"}}' -n my-ns
+
+3.3 Change config
+
+$ kubectl edit ds/my-ds -n my-ns
+
+3.4 Kill Pod on specific node
+
+$ kubectl get pods -n my-ns --field-selector spec.nodeName=your-host-name
+NAME                             READY   STATUS             RESTARTS   AGE
+my-ds-t6fwx                      2/2     Running            0          90d
+$ kubectl delete pod my-ds-t6fwx -n my-ns
+
+4. Check the pod log
+
+$ kubectl logs -f pod/my-ds-t6fwx -n 
+
+0. Reference
+
+https://kubernetes.io/zh/docs/tasks/manage-daemon/update-daemon-set/
