@@ -33,9 +33,10 @@ func main() {
 			select {
 			// watch for events
 			case event := <-watcher.Events:
-				fmt.Printf("EVENT! %#v\n", event)
-
-				// watch for errors
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					fmt.Println("modified file:", event.Name)
+				}
+			// watch for errors
 			case err := <-watcher.Errors:
 				fmt.Println("ERROR", err)
 			}
