@@ -33,8 +33,13 @@ func main() {
 			select {
 			// watch for events
 			case event := <-watcher.Events:
-				if event.Op&fsnotify.Write == fsnotify.Write {
+				if event.Op&fsnotify.Create == fsnotify.Create {
+					fmt.Println("create file:", event.Name)
+					filepath.Walk(event.Name, watchDir)
+				} else if event.Op&fsnotify.Write == fsnotify.Write {
 					fmt.Println("modified file:", event.Name)
+				} else {
+					fmt.Printf("file: %s, event: %s\n", event.Name, event.Op.String())
 				}
 			// watch for errors
 			case err := <-watcher.Errors:
