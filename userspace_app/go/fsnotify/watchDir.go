@@ -14,6 +14,8 @@ var watcher *fsnotify.Watcher
 // main
 func main() {
 
+	filepath.Walk(".", listDir)
+
 	// creates a new file watcher
 	watcher, _ = fsnotify.NewWatcher()
 	defer watcher.Close()
@@ -61,5 +63,12 @@ func watchDir(path string, fi os.FileInfo, err error) error {
 		return watcher.Add(path)
 	}
 
+	return nil
+}
+
+func listDir(path string, fi os.FileInfo, err error) error {
+	if fi.Mode().IsDir() && path != "/run/vm/" {
+		fmt.Println(path, fi.Name(), fi.Size())
+	}
 	return nil
 }
