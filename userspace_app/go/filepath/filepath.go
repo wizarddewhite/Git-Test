@@ -15,7 +15,7 @@ func main() {
 	for _, p := range paths {
 		dir := filepath.Dir(p)
 		parent := filepath.Base(dir)
-		_, file := filepath.Split(p)
-		fmt.Printf("input: %q\n\tdir: %q\n\tparent: %q\n\tfile: %q\n", p, dir, parent, file)
+		d, file := filepath.Split(p)
+		fmt.Printf("input: %q\n\tdir: %q\n\tparent: %q\n\tD: %q\n\tfile: %q\n", p, dir, parent, d, file)
 	}
 }
