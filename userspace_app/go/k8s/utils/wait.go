@@ -42,9 +42,16 @@ func poll_until() {
 		stopCh)
 }
 
+func forever() {
+	wait.Forever(func() {
+		fmt.Println("Forever")
+	}, 5*time.Second)
+}
+
 func main() {
 	// until()
-	poll_until()
+	// poll_until()
+	forever()
 }
 
 func init() {
