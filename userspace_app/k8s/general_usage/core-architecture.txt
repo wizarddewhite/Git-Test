@@ -1,0 +1,45 @@
+1. Architecture
+
+k8s moves up the stack giving us constructs to deal with management at the
+application or service level. This gives us automation and tooling to ensure
+high availability, application stack and service-wide portability.
+
+1.1 Core K8s constructs
+
+  * pod
+  * services
+  * replication controller
+  * replica set
+  * labels
+
+1.1.1 Pods
+
+Pods essentially allow you to logically group containers and pieces of our
+application stack together. Pods give us a logical group of containers that we
+can then replicate, schedule, and balance service endpoints across.
+
+1.1.2 Labels
+
+Labels acts as a selector and tells K8s which resources to work with for a
+variety of operation.
+
+1.1.3 Service / Replica
+
+Services and replication controller/replica sets give us the ability to keep
+our applications running with little interruption and graceful recovery.
+
+1.1.3.1 Service
+
+Service allow us to abstract access away from the consumer of our
+applications. Every node runs a proxy named kube-proxy. The job of kube-proxy
+is to proxy communication from a service endpoint back to the corresponding
+pod that is running the actual application.
+
+1.1.3.2 Replication Controller / Replica Set
+
+Replica Set is a newer version of Replication Controller.
+
+0. Reference
+
+getting started with kubernetes
+
