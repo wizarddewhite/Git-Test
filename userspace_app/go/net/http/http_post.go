@@ -30,7 +30,39 @@ func post_request() {
 	defer resp.Body.Close()
 }
 
+type Hobby struct {
+	Type string
+	Name string
+}
+
+type User struct {
+	Name  string
+	Age   uint
+	Hobby []Hobby
+}
+
+// https://kevin.burke.dev/kevin/golang-json-http/
+func post_struct() {
+	client := &http.Client{}
+	data := User{
+		Name: "zhang",
+		Age:  12,
+		Hobby: []Hobby{
+			{
+				Type: "sport",
+				Name: "football",
+			},
+		},
+	}
+	bytesData, _ := json.Marshal(data)
+	req, _ := http.NewRequest("POST", "http://localhost:8000/api/service?ide=vim", bytes.NewReader(bytesData))
+	req.Header.Add("User-Agent", "myClient")
+	resp, _ := client.Do(req)
+	defer resp.Body.Close()
+}
+
 func main() {
 	// direct_post()
-	post_request()
+	// post_request()
+	post_struct()
 }
