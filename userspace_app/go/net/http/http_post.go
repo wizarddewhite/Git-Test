@@ -58,6 +58,8 @@ func post_struct() {
 	req, _ := http.NewRequest("POST", "http://localhost:8000/api/service?ide=vim", bytes.NewReader(bytesData))
 	req.Header.Add("User-Agent", "myClient")
 	resp, _ := client.Do(req)
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
 	defer resp.Body.Close()
 }
 
