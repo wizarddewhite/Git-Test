@@ -1,0 +1,97 @@
+1. Check location and Credential
+
+$ kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: /root/.minikube/ca.crt
+    server: https://10.0.2.15:8443
+  name: minikube
+contexts:
+- context:
+    cluster: minikube
+    namespace: default
+    user: minikube
+  name: minikube
+current-context: minikube
+kind: Config
+preferences: {}
+users:
+- name: minikube
+  user:
+    client-certificate: /root/.minikube/profiles/minikube/client.crt
+    client-key: /root/.minikube/profiles/minikube/client.key
+
+2. Access using kubectl proxy
+
+2.1. Open the api server proxy
+
+$ kubectl proxy --port=8001
+Starting to serve on 127.0.0.1:8001
+
+2.2. List pods
+
+# curl http://localhost:8001/api/v1/namespaces/default/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "7062001"
+  },
+  "items": []
+}
+
+#curl http://localhost:8001/api/v1/namespaces/kube-system/pods | jq -rM '.items[].metadata.name'
+coredns-74ff55c5b-zjtwz
+etcd-localhost.localdomain
+kube-apiserver-localhost.localdomain
+kube-controller-manager-localhost.localdomain
+kube-proxy-rcsbj
+kube-scheduler-localhost.localdomain
+storage-provisioner
+
+2.3. Get CRD
+
+# curl http://localhost:8001/apis/apiextensions.k8s.io/v1/customresourcedefinitions/resource_name
+{
+  "kind": "CustomResourceDefinition",
+  "apiVersion": "apiextensions.k8s.io/v1",
+  "metadata": {
+
+...
+  }
+}
+
+The link could be retrieved by: kubectl get crd resource_name -v8
+
+
+3. Access with http client
+
+Need to retrieve token for the default service account.
+
+```
+APISERVER=$(kubectl config view --minify | grep server | cut -f 2- -d ":" | tr -d " ")
+SECRET_NAME=$(kubectl get secrets | grep ^default | cut -f1 -d ' ')
+TOKEN=$(kubectl describe secret $SECRET_NAME | grep -E '^token' | cut -f2 -d':' | tr -d " ")
+
+curl $APISERVER/api --header "Authorization: Bearer $TOKEN" --insecure
+```
+
+APISERVER is set to "https://10.0.2.15:8443"
+SECRET_NAME is set to "default-token-2528t"
+TOKEN is retrieved from "default-token-2528t".
+
+Note: I think this implies the default service account has the authentication
+for accessing api-server.
+
+4. Go client
+
+https://github.com/kubernetes/client-go/blob/master/examples/out-of-cluster-client-configuration/main.go
+
+5. Accessing from Pod
+
+Leverage service account of the pod.
+
+0. Reference
+
+https://kubernetes.io/docs/tasks/access-application-cluster/access-cluster/
