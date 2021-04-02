@@ -26,5 +26,3 @@ spec:
               ports:
               - containerPort: 80
 ```
-
-2. Add environment variable

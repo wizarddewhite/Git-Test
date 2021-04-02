@@ -12,7 +12,7 @@ This should be enabled when api-server starts.
 
 2.1 Role and ClusterRole
 
-They both define access control rule.
+They both define rules that represent a set of permissions.
 
 Role is Namespace scoped, while ClusterRole is cluster scoped.
 
@@ -29,6 +29,9 @@ rules:
   resources: ["pods"]
   verbs: ["get", "watch", "list"]
 ```
+
+This defines a Role, pod-reader, who has permissions of get/watch/list for
+pods just in default namespace.
 
 2.1.1 ClusterRole Example
 
@@ -47,7 +50,8 @@ rules:
 
 2.2 RoleBinding and ClusterRoleBinding
 
-Assign authority defined in Role / ClusterRole to one group user.
+Assign authority defined in Role / ClusterRole to one group subject(users,
+groups or serviceaccount).
 
 2.2.1 RoleBinding Example
 
@@ -72,6 +76,15 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
+Bind to ServiceAccount
+
+```
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: kube-system
+```
+
 2.2.2 ClusterRoleBinding Example
 
 ```
@@ -90,6 +103,86 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
+2.3 Service Account
+
+2.3.1 New SA
+
+```
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: build-robot
+```
+
+$ kubectl apply -f sa.yaml
+
+After this, you would a secret token by 
+"kubectl get serviceaccounts/build-robot -o yaml"
+
+This token is automatically generated and is referenced by this sa.
+
+2.3.2 Apply SA to Pod
+
+Take nginx Pod as an example: 
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  serviceAccountName: build-robot
+  containers:
+  - name: nginx
+    env:
+    - name: CLUSTER_NM
+      value: "test"
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
+
+2.3.3 Apply SA to Deployment
+
+Take nginx Deployment as an example: 
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: nginx-deployment
+    labels:
+        app: nginx
+spec:
+    replicas: 3
+    selector:
+        matchLabels:
+            app: nginx
+    template:
+        metadata:
+            labels:
+                app: nginx
+        spec:
+            serviceAccountName: build-robot
+            containers:
+            - name: nginx
+              env:
+              - name: CLUSTER_NM
+                value: "test"
+              image: nginx:latest
+              ports:
+              - containerPort: 80
+```
+
+2.3.4 ServiceAccount Permission
+
+https://kubernetes.io/docs/reference/access-authn-authz/rbac/#service-account-permissions
+
+
 0. Reference
 
 https://kubernetes.io/zh/docs/reference/access-authn-authz/rbac/
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/

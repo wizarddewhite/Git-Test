@@ -6,6 +6,7 @@ https://kubernetes.io/zh/docs/reference/kubectl/overview/#%E7%A4%BA%E4%BE%8B-%E5
 https://kubernetes.io/zh/docs/reference/kubectl/cheatsheet/
 
 1.1 Pod Config file
+
 With the following config file: pod.yaml
 
 ```
@@ -30,6 +31,26 @@ spec:
     hostPath:
       path: /vcont
       type: Directory
+```
+
+Or a nginx app
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  - name: nginx
+    env:
+    - name: CLUSTER_NM
+      value: "test"
+    image: nginx:latest
+    ports:
+    - containerPort: 80
 ```
 
 1.2 Start Pod
