@@ -1,7 +1,10 @@
 package hello
 
-import "rsc.io/quote"
-import "example.com/hello/human"
+import (
+	"example.com/hello/animal"
+	"example.com/hello/human"
+	"rsc.io/quote"
+)
 
 func Hello() string {
 	return quote.Hello()
@@ -9,4 +12,8 @@ func Hello() string {
 
 func HelloHuman() string {
 	return "Hello, " + human.Human()
+}
+
+func HelloAnimal() string {
+	return "Hello, " + animal.Animal()
 }

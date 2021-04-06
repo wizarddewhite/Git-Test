@@ -7,4 +7,5 @@ import (
 
 func main() {
 	fmt.Println(hello.HelloHuman())
+	fmt.Println(hello.HelloAnimal())
 }
