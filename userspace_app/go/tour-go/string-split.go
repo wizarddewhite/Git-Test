@@ -19,6 +19,18 @@ func getIndex(name string) (row, col int) {
 	return
 }
 
+func normalize(s string) string {
+	lower := strings.ToLower(s)
+	noslash := strings.Replace(lower, "/", "-", -1)
+	nounderscore := strings.Replace(noslash, "_", "-", -1)
+	return nounderscore
+}
+
+func getVMName(user, service, group string) string {
+
+	return fmt.Sprintf("u-%s.s-%s.g-%s", normalize(user), normalize(service), normalize(group))
+}
+
 func main() {
 	fmt.Printf("%q\n", strings.Split("a,b,c", ","))
 	fmt.Printf("%q\n", strings.Split("example-vm-0-1-zjlfp", "-"))
@@ -28,4 +40,6 @@ func main() {
 	fmt.Printf("row:%d col:%d\n", row, col)
 	row, col = getIndex("example-vm-0-10-zjlfp")
 	fmt.Printf("row:%d col:%d\n", row, col)
+
+	fmt.Println("name: ", getVMName("tesla", "nevigator/road", "tour_SERVER"))
 }
