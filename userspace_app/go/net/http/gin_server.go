@@ -73,6 +73,7 @@ func config_http2() {
 
 func raw_gin() {
 	r := gin.New()
+	r.Use(gin.Logger())
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": c.FullPath(),
