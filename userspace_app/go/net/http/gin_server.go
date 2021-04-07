@@ -80,8 +80,10 @@ func raw_gin() {
 		})
 	})
 	r.GET("/ping", func(c *gin.Context) {
+		headerType := c.GetHeader("User")
 		c.JSON(200, gin.H{
 			"message": "pong",
+			"type":    headerType,
 		})
 	})
 

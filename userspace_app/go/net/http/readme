@@ -8,3 +8,11 @@ $ curl http://localhost:8000/vm/rest?yes=abc\&name=r -H "User:admin"
 
 $ curl -X POST http://localhost:8000/vm/rest?yes=abc\&name=r -H "User:admin" \
 	-H 'content-type: application/json' -d "{\"type\":\"abc\"}"
+
+2. gin_server.go
+
+This program is used to show how to use package gin to build a http server.
+
+E.g: go run gin_server.go
+
+$ curl http://localhost:8080/ping -H "User:admin"
