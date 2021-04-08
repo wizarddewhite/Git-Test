@@ -31,6 +31,33 @@ func getVMName(user, service, group string) string {
 	return fmt.Sprintf("u-%s.s-%s.g-%s", normalize(user), normalize(service), normalize(group))
 }
 
+func validateName(vmName, vmiName string) (row, col int) {
+	row = -1
+	col = -1
+	// vmiName should start with vmName
+	if !strings.HasPrefix(vmiName, vmName) {
+		return
+	}
+
+	vmiIndex := strings.TrimPrefix(vmiName, vmName)
+	s := strings.Split(vmiIndex, "-")
+	if len(s) < 3 {
+		return
+	}
+	row, err := strconv.Atoi(s[1])
+	if err != nil {
+		row = -1
+		return
+	}
+	col, err = strconv.Atoi(s[2])
+	if err != nil {
+		row = -1
+		col = -1
+		return
+	}
+	return
+}
+
 func main() {
 	fmt.Printf("%q\n", strings.Split("a,b,c", ","))
 	fmt.Printf("%q\n", strings.Split("example-vm-0-1-zjlfp", "-"))
@@ -42,4 +69,7 @@ func main() {
 	fmt.Printf("row:%d col:%d\n", row, col)
 
 	fmt.Println("name: ", getVMName("tesla", "nevigator/road", "tour_SERVER"))
+
+	row, col = validateName("example", "example-0-a")
+	fmt.Println("index: ", row, col)
 }
