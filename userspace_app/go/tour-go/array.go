@@ -111,7 +111,51 @@ func test_two_dim_array() {
 	adjust_two_dim_array(grid, 3, 2)
 }
 
+func iter_two_dim_array(array [][]int, row, column int) {
+	curr_row := len(array)
+	curr_column := len(array[0])
+
+	if row >= curr_row || column >= curr_column {
+		fmt.Printf("no more element after %d %d\n", row, column)
+		return
+	} else {
+		fmt.Printf("element after %d %d\n", row, column)
+	}
+
+	for i := row; i < curr_row; i++ {
+		for j := column; j < curr_column; j++ {
+			fmt.Printf(" %d", array[i][j])
+		}
+		column = 0
+	}
+	fmt.Println("")
+}
+
+func test_two_dim_array_iter() {
+	n := 2
+	m := 3
+	//动态创建二维数组
+	grid := make([][]int, n)
+	for i := 0; i < n; i++ {
+		grid[i] = make([]int, m)
+
+		for j := 0; j < m; j++ {
+			grid[i][j] = i*m + j
+		}
+	}
+	/*
+		012
+		345
+	*/
+	dump_two_dim_array(grid)
+	iter_two_dim_array(grid, 2, 3)
+	iter_two_dim_array(grid, 2, 0)
+	iter_two_dim_array(grid, 1, 0)
+	iter_two_dim_array(grid, 0, 1)
+}
+
 func main() {
 	// test_on_array()
-	test_two_dim_array()
+	// test_two_dim_array()
+	test_two_dim_array_iter()
 }
