@@ -80,10 +80,14 @@ func raw_gin() {
 		})
 	})
 	r.GET("/ping", func(c *gin.Context) {
+		v := c.DefaultQuery("marker", "")
+		l := c.DefaultQuery("limits", "20")
 		headerType := c.GetHeader("User")
 		c.JSON(200, gin.H{
 			"message": "pong",
 			"type":    headerType,
+			"marker":  v,
+			"limits":  l,
 		})
 	})
 
