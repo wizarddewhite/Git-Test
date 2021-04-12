@@ -8,7 +8,23 @@ type Vertex struct {
 	Lat, Long float64
 }
 
-func main() {
+type VertexList map[string]Vertex
+
+func newMap() {
+	var vl VertexList
+	fmt.Println("vl: ", vl)
+	vl = make(VertexList)
+	fmt.Println("vl: ", vl)
+	vl["New"] = Vertex{
+		12, 21,
+	}
+	fmt.Println("--- Iterate with name")
+	for name := range vl {
+		fmt.Println(name, vl[name])
+	}
+}
+
+func general_operation() {
 	var m map[string]Vertex
 	if m == nil {
 		fmt.Println("after definition map is nil, and following would crash")
@@ -54,5 +70,8 @@ func main() {
 	} else {
 		fmt.Println("No such element")
 	}
-
+}
+func main() {
+	// general_operation()
+	newMap()
 }
