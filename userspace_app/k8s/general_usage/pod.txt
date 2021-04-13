@@ -79,3 +79,27 @@ $ kubectl exec <pod-name> -c container -- ls
 1.4 Get events from pod
 
 $ kubectl get events
+
+1.5 Expose pod information via env
+
+https://kubernetes.io/zh/docs/tasks/inject-data-application/environment-variable-expose-pod-information/
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  - name: nginx
+    env:
+    - name: MY_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
