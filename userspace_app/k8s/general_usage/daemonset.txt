@@ -37,6 +37,32 @@ $ kubectl delete pod my-ds-t6fwx -n my-ns
 
 $ kubectl logs -f pod/my-ds-t6fwx -n 
 
+5. Example yaml
+
+```
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nginx-daemon
+  labels:
+    k8s-app: nginx-daemon
+spec:
+  selector:
+    matchLabels:
+      name: nginx-daemon
+  template:
+    metadata:
+      labels:
+        name: nginx-daemon
+    spec:
+      containers:
+      - name: nginx-daemon
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+      terminationGracePeriodSeconds: 30
+```
+
 0. Reference
 
 https://kubernetes.io/zh/docs/tasks/manage-daemon/update-daemon-set/
