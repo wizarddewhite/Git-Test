@@ -38,6 +38,9 @@ func main() {
 				if event.Op&fsnotify.Create == fsnotify.Create {
 					fmt.Println("create file:", event.Name)
 					filepath.Walk(event.Name, watchDir)
+				} else if event.Op&fsnotify.Remove == fsnotify.Remove {
+					fmt.Println("remove file:", event.Name)
+					filepath.Walk(event.Name, watchDir)
 				} else if event.Op&fsnotify.Write == fsnotify.Write {
 					fmt.Println("modified file:", event.Name)
 				} else {
@@ -55,6 +58,11 @@ func main() {
 
 // watchDir gets run as a walk func, searching for directories to add watchers to
 func watchDir(path string, fi os.FileInfo, err error) error {
+
+	if fi == nil {
+		fmt.Println("nil fi")
+		return nil
+	}
 
 	// since fsnotify can watch all the files in a directory, watchers only need
 	// to be added to each nested directory
