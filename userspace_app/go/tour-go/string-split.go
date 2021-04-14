@@ -58,6 +58,16 @@ func validateName(vmName, vmiName string) (row, col int) {
 	return
 }
 
+func array_to_string() {
+	array := []int{1, 2, 3}
+	var str string
+
+	for _, v := range array {
+		str = str + "," + fmt.Sprintf("%d", v)
+	}
+	fmt.Println(str)
+}
+
 func main() {
 	fmt.Printf("%q\n", strings.Split("a,b,c", ","))
 	fmt.Printf("%q\n", strings.Split("example-vm-0-1-zjlfp", "-"))
@@ -72,4 +82,6 @@ func main() {
 
 	row, col = validateName("example", "example-0-a")
 	fmt.Println("index: ", row, col)
+
+	array_to_string()
 }
