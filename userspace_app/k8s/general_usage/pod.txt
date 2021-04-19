@@ -103,3 +103,67 @@ spec:
     ports:
     - containerPort: 80
 ```
+
+1.6 Define Pod hostname/subdomain for DNS record
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  hostname: my-nginx-app
+  subdomain: yw-test
+  - name: nginx
+    env:
+    - name: MY_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
+
+The dns record should be:
+
+  my-nginx-app.yw-test.default.svc.cluster.local
+
+But, I didn't manage to test this successfully. Someone says it needs to
+define a headless service. Leave this to later test.
+
+1.7 Set hostname to FQDN
+
+May need support from api-server.
+
+https://kubernetes.io/zh/docs/concepts/services-networking/dns-pod-service/#pod-sethostnameasfqdn-field
+
+Seems should use v1.19+.
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  hostname: my-nginx-app
+  subdomain: yw-test
+  setHostnameAsFQDN: true
+  - name: nginx
+    env:
+    - name: MY_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
+
+
