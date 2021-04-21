@@ -83,6 +83,7 @@ func raw_gin() {
 		v := c.DefaultQuery("marker", "")
 		l := c.DefaultQuery("limits", "20")
 		headerType := c.GetHeader("User")
+		time.Sleep(15 * time.Second)
 		c.JSON(200, gin.H{
 			"message": "pong",
 			"type":    headerType,
@@ -97,7 +98,7 @@ func raw_gin() {
 		Addr:           ":8080",
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
+		WriteTimeout:   20 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 	s.Serve(l)
