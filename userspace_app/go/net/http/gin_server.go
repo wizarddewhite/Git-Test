@@ -91,6 +91,10 @@ func raw_gin() {
 			"limits":  l,
 		})
 	})
+	r.Handle(http.MethodGet, "/pong", func(c *gin.Context) {
+		time.Sleep(15 * time.Second)
+		c.JSON(200, "OK")
+	})
 
 	l, _ := net.Listen("tcp", ":8080")
 	// r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
