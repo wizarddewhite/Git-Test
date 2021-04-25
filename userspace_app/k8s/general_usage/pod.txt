@@ -167,3 +167,34 @@ spec:
 ```
 
 
+1.8 Assign Pod to node
+
+https://kubernetes.io/zh/docs/concepts/scheduling-eviction/assign-pod-node/
+
+1.8.1 Add label to node
+
+$ kubectl label nodes nodeName labelName=labelValue
+
+1.8.2 Add nodeSelector to Pod yaml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  nodeSelector:
+    labelName: labelValue
+  containers:
+  - name: nginx
+    env:
+    - name: MY_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
