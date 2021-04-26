@@ -72,11 +72,26 @@ func methodOnSlice() {
 	Caps(c).show()
 }
 
+type HasSlice struct {
+	Slice []string
+}
+
+func replace_slice() {
+	var hs HasSlice
+	var c = []string{"eat", "fly", "hide"}
+	hs.Slice = c
+	fmt.Println(hs.Slice)
+	var d = []string{"bread", "apple", "pie"}
+	hs.Slice = d
+	fmt.Println(hs.Slice)
+}
+
 func main() {
 	//create_slice()
 	// make_slice()
 	//append_slice()
-	methodOnSlice()
+	// methodOnSlice()
+	replace_slice()
 }
 
 func printSlice(s string, x []int) {
