@@ -63,6 +63,10 @@ spec:
       terminationGracePeriodSeconds: 30
 ```
 
+6. List pods in daemonset
+
+$ kubectl get pods -o wide -l 'name=nginx-daemon'
+
 0. Reference
 
 https://kubernetes.io/zh/docs/tasks/manage-daemon/update-daemon-set/
