@@ -198,3 +198,22 @@ spec:
     ports:
     - containerPort: 80
 ```
+
+2. Label and Selector
+
+https://kubernetes.io/zh/docs/concepts/overview/working-with-objects/labels/
+
+2.1 Add/Del label to Pod
+
+$ kubectl label pod POD_NAME KEY1=VALUE1
+
+$ kubectl label pod POD_NAME KEY1-
+
+2.2 Filter pod based on label
+
+$ kubectl get pods -l k8s-app=kata
+
+Or
+
+$ kubectl get pods -l 'k8s-app in (kata, qa)'
+

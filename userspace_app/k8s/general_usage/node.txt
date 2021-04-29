@@ -1,0 +1,14 @@
+1. Add/Del label to node
+
+kubectl label node node-name label.name=value
+
+kubectl label node node-name label.name-
+
+2. Filter node based on label
+
+$ kubectl get node -l label.name=value
+
+Or
+
+$ kubectl get node -l 'label.name in (val1, val2)'
+
