@@ -1,0 +1,19 @@
+To debug dnsmaq we just need to enable the log and then we can see the qeury
+comes.
+
+1. Enable log
+
+Add following two lines to /etc/dnsmasq.conf
+
+```
+log-queries
+log-facility=/var/log/dnsmasq.log
+```
+
+2. Restart dnsmasq
+
+# systemctl restart dnsmasq
+
+3. View log
+
+# tail -f /var/log/dnsmaq.log | grep domain-name
