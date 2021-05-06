@@ -44,6 +44,11 @@ $ ip route list table main
 
 This would list the content of route table main.
 
+3.3 List route with given ip address
+
+$ ip route get 172.23.132.65/26
+  172.23.132.65 via 172.23.248.1 dev eth0 src 172.23.248.59
+
 3.3 Add a new Table
 
 $ echo "101 PrivTel" >> /etc/iproute2/rt_tables
