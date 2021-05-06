@@ -84,9 +84,38 @@ filter                                  1       1       1
 security                                1       1       1
 nat (SNAT)                              1                       1
 
-4. Match Rule
+5. Match Rule
 ================================================================================
 In reference [4].
+
+6. Load Balance
+================================================================================
+
+In [5], it shows an interesting usage iptable to do load balance.
+
+For example, in case you want to load balance between the following rules:
+
+```
+iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
+         -j DNAT --to-destination 10.0.0.2:1234
+iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
+         -j DNAT --to-destination 10.0.0.3:1234
+iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
+         -j DNAT --to-destination 10.0.0.4:1234
+```
+
+You can use the following way:
+
+```
+iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
+         -m statistic --mode random --probability 0.33            \
+         -j DNAT --to-destination 10.0.0.2:1234
+iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
+         -m statistic --mode random --probability 0.5             \
+         -j DNAT --to-destination 10.0.0.3:1234
+iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
+         -j DNAT --to-destination 10.0.0.4:1234
+```
 
 0. Reference
 ================================================================================
@@ -94,3 +123,4 @@ In reference [4].
 [2]: https://blog.csdn.net/RichardYSteven/article/details/7647982
 [3]: https://www.digitalocean.com/community/tutorials/a-deep-dive-into-iptables-and-netfilter-architecture
 [4]: https://www.linuxtopia.org/Linux_Firewall_iptables/c2247.html
+[5]: https://scalingo.com/blog/iptables
