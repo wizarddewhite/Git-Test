@@ -66,7 +66,18 @@ Following are the key points to remember for the iptables rules.
 
 Each rule has a target, it could be many alternatives.
 
-Refer to [2]
+Refer to [2] [5]
+
+There are two kinds of targets in IPTables chains:
+
+  * Terminating
+  * Non-terminating
+
+ACCEPT, REJECT, DROP, DNAT, SNAT, MASQUERADE are terminating targets. They
+terminate processing of the packet in the current Netfilter hook.
+
+MARK, LOG and many others are non-terminating targets. They create some action
+based on the packet, and then proceed to the next rule.
 
 4. Order of Table and Chain
 ================================================================================
@@ -147,3 +158,4 @@ iptables -A PREROUTING -t nat -p tcp -d 192.168.1.1 --dport 27017 \
 [3]: https://www.digitalocean.com/community/tutorials/a-deep-dive-into-iptables-and-netfilter-architecture
 [4]: https://www.linuxtopia.org/Linux_Firewall_iptables/c2247.html
 [5]: https://scalingo.com/blog/iptables
+[6]: http://www.faqs.org/docs/iptables/targets.html
