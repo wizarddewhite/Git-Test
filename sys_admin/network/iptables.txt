@@ -84,6 +84,29 @@ filter                                  1       1       1
 security                                1       1       1
 nat (SNAT)                              1                       1
 
+4.1 Packet flow and check points
+
+```
+              INPUT                 OUPUT
+                .                     |
+               /_\           +--------+
+                |           _|_
+                +--------+  \ /
+                         |   '
+                         Router --------|> FORWARD
+                         .   |                |
+                        /_\  +--------+       |
+                         |           _|_     _|_
+               +---------+           \ /     \ /
+               |                      '       '
+    PKT ---> PREROUTING              POSTROUTING  ---> PKT
+```
+
+
+  * Incoming packets destined for the local system: PREROUTING -> INPUT
+  * Incoming packets destined to another host: PREROUTING -> FORWARD -> POSTROUTING
+  * Locally generated packets: OUTPUT -> POSTROUTING
+
 5. Match Rule
 ================================================================================
 In reference [4].
