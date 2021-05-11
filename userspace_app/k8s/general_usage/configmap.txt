@@ -15,6 +15,9 @@ secret.code.lives=30
 
 $ kubectl create configmap game-config --from-file=game.property
 
+or you can specify key
+
+$ kubectl create configmap game-config --from-file=game-param=game.property
 
 2. Get information from configmap
 

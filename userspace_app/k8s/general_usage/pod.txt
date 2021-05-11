@@ -199,6 +199,103 @@ spec:
     - containerPort: 80
 ```
 
+1.9 Use ConfigMap in Pod
+
+https://kubernetes.io/zh/docs/tasks/configure-pod-container/configure-pod-configmap/
+
+We can pass configmap to pod via environment.
+
+The configmap used in the following example is created in configmap.txt.
+
+1.9.1 Pass the whole configmap as env
+
+Let's define the configmap as below:
+
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: special-config
+  namespace: default
+data:
+  SPECIAL_LEVEL: very
+  SPECIAL_TYPE: charm
+```
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  - name: nginx
+    env:
+    - name: CLUSTER_NM
+      value: "test"
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+    envFrom:
+    - configMapRef:
+        name: special-config
+```
+
+The env in pod looks like:
+
+```
+# kubectl exec nginx-app -- env
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOSTNAME=nginx-app
+CLUSTER_NM=test
+SPECIAL_LEVEL=very
+SPECIAL_TYPE=charm
+```
+
+1.9.2 Set one env from configmap
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  - name: nginx
+    env:
+    - name: CLUSTER_NM
+      value: "test"
+    - name: LIVES
+      valueFrom:
+        configMapKeyRef:
+          name: game-config
+          key: game.property
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
+
+The env in pod looks like:
+
+```
+# minikube kubectl -- exec nginx-app -- env 
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOSTNAME=nginx-app
+CLUSTER_NM=test
+LIVES=enemies=aliens
+lives=3
+enemies.cheat=true
+enemies.cheat.level=noGoodRotten
+secret.code.passphrase=UUDDLRLRBABAS
+secret.code.allowed=true
+secret.code.lives=30
+
+```
+
 2. Label and Selector
 
 https://kubernetes.io/zh/docs/concepts/overview/working-with-objects/labels/
