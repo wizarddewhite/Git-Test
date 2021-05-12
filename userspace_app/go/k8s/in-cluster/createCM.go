@@ -57,7 +57,7 @@ func createConfiMap(namespace string) {
 			Name: "create-cm",
 		},
 		Data: map[string]string{
-			"CREATE-TEST": "VALUE1",
+			"CREATE-TEST": string(data),
 		},
 		BinaryData: map[string][]byte{
 			"vm-config": data,
@@ -70,12 +70,38 @@ func createConfiMap(namespace string) {
 	}
 }
 
+func updateConfiMap(namespace string) {
+	cm, err := coreClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), "create-cm", metav1.GetOptions{})
+	if err != nil {
+		fmt.Println("No cm create-cm")
+		return
+	}
+
+	var localVMs []VM
+	err = json.Unmarshal([]byte(cm.Data["CREATE-TEST"]), &localVMs)
+	if err != nil {
+		fmt.Println("Failed to unmarshal configmap, ", err.Error())
+		return
+	}
+
+	vm := VM{ID: "qwe", SN: "110"}
+	localVMs = append(localVMs, vm)
+	data, _ := json.Marshal(localVMs)
+	cm.Data["CREATE-TEST"] = string(data)
+
+	_, err = coreClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), cm, metav1.UpdateOptions{})
+	if err != nil {
+		fmt.Printf("CM update failed: %s\n", err.Error())
+	}
+}
+
 func main() {
 	// fmt.Println("ConfigMap in NamespaceAll")
 	// listConfiMap(v1.NamespaceAll)
 	fmt.Println("ConfigMap in Default")
 	listConfiMap(v1.NamespaceDefault)
-	createConfiMap(v1.NamespaceDefault)
+	// createConfiMap(v1.NamespaceDefault)
+	updateConfiMap(v1.NamespaceDefault)
 	fmt.Println("ConfigMap in Default")
 	listConfiMap(v1.NamespaceDefault)
 }
