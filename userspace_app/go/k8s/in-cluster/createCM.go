@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -66,7 +67,11 @@ func createConfiMap(namespace string) {
 
 	_, err := coreClient.CoreV1().ConfigMaps(namespace).Create(context.TODO(), cm, metav1.CreateOptions{})
 	if err != nil {
-		fmt.Printf("CM creation failed: %s\n", err.Error())
+		if errors.IsAlreadyExists(err) {
+			fmt.Println("Already exists")
+		} else {
+			fmt.Printf("CM creation failed: %s\n", err.Error())
+		}
 	}
 }
 
@@ -99,7 +104,11 @@ func deleteConfiMap(namespace string) {
 	err := coreClient.CoreV1().ConfigMaps(namespace).
 		Delete(context.TODO(), "create-cm", metav1.DeleteOptions{})
 	if err != nil {
-		fmt.Println("Delete error, ", err.Error())
+		if errors.IsNotFound(err) {
+			fmt.Println("Not Found")
+		} else {
+			fmt.Println("Delete error, ", err.Error())
+		}
 	}
 }
 
