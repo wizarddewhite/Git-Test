@@ -296,6 +296,49 @@ secret.code.lives=30
 
 ```
 
+1.9.3 Mount configmap into volume
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  containers:
+  - name: nginx
+    env:
+    - name: CLUSTER_NM
+      value: "test"
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/config
+  volumes:
+    - name: config-volume
+      configMap:
+        # Provide the name of the ConfigMap containing the files you want
+        # to add to the container
+        name: special-config
+```
+
+After this, there would be filed under /etc/config in pod.
+
+And each file represents a data in the configmap.
+
+```
+# kubectl exec nginx-app -- ls /etc/config
+SPECIAL_LEVEL
+SPECIAL_TYPE
+[root@localhost minikube]# kubectl exec nginx-app -- cat /etc/config/SPECIAL_LEVEL
+very
+[root@localhost minikube]# kubectl exec nginx-app -- cat /etc/config/SPECIAL_TYPE
+charm
+```
+
 2. Label and Selector
 
 https://kubernetes.io/zh/docs/concepts/overview/working-with-objects/labels/
