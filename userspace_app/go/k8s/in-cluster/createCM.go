@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -14,6 +15,15 @@ import (
 var (
 	coreClient *kubernetes.Clientset
 )
+
+type VM struct {
+	ID string `json:"id"`
+	SN string `json:"sn"`
+}
+
+var vms = []VM{
+	VM{ID: "abd", SN: "786"},
+}
 
 func init() {
 	kubeconfig := os.Getenv("KUBECONFIG")
@@ -41,12 +51,16 @@ func listConfiMap(namespace string) {
 }
 
 func createConfiMap(namespace string) {
+	data, _ := json.Marshal(vms)
 	cm := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "create-cm",
 		},
 		Data: map[string]string{
 			"CREATE-TEST": "VALUE1",
+		},
+		BinaryData: map[string][]byte{
+			"vm-config": data,
 		},
 	}
 
