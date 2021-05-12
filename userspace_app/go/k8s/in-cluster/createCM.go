@@ -95,6 +95,14 @@ func updateConfiMap(namespace string) {
 	}
 }
 
+func deleteConfiMap(namespace string) {
+	err := coreClient.CoreV1().ConfigMaps(namespace).
+		Delete(context.TODO(), "create-cm", metav1.DeleteOptions{})
+	if err != nil {
+		fmt.Println("Delete error, ", err.Error())
+	}
+}
+
 func main() {
 	// fmt.Println("ConfigMap in NamespaceAll")
 	// listConfiMap(v1.NamespaceAll)
