@@ -15,6 +15,8 @@ func main() {
 	// http://golang.org/pkg/time/#Time.Format
 	formatedTime := t.Format(time.RFC1123)
 	fmt.Println(formatedTime)
+	formatedTime = t.Format("2006-01-02 15:04:05")
+	fmt.Println(formatedTime)
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 	done := make(chan bool)
