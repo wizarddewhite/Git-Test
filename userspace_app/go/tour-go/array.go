@@ -38,6 +38,23 @@ func test_on_array() {
 	methodOnArray()
 }
 
+func RemoveIndex(s []string, index int) []string {
+	return append(s[:index], s[index+1:]...)
+}
+
+func remove_one_elem() {
+	var arr []string = []string{
+		"Hello",
+		"World",
+		"Nice",
+		"Day",
+	}
+
+	fmt.Println(arr)
+
+	fmt.Println(RemoveIndex(arr, 1))
+}
+
 func dump_two_dim_array(array [][]int) {
 	row := len(array)
 	column := len(array[0])
@@ -155,7 +172,8 @@ func test_two_dim_array_iter() {
 }
 
 func main() {
+	remove_one_elem()
 	// test_on_array()
 	// test_two_dim_array()
-	test_two_dim_array_iter()
+	// test_two_dim_array_iter()
 }
