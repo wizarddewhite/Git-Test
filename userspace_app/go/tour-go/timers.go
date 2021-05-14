@@ -6,8 +6,16 @@ import (
 	"time"
 )
 
-func main() {
+func period(duration time.Duration) {
+	for {
+		select {
+		case <-time.After(duration):
+			fmt.Println("tick...")
+		}
+	}
+}
 
+func timer() {
 	timer1 := time.NewTimer(2 * time.Second)
 
 	<-timer1.C
@@ -24,4 +32,9 @@ func main() {
 	}
 
 	time.Sleep(2 * time.Second)
+}
+
+func main() {
+	// timer()
+	period(time.Second * time.Duration(5))
 }
