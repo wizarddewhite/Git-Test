@@ -1,0 +1,110 @@
+# Source: benchmark/templates/fortio.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: fortioserver
+  name: fortioserver
+  namespace: twopods-istio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortioserver
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/interceptionMode: REDIRECT
+        sidecar.istio.io/inject: "true"
+        linkerd.io/inject: "disabled"
+        # exclude inbound ports of the uncaptured container
+        traffic.sidecar.istio.io/excludeInboundPorts: "8076,8077,8078,9999"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "80,8076,8077,8078"
+        sidecar.istio.io/proxyCPU: 1000m
+        sidecar.istio.io/proxyMemory: 512Mi
+      labels:
+        app: fortioserver
+        service: istio-bench
+        sidecar.istio.io/inject: 'True'
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dst4-baknode.host.net
+#      runtimeClassName: kata
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "fortioclient"
+            topologyKey: "kubernetes.io/hostname"
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+      - name: nighthawk-test-server-config
+        configMap:
+          name: nighthawk-test-server-config
+      containers:
+      - name: captured
+        securityContext:
+          runAsUser: 1
+        volumeMounts:
+        - name: shared-data
+          mountPath: /var/lib/fortio
+        - name: nighthawk-test-server-config
+          mountPath: /var/lib/nighthawk 
+        image: istio-tools/nighthawk:master-ee173978
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        - containerPort: 8079
+          protocol: TCP
+        args:
+        - nighthawk_test_server
+        - -c
+        - /var/lib/nighthawk/nighthawk-test-server-captured.yaml
+        - --base-id
+        - "1"
+        resources:
+          requests:
+            cpu: 1500m
+            memory: 1000Mi
+      - name: shell
+        securityContext:
+          runAsUser: 1
+        volumeMounts:
+        - name: shared-data
+          mountPath: /var/lib/fortio
+        - name: nighthawk-test-server-config
+          mountPath: /var/lib/nighthawk
+        image: istio-tools/curl:master-ee173978
+        args:
+        - /bin/sleep
+        - infinity
+      - name: uncaptured
+        securityContext:
+          runAsUser: 1
+        image: istio-tools/nighthawk:master-ee173978
+        ports:
+        - containerPort: 8077
+          protocol: TCP
+        - containerPort: 8076
+          protocol: TCP
+        volumeMounts:
+        - name: shared-data
+          mountPath: /var/lib/fortio
+        - name: nighthawk-test-server-config
+          mountPath: /var/lib/nighthawk 
+        args:
+        - nighthawk_test_server
+        - -c
+        - /var/lib/nighthawk/nighthawk-test-server-uncaptured.yaml
+        - --base-id
+        - "2"
+        resources:
+          requests:
+            cpu: 1500m
+            memory: 1000Mi
+

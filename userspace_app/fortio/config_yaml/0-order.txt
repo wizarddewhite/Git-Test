@@ -1,0 +1,11 @@
+1. configmap
+2. server-service
+3. client-service
+4. server-dp
+5. client-dp
+6. destination-rule
+7. gateway
+8. peer-authentication, may not necessary
+9. server-vservice
+10 client-vservice
+

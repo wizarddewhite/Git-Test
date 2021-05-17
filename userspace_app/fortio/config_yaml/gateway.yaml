@@ -1,0 +1,28 @@
+# Source: benchmark/templates/fortio.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: fortio-gateway
+  namespace: twopods-istio
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - hosts:
+    - fortioserver.local
+    - fortioclient.local
+    port:
+      name: http
+      number: 80
+      protocol: HTTP
+  - hosts:
+    - '*'
+    port:
+      name: https-fortio
+      number: 443
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      privateKey: /etc/istio/ingressgateway-certs/tls.key
+      serverCertificate: /etc/istio/ingressgateway-certs/tls.crt
+

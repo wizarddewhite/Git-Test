@@ -1,0 +1,18 @@
+# Source: benchmark/templates/mtls.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: fortioserver
+  namespace: twopods-istio
+spec:
+  host:  fortioserver
+  trafficPolicy:
+    portLevelSettings:
+    - port:
+        number: 8080
+      tls:
+        mode: ISTIO_MUTUAL
+    - port:
+        number: 8077
+      tls:
+        mode: DISABLE

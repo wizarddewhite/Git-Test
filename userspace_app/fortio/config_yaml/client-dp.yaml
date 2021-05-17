@@ -1,0 +1,108 @@
+# Source: benchmark/templates/fortio.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: fortioclient
+    sidecar.istio.io/inject: 'True'
+    service: istio-bench
+  name: fortioclient
+  namespace: twopods-istio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortioclient
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/interceptionMode: REDIRECT
+        traffic.sidecar.istio.io/includeOutboundIPRanges: 10.96.0.0/16
+        sidecar.istio.io/inject: "true"
+        linkerd.io/inject: "disabled"
+        # exclude inbound ports of the uncaptured container
+        traffic.sidecar.istio.io/excludeInboundPorts: "8076,8077,8078,9999"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "80,8076,8077,8078"
+        sidecar.istio.io/proxyCPU: 1000m
+        sidecar.istio.io/proxyMemory: 512Mi
+      labels:
+        app: fortioclient
+        sidecar.istio.io/inject: 'True'
+        service: istio-bench
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dst4-baknode.host.net
+#      runtimeClassName: kata
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "fortioserver"
+            topologyKey: "kubernetes.io/hostname"
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+      - name: nighthawk-test-server-config
+        configMap:
+          name: nighthawk-test-server-config
+      containers:
+      - name: uncaptured
+        securityContext:
+          runAsUser: 1
+        image: fortio/fortio:latest_release
+        volumeMounts:
+        - name: shared-data
+          mountPath: /var/lib/fortio
+        - name: nighthawk-test-server-config
+          mountPath: /var/lib/nighthawk 
+        args:
+        - report
+        - -http-port
+        - "9076"
+        - -grpc-port
+        - "disabled"
+        - -redirect-port
+        - "disabled"
+        - -data-dir
+        - /var/lib/fortio/
+        resources:
+          requests:
+            cpu: 1500m
+            memory: 1000Mi
+      - name: captured
+        securityContext:
+          runAsUser: 1
+        volumeMounts:
+        - name: shared-data
+          mountPath: /var/lib/fortio
+        - name: nighthawk-test-server-config
+          mountPath: /var/lib/nighthawk 
+        image: istio-tools/nighthawk:master-ee173978
+        args:
+        - nighthawk_service
+        - --listen
+        - 0.0.0.0:9999
+        ports:
+        - containerPort: 9999
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 1500m
+            memory: 1000Mi
+      - name: shell
+        securityContext:
+          runAsUser: 1
+        volumeMounts:
+        - name: shared-data
+          mountPath: /var/lib/fortio
+        - name: nighthawk-test-server-config
+          mountPath: /var/lib/nighthawk
+        image: istio-tools/curl:master-ee173978
+        args:
+        - /bin/sleep
+        - infinity
+

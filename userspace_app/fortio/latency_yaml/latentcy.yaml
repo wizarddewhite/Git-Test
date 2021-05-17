@@ -1,0 +1,25 @@
+# Data: latency
+# Filter: metadata-exchange and stats filters
+# VM mode: nullvm
+telemetry_mode: "v2-stats-virt-container"
+conn:
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
+qps:
+    - 1000
+    - 2000
+    - 4000
+    - 8000
+duration: 120
+perf_record: false
+run_bothsidecar: true
+run_serversidecar: false
+run_clientsidecar: false
+run_baseline: false
+
+jitter: true
+

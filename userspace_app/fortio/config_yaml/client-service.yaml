@@ -1,0 +1,30 @@
+# Source: benchmark/templates/fortio.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: fortioclient
+  namespace: twopods-istio
+spec:
+  ports:
+  - name: http-echo
+    port: 8080
+    protocol: TCP
+  - name: grpc-ping
+    port: 8079
+    protocol: TCP
+  - name: http-echoa
+    port: 8077
+    protocol: TCP
+  - name: grpc-pinga
+    port: 8076
+    protocol: TCP
+  - name: nighthawk-service
+    port: 9999
+    protocol: TCP
+  - name: fortio-reporting
+    port: 9076
+    protocol: TCP
+  selector:
+    app: fortioclient
+  type: LoadBalancer
+

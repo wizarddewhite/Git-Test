@@ -1,0 +1,10 @@
+# Source: benchmark/templates/mtls.yaml
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: twopods-istio
+spec:
+  mtls:
+    mode: PERMISSIVE
+
