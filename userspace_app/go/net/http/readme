@@ -17,3 +17,9 @@ E.g: go run gin_server.go
 
 $ curl http://localhost:8080/ping -H "User:admin"
 $ curl http://localhost:8080/ping?marker=abc -H "User:admin"
+
+3. http_get.go
+
+First startup a server, e.g. "go run http_server.go"
+
+$ go run http_get.go http://localhost:8000
