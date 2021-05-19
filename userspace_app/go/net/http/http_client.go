@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 )
 
 const (
@@ -23,13 +24,22 @@ func New() *Client {
 	}
 }
 
-func (c *Client) Request(method, url string, body interface{}, heads map[string]string) (*http.Response, error) {
+func (c *Client) Request(method, url string, body interface{}, heads, query map[string]string) (*http.Response, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest(method, url, bytes.NewReader(b))
+	var query_str string
+	if len(query) != 0 {
+		var qs []string
+		for k, v := range query {
+			qs = append(qs, fmt.Sprintf("%s=%s", k, v))
+		}
+		query_str = "?" + strings.Join(qs, "&")
+	}
+
+	req, err := http.NewRequest(method, url+query_str, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +52,7 @@ func (c *Client) Request(method, url string, body interface{}, heads map[string]
 
 func HttpRequest(test *TestEntry) {
 	c := New()
-	resp, err := c.Request(test.Method, test.Url, test.Body, test.Heads)
+	resp, err := c.Request(test.Method, test.Url, test.Body, test.Heads, test.Query)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -56,15 +66,19 @@ type TestEntry struct {
 	Url    string
 	Body   interface{}
 	Heads  map[string]string
+	Query  map[string]string
 }
 
 var Tests = []TestEntry{
 	TestEntry{
 		Method: http.MethodGet,
 		Url:    HOST + "/ping",
-		Body:   nil,
 		Heads: map[string]string{
 			"User": "weiyang",
+		},
+		Query: map[string]string{
+			"marker": "mk",
+			"limits": "10",
 		},
 	},
 }
