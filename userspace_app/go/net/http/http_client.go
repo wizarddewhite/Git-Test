@@ -36,14 +36,13 @@ func (c *Client) Request(method, url string, body interface{}, heads map[string]
 
 	for k, v := range heads {
 		req.Header.Add(k, v)
-		fmt.Println("Adding head...")
 	}
 	return c.client.Do(req)
 }
 
 func HttpRequest(test *TestEntry) {
 	c := New()
-	resp, err := c.Request(test.Method, test.Url, test.Body, nil)
+	resp, err := c.Request(test.Method, test.Url, test.Body, test.Heads)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -56,6 +55,7 @@ type TestEntry struct {
 	Method string
 	Url    string
 	Body   interface{}
+	Heads  map[string]string
 }
 
 var Tests = []TestEntry{
@@ -63,6 +63,9 @@ var Tests = []TestEntry{
 		Method: http.MethodGet,
 		Url:    HOST + "/ping",
 		Body:   nil,
+		Heads: map[string]string{
+			"User": "weiyang",
+		},
 	},
 }
 
