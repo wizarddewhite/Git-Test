@@ -89,6 +89,10 @@ func http_client() {
 
 	// send http request and get response
 	response, err := client.Do(request)
+	if err != nil {
+		fmt.Println("Error: ", err.Error())
+		os.Exit(2)
+	}
 	if response.Status != "200 OK" {
 		fmt.Println(response.Status)
 		os.Exit(2)
