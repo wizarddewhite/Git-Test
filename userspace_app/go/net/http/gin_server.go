@@ -71,6 +71,11 @@ func config_http2() {
 	s.Serve(l)
 }
 
+type PingReq struct {
+	Name string
+	Val  string
+}
+
 func raw_gin() {
 	r := gin.New()
 	r.Use(gin.Logger())
@@ -84,11 +89,20 @@ func raw_gin() {
 		l := c.DefaultQuery("limits", "20")
 		headerType := c.GetHeader("User")
 		time.Sleep(15 * time.Second)
+
+		// parse body
+		var req PingReq
+		if err := c.BindJSON(&req); err != nil {
+			c.JSON(http.StatusAccepted, "failed")
+			return
+		}
+
 		c.JSON(200, gin.H{
 			"message": "pong",
 			"type":    headerType,
 			"marker":  v,
 			"limits":  l,
+			"Name":    req.Name,
 		})
 	})
 	r.Handle(http.MethodGet, "/pong", func(c *gin.Context) {
