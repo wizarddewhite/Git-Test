@@ -12,6 +12,10 @@ func CheckUrl(url string) bool {
 	return false
 }
 
+func HttpGetWithTimeOut(api string, header map[string]string, timeout int) bool {
+	return true
+}
+
 func main() {
 	fmt.Println("Hello")
 }
