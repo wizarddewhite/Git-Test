@@ -50,9 +50,9 @@ func (c *Client) Request(method, url string, body interface{}, heads, query map[
 	return c.client.Do(req)
 }
 
-func HttpRequest(test *TestEntry) {
+func HttpRequest(param *ReqParam) {
 	c := New()
-	resp, err := c.Request(test.Method, test.Url, test.Body, test.Heads, test.Query)
+	resp, err := c.Request(param.Method, param.Url, param.Body, param.Heads, param.Query)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -61,12 +61,20 @@ func HttpRequest(test *TestEntry) {
 	fmt.Printf("DumpResponse: %s\n", string(b))
 }
 
-type TestEntry struct {
+type ReqParam struct {
 	Method string
 	Url    string
 	Body   interface{}
 	Heads  map[string]string
 	Query  map[string]string
+}
+
+type ExpResp struct {
+}
+
+type TestEntry struct {
+	Param ReqParam
+	Resp  ExpResp
 }
 
 type PingReq struct {
@@ -76,18 +84,20 @@ type PingReq struct {
 
 var Tests = []TestEntry{
 	TestEntry{
-		Method: http.MethodGet,
-		Url:    HOST + "/ping",
-		Body: PingReq{
-			Name: "ceshi",
-			Val:  "good",
-		},
-		Heads: map[string]string{
-			"User": "weiyang",
-		},
-		Query: map[string]string{
-			"marker": "mk",
-			"limits": "10",
+		Param: ReqParam{
+			Method: http.MethodGet,
+			Url:    HOST + "/ping",
+			Body: PingReq{
+				Name: "ceshi",
+				Val:  "good",
+			},
+			Heads: map[string]string{
+				"User": "weiyang",
+			},
+			Query: map[string]string{
+				"marker": "mk",
+				"limits": "10",
+			},
 		},
 	},
 }
@@ -95,6 +105,6 @@ var Tests = []TestEntry{
 func main() {
 
 	for _, test := range Tests {
-		HttpRequest(&test)
+		HttpRequest(&test.Param)
 	}
 }
