@@ -69,10 +69,19 @@ type TestEntry struct {
 	Query  map[string]string
 }
 
+type PingReq struct {
+	Name string
+	Val  string
+}
+
 var Tests = []TestEntry{
 	TestEntry{
 		Method: http.MethodGet,
 		Url:    HOST + "/ping",
+		Body: PingReq{
+			Name: "ceshi",
+			Val:  "good",
+		},
 		Heads: map[string]string{
 			"User": "weiyang",
 		},
