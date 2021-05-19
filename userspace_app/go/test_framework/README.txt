@@ -11,6 +11,9 @@ $ cd raw_test
 $ go test -v
 $ go test -v -run TestAdd
 
+Check test coverage
+$ go test -cover
+
 2. GoConvey
 
 

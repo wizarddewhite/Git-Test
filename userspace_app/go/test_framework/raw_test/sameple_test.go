@@ -12,6 +12,7 @@ func TestHello(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
+	main()
 	sum := Add(5, 5)
 	if sum == 10 {
 		t.Log("the result is ok")
