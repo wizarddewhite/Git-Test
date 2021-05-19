@@ -96,10 +96,9 @@ func raw_gin() {
 		c.JSON(200, "OK")
 	})
 
-	l, _ := net.Listen("tcp", ":8080")
-	// r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+	l, _ := net.Listen("tcp", ":8000")
+	// r.Run() // listen and serve on 0.0.0.0:8000 (for windows "localhost:8080")
 	s := &http.Server{
-		Addr:           ":8080",
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   20 * time.Second,
