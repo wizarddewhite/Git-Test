@@ -16,4 +16,7 @@ $ go test -cover
 
 2. GoConvey
 
+$ cd goconvey
+$ go test -v
+$ go test -v -run TestCheckUrl
 
