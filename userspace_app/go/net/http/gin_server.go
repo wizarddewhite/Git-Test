@@ -76,6 +76,14 @@ type PingReq struct {
 	Val  string
 }
 
+type PingResp struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Marker  string `json:"marker"`
+	Limits  string `json:"limits"`
+	Name    string `json:"Name"`
+}
+
 func raw_gin() {
 	r := gin.New()
 	r.Use(gin.Logger())
@@ -97,12 +105,12 @@ func raw_gin() {
 			return
 		}
 
-		c.JSON(200, gin.H{
-			"message": "pong",
-			"type":    headerType,
-			"marker":  v,
-			"limits":  l,
-			"Name":    req.Name,
+		c.JSON(200, PingResp{
+			Message: "pong",
+			Type:    headerType,
+			Marker:  v,
+			Limits:  l,
+			Name:    req.Name,
 		})
 	})
 	r.Handle(http.MethodGet, "/pong", func(c *gin.Context) {
