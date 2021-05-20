@@ -50,15 +50,16 @@ func (c *Client) Request(method, url string, body interface{}, heads, query map[
 	return c.client.Do(req)
 }
 
-func HttpRequest(param *ReqParam) {
+func HttpRequest(param *ReqParam) (resp *http.Response, err error) {
 	c := New()
-	resp, err := c.Request(param.Method, param.Url, param.Body, param.Heads, param.Query)
+	resp, err = c.Request(param.Method, param.Url, param.Body, param.Heads, param.Query)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 	b, _ := httputil.DumpResponse(resp, true)
 	fmt.Printf("DumpResponse: %s\n", string(b))
+	return
 }
 
 type ReqParam struct {
@@ -70,6 +71,8 @@ type ReqParam struct {
 }
 
 type ExpResp struct {
+	StatusCode int
+	Type       interface{}
 }
 
 type TestEntry struct {
@@ -80,6 +83,14 @@ type TestEntry struct {
 type PingReq struct {
 	Name string
 	Val  string
+}
+
+type PingResp struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Marker  string `json:"marker"`
+	Limits  string `json:"limits"`
+	Name    string `json:"Name"`
 }
 
 var Tests = []TestEntry{
@@ -99,12 +110,32 @@ var Tests = []TestEntry{
 				"limits": "10",
 			},
 		},
+		Resp: ExpResp{
+			StatusCode: 200,
+			Type:       PingResp{},
+		},
 	},
 }
 
 func main() {
 
 	for _, test := range Tests {
-		HttpRequest(&test.Param)
+		resp, err := HttpRequest(&test.Param)
+		if err != nil {
+			fmt.Println("Response Error!")
+			continue
+		}
+		if resp.StatusCode != test.Resp.StatusCode {
+			fmt.Printf("Expect StatusCode %d but get %d\n",
+				test.Resp.StatusCode, resp.StatusCode)
+			continue
+		}
+
+		_, ok := test.Resp.Type.(PingResp)
+		if ok {
+			fmt.Println("Correct type")
+		} else {
+			fmt.Println("Incorrect type")
+		}
 	}
 }
