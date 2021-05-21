@@ -101,7 +101,6 @@ type TestEntry struct {
 	Operation string
 	Param     ReqParam
 	Resp      ExpResp
-	Validate  ValidateFunc
 }
 
 type PingReq struct {
@@ -156,26 +155,33 @@ var Tests = []TestEntry{
 			StatusCode: 200,
 			ExpBody:    PingResp{},
 		},
-		Validate: PingValidate,
 	},
 }
 
-func ValidateOneRequest(test TestEntry, vf ValidateFunc) {
+var ValidationMap = map[string]ValidateFunc{
+	"ping": PingValidate,
+}
+
+func ValidateOneRequest(test TestEntry) {
 	resp, err := HttpRequest(&test.Param)
 	if err != nil {
 		fmt.Println("Response Error!")
 		return
 	}
 
-	if vf == nil {
+	var vf ValidateFunc
+	vf, found := ValidationMap[test.Operation]
+	if !found {
+		fmt.Println("No specified validate, use the default one")
 		vf = DefaultValidate
 	}
+
 	vf(test.Resp, resp)
 }
 
 func main() {
 
 	for _, test := range Tests {
-		ValidateOneRequest(test, test.Validate)
+		ValidateOneRequest(test)
 	}
 }
