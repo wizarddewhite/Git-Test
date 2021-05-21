@@ -61,7 +61,20 @@ func getZero() {
 	fmt.Println(reflect.DeepEqual(s, struct{ A int }{2}))
 }
 
+func tryValueOf() {
+	a := []int{2, 5}
+
+	var b reflect.Value = reflect.ValueOf(&a)
+	b = b.Elem()
+	fmt.Println("Slice :", a)
+
+	//use of ValueOf method
+	b = reflect.Append(b, reflect.ValueOf(80))
+	fmt.Println("Slice after appending data:", b)
+}
+
 func main() {
 	// getField()
-	getZero()
+	// getZero()
+	tryValueOf()
 }
