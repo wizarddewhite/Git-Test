@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httputil"
+	//	"net/http/httputil"
+	"reflect"
 	"strings"
 )
 
@@ -57,8 +58,8 @@ func HttpRequest(param *ReqParam) (resp *http.Response, err error) {
 		fmt.Println(err.Error())
 		return
 	}
-	b, _ := httputil.DumpResponse(resp, true)
-	fmt.Printf("DumpResponse: %s\n", string(b))
+	// b, _ := httputil.DumpResponse(resp, true)
+	// fmt.Printf("DumpResponse: %s\n", string(b))
 	return
 }
 
@@ -72,7 +73,8 @@ type ReqParam struct {
 
 type ExpResp struct {
 	StatusCode int
-	Type       interface{}
+	ExpBody    interface{}
+	RecvBody   interface{}
 }
 
 type TestEntry struct {
@@ -112,7 +114,7 @@ var Tests = []TestEntry{
 		},
 		Resp: ExpResp{
 			StatusCode: 200,
-			Type:       PingResp{},
+			RecvBody:   PingResp{},
 		},
 	},
 }
@@ -125,17 +127,21 @@ func main() {
 			fmt.Println("Response Error!")
 			continue
 		}
+		defer resp.Body.Close()
+
+		// check StatusCode
 		if resp.StatusCode != test.Resp.StatusCode {
 			fmt.Printf("Expect StatusCode %d but get %d\n",
 				test.Resp.StatusCode, resp.StatusCode)
 			continue
 		}
 
-		_, ok := test.Resp.Type.(PingResp)
-		if ok {
-			fmt.Println("Correct type")
-		} else {
-			fmt.Println("Incorrect type")
-		}
+		// check body
+		respType := reflect.TypeOf(test.Resp.RecvBody)
+		fmt.Println(respType)
+
+		err = json.NewDecoder(resp.Body).Decode(&test.Resp.RecvBody)
+		fmt.Println(test.Resp.RecvBody)
+
 	}
 }
