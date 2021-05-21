@@ -77,9 +77,13 @@ type ExpResp struct {
 	RecvBody   interface{}
 }
 
+type ValidateFunc func(int, int) error
+
 type TestEntry struct {
-	Param ReqParam
-	Resp  ExpResp
+	Operation string
+	Param     ReqParam
+	Resp      ExpResp
+	Validate  ValidateFunc
 }
 
 type PingReq struct {
@@ -97,6 +101,7 @@ type PingResp struct {
 
 var Tests = []TestEntry{
 	TestEntry{
+		Operation: "ping",
 		Param: ReqParam{
 			Method: http.MethodGet,
 			Url:    HOST + "/ping",
@@ -119,29 +124,33 @@ var Tests = []TestEntry{
 	},
 }
 
+func ValidateOneRequest(test TestEntry) {
+	resp, err := HttpRequest(&test.Param)
+	if err != nil {
+		fmt.Println("Response Error!")
+		return
+	}
+	defer resp.Body.Close()
+
+	// check StatusCode
+	if resp.StatusCode != test.Resp.StatusCode {
+		fmt.Printf("Expect StatusCode %d but get %d\n",
+			test.Resp.StatusCode, resp.StatusCode)
+		return
+	}
+
+	// check body
+	respType := reflect.TypeOf(test.Resp.RecvBody)
+	fmt.Println(respType)
+
+	err = json.NewDecoder(resp.Body).Decode(&test.Resp.RecvBody)
+	fmt.Println(test.Resp.RecvBody)
+
+}
+
 func main() {
 
 	for _, test := range Tests {
-		resp, err := HttpRequest(&test.Param)
-		if err != nil {
-			fmt.Println("Response Error!")
-			continue
-		}
-		defer resp.Body.Close()
-
-		// check StatusCode
-		if resp.StatusCode != test.Resp.StatusCode {
-			fmt.Printf("Expect StatusCode %d but get %d\n",
-				test.Resp.StatusCode, resp.StatusCode)
-			continue
-		}
-
-		// check body
-		respType := reflect.TypeOf(test.Resp.RecvBody)
-		fmt.Println(respType)
-
-		err = json.NewDecoder(resp.Body).Decode(&test.Resp.RecvBody)
-		fmt.Println(test.Resp.RecvBody)
-
+		ValidateOneRequest(test)
 	}
 }
