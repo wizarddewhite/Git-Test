@@ -74,7 +74,6 @@ type ReqParam struct {
 type ExpResp struct {
 	StatusCode int
 	ExpBody    interface{}
-	RecvBody   interface{}
 }
 
 type ValidateFunc func(int, int) error
@@ -119,7 +118,7 @@ var Tests = []TestEntry{
 		},
 		Resp: ExpResp{
 			StatusCode: 200,
-			RecvBody:   PingResp{},
+			ExpBody:    PingResp{},
 		},
 	},
 }
@@ -140,11 +139,11 @@ func ValidateOneRequest(test TestEntry) {
 	}
 
 	// check body
-	respType := reflect.TypeOf(test.Resp.RecvBody)
+	respType := reflect.TypeOf(test.Resp.ExpBody)
 	fmt.Println(respType)
 
-	err = json.NewDecoder(resp.Body).Decode(&test.Resp.RecvBody)
-	fmt.Println(test.Resp.RecvBody)
+	err = json.NewDecoder(resp.Body).Decode(&test.Resp.ExpBody)
+	fmt.Println(test.Resp.ExpBody)
 
 }
 
