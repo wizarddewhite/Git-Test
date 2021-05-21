@@ -73,8 +73,23 @@ func tryValueOf() {
 	fmt.Println("Slice after appending data:", b)
 }
 
+func newValueFromType() {
+	// one way is to have a value of the type you want already
+	a := 1
+	// reflect.New works kind of like the built-in function new
+	// We'll get a reflected pointer to a new int value
+	fmt.Println("reflect.TypeOf(a):", reflect.TypeOf(a))
+	intPtr := reflect.New(reflect.TypeOf(a))
+	fmt.Printf("intPtr: %v, Type: %v\n", intPtr, reflect.TypeOf(intPtr))
+	// Just to prove it
+	b := intPtr.Elem().Interface().(int)
+	// Prints 0
+	fmt.Println(b)
+}
+
 func main() {
 	// getField()
 	// getZero()
-	tryValueOf()
+	// tryValueOf()
+	newValueFromType()
 }
