@@ -18,7 +18,9 @@ func getField() {
 	fmt.Println(field.Interface())
 
 	// print the whole struct value
-	fmt.Println(reflect.ValueOf(s))
+	var inf interface{}
+	inf = s
+	fmt.Println(reflect.ValueOf(inf))
 }
 
 func main() {
