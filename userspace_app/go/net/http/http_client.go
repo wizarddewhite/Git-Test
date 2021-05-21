@@ -63,6 +63,27 @@ func HttpRequest(param *ReqParam) (resp *http.Response, err error) {
 	return
 }
 
+type ValidateFunc func(ExpResp, *http.Response) error
+
+func DefaultValidate(exp ExpResp, resp *http.Response) error {
+	defer resp.Body.Close()
+
+	// check StatusCode
+	if resp.StatusCode != exp.StatusCode {
+		fmt.Printf("Expect StatusCode %d but get %d\n",
+			exp.StatusCode, resp.StatusCode)
+		return fmt.Errorf("")
+	}
+
+	// check body
+	respType := reflect.TypeOf(exp.ExpBody)
+	fmt.Println(respType)
+
+	err := json.NewDecoder(resp.Body).Decode(&exp.ExpBody)
+	fmt.Println(exp.ExpBody)
+	return err
+}
+
 type ReqParam struct {
 	Method string
 	Url    string
@@ -75,8 +96,6 @@ type ExpResp struct {
 	StatusCode int
 	ExpBody    interface{}
 }
-
-type ValidateFunc func(int, int) error
 
 type TestEntry struct {
 	Operation string
@@ -96,6 +115,23 @@ type PingResp struct {
 	Marker  string `json:"marker"`
 	Limits  string `json:"limits"`
 	Name    string `json:"Name"`
+}
+
+func PingValidate(exp ExpResp, resp *http.Response) error {
+	defer resp.Body.Close()
+
+	// check StatusCode
+	if resp.StatusCode != exp.StatusCode {
+		fmt.Printf("Expect StatusCode %d but get %d\n",
+			exp.StatusCode, resp.StatusCode)
+		return fmt.Errorf("")
+	}
+
+	body := PingResp{}
+	err := json.NewDecoder(resp.Body).Decode(&body)
+	fmt.Println("The body we get is: ", body)
+	return err
+
 }
 
 var Tests = []TestEntry{
@@ -120,36 +156,26 @@ var Tests = []TestEntry{
 			StatusCode: 200,
 			ExpBody:    PingResp{},
 		},
+		Validate: PingValidate,
 	},
 }
 
-func ValidateOneRequest(test TestEntry) {
+func ValidateOneRequest(test TestEntry, vf ValidateFunc) {
 	resp, err := HttpRequest(&test.Param)
 	if err != nil {
 		fmt.Println("Response Error!")
 		return
 	}
-	defer resp.Body.Close()
 
-	// check StatusCode
-	if resp.StatusCode != test.Resp.StatusCode {
-		fmt.Printf("Expect StatusCode %d but get %d\n",
-			test.Resp.StatusCode, resp.StatusCode)
-		return
+	if vf == nil {
+		vf = DefaultValidate
 	}
-
-	// check body
-	respType := reflect.TypeOf(test.Resp.ExpBody)
-	fmt.Println(respType)
-
-	err = json.NewDecoder(resp.Body).Decode(&test.Resp.ExpBody)
-	fmt.Println(test.Resp.ExpBody)
-
+	vf(test.Resp, resp)
 }
 
 func main() {
 
 	for _, test := range Tests {
-		ValidateOneRequest(test)
+		ValidateOneRequest(test, test.Validate)
 	}
 }
