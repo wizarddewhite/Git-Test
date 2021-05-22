@@ -20,3 +20,7 @@
 	oneline = log --oneline
 	co = checkout
 	commit = commit -s
+[http]
+	proxy = socks5://localhost:1080
+[https]
+	proxy = socks5://localhost:1080
