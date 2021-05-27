@@ -5,6 +5,35 @@ import (
 	"time"
 )
 
+func ticker() {
+	ticker := time.NewTicker(1500 * time.Millisecond)
+	done := make(chan bool)
+	env := make(chan int)
+
+	go func() {
+		for {
+			select {
+			case val := <-env:
+				fmt.Println("Receive env ", val)
+			case <-done:
+				fmt.Println("Receive done")
+				return
+			case t := <-ticker.C:
+				fmt.Println("Tick at", t)
+			}
+		}
+	}()
+
+	time.Sleep(16000 * time.Millisecond)
+	fmt.Println("Stop ticker")
+	ticker.Stop()
+	time.Sleep(4600 * time.Millisecond)
+	env <- 1
+	done <- true
+	time.Sleep(2600 * time.Millisecond)
+	fmt.Println("ticker return")
+}
+
 func main() {
 	t := time.Now()
 	// The Time type implements the Stringer interface -- it
@@ -18,22 +47,5 @@ func main() {
 	formatedTime = t.Format("2006-01-02 15:04:05")
 	fmt.Println(formatedTime)
 
-	ticker := time.NewTicker(500 * time.Millisecond)
-	done := make(chan bool)
-
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case t := <-ticker.C:
-				fmt.Println("Tick at", t)
-			}
-		}
-	}()
-
-	time.Sleep(2600 * time.Millisecond)
-	ticker.Stop()
-	done <- true
-	fmt.Println("Ticker stopped")
+	ticker()
 }
