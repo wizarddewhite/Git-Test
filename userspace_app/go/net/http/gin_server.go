@@ -101,7 +101,7 @@ func raw_gin() {
 		// parse body
 		var req PingReq
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusAccepted, "failed")
+			c.Status(http.StatusAccepted)
 			return
 		}
 
