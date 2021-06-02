@@ -74,7 +74,12 @@ func sessStringOut(sess *ssh.Session, cmd string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("output from ssh: \n", string(b))
+	output := string(b)
+	// fmt.Println("output from ssh: \n", output)
+	outputs := strings.Split(output, "\n")
+	for i, o := range outputs {
+		fmt.Println(i, ": ", o)
+	}
 }
 
 func main() {
@@ -83,7 +88,7 @@ func main() {
 	port := "22"
 	user := "root"
 	pass := "123456"
-	cmd := "ls"
+	cmd := "dmidecode -t system"
 
 	// ssh client config
 	// config := configWithKey(user, pass, host)
