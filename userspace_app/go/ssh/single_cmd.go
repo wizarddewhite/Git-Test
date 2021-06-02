@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -53,6 +54,29 @@ func configJustPass(user, password string) *ssh.ClientConfig {
 	}
 }
 
+func sessStdOut(sess *ssh.Session, cmd string) {
+	// setup standard out and error
+	// uses writer interface
+	sess.Stdout = os.Stdout
+	sess.Stderr = os.Stderr
+
+	// run single command
+	err := sess.Run(cmd)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func sessStringOut(sess *ssh.Session, cmd string) {
+	sess.Stdout = nil
+	sess.Stderr = nil
+	b, err := sess.CombinedOutput(cmd)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("output from ssh: \n", string(b))
+}
+
 func main() {
 
 	host := "yourhost"
@@ -79,17 +103,8 @@ func main() {
 	}
 	defer sess.Close()
 
-	// setup standard out and error
-	// uses writer interface
-	sess.Stdout = os.Stdout
-	sess.Stderr = os.Stderr
-
-	// run single command
-	err = sess.Run(cmd)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	// sessStdOut(sess, cmd)
+	sessStringOut(sess, cmd)
 }
 
 func getHostKey(host string) ssh.PublicKey {
