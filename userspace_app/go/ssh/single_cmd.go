@@ -77,8 +77,11 @@ func sessStringOut(sess *ssh.Session, cmd string) {
 	output := string(b)
 	// fmt.Println("output from ssh: \n", output)
 	outputs := strings.Split(output, "\n")
-	for i, o := range outputs {
-		fmt.Println(i, ": ", o)
+	for _, o := range outputs {
+		split := strings.Split(o, ":")
+		if len(split) == 2 && strings.Contains(split[0], "Serial Number") {
+			fmt.Println(len(split), split[1])
+		}
 	}
 }
 
