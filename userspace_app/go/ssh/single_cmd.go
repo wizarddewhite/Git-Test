@@ -1,8 +1,10 @@
+// http://networkbit.ch/golang-ssh-client/
 package main
 
 import (
 	"bufio"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,16 +41,29 @@ func configWithKey(user, pass, host string) *ssh.ClientConfig {
 	}
 }
 
+func configJustPass(user, password string) *ssh.ClientConfig {
+	return &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(password),
+		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil
+		}),
+	}
+}
+
 func main() {
 
 	host := "yourhost"
 	port := "22"
 	user := "root"
 	pass := "123456"
-	cmd := "ps"
+	cmd := "ls"
 
 	// ssh client config
-	config := configWithKey(user, pass, host)
+	// config := configWithKey(user, pass, host)
+	config := configJustPass(user, pass)
 
 	// connect
 	client, err := ssh.Dial("tcp", host+":"+port, config)
