@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 )
 
 type Vertex struct {
@@ -71,7 +72,45 @@ func general_operation() {
 		fmt.Println("No such element")
 	}
 }
+
+func map_compare() {
+	var m1 map[string]string
+	var m2 map[string]string
+	m1 = make(map[string]string)
+	m2 = make(map[string]string)
+
+	m1["key2"] = "value2"
+	m1["key1"] = "value1"
+	m2["key1"] = "value1"
+	m2["key2"] = "value2"
+
+	// iterate map first
+	for k, v := range m1 {
+		fmt.Print(k + " : ")
+		fmt.Println(v)
+	}
+	for k, v := range m1 {
+		fmt.Print(k + " : ")
+		fmt.Println(v)
+	}
+
+	if reflect.DeepEqual(m1, m2) {
+		fmt.Println(m1, "==", m2)
+	} else {
+		fmt.Println(m1, "!=", m2)
+	}
+
+	m1["key2"] = "other"
+	if reflect.DeepEqual(m1, m2) {
+		fmt.Println(m1, "==", m2)
+	} else {
+		fmt.Println(m1, "!=", m2)
+	}
+
+}
+
 func main() {
 	// general_operation()
-	newMap()
+	// newMap()
+	map_compare()
 }
