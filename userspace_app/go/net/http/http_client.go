@@ -51,9 +51,35 @@ func (c *Client) Request(method, url string, body interface{}, heads, query map[
 	return c.client.Do(req)
 }
 
+func (c *Client) RequestString(method, url, body string, heads, query map[string]string) (*http.Response, error) {
+	var query_str string
+	if len(query) != 0 {
+		var qs []string
+		for k, v := range query {
+			qs = append(qs, fmt.Sprintf("%s=%s", k, v))
+		}
+		query_str = "?" + strings.Join(qs, "&")
+	}
+
+	req, err := http.NewRequest(method, url+query_str, bytes.NewReader([]byte(body)))
+	if err != nil {
+		return nil, err
+	}
+
+	for k, v := range heads {
+		req.Header.Add(k, v)
+	}
+	return c.client.Do(req)
+}
+
 func HttpRequest(param *ReqParam) (resp *http.Response, err error) {
 	c := New()
-	resp, err = c.Request(param.Method, param.Url, param.Body, param.Heads, param.Query)
+
+	if param.Body != nil {
+		resp, err = c.Request(param.Method, param.Url, param.Body, param.Heads, param.Query)
+	} else {
+		resp, err = c.RequestString(param.Method, param.Url, param.String, param.Heads, param.Query)
+	}
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -88,6 +114,7 @@ type ReqParam struct {
 	Method string
 	Url    string
 	Body   interface{}
+	String string
 	Heads  map[string]string
 	Query  map[string]string
 }
@@ -143,6 +170,26 @@ var Tests = []TestEntry{
 				Name: "ceshi",
 				Val:  "good",
 			},
+			Heads: map[string]string{
+				"User": "weiyang",
+			},
+			Query: map[string]string{
+				"marker": "mk",
+				"limits": "10",
+			},
+		},
+		Resp: ExpResp{
+			StatusCode: 200,
+			ExpBody:    PingResp{},
+		},
+	},
+	TestEntry{
+		Operation: "ping",
+		Param: ReqParam{
+			Method: http.MethodGet,
+			Url:    HOST + "/ping",
+			Body:   nil,
+			String: "{\"Name\": \"abc\"}",
 			Heads: map[string]string{
 				"User": "weiyang",
 			},
