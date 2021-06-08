@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"net"
 	"net/http"
@@ -101,6 +102,7 @@ func raw_gin() {
 		// parse body
 		var req PingReq
 		if err := c.BindJSON(&req); err != nil {
+			fmt.Println(err)
 			c.Status(http.StatusAccepted)
 			return
 		}

@@ -26,6 +26,19 @@ func create_slice() {
 	printSlice("b", b)
 }
 
+func clear_slice() {
+	var p = []int{2, 3, 5, 7, 11, 13}
+	printSlice("p", p)
+	p = nil
+	printSlice("p", p)
+
+	var a []int
+	printSlice("a", a)
+	if a == nil {
+		fmt.Println("nil!")
+	}
+}
+
 func make_slice() {
 	b := make([]int, 0, 5)
 	printSlice("b", b)
@@ -88,10 +101,11 @@ func replace_slice() {
 
 func main() {
 	//create_slice()
+	clear_slice()
 	// make_slice()
 	//append_slice()
 	// methodOnSlice()
-	replace_slice()
+	//replace_slice()
 }
 
 func printSlice(s string, x []int) {
