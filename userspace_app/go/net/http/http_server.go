@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 )
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,8 +26,105 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "hello world")
 }
 
+type Request struct {
+	Method  string
+	URL     string
+	Headers map[string][]string
+	Queries map[string][]string
+}
+
+var idx int
+var req = Request{
+	Headers: make(map[string][]string),
+	Queries: make(map[string][]string),
+}
+
+func saveHeaders(r *http.Request) {
+	// clear original Header
+	for name := range req.Headers {
+		delete(req.Headers, name)
+	}
+
+	// save header to req
+	for k, v := range r.Header {
+		req.Headers[k] = v
+	}
+}
+
+func saveQueries(r *http.Request) {
+	// clear original Header
+	for name := range req.Queries {
+		delete(req.Queries, name)
+	}
+
+	// save header to req
+	for k, v := range r.URL.Query() {
+		req.Queries[k] = v
+	}
+}
+
+func sameHQ(old, new map[string][]string) bool {
+	fmt.Println(old)
+	fmt.Println(new)
+
+	if reflect.DeepEqual(old, new) {
+		return true
+	}
+	return false
+}
+
+func CompareRequest(w http.ResponseWriter, r *http.Request) {
+	cur_idx := idx % 2
+	fmt.Printf("req url: %s\n", r.URL.Path)
+
+	if cur_idx == 0 {
+		req.Method = r.Method
+		req.URL = r.URL.Path
+		saveHeaders(r)
+		saveQueries(r)
+	} else {
+		var field string
+		var same bool
+
+		field = "method"
+		if r.Method != req.Method {
+			goto OUT
+		}
+
+		field = "url"
+		if r.URL.Path != req.URL {
+			goto OUT
+		}
+
+		field = "header"
+		same = sameHQ(req.Headers, r.Header)
+		if !same {
+			goto OUT
+		}
+
+		field = "query"
+		same = sameHQ(req.Queries, r.URL.Query())
+		if !same {
+			goto OUT
+		} else {
+			field = "request"
+		}
+
+	OUT:
+		if same {
+			fmt.Println("Same ", field)
+		} else {
+			fmt.Println("Different ", field)
+		}
+	}
+
+	idx++
+}
+
 func main() {
 	http.HandleFunc("/", IndexHandler)
+	http.HandleFunc("/compare", CompareRequest)
+	http.HandleFunc("/diffurl", CompareRequest)
 	fmt.Println("Listen on :8000")
 	http.ListenAndServe(":8000", nil)
 }

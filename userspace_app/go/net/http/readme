@@ -9,6 +9,13 @@ $ curl http://localhost:8000/vm/rest?yes=abc\&name=r -H "User:admin"
 $ curl -X POST http://localhost:8000/vm/rest?yes=abc\&name=r -H "User:admin" \
 	-H 'content-type: application/json' -d "{\"type\":\"abc\"}"
 
+Test for compare request
+
+$ curl http://localhost:8000/compare?yes=abc\&name=r -H "User:admin" -H "Group:test"
+$ curl http://localhost:8000/compare?yes=abc\&name=r -H "User:admin"
+$ curl http://localhost:8000/diffurl?yes=abc\&name=r -H "User:admin" -H "Group:test"
+$ curl -X Post http://localhost:8000/compare?yes=abc\&name=r -H "User:admin" -H "Group:test"
+
 2. gin_server.go
 
 This program is used to show how to use package gin to build a http server.
