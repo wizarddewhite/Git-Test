@@ -73,8 +73,8 @@ func config_http2() {
 }
 
 type PingReq struct {
-	Name string
-	Val  string
+	Name string `json:"Name"`
+	Val  string `json:"Val"`
 }
 
 type PingResp struct {
