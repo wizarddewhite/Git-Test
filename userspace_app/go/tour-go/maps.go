@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"reflect"
 )
@@ -109,8 +112,54 @@ func map_compare() {
 
 }
 
+func map_serialize() {
+	var m = map[string]int{"one": 1, "two": 2, "three": 3}
+	fmt.Printf("origin map is: %#v\n", m)
+
+	b := new(bytes.Buffer)
+
+	e := gob.NewEncoder(b)
+
+	// Encoding the map
+	err := e.Encode(m)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("map is encoded to: ", b.String())
+
+	var decodedMap map[string]int
+	d := gob.NewDecoder(b)
+
+	// Decoding the serialized data
+	err = d.Decode(&decodedMap)
+	if err != nil {
+		panic(err)
+	}
+
+	// Ta da! It is a map!
+	fmt.Printf("%#v\n", decodedMap)
+}
+
+func map_json() {
+	var m = map[string][]string{"one": {"1"}, "two": {"2"}, "three": {"3"}}
+	fmt.Println(m)
+	jsonString, _ := json.Marshal(m)
+	fmt.Println(string(jsonString))
+
+	n := make(map[string][]string)
+	err := json.Unmarshal([]byte(jsonString), &n)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(n)
+}
+
 func main() {
 	// general_operation()
 	// newMap()
-	map_compare()
+	// map_compare()
+	// map_serialize()
+	map_json()
 }
