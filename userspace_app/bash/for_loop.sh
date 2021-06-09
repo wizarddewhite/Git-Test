@@ -17,3 +17,13 @@ for ((i=10;i<20;i++));
 do
 	echo "  " $i;
 done
+
+# iterate command line output
+local_files=`ls 2>/dev/null`
+IFS=$'\n'
+local_files=($local_files)
+for (( i=0; i<${#local_files[@]}; i++ ))
+do
+    echo ${local_files[$i]}
+done
+
