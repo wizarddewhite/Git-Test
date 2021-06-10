@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"time"
 )
 
 func getField() {
@@ -87,9 +88,47 @@ func newValueFromType() {
 	fmt.Println(b)
 }
 
+type Request struct {
+	Method    string
+	URL       string
+	TimeStamp string
+	Headers   string
+	Queries   string
+	Body      string
+}
+
+func sameReq(old, new *Request) bool {
+	return reflect.DeepEqual(old, new)
+}
+
+func compareRequest() {
+	t := time.Now().Format(time.RFC1123)
+	req1 := Request{
+		TimeStamp: t,
+		Method:    "Get",
+		URL:       "/api/v1/users",
+		Headers:   "{\"one\":[\"1\"],\"three\":[\"3\"],\"two\":[\"2\"]}",
+		Queries:   "{\"one\":[\"1\"],\"three\":[\"3\"],\"two\":[\"2\"]}",
+	}
+	req2 := Request{
+		TimeStamp: t,
+		Method:    "Get",
+		URL:       "/api/v1/users",
+		Headers:   "{\"one\":[\"1\"],\"three\":[\"3\"],\"two\":[\"2\"]}",
+		Queries:   "{\"one\":[\"1\"],\"three\":[\"3\"],\"two\":[\"2\"]}",
+	}
+
+	if sameReq(&req1, &req2) {
+		fmt.Println("same")
+	} else {
+		fmt.Println("different")
+	}
+}
+
 func main() {
 	// getField()
 	// getZero()
 	// tryValueOf()
-	newValueFromType()
+	// newValueFromType()
+	compareRequest()
 }
