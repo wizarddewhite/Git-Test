@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -98,6 +99,26 @@ type Request struct {
 }
 
 func sameReq(old, new *Request) bool {
+	// Head and Query are map, we need to convert it.
+	h1 := make(map[string][]string)
+	h2 := make(map[string][]string)
+	json.Unmarshal([]byte(old.Headers), &h1)
+	json.Unmarshal([]byte(new.Headers), &h2)
+	if !reflect.DeepEqual(h1, h2) {
+		return false
+	}
+	old.Headers = ""
+	new.Headers = ""
+
+	q1 := make(map[string][]string)
+	q2 := make(map[string][]string)
+	json.Unmarshal([]byte(old.Headers), &q1)
+	json.Unmarshal([]byte(new.Headers), &q2)
+	if !reflect.DeepEqual(q1, q2) {
+		return false
+	}
+	old.Queries = ""
+	new.Queries = ""
 	return reflect.DeepEqual(old, new)
 }
 
@@ -114,7 +135,7 @@ func compareRequest() {
 		TimeStamp: t,
 		Method:    "Get",
 		URL:       "/api/v1/users",
-		Headers:   "{\"one\":[\"1\"],\"three\":[\"3\"],\"two\":[\"2\"]}",
+		Headers:   "{\"three\":[\"3\"],\"two\":[\"2\"],\"one\":[\"1\"]}",
 		Queries:   "{\"one\":[\"1\"],\"three\":[\"3\"],\"two\":[\"2\"]}",
 	}
 
