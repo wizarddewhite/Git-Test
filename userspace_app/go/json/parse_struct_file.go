@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
 
 type Setting struct {
@@ -33,6 +34,25 @@ func simple_test() {
 	fmt.Println(config.Process.User)
 }
 
+type ObjStatus struct {
+	Status string `json:"status,omitempty"`
+	Reason string `json:"reason,omitempty"`
+
+	Source string    `json:"source,omitempty"`
+	Ts     time.Time `json:"timestamp,omitempty"`
+}
+
+func timestamp_parse() {
+	file, _ := os.Open("json_time.status")
+	status := &ObjStatus{}
+	decoder := json.NewDecoder(file)
+	decoder.Decode(status)
+	fmt.Println(status.Status)
+	fmt.Println(status.Ts.Format(time.RFC1123))
+	fmt.Println(status.Ts.Format("2006-01-02 15:04:05"))
+}
+
 func main() {
-	simple_test()
+	// simple_test()
+	timestamp_parse()
 }
