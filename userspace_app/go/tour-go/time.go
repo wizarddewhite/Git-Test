@@ -47,5 +47,11 @@ func main() {
 	formatedTime = t.Format("2006-01-02 15:04:05")
 	fmt.Println(formatedTime)
 
-	ticker()
+	t, err := time.Parse("2006-01-02 15:04:05", formatedTime)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(t)
+
+	// ticker()
 }
