@@ -34,24 +34,33 @@ func ticker() {
 	fmt.Println("ticker return")
 }
 
-func main() {
+func time_format() {
 	t := time.Now()
 	// The Time type implements the Stringer interface -- it
 	// has a String() method which gets called automatically by
 	// functions like Printf().
-	fmt.Printf("%s\n", t)
+	fmt.Println("raw:    ", t)
 	// See the Constants section for more formats
 	// http://golang.org/pkg/time/#Time.Format
 	formatedTime := t.Format(time.RFC1123)
-	fmt.Println(formatedTime)
-	formatedTime = t.Format("2006-01-02 15:04:05")
-	fmt.Println(formatedTime)
-
-	t, err := time.Parse("2006-01-02 15:04:05", formatedTime)
+	fmt.Println("RFC1123:", formatedTime)
+	t, err := time.Parse(time.RFC1123, formatedTime)
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(t)
+	fmt.Println("parse:  ", t.Format(time.RFC1123))
 
+	formatedTime = t.Format("2006-01-02 15:04:05")
+	fmt.Println("no-zone:", formatedTime)
+	t, err = time.Parse("2006-01-02 15:04:05", formatedTime)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("parse:  ", t)
+}
+
+func main() {
+
+	time_format()
 	// ticker()
 }
