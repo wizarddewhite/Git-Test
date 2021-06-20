@@ -1,0 +1,135 @@
+1. Explanation of Output
+
+1.1. Explanation of %Cpus
+
+    us: Amount of time the CPU spends executing processes for people in ¡°user space.¡±
+    sy: Amount of time spent running system ¡°kernel space¡± processes.
+    ni: Amount of time spent executing processes with a manually set nice value.
+    id: Amount of CPU idle time.
+    wa: Amount of time the CPU spends waiting for I/O to complete.
+    hi: Amount of time spent servicing hardware interrupts.
+    si: Amount of time spent servicing software interrupts.
+    st: Amount of time lost due to running virtual machines (¡°steal time¡±).
+
+1.2. Explanation of Process List
+
+The column headings in the process list are as follows:
+
+    PID: Process ID.
+    USER: The owner of the process.
+    PR: Process priority.
+    NI: The nice value of the process.
+    VIRT: Amount of virtual memory used by the process.
+    RES: Amount of resident memory used by the process.
+    SHR: Amount of shared memory used by the process.
+    S: Status of the process. (See the list below for the values this field can take).
+    %CPU: The share of CPU time used by the process since the last update.
+    %MEM: The share of physical memory used.
+    TIME+: Total CPU time used by the task in hundredths of a second.
+    COMMAND: The command name or command line (name + options).
+
+1.2.1 Explanation of S Column
+
+The status of the process can be one of the following:
+
+    D: Uninterruptible sleep
+    R: Running
+    S: Sleeping
+    T: Traced (stopped)
+    Z: Zombie
+
+2. Adjust Display of top
+
+2.1 Show absolute path of process
+
+Press 'c'.
+
+2.2 Change numeric unit
+
+Press 'e' to change values in the process list: kibibytes, mebibytes,
+gibibytes, tebibytes, and pebibytes.
+
+2.3 CPU usage to ASCII graph
+
+Press 't'.
+
+And the three numbers from left to right are:
+
+    * The combined us and ni percentage (user space+tasks with nonstandard nice settings).
+    * The sy percentage (kernel space).
+    * The total (rounded to an integer value).
+
+2.4 Memory usage to ASCII graph
+
+Press 'm'.
+
+2.5 Highlight and Color
+
+2.5.1 Color
+
+Press 'z'.
+
+2.5.2 Highlight running task
+
+Press 'y'.
+
+2.5.3 Highlight sorting column
+
+Press 'x'.
+
+2.5.5 Switch Highlight Font
+
+Press 'b'.
+
+2.6 Change the Columns Displayed
+
+Press 'F' to enter Fields Management.
+
+Then we can adjust the column to be displayed for process.
+
+2.7 Alternative Display Mode
+
+Press 'A' to display four areas.
+
+Press 'a' to move between areas
+Hint: before enable this mode, press 'z' to enable color first.
+
+3. Sort Output
+
+3.1 Display specific user process
+
+top -u paras
+
+Or
+
+Press 'u' and input the user name.
+
+3.2 Sort output by ... MEM for example
+
+    * press Shift+f to enter the interactive menu
+    * press the up or down arrow until the %MEM choice is highlighted
+    * press s to select %MEM choice
+    * press enter to save your selection
+    * press q to exit the interactive menu
+
+3.3 Shutcut for sort
+
+    * P: The %CPU column.
+    * M: The %MEM column.
+    * N: The PID column.
+    * T: The TIME+ column.
+
+3.4 Only display active process
+
+Press 'i'.
+
+4. Operate to process
+
+4.1 Kill a process
+
+Press 'k', then enter the pid.
+
+0. Reference
+
+https://www.geeksforgeeks.org/top-command-in-linux-with-examples/
+https://www.howtogeek.com/668986/how-to-use-the-linux-top-command-and-understand-its-output/
