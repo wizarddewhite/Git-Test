@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -31,6 +32,7 @@ type Request struct {
 	URL     string
 	Headers map[string][]string
 	Queries map[string][]string
+	Body    string
 }
 
 var idx int
@@ -63,11 +65,35 @@ func saveQueries(r *http.Request) {
 	}
 }
 
+func saveBody(r *http.Request) {
+	defer r.Body.Close()
+	body, _ := ioutil.ReadAll(r.Body)
+	req.Body = string(body)
+}
+
 func sameHQ(old, new map[string][]string) bool {
 	fmt.Println(old)
 	fmt.Println(new)
 
 	if reflect.DeepEqual(old, new) {
+		return true
+	}
+	return false
+}
+
+func sameBody(old, new string) bool {
+	fmt.Println(old)
+	fmt.Println(new)
+
+	var b1, b2 interface{}
+	if err := json.Unmarshal([]byte(old), &b1); err != nil {
+		return false
+	}
+	if err := json.Unmarshal([]byte(new), &b2); err != nil {
+		return false
+	}
+
+	if reflect.DeepEqual(b1, b2) {
 		return true
 	}
 	return false
@@ -82,9 +108,11 @@ func CompareRequest(w http.ResponseWriter, r *http.Request) {
 		req.URL = r.URL.Path
 		saveHeaders(r)
 		saveQueries(r)
+		saveBody(r)
 	} else {
 		var field string
 		var same bool
+		var body []byte
 
 		field = "method"
 		if r.Method != req.Method {
@@ -104,6 +132,14 @@ func CompareRequest(w http.ResponseWriter, r *http.Request) {
 
 		field = "query"
 		same = sameHQ(req.Queries, r.URL.Query())
+		if !same {
+			goto OUT
+		}
+
+		field = "body"
+		defer r.Body.Close()
+		body, _ = ioutil.ReadAll(r.Body)
+		same = sameBody(req.Body, string(body))
 		if !same {
 			goto OUT
 		} else {
