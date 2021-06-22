@@ -2,11 +2,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func simple_one() {
@@ -118,6 +120,20 @@ func raw_gin() {
 	r.Handle(http.MethodGet, "/pong", func(c *gin.Context) {
 		time.Sleep(15 * time.Second)
 		c.JSON(200, "OK")
+	})
+
+	pingResp := PingResp{
+		Message: "a test",
+	}
+	// response raw string
+	r.GET("/string", func(c *gin.Context) {
+		b, _ := json.Marshal(pingResp)
+		fmt.Println("We encode pingResp to string: ", string(b))
+		c.String(200, string(b))
+	})
+	// response struct
+	r.GET("/jsonstruct", func(c *gin.Context) {
+		c.JSON(200, pingResp)
 	})
 
 	l, _ := net.Listen("tcp", ":8000")
