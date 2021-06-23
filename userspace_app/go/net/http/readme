@@ -46,3 +46,10 @@ $ go run http_client.go
 Start the gin_server
 
 $ go run resty.go
+
+6. mux_server.go
+
+$ go run mux_server.go
+$ curl http://localhost:8000/
+$ curl -X POST http://localhost:8000/
+$ curl http://localhost:8000/user
