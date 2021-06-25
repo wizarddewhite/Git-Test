@@ -2,8 +2,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
@@ -108,6 +110,11 @@ func raw_gin() {
 			c.Status(http.StatusAccepted)
 			return
 		}
+
+		body, _ := json.Marshal(req)
+		c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+		body, _ = ioutil.ReadAll(c.Request.Body)
+		fmt.Println("Reassigned body: ", string(body))
 
 		c.JSON(200, PingResp{
 			Message: "pong",
