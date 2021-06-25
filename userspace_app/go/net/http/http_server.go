@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -20,9 +21,18 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("\t%s = %s\n", k, v[0])
 	}
 	defer r.Body.Close()
-	body, _ := ioutil.ReadAll(r.Body)
+	body, err := ioutil.ReadAll(r.Body)
+	if err == nil {
+		fmt.Printf("body: %v\n", string(body))
+	}
 
-	fmt.Printf("body: %v\n", string(body))
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+	body, err = ioutil.ReadAll(r.Body)
+	if err == nil {
+		fmt.Printf("body: %v\n", string(body))
+	} else {
+		fmt.Printf("failed to get body: %v\n", err)
+	}
 
 	fmt.Fprintln(w, "hello world")
 }
