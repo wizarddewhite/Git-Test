@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"plugin"
 
@@ -13,7 +14,9 @@ func LoadPlugins(plugins []string) {
 	log.Printf("Invoking pipeline with data: %#v\n", d)
 	o := types.OutData{}
 	for _, p := range plugins {
+		fmt.Println("Open ", p)
 		p, err := plugin.Open(p)
+		fmt.Println("Finish Open ")
 		if err != nil {
 			log.Fatal(err)
 		}

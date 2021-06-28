@@ -1,12 +1,17 @@
 package main
 
-import "../types"
+import (
+	"fmt"
+
+	"../types"
+)
 
 var Input types.InData
 var Output types.OutData
 var Name string
 
 func init() {
+	fmt.Println("plugin1::init")
 	Name = "plugin1"
 }
 
