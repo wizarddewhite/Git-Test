@@ -148,7 +148,14 @@ https://github.com/containerd/containerd/blob/master/BUILDING.md
 
 The steps are clear, just follow.
 
-Gernally, just make is fine.
+Generally, just make is fine.
+
+4.1 Outputs
+
+All the build output are in bin/ directory.
+
+$ ls bin/
+containerd  containerd-shim  containerd-shim-runc-v1  containerd-shim-runc-v2  containerd-stress  ctr
 
 5. View containerd log
 
@@ -174,6 +181,26 @@ It has two things:
 Generally, the configuration file would select the proper executable file to
 do the network setup. The field to choose the executable file in configuration
 file is "type".
+
+7. Components 
+
+There are several components in containerd, just like what we see from the
+build output.
+
+  * containerd
+  * containerd-shim-runc-v1
+  * containerd-shim-runc-v2
+
+7. Containerd ShimV2
+
+https://www.alibabacloud.com/blog/cri-and-shimv2-a-new-idea-for-kubernetes-integrating-container-runtime_594783
+
+CRI -> containerd -> OCI runtime
+
+             |
+             v
+
+CRI -> containerd -> shimV2 -> OCI runtime
 
 0. Reference
 
