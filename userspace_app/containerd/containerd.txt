@@ -1,0 +1,48 @@
+1. Usage
+
+$ ./bin/containerd config default
+
+Would give you the default config file.
+
+2. main.go
+
+cmd/containerd/main.go
+
+command.App()
+    srvconfig.LoadConfig()
+    // New creates and initializes a new containerd server
+    server = server.New()
+    launchService(server)
+    // setup the ttrpc endpoint
+    tl, err := sys.GetLocalListener(config.TTRPC.Address, config.TTRPC.UID, config.TTRPC.GID)
+    serve(ctx, tl, server.ServeTTRPC)
+    // setup the main grpc endpoint
+    l, err := sys.GetLocalListener(config.GRPC.Address, config.GRPC.UID, config.GRPC.GID)
+    serve(ctx, l, server.ServeGRPC)
+
+2.1 sever.New()
+    // apply oom/cgroup config
+    apply()
+    plugins = LoadPlugins()
+    grpcServer = grpc.NewServer() // new sever with no service and not start
+    service.Register(grpcServer)
+
+2.1.1 LoadPlugins(), // go plugin, just supported on linux
+    plugin.Load(path)
+        loadPlugins(path)
+            plugin.Open(path) --> This will call plugin.init() which call containerd.plugin.Register()
+
+2.2 launchService(server) // nil
+
+2.3 serve(ctx, l, server.ServeGRPC)
+    server.ServeGRPC(l)
+        s.grpcServer.Serve(l)    // now it will accept grpc request
+
+3. cri.init(), register CRI service plugin
+
+config := criconfig.DefaultConfig()
+plugin.Register()
+
+0. Reference
+
+https://blog.csdn.net/zhonglinzhang/article/details/76573918
