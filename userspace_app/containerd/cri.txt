@@ -75,6 +75,16 @@ c.runtime = defaults.DefaultRuntime   "io.containerd.runc.v2"
     // set server as initialized
     c.initialized.Set()
 
+3. criService.Register(s *grpc.Server)
+================================================================================
+c.register(s)
+    instrumented := newInstrumentedService(c)
+        return &instrumentedService{c: c}   // c is set to type criService
+    runtime.RegisterRuntimeServiceServer(s, instrumented)
+        s.RegisterService(&_RuntimeService_serviceDesc, instrumented) // register RuntimeServiceServer grpc
+    runtime.RegisterImageServiceServer(s, instrumented)
+        s.RegisterService(&, instrumented) // register ImageServiceServer grpc
+
 0. Data Struct
 ================================================================================
 

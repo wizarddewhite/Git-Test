@@ -25,9 +25,13 @@ command.App()
     apply()
     plugins = LoadPlugins()
     for _, p := range plugins {
-        p.Init()  // containerd plugin Init
+        p.Init(initContext)  // containerd plugin Init
     }
     grpcServer = grpc.NewServer() // new sever with no service and not start
+    grpcServices []plugin.Service // an interface returned from plugin
+    for _, service := range grpcService {
+        service.Register(grpcServer) --> criService.Register()
+    }
     service.Register(grpcServer)
 
 2.1.1 LoadPlugins(), // go plugin, just supported on linux
