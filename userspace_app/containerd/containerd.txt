@@ -24,6 +24,9 @@ command.App()
     // apply oom/cgroup config
     apply()
     plugins = LoadPlugins()
+    for _, p := range plugins {
+        p.Init()  // containerd plugin Init
+    }
     grpcServer = grpc.NewServer() // new sever with no service and not start
     service.Register(grpcServer)
 
@@ -31,17 +34,15 @@ command.App()
     plugin.Load(path)
         loadPlugins(path)
             plugin.Open(path) --> This will call plugin.init() which call containerd.plugin.Register()
+                cri.init()
+                runtime.init()
+                runtime.v2.init()
 
 2.2 launchService(server) // nil
 
 2.3 serve(ctx, l, server.ServeGRPC)
     server.ServeGRPC(l)
         s.grpcServer.Serve(l)    // now it will accept grpc request
-
-3. cri.init(), register CRI service plugin
-
-config := criconfig.DefaultConfig()
-plugin.Register()
 
 0. Reference
 

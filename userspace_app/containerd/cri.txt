@@ -1,4 +1,4 @@
-1. init()
+1. init(), called by golang.plugin.Open()
 ================================================================================
 config = criconfig.DefaultConfig()
     CniConfig: CniConfig{
@@ -17,7 +17,7 @@ plugin.Register(&plugin.Registration{
 	InitFn: initCRIService,
 })
 
-2. initCRIService()
+2. initCRIService(), called by containerd.plugin.Init
 ================================================================================
 c = criconfig.Config{}
 servicesOpts := getServicesOpts(ic)
