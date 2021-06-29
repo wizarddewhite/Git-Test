@@ -20,10 +20,35 @@ plugin.Register(&plugin.Registration{
 2. initCRIService(), called by containerd.plugin.Init
 ================================================================================
 c = criconfig.Config{}
-servicesOpts := getServicesOpts(ic)
-client, err := containerd.New()
+servicesOpts := getServicesOpts(ic)      // setup service options
+client, err := containerd.New()          // client to containerd
 s := server.NewCRIService(c, client)
+s.Run()
+
+2.1 client, err := containerd.New()
+================================================================================
+c := &Client{
+    defaultns: copts.defaultns,
+}
+c.runtime = defaults.DefaultRuntime   "io.containerd.runc.v2"
+          or copts.defaultRuntime
+
+2.2 s := server.NewCRIService(config, client)
+================================================================================
     lables = label.NewStore()
+    // criService implement grpcService which handles grpc request
+    c := &criService{
+    	config:             config,
+    	client:             client,
+    	os:                 osinterface.RealOS{},
+    	sandboxStore:       sandboxstore.NewStore(labels),
+    	containerStore:     containerstore.NewStore(labels),
+    	imageStore:         imagestore.NewStore(client),
+    	snapshotStore:      snapshotstore.NewStore(),
+    	sandboxNameIndex:   registrar.NewRegistrar(),
+    	containerNameIndex: registrar.NewRegistrar(),
+    	initialized:        atomic.NewBool(false),
+    }
     c.initPlatform()
         c.netPlugin, err = cni.New(cni.WithMinNetworkCount(networkAttachCount),
           cni.WithPluginConfDir(c.config.NetworkPluginConfDir),
@@ -38,8 +63,17 @@ s := server.NewCRIService(c, client)
             WithLoNetwork(), lo link config
             WithDefaultConf(), parse from /etc/cni/net.d/
     c.baseOCISpecs, err = loadBaseOCISpecs(&config)
-s.Run()
 
+2.3 s.Run() -> criService.Run()
+================================================================================
+    // start event handler
+    eventMonitorErrCh := c.eventMonitor.start()
+    // start snapshot stats syncer
+    snapshotsSyncer.start()
+    // start streaming server
+    xxx
+    // set server as initialized
+    c.initialized.Set()
 
 0. Data Struct
 ================================================================================
@@ -157,3 +191,7 @@ s.Run()
     |    |    (*cnilibrary.NetworkConfigList)      |
     |    |                                         |
     +----+-----------------------------------------+
+
+0. Reference 
+
+https://www.huaweicloud.com/articles/a373db281bd7770464f4867939f63c4a.html
