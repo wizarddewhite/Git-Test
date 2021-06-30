@@ -110,6 +110,39 @@ res, err = in.c.RunPodSandbox() -> criService.RunPodSandbox()
     containerdImage, err := c.toContainerdImage(ctx, *image)
     ociRuntime, err := c.getSandboxRuntime(config, r.GetRuntimeHandler())
         handler, ok := c.config.ContainerdConfig.Runtimes[runtimeHandler] // retrieve the runtime handler
+    c.setupPodNetwork()                                                   // setup network NS
+    spec, = c.sandboxContainerSpec()
+    modifyProcessLabel(ociRuntime.Type, spec)
+    opts := []containerd.NewContainerOpts{
+    	containerd.WithSnapshotter(c.config.ContainerdConfig.Snapshotter),
+    	customopts.WithNewSnapshot(id, containerdImage, snapshotterOpt),
+    	containerd.WithSpec(spec, specOpts...),
+    	containerd.WithContainerLabels(sandboxLabels),
+    	containerd.WithContainerExtension(sandboxMetadataExtension, &sandbox.Metadata),
+    	containerd.WithRuntime(ociRuntime.Type, runtimeOpts)}
+    container, err = c.client.NewContainer(ctx, id, opts...)
+    c.setupSandboxFiles(id, config)
+    taskOpts := c.taskOpts(ociRuntime.Type)
+    task = container.NewTask()
+    task.Start(ctx)
+    sandbox.Container = container
+    c.sandboxStore.Add(sandbox)
+
+4.1.1 c.client.NewContainer(ctx, id, opts)
+================================================================================
+    container := containers.Container{
+    	ID: id,
+    	Runtime: containers.RuntimeInfo{
+    		Name: c.runtime,
+    	},
+    }
+    // apply all opts
+    for _, o := range opts {
+    	if err := o(ctx, c, &container); err != nil {
+    		return nil, err
+    	}
+    }
+    r, err := c.ContainerService().Create(ctx, container)
 
 0. Data Struct
 ================================================================================
