@@ -87,6 +87,30 @@ c.register(s)
     runtime.RegisterImageServiceServer(s, instrumented)
         s.RegisterService(&, instrumented) // register ImageServiceServer grpc
 
+4. CRI GRPC
+================================================================================
+4.1 instrumentedService.RunPodSandbox(ctx, r *runtime.RunPodSandboxRequest), grpc interface
+================================================================================
+res, err = in.c.RunPodSandbox() -> criService.RunPodSandbox()
+    config = r.GetConfig()             // pod sandbox config
+    metadata := config.GetMetadata()
+    name := makeSandboxName(metadata)
+    sandbox := sandboxstore.NewSandbox(
+    	sandboxstore.Metadata{
+    		ID:             id,
+    		Name:           name,
+    		Config:         config,
+    		RuntimeHandler: r.GetRuntimeHandler(), // this is a name
+    	},
+    	sandboxstore.Status{
+    		State: sandboxstore.StateUnknown,
+    	},
+    )
+    image = c.ensureImageExists()
+    containerdImage, err := c.toContainerdImage(ctx, *image)
+    ociRuntime, err := c.getSandboxRuntime(config, r.GetRuntimeHandler())
+        handler, ok := c.config.ContainerdConfig.Runtimes[runtimeHandler] // retrieve the runtime handler
+
 0. Data Struct
 ================================================================================
 
