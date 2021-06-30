@@ -228,6 +228,24 @@ res, err = in.c.RunPodSandbox() -> criService.RunPodSandbox()
     |    |                                         |
     +----+-----------------------------------------+
 
+0.4 RuntimeServiceServer, cri grpc interface
+================================================================================
+
+    +----------------------------------------------+
+    |RunPodSandbox                                 |
+    |StopPodSandbox                                |
+    |RemovePodSandbox                              |
+    |PodSandboxStatus                              |
+    |ListPodSandbox                                |
+    |                                              |
+    |CreateContainer                               |
+    |StartContainer                                |
+    |StopContainer                                 |
+    |RemoveContainer                               |
+    |ListContainer                                 |
+    |                                              |
+    +----------------------------------------------+
+
 0. Reference 
 
 https://www.huaweicloud.com/articles/a373db281bd7770464f4867939f63c4a.html
