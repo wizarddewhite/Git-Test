@@ -39,6 +39,12 @@ Or you can adjust /etc/crictl.yaml directly
 
 $ sudo systemctl start containerd
 
+2.3.1 Replace containerd for debug
+
+$ sudo systemctl stop containerd
+$ cp containerd /bin/containerd
+$ sudo systemctl start containerd
+
 2.4 Quick check
 
 $ crictl ps
