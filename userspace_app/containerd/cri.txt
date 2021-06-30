@@ -66,6 +66,9 @@ c.runtime = defaults.DefaultRuntime   "io.containerd.runc.v2"
             WithDefaultConf(), parse from /etc/cni/net.d/
     c.baseOCISpecs, err = loadBaseOCISpecs(&config)
 
+2.2.1 containerstore.NewStore(labels), // something like container database
+================================================================================
+
 2.3 s.Run() -> criService.Run()
 ================================================================================
     // start event handler
@@ -143,6 +146,13 @@ res, err = in.c.RunPodSandbox() -> criService.RunPodSandbox()
     	}
     }
     r, err := c.ContainerService().Create(ctx, container)
+        NewRemoteContainerStore(containersapi.NewContainersClient(c.conn)).Create()
+            &remoteContainers{client: &containersClient{}}
+        remoteContainers.Create()
+            created, err := r.client.Create(ctx, )
+                containersClient.Create()          // grpc call
+                    // this should be registered by RegisterContainersServer()
+                    _Containers_Create_Handler()  -> ContainersServer.Create()
 
 0. Data Struct
 ================================================================================
