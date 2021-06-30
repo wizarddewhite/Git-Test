@@ -9,7 +9,8 @@ Would give you the default config file.
 cmd/containerd/main.go
 
 command.App()
-    srvconfig.LoadConfig()
+    srvconfig.LoadConfig("/etc/containerd/config.toml")
+        
     // New creates and initializes a new containerd server
     server = server.New()
     launchService(server)
@@ -20,12 +21,17 @@ command.App()
     l, err := sys.GetLocalListener(config.GRPC.Address, config.GRPC.UID, config.GRPC.GID)
     serve(ctx, l, server.ServeGRPC)
 
-2.1 sever.New()
+2.1 srvconfig.LoadConfig(), /etc/containerd/config.toml
+config, err := loadConfigFile(path)
+mergeConfig(out, config)
+
+2.1 sever.New(ctx, config)
     // apply oom/cgroup config
     apply()
-    plugins = LoadPlugins()
+    plugins = LoadPlugins(ctx, config)
     for _, p := range plugins {
-        p.Init(initContext)  // containerd plugin Init
+        pc, err := config.Decode(p)   // parse plugin specific config
+        p.Init(initContext)           // containerd plugin Init
     }
     grpcServer = grpc.NewServer() // new sever with no service and not start
     grpcServices []plugin.Service // an interface returned from plugin

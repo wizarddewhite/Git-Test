@@ -1,5 +1,6 @@
 1. init(), called by golang.plugin.Open()
 ================================================================================
+// same entry as [plugins."io.containerd.grpc.v1.cri"] in /etc/containerd/config.toml
 config = criconfig.DefaultConfig()
     CniConfig: CniConfig{
     	NetworkPluginBinDir:       "/opt/cni/bin",
@@ -10,7 +11,7 @@ config = criconfig.DefaultConfig()
 plugin.Register(&plugin.Registration{
 	Type:   plugin.GRPCPlugin,
 	ID:     "cri",
-	Config: &config,
+	Config: &config,               // here is the default config
 	Requires: []plugin.Type{
 		plugin.ServicePlugin,
 	},
@@ -19,6 +20,7 @@ plugin.Register(&plugin.Registration{
 
 2. initCRIService(), called by containerd.plugin.Init
 ================================================================================
+criconfig.ValidatePluginConfig(ctx, pluginConfig)
 c = criconfig.Config{}
 servicesOpts := getServicesOpts(ic)      // setup service options
 client, err := containerd.New()          // client to containerd
