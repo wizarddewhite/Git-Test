@@ -1,0 +1,34 @@
+initCommand.Action()
+    StartInitialization()
+        i, err := newContainerInit()
+            return &linuxStandardInit()
+        i.Init()
+            prepareRootfs()
+            finalizeRootfs()
+
+1. how runc mount rootfs
+http://newto.me/runc-mount-propagation/
+
+1. namespace and setns
+https://zdyxry.github.io/2020/04/12/runc-nsenter-%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB/
+
+libcontainer/nsenter/nsexec.c
+
+1. runc init
+https://groups.google.com/a/opencontainers.org/g/dev/c/CC1XH92oMrE/m/G1GRnBDGCAAJ
+
+1. what is bind mount
+https://unix.stackexchange.com/questions/198590/what-is-a-bind-mount
+mkdir /run/something
+cd /run/something
+mkdir -p etc/something lib usr/lib usr/sbin var/lib/something
+mount --bind /etc/something etc/something
+mount --bind /lib lib
+mount --bind /usr/lib usr/lib
+mount --bind /usr/sbin usr/sbin
+mount --bind /var/lib/something var/lib/something
+mount -o remount,ro,bind etc/something
+mount -o remount,ro,bind lib
+mount -o remount,ro,bind usr/lib
+mount -o remount,ro,bind usr/sbin
+chroot . /usr/sbin/somethingd &
