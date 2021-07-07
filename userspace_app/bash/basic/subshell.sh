@@ -10,6 +10,7 @@ function f2()
 {
 	sleep 1
 	echo "this is funciton 2"
+	return 3
 }
 
 # run in a subshell, but not wait
@@ -21,4 +22,9 @@ for i in `seq 0 3`; do
 done
 
 echo exits
-wait
+# wait
+for job in `jobs -p`
+do
+    wait $job
+    echo $job exits with $?
+done
