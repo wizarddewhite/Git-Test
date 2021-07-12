@@ -36,6 +36,26 @@ function iterate_output()
 	done
 }
 
+function iterate_array()
+{
+	## declare an array variable
+	declare -a arr=("element1" "element2" "element3")
+
+	## now loop through the above array
+	for i in "${arr[@]}"
+	do
+	   echo "$i"
+	   # or do whatever with individual element of the array
+	done
+
+	## or another way to iterate
+	for  (( i=0; i<${#arr[@]}; i++ ));
+	do
+		echo $i ${arr[$i]}
+	done
+}
+
 # iterate_number
 # list_files
-iterate_output
+# iterate_output
+iterate_array
