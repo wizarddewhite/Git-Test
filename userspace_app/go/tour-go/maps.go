@@ -156,10 +156,26 @@ func map_json() {
 	fmt.Println(n)
 }
 
+type WithMap struct {
+	Lat    int
+	Proper map[string]string
+}
+
+func mapField() {
+	v := WithMap{
+		Lat: 3,
+		Proper: map[string]string{
+			"bad": "ddd",
+		},
+	}
+	fmt.Println(v)
+}
+
 func main() {
 	// general_operation()
 	// newMap()
 	// map_compare()
 	// map_serialize()
-	map_json()
+	// map_json()
+	mapField()
 }
