@@ -43,15 +43,14 @@ func general_operation() {
 		40.68433, -74.39967,
 	}
 	m["AT&T Labs"] = Vertex{
-		40.68433, -74.39967,
+		80.68433, -74.39967,
 	}
 	fmt.Println(m["Bell Labs"])
 
-	v, ok := m["AT&T Labs"]
-	if ok {
-		fmt.Println(v)
-	} else {
+	if v, ok := m["AT&T Labs"]; !ok {
 		fmt.Println("No such element")
+	} else {
+		fmt.Println(v)
 	}
 
 	// iterate map
@@ -68,11 +67,26 @@ func general_operation() {
 
 	delete(m, "AT&T Labs")
 
-	v, ok = m["AT&T Labs"]
-	if ok {
-		fmt.Println(v)
-	} else {
+	if v, ok := m["AT&T Labs"]; !ok {
 		fmt.Println("No such element")
+	} else {
+		fmt.Println(v)
+	}
+
+	var im map[string]int
+	im = make(map[string]int)
+	im["height"] = 1
+
+	if v, ok := im["height"]; !ok {
+		fmt.Println("No such element: height")
+	} else {
+		fmt.Println("height is ", v)
+	}
+
+	if v, ok := im["height"]; !ok || v != 3 {
+		fmt.Println("No such element: height")
+	} else {
+		fmt.Println("height is ", v)
 	}
 }
 
@@ -172,10 +186,10 @@ func mapField() {
 }
 
 func main() {
-	// general_operation()
+	general_operation()
 	// newMap()
 	// map_compare()
 	// map_serialize()
 	// map_json()
-	mapField()
+	// mapField()
 }
