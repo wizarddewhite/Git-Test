@@ -12,3 +12,8 @@ Host desktop
      Hostname desktop
      User richard
      Port 22
+
+Host proxy_server
+     Hostname 185.92.221.13
+     User root
+     Port 26
