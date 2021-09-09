@@ -357,3 +357,17 @@ Or
 
 $ kubectl get pods -l 'k8s-app in (kata, qa)'
 
+2.3 Filter pod based on node
+
+$ kubectl get pods --field-selector spec.nodeName=$node
+
+3. Use JsonPath format output
+
+https://kubernetes.io/zh/docs/reference/kubectl/jsonpath/
+
+Some examples
+https://kubernetes.io/zh/docs/tasks/access-application-cluster/list-all-running-container-images/
+
+3.1 Display pod's ip
+
+$ kubectl get pod pod_name -o=jsonpath='{.status.podIP}'
