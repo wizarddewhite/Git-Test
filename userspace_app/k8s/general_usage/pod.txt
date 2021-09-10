@@ -199,6 +199,39 @@ spec:
     - containerPort: 80
 ```
 
+1.8.3 Use Node Affinity to Pod yaml
+
+https://v1-19.docs.kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-app
+  labels:
+    run: nginx-app
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/e2e-az-name
+            operator: DoesNotExist
+  nodeSelector:
+    labelName: labelValue
+  containers:
+  - name: nginx
+    env:
+    - name: MY_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+```
+
 1.9 Use ConfigMap in Pod
 
 https://kubernetes.io/zh/docs/tasks/configure-pod-container/configure-pod-configmap/
