@@ -1,0 +1,18 @@
+1. Format print json file
+
+cat example.json | jq
+
+2. Modify a key's value
+
+cat example.json | \
+    jq '.volumeClaimTemplates[0].spec.storageClassName = "nvme"'
+
+3. Modify key's value on specific condition
+
+cat example.json | \
+    jq '.volumeClaimTemplates |= map(if .metadata.name == "sysvol" then .spec.storageClassName="nvme" else . end)'
+
+jq -f filter1.flt example.json
+
+cat example.json | \
+    jq '.volumeClaimTemplates |= map(if .spec.storageClassName == "local-ssd" then .spec.resources.requests.storage=.spec.resources.requests.storage+"nvme" else . end)'

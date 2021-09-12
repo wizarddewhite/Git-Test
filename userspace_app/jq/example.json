@@ -1,0 +1,39 @@
+{
+  "volumeClaimTemplates": [
+    {
+      "metadata": {
+        "name": "sysvol"
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "150Gi"
+          }
+        },
+        "storageClassName": "local-ssd"
+      },
+      "status": {}
+    },
+    {
+      "metadata": {
+        "name": "data0"
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "110Gi"
+          }
+        },
+        "storageClassName": "local-ssd"
+      },
+      "status": {}
+    }
+  ]
+}
+
