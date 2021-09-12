@@ -1,13 +1,51 @@
-1. Format print json file
+1. Print
 
-cat example.json | jq
+1.1 Pretty Print Json
 
-2. Modify a key's value
+$ cat example.json | jq
+$ jq . example.json
+
+1.2 Print value
+
+# print metadata of index 0
+$ jq '.volumeClaimTemplates[0].metadata' example.json
+
+# print metadata of all
+$ jq '.volumeClaimTemplates[].metadata' example.json
+$ jq '.volumeClaimTemplates[] | .metadata' example.json
+
+# array slice
+$ jq '.volumeClaimTemplates[1:2] | .[] | .metadata' example.json
+
+# print metadata and storageClassName
+$ jq '.volumeClaimTemplates[0].metadata, .volumeClaimTemplates[0].spec.storageClassName' example.json
+
+# print into a new record
+$ jq '[.volumeClaimTemplates[0].metadata, .volumeClaimTemplates[0].spec.storageClassName]' example.json
+
+# print in new form
+$ jq '{name: .volumeClaimTemplates[].metadata.name, class: .volumeClaimTemplates[].spec.storageClassName}' example.json
+
+2. Modify
+
+2.1 Modify a key's value
 
 cat example.json | \
     jq '.volumeClaimTemplates[0].spec.storageClassName = "nvme"'
 
-3. Modify key's value on specific condition
+2.2 Remove a key
+
+$ jq 'del(.volumeClaimTemplates[].status)' example.json
+
+2.3 Map values
+
+$ echo '[12,14,15]' | jq 'map(.-2)'
+
+2.4 Get average
+
+$ echo '[12,14,15]' | jq 'add / length'
+
+2.2 Modify key's value on specific condition
 
 cat example.json | \
     jq '.volumeClaimTemplates |= map(if .metadata.name == "sysvol" then .spec.storageClassName="nvme" else . end)'
