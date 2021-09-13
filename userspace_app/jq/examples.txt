@@ -54,3 +54,25 @@ jq -f filter1.flt example.json
 
 cat example.json | \
     jq '.volumeClaimTemplates |= map(if .spec.storageClassName == "local-ssd" then .spec.resources.requests.storage=.spec.resources.requests.storage+"nvme" else . end)'
+
+3. Built-In operations
+
+3.1 Addition
+
+$ echo "{\"a\": 7}" | jq '.a + 1'
+$ echo "{\"a\": [1,2], \"b\": [3,4]}" | jq '.a + .b'
+
+3.2 Substraction
+
+$ echo "[\"xml\", \"yaml\", \"json\"]" | jq '. - ["xml", "yaml"]'
+
+3.3 Get Keys
+
+$ jq '.volumeClaimTemplates[] | keys' example.json
+
+3.4 Map
+
+$ echo "[1,2,3]" | jq 'map(.+1)'
+
+$ echo "{\"a\": 1, \"b\": 2, \"c\": 3}" | jq 'map_values(.+1)'
+
