@@ -52,14 +52,14 @@ cat example.json | \
     jq '.volumeClaimTemplates |= map(if .metadata.name == "sysvol" then .spec.storageClassName="nvme" else . end)'
 
 # the same as above but use a filter file
-jq -f filter1.flt example.json
+jq -f filter1.jq example.json
 
 2.2 Adjust storage for local-ssd
 cat example.json | \
     jq '.volumeClaimTemplates |= map(if .spec.storageClassName == "local-ssd" then .spec.resources.requests.storage=.spec.resources.requests.storage+"nvme" else . end)'
 
 2.3 Add 50 to storage for "local-ssd"
-jq -f filter3.flt example.json
+jq -f filter3.jq example.json
 
 3. Built-In operations
 
