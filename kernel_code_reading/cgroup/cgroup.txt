@@ -11,7 +11,15 @@ start_kernel
 ================================================================================
 2.2 init_cgroup_root(&ctx)
 ================================================================================
-2.2.1 init_cgroup_housekeeping(cgrp_dfl_root.cgrp), init a cgroup
+2.2.1 root = ctx->root
+================================================================================
+2.2.2 cgrp = &root->cgrp
+================================================================================
+2.2.3 init_cgroup_housekeeping(cgrp_dfl_root.cgrp), init a cgroup
+================================================================================
+2.2.3.1 INIT_LIST_HEAD cgrp->self.sibling|children
+================================================================================
+2.2.3.2 for_each_subsys(ss, ssid)
 ================================================================================
 2.3 cgrp_dfl_root.cgrp.self.flags |= CSS_NO_REF
 ================================================================================
@@ -205,7 +213,9 @@ start_kernel
 0. data struct
 ================================================================================
 
-0.1 cgroup_subsys_id
+0.1 cgroup id/name/category
+
+0.1.1 cgroup_subsys_id, each cgroup would have its own id
 ================================================================================
 
 #define SUBSYS(_x) _x ## _cgrp_id,
@@ -233,10 +243,32 @@ enum cgroup_subsys_id {
 	CGROUP_SUBSYS_COUNT,
 };
 
-0.1 cgroup_subsys
+0.1.2 cgroup_subsys_name
 ================================================================================
+#define SUBSYS(_x) [_x ## _cgrp_id] = #_x,
+static const char *cgroup_subsys_name[] = {
+#include <linux/cgroup_subsys.h>
+};
 
-0.1.1 cgroup_subsys[], an array of cgroup subsystem
+
+static const char *cgroup_subsys_name[] = {
+	[cpuset_cgrp_id]       =      cpuset,
+	[cpu_cgrp_id]          =      cpu,
+	[cpuacct_cgrp_id]      =      cpuacct,
+	[io_cgrp_id]           =      io,
+	[memory_cgrp_id]       =      memory,
+	[devices_cgrp_id]      =      devices,
+	[freezer_cgrp_id]      =      freezer,
+	[net_cls_cgrp_id]      =      net_cls,
+	[perf_event_cgrp_id]   =      perf_event,
+	[net_prio_cgrp_id]     =      net_prio,
+	[hugetlb_cgrp_id]      =      hugetlb,
+	[pids_cgrp_id]         =      pids,
+	[rdma_cgrp_id]         =      rdma,
+	[debug_cgrp_id]        =      debug,
+};
+
+0.1.3 cgroup_subsys[], an array of cgroup subsystem
 ================================================================================
 
 #define SUBSYS(_x) [_x ## _cgrp_id] = &_x ## _cgrp_subsys,
@@ -284,30 +316,28 @@ struct cgroup_subsys *cgroup_subsys[] = {
 
 };
 
-0.2 cgroup_subsys_name
+0.2 cgroup_fs_context, cgroup filesystem superblock mount/create context
 ================================================================================
-#define SUBSYS(_x) [_x ## _cgrp_id] = #_x,
-static const char *cgroup_subsys_name[] = {
-#include <linux/cgroup_subsys.h>
-};
 
+    cgroup_fs_context
+    +-------------------------------+
+    |root                           |
+    |    (struct cgroup_root*)      |
+    |kfc                            |  kernfs superblock
+    |    (struct kernfs_fs_context*)|
+    |    +--------------------------+
+    |    |root                      |
+    |    |    (struct kernfs_root*) |
+    |    |                          |
+    |    +--------------------------+
+    |                               |
+    |ns                             |
+    |    (struct cgroup_namespace*) |
+    |flags                          |
+    |                               |
+    |                               |
+    +-------------------------------+
 
-static const char *cgroup_subsys_name[] = {
-	[cpuset_cgrp_id]       =      cpuset,
-	[cpu_cgrp_id]          =      cpu,
-	[cpuacct_cgrp_id]      =      cpuacct,
-	[io_cgrp_id]           =      io,
-	[memory_cgrp_id]       =      memory,
-	[devices_cgrp_id]      =      devices,
-	[freezer_cgrp_id]      =      freezer,
-	[net_cls_cgrp_id]      =      net_cls,
-	[perf_event_cgrp_id]   =      perf_event,
-	[net_prio_cgrp_id]     =      net_prio,
-	[hugetlb_cgrp_id]      =      hugetlb,
-	[pids_cgrp_id]         =      pids,
-	[rdma_cgrp_id]         =      rdma,
-	[debug_cgrp_id]        =      debug,
-};
 
 0.3 cgroup_root
 ================================================================================
@@ -317,7 +347,7 @@ cgroup_init
 
 cgroup_roots(struct list_head)
   |
-  |       cgroup_root
+  |       cgroup_root(cgrp_dfl_root)
   |       +-------------------------------+<----+
   +------>|root_lists                     |     |
           |    (struct list_head)         |     |
@@ -582,6 +612,7 @@ linked by css_create()
 0.5 cgroup_subsys
 ================================================================================
 
+
     cgroup_subsys
     +-------------------------------+<----------------------------------------+
     |name                           |                                         |
@@ -646,6 +677,7 @@ linked by css_create()
      |       | |       | |       | |       | 
      |       | |       | |       | |       | 
      +-------+ +-------+ +-------+ +-------+ 
+
 
 0.6 cftype
 ================================================================================
