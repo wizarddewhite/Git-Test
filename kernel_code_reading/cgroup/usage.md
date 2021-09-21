@@ -17,23 +17,79 @@ for ss in $subsys; do
 done
 ```
 
-1. Create a new controller under cpuset
+1. Limit cpu resource for process
+
+1.1 Create a new controller under cpuset
 
 mkdir /sys/fs/cgroup/cpuset/tiger
 
-2. Limit resources for this controller
+1.2. Limit cpu resources for this controller
 
 echo "0-1" > /sys/fs/cgroup/cpuset/tiger/cpuset.cpus
 echo 0 > /sys/fs/cgroup/cpuset/tiger/cpuset.mems
 
-3. Validate
+1.3. Validate
 
 # echo current shell process number to cgroup.procs
 # so all child will inherit this attribute
 echo $$ > /sys/fs/cgroup/cpuset/tiger/cgroup.procs
 
 # stress on 4 cpus
-stress -c 4
+
+$ stress -c 4
 
 # while only 2 cpu is working
-top
+
+$ top
+
+2. Limit memory resource for process
+
+2.1 Create a new controller under memory
+
+mkdir /sys/fs/cgroup/memory/rabbit
+
+2.2. Limit memory resources for this controller
+
+# limit 4M
+echo 4M > /sys/fs/cgroup/memory/rabbit/memory.limit_in_bytes
+
+2.3. Validate
+
+# echo current shell process number to cgroup.procs
+# so all child will inherit this attribute
+echo $$ > /sys/fs/cgroup/cpuset/rabbit/cgroup.procs
+
+# disable swap
+echo 0 > /sys/fs/cgroup/cpuset/rabbit/memory.swappiness
+
+# eat memory
+
+```
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define MB (1024 * 1024)
+
+int main(int argc, char *argv[])
+{
+    char *p;
+    int i = 0;
+    while(1) {
+        p = (char *)malloc(MB);
+        memset(p, 0, MB);
+        printf("%dM memory allocated\n", ++i);
+        sleep(1);
+    }
+
+    return 0;
+}
+```
+
+Then running this program will receive oom.
+
+# cat memory.oom_control
+oom_kill_disable 0
+under_oom 0
+oom_kill 1
