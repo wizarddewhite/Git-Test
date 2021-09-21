@@ -21,6 +21,8 @@ start_kernel
 ================================================================================
 2.2.3.2 for_each_subsys(ss, ssid)
 ================================================================================
+2.2.3.3 INIT_LIST_HEAD(&cgrp->e_csets[ssid])
+================================================================================
 2.3 cgrp_dfl_root.cgrp.self.flags |= CSS_NO_REF
 ================================================================================
 2.4 init_task.cgroups = &init_css_set;
@@ -33,7 +35,7 @@ start_kernel
 ================================================================================
 2.8 ss->legacy_name = cgroup_subsys_name[i]
 ================================================================================
-2.9 cgroup_init_subsys(ss, true), if ss->early_init
+2.9 cgroup_init_subsys(ss, true), if ss->early_init, do init if should init early
 ================================================================================
 
 3. cgroup_init
@@ -252,20 +254,20 @@ static const char *cgroup_subsys_name[] = {
 
 
 static const char *cgroup_subsys_name[] = {
-	[cpuset_cgrp_id]       =      cpuset,
-	[cpu_cgrp_id]          =      cpu,
-	[cpuacct_cgrp_id]      =      cpuacct,
-	[io_cgrp_id]           =      io,
-	[memory_cgrp_id]       =      memory,
-	[devices_cgrp_id]      =      devices,
-	[freezer_cgrp_id]      =      freezer,
-	[net_cls_cgrp_id]      =      net_cls,
-	[perf_event_cgrp_id]   =      perf_event,
-	[net_prio_cgrp_id]     =      net_prio,
-	[hugetlb_cgrp_id]      =      hugetlb,
-	[pids_cgrp_id]         =      pids,
-	[rdma_cgrp_id]         =      rdma,
-	[debug_cgrp_id]        =      debug,
+	[cpuset_cgrp_id]       =      "cpuset",
+	[cpu_cgrp_id]          =      "cpu",
+	[cpuacct_cgrp_id]      =      "cpuacct",
+	[io_cgrp_id]           =      "io",
+	[memory_cgrp_id]       =      "memory",
+	[devices_cgrp_id]      =      "devices",
+	[freezer_cgrp_id]      =      "freezer",
+	[net_cls_cgrp_id]      =      "net_cls",
+	[perf_event_cgrp_id]   =      "perf_event",
+	[net_prio_cgrp_id]     =      "net_prio",
+	[hugetlb_cgrp_id]      =      "hugetlb",
+	[pids_cgrp_id]         =      "pids",
+	[rdma_cgrp_id]         =      "rdma",
+	[debug_cgrp_id]        =      "debug",
 };
 
 0.1.3 cgroup_subsys[], an array of cgroup subsystem
