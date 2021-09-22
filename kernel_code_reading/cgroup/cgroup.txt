@@ -42,7 +42,7 @@ start_kernel
 ================================================================================
 3.1 cgroup_init_cftypes(NULL, cgroup_base_files), assign kf_ops
 ================================================================================
-3.2 cgroup_init_cftypes(NULL, cgroup1_base_files)
+3.2 cgroup_init_cftypes(NULL, cgroup1_base_files), files in /sys/fs/cgroup/xxx/
 ================================================================================
 3.3 cgroup_rstat_boot()
 ================================================================================
@@ -58,7 +58,7 @@ start_kernel
 ================================================================================
 3.6 hash_add(css_set_table, &init_css_set.hlist, css_set_hash(init_css_set.subsys))
 ================================================================================
-3.7 cgroup_setup_root(&cgrp_dfl_root)
+3.7 cgroup_setup_root(&cgrp_dfl_root, 0), setup cgrp_dfl_root
 ================================================================================
 3.7.1 percpu_ref_init(&root_cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
 ================================================================================
@@ -72,17 +72,11 @@ start_kernel
 ================================================================================
 3.7.3.2 cgrp_dfl_root->hierarchy_id = id
 ================================================================================
-3.7.4 cgrp_dfl_root.kf_root = kernfs_create_root(cgroup_kf_syscall_ops)
+3.7.4 cgrp_dfl_root.kf_root = kernfs_create_root(cgroup_kf_syscall_ops, root->cgrp)
 ================================================================================
 3.7.5 root_cgrp->ancestor_ids[0] = cgroup_id(root_cgrp);
 ================================================================================
 3.7.6 css_populate_dir(&root_cgrp->self), create default files in a cgroup directory
-================================================================================
-3.7.6.1 cfts = cgroup_base_files, cgroup.procs, etc
-================================================================================
-3.7.6.2 cgroup_addrm_files(&cgrp->self, cgrp, cfts, true)
-================================================================================
-3.7.6.2.1 cgroup_add_file(css, cgrp, cft)
 ================================================================================
 3.7.7 rebind_subsystems(&cgrp_dfl_root, 0)
 ================================================================================
@@ -147,6 +141,13 @@ start_kernel
 3.17 proc_create_single("cgroups", , proc_cgroupstats_show), /proc/cgroups
 ================================================================================
 3.18 register_filesystem(&cpuset_fs_type)
+================================================================================
+
+4. css_populate_dir(struct cgroup_subsys_state css), create subsys file in cgroup dir
+================================================================================
+4.1 cgroup_addrm_files(css, cgrp, cfts, true)
+================================================================================
+4.1.1 cgroup_add_file(css, cgrp, cft)
 ================================================================================
 
 4. interfaces
@@ -214,6 +215,12 @@ start_kernel
 
 0. data struct
 ================================================================================
+
+0.0 global variables
+================================================================================
+
+cgrp_dfl_root      (struct cgroup_root)
+cgrp_dfl_root.cgrp (struct cgroup)
 
 0.1 cgroup id/name/category
 
@@ -335,6 +342,16 @@ struct cgroup_subsys *cgroup_subsys[] = {
     |                               |
     |ns                             |
     |    (struct cgroup_namespace*) |
+    |    +--------------------------+
+    |    |ns                        |
+    |    |  (struct ns_common)      |
+    |    |user_ns                   |
+    |    |  (struct user_namespace*)|
+    |    |ucounts                   |
+    |    |  (struct ucounts*)       |
+    |    |root_cset                 |
+    |    |  (struct css_set*)       |
+    |    +--------------------------+
     |flags                          |
     |                               |
     |                               |
@@ -360,16 +377,42 @@ cgroup_roots(struct list_head)
           |                               |     |
           |cgrp                           |     |
           |    (struct cgroup)            |     |
-          |    +--------------------------+     |
-          |    |root                   ---|-----+
-          |    |   (struct cgroup_root*)  |
-          |    |                          |
-          |    |rstat_cpu                 |  = &cgrp_dfl_root_rstat_cpu
-          |    |(struct cgroup_rstat_cpu*)|
-          |    |                          |
-          |    |kn                        |  = kf_root->kn
-          |    |    (struct kernfs_node *)|
+          |    +--------------------------+<----|--------------------------+
+          |    |root                   ---|-----+                          |
+          |    |   (struct cgroup_root*)  |                                |
+          |    |                          |                                |
+          |    |rstat_cpu                 |  = &cgrp_dfl_root_rstat_cpu    |
+          |    |(struct cgroup_rstat_cpu*)|                                |
+          |    |                          |                                |
+          |    |kn                        |  = kf_root->kn                 |
+          |    |    (struct kernfs_node *)|-----+                          |
+          |    |  +-----------------------+     |                          |
+          |    |  |                       |     |                          |
+          |    +--+-----------------------+     |                          |
+          |kf_root                        |     |                          |
+          |    (struct kernfs_root*)      |     |                          |
+          |    +--------------------------+     |                          |
+          |    |kn                        |     |                          |
+          |    |  (struct kernfs_node*)   |     |                          |
+          |    |  +-----------------------+<----+                          |
+          |    |  |priv                   |--------------------------------+
+          |    |  |  (void *)             |  = cgrp_dfl_root.cgrp 
+          |    |  |cgroup_base_files      |
+          |    |  |cgroup1_base_files     |
+          |    |  |"cgroup.procs"         |  = cgroup_kf_ops
+          |    |  |"cgroup.threads"       |  = cgroup_kf_ops
+          |    |  |                       |
+          |    +--+-----------------------+
+          |    |syscall_ops               |  = cgroup_kf_syscall_ops     
+          |    |  (struct kernfs_syscall*)|
+          |    |  +-----------------------+
+          |    |  |mkdir                  |  = cgroup_mkdir
+          |    |  |rmdir                  |  = cgroup_rmdir
+          |    |  |show_path              |  = cgroup_show_path
+          |    |  |show_options           |  = cgroup_show_options
+          |    |  +-----------------------+
           |    +--------------------------+
+          |                               |
           |cgrp_ancestor_id_storage       |  = cgroup_id() = cgrp->kn->id = kf_root->kn->id
           |    (u64)                      |
           |                               |
@@ -380,22 +423,6 @@ cgroup_roots(struct list_head)
           |    (atomic_t)                 |
           |root_list                      |
           |    (struct list_head)         |
-          |                               |
-          |kf_root                        |
-          |    (struct kernfs_root*)      |
-          |    +--------------------------+
-          |    |cgroup_kf_syscall_ops     |
-          |    |   mkdir                  |  = cgroup_mkdir
-          |    |   rmdir                  |  = cgroup_rmdir
-          |    |   show_patch             |  = cgroup_show_path
-          |    |kn                        |
-          |    |   (struct kernfs_node*)  |
-          |    |   cgroup_base_files      |  
-          |    |   cgroup1_base_files     |  
-          |    |   "cgroup.procs"         |  = cgroup_kf_ops
-          |    |   "cgroup.threads"       |  = cgroup_kf_ops
-          |    |                          |  
-          |    +--------------------------+
           |                               |
           +-------------------------------+
 
@@ -681,8 +708,15 @@ linked by css_create()
      +-------+ +-------+ +-------+ +-------+ 
 
 
-0.6 cftype
+0.6 cftype, cgroup_base_files/cgroup1_base_files
 ================================================================================
+/*
+ * struct cftype: handler definitions for cgroup control files
+ *
+ * When reading/writing to a file:
+ *	- the cgroup to use is file->f_path.dentry->d_parent->d_fsdata
+ *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
+ */
 
     cftype
     +-------------------------------+
