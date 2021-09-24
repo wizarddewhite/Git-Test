@@ -143,7 +143,7 @@ start_kernel
 3.18 register_filesystem(&cpuset_fs_type)
 ================================================================================
 
-4. css_populate_dir(struct cgroup_subsys_state css), create subsys file in cgroup dir
+4. css_populate_dir(struct cgroup_subsys_state *css), create subsys file in cgroup dir
 ================================================================================
 4.1 cgroup_addrm_files(css, cgrp, cfts, true)
 ================================================================================
@@ -358,7 +358,7 @@ struct cgroup_subsys *cgroup_subsys[] = {
     +-------------------------------+
 
 
-0.3 cgroup_root
+0.3 cgroup_root / cgroup / kernfs_root
 ================================================================================
 
 cgroup_init
@@ -426,7 +426,43 @@ cgroup_roots(struct list_head)
           |                               |
           +-------------------------------+
 
-0.4 cgroup
+0.3.1 kernfd_root / kernfs_node
+================================================================================
+
+cgrp = of->kn->parent->priv;
+cft  = of->kn->priv
+
+               kernfs_root
+               +---------------------------+<------------------------+
+               |kn                         |                         |
+               |    (struct kernfs_node*)  |                         |
+               |    +----------------------+                         |
+               |    |priv                  |  = struct cgroup *      |
+               |    |    (void *)          |                         |
+               +----+----------------------+                         |
+                                                                     |
+                                                                     |
+     kernfs_node                                                     |
+     +------------------------+                                      |
+     |parent               ---|--------------------------------------+
+     |   (struct kernfs_root*)|                                      |
+     |priv                    |  = struct cftype *                   |
+     |   (void *)             |                                      |
+     +------------------------+                                      |
+                                                                     |
+                                                                     |
+     kernfs_node                                                     |
+     +------------------------+                                      |
+     |parent               ---|--------------------------------------+
+     |   (struct kernfs_root*)|
+     |priv                    |  = struct cftype *
+     |   (void *)             |
+     +------------------------+
+
+0.4 cgroup / cgroup_subsys_state / cgroup_subsys
+================================================================================
+
+0.4.1 cgroup
 ================================================================================
 
     cgroup (cgrp_dfl_root.cgrp)
@@ -555,90 +591,35 @@ cgroup_roots(struct list_head)
     |    (u64)                             |
     +--------------------------------------+
 
-0.4.1 cgroup hierarchy -> cgroup.self
+0.4.2 cgroup_subsys_state
 ================================================================================
 
-linked by cgroup_create()
+    struct cgroup_subsys_state
+    +--------------------------------------+
+    |cgroup                                |             
+    |    (struct cgroup*)                  |
+    |ss                                    |
+    |    (struct cgroup_subsys*)           |
+    |id                                    | subsys unique id
+    |    (int)                             |
+    |refcnt                                |
+    |    (struct percpu_ref)               |
+    |    +---------------------------------+
+    |    |release                          | = css_release
+    |    |                                 |
+    |    |                                 |
+    |    +---------------------------------+
+    |                                      |
+    |parent                                |
+    |    (struct cgroup_subsys_state*)     |
+    |                                      |
+    |sibling                               |
+    |children                              |
+    |    (struct list_head)                |
+    |                                      |
+    +--------------------------------------+
 
-                     cgroup
-                     +--------------------------------------+
-                     |self                              ^   |
-                     |    (struct cgroup_subsys_state)  |   |
-                     |    +---------------------------------+
-                     |    |cgroup                    ---+   |
-                     |    |    (struct cgroup*)             |
-                     |    |ss                               |
-                     |    |    (struct cgroup_subsys*)      |  = NULL
-                     |    |parent                           |
-                     |    |    (struct cgroup_subsys_state*)|
-                     |    |                                 |
-                     |    |children                ||       |
-                     |    |    (struct list_head)  ||       |
-                     +----+---------------------------------+ <--------------------------------------+
-                                              ^    ||                                                |
-       	                                      |    ||                                                |
-                                              |    ||                                                |
-                                              |    ||                                                |
-                                              |    ||                                                |
-    cgroup                                    |    ||      cgroup                                    |
-    +--------------------------------------+  |    ||      +--------------------------------------+  |
-    |self                              ^   |  |    ||      |self                              ^   |  |
-    |    (struct cgroup_subsys_state)  |   |  |    ||      |    (struct cgroup_subsys_state)  |   |  |
-    |    +---------------------------------+  |    ||      |    +---------------------------------+  |
-    |    |cgroup                    ---+   |  |    ||      |    |cgroup                    ---+   |  |
-    |    |    (struct cgroup*)             |  |    ||      |    |    (struct cgroup*)             |  |
-    |    |                                 |  |    ||      |    |                                 |  |
-    |    |parent                        ---|--+    ||      |    |parent                        ---|--+
-    |    |    (struct cgroup_subsys_state*)|       ||      |    |    (struct cgroup_subsys_state*)|
-    |    |                                 |       ||      |    |                                 |
-    |    |sibling                      ====|=======++======|====|sibling                          |
-    |    |    (struct list_head)           |               |    |    (struct list_head)           |
-    +----+---------------------------------+               +----+---------------------------------+
-
-0.4.2 cgroup hierarchy -> cgroup.subsys[]
-================================================================================
-
-linked by css_create()
-
-                     cgroup
-                     +--------------------------------------+
-                     |subsys[id]                        ^   |
-                     |    (struct cgroup_subsys_state*) |   |
-                     |    +---------------------------------+
-                     |    |cgroup                    ---+   |
-                     |    |    (struct cgroup*)             |
-                     |    |ss                               |
-                     |    |    (struct cgroup_subsys*)      |  = non-NULL
-                     |    |                                 |
-                     |    |parent                           |
-                     |    |    (struct cgroup_subsys_state*)|
-                     |    |                                 |
-                     |    |children                ||       |
-                     |    |    (struct list_head)  ||       |
-                     +----+---------------------------------+ <--------------------------------------+
-                                              ^    ||                                                |
-       	                                      |    ||                                                |
-                                              |    ||                                                |
-                                              |    ||                                                |
-                                              |    ||                                                |
-    cgroup                                    |    ||      cgroup                                    |
-    +--------------------------------------+  |    ||      +--------------------------------------+  |
-    |subsys[id]                        ^   |  |    ||      |subsys[id]                        ^   |  |
-    |    (struct cgroup_subsys_state*) |   |  |    ||      |    (struct cgroup_subsys_state*) |   |  |
-    |    +---------------------------------+  |    ||      |    +---------------------------------+  |
-    |    |cgroup                    ---+   |  |    ||      |    |cgroup                    ---+   |  |
-    |    |    (struct cgroup*)             |  |    ||      |    |    (struct cgroup*)             |  |
-    |    |                                 |  |    ||      |    |                                 |  |
-    |    |parent                        ---|--+    ||      |    |parent                        ---|--+
-    |    |    (struct cgroup_subsys_state*)|       ||      |    |    (struct cgroup_subsys_state*)|
-    |    |                                 |       ||      |    |                                 |
-    |    |sibling                      ====|=======++======|====|sibling                          |
-    |    |    (struct list_head)           |               |    |    (struct list_head)           |
-    +----+---------------------------------+               +----+---------------------------------+
-
-
-
-0.5 cgroup_subsys
+0.4.3 cgroup_subsys
 ================================================================================
 
 
@@ -684,7 +665,7 @@ linked by css_create()
     |                               |
     +-------------------------------+
 
-0.5.1 cgroup/cgroup_subsys_state/cgroup_subsys
+0.4.3.1 cgroup/cgroup_subsys_state/cgroup_subsys
 ================================================================================
 
     cgroup
@@ -706,6 +687,89 @@ linked by css_create()
      |       | |       | |       | |       | 
      |       | |       | |       | |       | 
      +-------+ +-------+ +-------+ +-------+ 
+
+0.4.4 cgroup hierarchy -> cgroup.self
+================================================================================
+
+linked by cgroup_create()
+
+                     cgroup
+                     +--------------------------------------+
+                     |self                              ^   |
+                     |    (struct cgroup_subsys_state)  |   |
+                     |    +---------------------------------+
+                     |    |cgroup                    ---+   |
+                     |    |    (struct cgroup*)             |
+                     |    |ss                               |
+                     |    |    (struct cgroup_subsys*)      |  = NULL
+                     |    |parent                           |
+                     |    |    (struct cgroup_subsys_state*)|
+                     |    |                                 |
+                     |    |children                ||       |
+                     |    |    (struct list_head)  ||       |
+                     +----+---------------------------------+ <--------------------------------------+
+                                              ^    ||                                                |
+       	                                      |    ||                                                |
+                                              |    ||                                                |
+                                              |    ||                                                |
+                                              |    ||                                                |
+    cgroup                                    |    ||      cgroup                                    |
+    +--------------------------------------+  |    ||      +--------------------------------------+  |
+    |self                              ^   |  |    ||      |self                              ^   |  |
+    |    (struct cgroup_subsys_state)  |   |  |    ||      |    (struct cgroup_subsys_state)  |   |  |
+    |    +---------------------------------+  |    ||      |    +---------------------------------+  |
+    |    |cgroup                    ---+   |  |    ||      |    |cgroup                    ---+   |  |
+    |    |    (struct cgroup*)             |  |    ||      |    |    (struct cgroup*)             |  |
+    |    |                                 |  |    ||      |    |                                 |  |
+    |    |parent                        ---|--+    ||      |    |parent                        ---|--+
+    |    |    (struct cgroup_subsys_state*)|       ||      |    |    (struct cgroup_subsys_state*)|
+    |    |                                 |       ||      |    |                                 |
+    |    |sibling                      ====|=======++======|====|sibling                          |
+    |    |    (struct list_head)           |               |    |    (struct list_head)           |
+    +----+---------------------------------+               +----+---------------------------------+
+
+0.4.5 cgroup hierarchy -> cgroup.subsys[]
+================================================================================
+
+linked by css_create()
+
+                     cgroup
+                     +--------------------------------------+
+                     |subsys[id]                        ^   |
+                     |    (struct cgroup_subsys_state*) |   |
+                     |    +---------------------------------+
+                     |    |cgroup                    ---+   |
+                     |    |    (struct cgroup*)             |
+                     |    |ss                               |
+                     |    |    (struct cgroup_subsys*)      |  = non-NULL
+                     |    |                                 |
+                     |    |parent                           |
+                     |    |    (struct cgroup_subsys_state*)|
+                     |    |                                 |
+                     |    |children                ||       |
+                     |    |    (struct list_head)  ||       |
+                     +----+---------------------------------+ <--------------------------------------+
+                                              ^    ||                                                |
+       	                                      |    ||                                                |
+                                              |    ||                                                |
+                                              |    ||                                                |
+                                              |    ||                                                |
+    cgroup                                    |    ||      cgroup                                    |
+    +--------------------------------------+  |    ||      +--------------------------------------+  |
+    |subsys[id]                        ^   |  |    ||      |subsys[id]                        ^   |  |
+    |    (struct cgroup_subsys_state*) |   |  |    ||      |    (struct cgroup_subsys_state*) |   |  |
+    |    +---------------------------------+  |    ||      |    +---------------------------------+  |
+    |    |cgroup                    ---+   |  |    ||      |    |cgroup                    ---+   |  |
+    |    |    (struct cgroup*)             |  |    ||      |    |    (struct cgroup*)             |  |
+    |    |                                 |  |    ||      |    |                                 |  |
+    |    |parent                        ---|--+    ||      |    |parent                        ---|--+
+    |    |    (struct cgroup_subsys_state*)|       ||      |    |    (struct cgroup_subsys_state*)|
+    |    |                                 |       ||      |    |                                 |
+    |    |sibling                      ====|=======++======|====|sibling                          |
+    |    |    (struct list_head)           |               |    |    (struct list_head)           |
+    +----+---------------------------------+               +----+---------------------------------+
+
+
 
 
 0.6 cftype, cgroup_base_files/cgroup1_base_files
@@ -849,35 +913,3 @@ linked by css_create()
            |                    |        |                    |
            +--------------------+        +--------------------+
 
-0.9 kernfd_root / kernfs_node
-================================================================================
-
-cgrp = of->kn->parent->priv;
-cft  = of->kn->priv
-
-               kernfs_root
-               +---------------------------+<------------------------+
-               |kn                         |                         |
-               |    (struct kernfs_node*)  |                         |
-               |    +----------------------+                         |
-               |    |priv                  |  = struct cgroup *      |
-               |    |    (void *)          |                         |
-               +----+----------------------+                         |
-                                                                     |
-                                                                     |
-     kernfs_node                                                     |
-     +------------------------+                                      |
-     |parent               ---|--------------------------------------+
-     |   (struct kernfs_root*)|                                      |
-     |priv                    |  = struct cftype *                   |
-     |   (void *)             |                                      |
-     +------------------------+                                      |
-                                                                     |
-                                                                     |
-     kernfs_node                                                     |
-     +------------------------+                                      |
-     |parent               ---|--------------------------------------+
-     |   (struct kernfs_root*)|
-     |priv                    |  = struct cftype *
-     |   (void *)             |
-     +------------------------+
