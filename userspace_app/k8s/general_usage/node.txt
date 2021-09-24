@@ -1,14 +1,31 @@
-1. Add/Del label to node
+1. Label
+1.1 Add/Del label to node
 
 kubectl label node node-name label.name=value
 
 kubectl label node node-name label.name-
 
-2. Filter node based on label
+1.2 Filter node based on label
 
 $ kubectl get node -l label.name=value
 
 Or
 
 $ kubectl get node -l 'label.name in (val1, val2)'
+
+2. Taint
+2.1 Add/Del taint to node
+
+kubectl taint nodes node1 key1=value1:NoSchedule
+
+kubectl taint nodes node1 key1=value1:NoSchedule-
+
+2.2 Select Node with Taint
+
+kubectl get nodes -o json | jq '.items[] | select(.spec.taints[]?.key == "node.kubernetes.io/unschedulable") | .metadata.name'
+
+Or, If you have to use variable
+
+export taint_key="node.kubernetes.io/unschedulable"
+kubectl get nodes -o json | jq '.items[] | select(.spec.taints[]?.key == '\"${taint_key}\"') | .metadata.name'
 
