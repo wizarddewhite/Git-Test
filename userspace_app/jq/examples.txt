@@ -26,6 +26,10 @@ $ jq '[.volumeClaimTemplates[0].metadata, .volumeClaimTemplates[0].spec.storageC
 # print in new form
 $ jq '{name: .volumeClaimTemplates[].metadata.name, class: .volumeClaimTemplates[].spec.storageClassName}' example.json
 
+1.2.1 Print Index of a matched array
+
+jq '.volumeClaimTemplates | map(.metadata.name == "sysvol") | index(true)' example.json
+
 2. Modify
 
 2.1 Modify a key's value
