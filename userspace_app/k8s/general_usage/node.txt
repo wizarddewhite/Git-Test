@@ -33,18 +33,17 @@ kubectl get nodes -o json | jq '.items[] | select(.spec.taints[]?.key == '\"${ta
 
 2.2.1 Select Node with Taint and show its value
 
-$ cat get_node.jq
-.items[] | select(.spec.taints[]?.key == "node.kubernetes.io/unschedulable") | .metadata.name
-
 $ cat list_node.sh
 #!/bin/bash
-nodes=`kubectl get nodes -o json | jq -r -f get_node.jq`
+nodes=`kubectl get nodes -o json | jq -r '.items[] | select(.spec.taints[]?.key == '\"${1}\"') | .metadata.name'`
+
 IFS=$'\n'
 nodes=($nodes)
 
 for (( i=0; i<${#nodes[@]}; i++ ))
 do
-       echo "node: " ${nodes[$i]}
-       kubectl get node ${nodes[$i]} -o json | jq '.spec.taints[] | select(.key == "node.pdd.net/dedicated") | .value'
+	echo "node: " ${nodes[$i]}
+	kubectl get node ${nodes[$i]} -o json | jq '.spec.taints[] | select(.key == '\"${1}\"') | .value'
 done
 
+$ ./list_node.sh node.kubernetes.io/unschedulable
