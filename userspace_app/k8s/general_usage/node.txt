@@ -23,6 +23,8 @@ kubectl taint nodes node1 key1=value1:NoSchedule-
 2.2 Select Node with Taint
 
 kubectl get nodes -o json | jq '.items[] | select(.spec.taints[]?.key == "node.kubernetes.io/unschedulable") | .metadata.name'
+# select both key and value
+kubectl get nodes -o json | jq '.items[] | select(.spec.taints[]?.key == "node.kubernetes.io/unschedulable" and .spec.taints[]?.value == "test") | .metadata.name'
 
 Or, If you have to use variable
 
