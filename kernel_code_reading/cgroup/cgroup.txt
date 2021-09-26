@@ -149,6 +149,8 @@ start_kernel
 ================================================================================
 4.1.1 cgroup_add_file(css, cgrp, cft)
 ================================================================================
+4.1.1.1 kn = __kernfs_create_file(cgrp->kn, )
+================================================================================
 
 4. interfaces
 ================================================================================
@@ -358,7 +360,7 @@ struct cgroup_subsys *cgroup_subsys[] = {
     +-------------------------------+
 
 
-0.3 cgroup_root / cgroup / kernfs_root
+0.3 cgroup_root / cgroup / kernfs_root / cftype
 ================================================================================
 
 cgroup_init
@@ -426,38 +428,81 @@ cgroup_roots(struct list_head)
           |                               |
           +-------------------------------+
 
-0.3.1 kernfd_root / kernfs_node
+0.3.1 cftype, cgroup_base_files/cgroup1_base_files
+================================================================================
+/*
+ * struct cftype: handler definitions for cgroup control files
+ *
+ * When reading/writing to a file:
+ *	- the cgroup to use is file->f_path.dentry->d_parent->d_fsdata
+ *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
+ */
+
+css_populate_dir()
+
+    cftype
+    +-------------------------------+
+    |name[MAX_CFTYPE_NAME]          |
+    |    (char)                     |
+    |ss                             |  = NULL for core interface
+    |    (struct cgroup_subsys*)    |    non-NULL for subsys
+    |node                           |
+    |    (struct list_head)         |
+    |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops
+    |    (struct kernfs_ops*)       |
+    |                               |
+    |open                           |
+    |release                        |
+    |read|write_u64                 |
+    |read|write_s64                 |
+    |write                          |
+    |poll                           |
+    |                               |
+    |seq_show                       |
+    |seq_start|stop|next            |
+    |                               |
+    +-------------------------------+
+
+0.3.2 cgroup_root.kf_root.kn / root_cgroup.kn / cftype
 ================================================================================
 
 cgrp = of->kn->parent->priv;
-cft  = of->kn->priv
+cft  = of->kn->priv;
 
-               kernfs_root
-               +---------------------------+<------------------------+
-               |kn                         |                         |
-               |    (struct kernfs_node*)  |                         |
-               |    +----------------------+                         |
-               |    |priv                  |  = struct cgroup *      |
-               |    |    (void *)          |                         |
-               +----+----------------------+                         |
-                                                                     |
-                                                                     |
-     kernfs_node                                                     |
-     +------------------------+                                      |
-     |parent               ---|--------------------------------------+
-     |   (struct kernfs_root*)|                                      |
-     |priv                    |  = struct cftype *                   |
-     |   (void *)             |                                      |
-     +------------------------+                                      |
-                                                                     |
-                                                                     |
-     kernfs_node                                                     |
-     +------------------------+                                      |
-     |parent               ---|--------------------------------------+
-     |   (struct kernfs_root*)|
-     |priv                    |  = struct cftype *
-     |   (void *)             |
-     +------------------------+
+  cgroup_root
+  +---------------------------+<-------------------------------------+
+  |kf_root                    |                                      |
+  |    (struct kernfs_root*)  |                                      |
+  |    +----------------------+                                      |
+  |    |kn                 ---|-----+                                |
+  |    | (struct kernfs_node*)|     |                                |
+  +----+----------------------+     +-->kernfs_node                  |
+                                    |   +------------------------+<--|-----------------+
+                                    |   |parent               ---|---+                 |
+  cgropu_root.cgrp                  |   |   (struct kernfs_root*)|                     |
+  +---------------------------+     |   |priv                    |  = struct cgroup *  |
+  |kn                      ---|-----+   |   (void *)             |                     |
+  |    (struct kernfs_node*)  |         +------------------------+                     |
+  +----+----------------------+                                                        |
+                                                                                       |
+                                                                                       |
+                                        kernfs_node                                    |
+                                        +------------------------+                     |
+                                        |parent               ---|---------------------+
+                                        |   (struct kernfs_root*)|                     |
+                                        |priv                    |  = struct cftype *  |
+                                        |   (void *)             |                     |
+                                        +------------------------+                     |
+                                                                                       |
+                                                                                       |
+                                        kernfs_node                                    |
+                                        +------------------------+                     |
+                                        |parent               ---|---------------------+
+                                        |   (struct kernfs_root*)|
+                                        |priv                    |  = struct cftype *
+                                        |   (void *)             |
+                                        +------------------------+
+
 
 0.4 cgroup / cgroup_subsys_state / cgroup_subsys
 ================================================================================
@@ -628,6 +673,8 @@ cft  = of->kn->priv
     |name                           |                                         |
     |legacy_name                    |                                         |
     |    (char *)                   |                                         |
+    |id                             |                                         |
+    |    (int)                      |                                         |
     |css_idr                        |                                         |
     |    (struct idr)               |                                         |
     |                               |                                         |
@@ -643,6 +690,10 @@ cft  = of->kn->priv
     |    (struct list_head)         |    |ss          |    |ss       ---|-----+
     |                               |    |kf_ops      |    |kf_ops      |
     |                               |    +------------+    +------------+    
+    |depends_on                     |
+    |    (unsigned int)             |
+    |                               |
+    +-------------------------------+  Methods
     |                               |
     |css_alloc                      |
     |css_online/offline             |
@@ -662,7 +713,6 @@ cft  = of->kn->priv
     |exit                           |
     |release                        |
     |bind                           |
-    |                               |
     +-------------------------------+
 
 0.4.3.1 cgroup/cgroup_subsys_state/cgroup_subsys
@@ -769,41 +819,6 @@ linked by css_create()
     |    |    (struct list_head)           |               |    |    (struct list_head)           |
     +----+---------------------------------+               +----+---------------------------------+
 
-
-
-
-0.6 cftype, cgroup_base_files/cgroup1_base_files
-================================================================================
-/*
- * struct cftype: handler definitions for cgroup control files
- *
- * When reading/writing to a file:
- *	- the cgroup to use is file->f_path.dentry->d_parent->d_fsdata
- *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
- */
-
-    cftype
-    +-------------------------------+
-    |name[MAX_CFTYPE_NAME]          |
-    |    (char)                     |
-    |ss                             |  = NULL for core interface
-    |    (struct cgroup_subsys*)    |    non-NULL for subsys
-    |node                           |
-    |    (struct list_head)         |
-    |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops
-    |    (struct kernfs_ops*)       |
-    |                               |
-    |open                           |
-    |release                        |
-    |read|write_u64                 |
-    |read|write_s64                 |
-    |write                          |
-    |poll                           |
-    |                               |
-    |seq_show                       |
-    |seq_start|stop|next            |
-    |                               |
-    +-------------------------------+
 
 0.7 css_set, holding pointers to a set of cgroup_subsys_state
 ================================================================================
