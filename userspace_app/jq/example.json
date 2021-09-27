@@ -1,6 +1,7 @@
 {
   "volumeClaimTemplates": [
     {
+      "bandwidth": "80M",
       "metadata": {
         "name": "sysvol"
       },
