@@ -143,8 +143,48 @@ start_kernel
 3.18 register_filesystem(&cpuset_fs_type)
 ================================================================================
 
+4. cgroup_create()
+================================================================================
+4. css_create(cgrp, ss)
+================================================================================
+4.1 parent = cgroup_parent(cgrp)
+================================================================================
+4.2 parent_css = cgroup_css(parent, ss)
+================================================================================
+4.3 css = ss->css_alloc(parent_css)
+================================================================================
+4.4 init_and_link_css(css, ss, cgrp)
+================================================================================
+4.4.1 memset(css, 0, sizeof(*css))
+================================================================================
+4.5 percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL)
+================================================================================
+4.6 css->id = cgroup_idr_alloc(&ss->css_idr, )
+================================================================================
+4.7 list_add_tail_rcu(&css->sibling, &parent_css->children)
+================================================================================
+4.8 online_css(css)
+================================================================================
+4.8.1 css->ss->css_online(css)
+================================================================================
+4.8.2 css->flags |= CSS_ONLINE
+================================================================================
+4.8.3 css->cgroup->subsys[ss->id] = css
+================================================================================
+
 4. css_populate_dir(struct cgroup_subsys_state *css), create subsys file in cgroup dir
 ================================================================================
+Depends on css type, css->ss, the cfts are:
+
+  * css.ss == NULL: cfts = cgroup_base_files/cgroup1_base_files
+  * css.ss != NULL: cfts = css->ss-cfts
+
+There are three places css_populate_dir() be called, and could be classified
+into two category by the css type:
+
+  * cgrp->self(css.ss == NULL):      cgroup_setup_root() / cgroup_mkdir()
+  * cgropu_subsys[](css.ss == NULL): cgroup_init() / cgroup_apply_control_enable()
+
 4.1 cgroup_addrm_files(css, cgrp, cfts, true)
 ================================================================================
 4.1.1 cgroup_add_file(css, cgrp, cft)
@@ -155,7 +195,7 @@ start_kernel
 4. interfaces
 ================================================================================
 
-4.0 cgroup_mkdir
+4.0 cgroup_mkdir(parent_kn, name, mode), a new cgroup
 ================================================================================
 4.0.1 parent = cgroup_kn_lock_live(parent_kn)
 ================================================================================
@@ -170,6 +210,8 @@ start_kernel
 4.0.2.4 list_add_tail_rcu(&cgrp->self.sibling, &cgroup_parent(cgrp)->self.children);
 ================================================================================
 4.0.2.5 cgroup_propagate_control(cgrp)
+================================================================================
+4.0.3 cgroup_kn_set_ugid(cgrp->kn)
 ================================================================================
 4.0.3 css_populate_dir(&cgrp->self), populate core interface
 ================================================================================
@@ -469,6 +511,8 @@ css_populate_dir()
 cgrp = of->kn->parent->priv;
 cft  = of->kn->priv;
 
+created/connected by css_populate_dir()
+
   cgroup_root
   +---------------------------+<-------------------------------------+
   |kf_root                    |                                      |
@@ -483,7 +527,7 @@ cft  = of->kn->priv;
   +---------------------------+     |   |priv                    |  = struct cgroup *  |
   |kn                      ---|-----+   |   (void *)             |                     |
   |    (struct kernfs_node*)  |         +------------------------+                     |
-  +----+----------------------+                                                        |
+  +---------------------------+                                                        |
                                                                                        |
                                                                                        |
                                         kernfs_node                                    |
@@ -492,6 +536,8 @@ cft  = of->kn->priv;
                                         |   (struct kernfs_root*)|                     |
                                         |priv                    |  = struct cftype *  |
                                         |   (void *)             |                     |
+                                        |attr.ops                |  = cft->kf_ops      |
+                                        |   (struct kernfs_ops *)|                     |
                                         +------------------------+                     |
                                                                                        |
                                                                                        |
@@ -501,6 +547,8 @@ cft  = of->kn->priv;
                                         |   (struct kernfs_root*)|
                                         |priv                    |  = struct cftype *
                                         |   (void *)             |
+                                        |attr.ops                |  = cft->kf_ops
+                                        |   (struct kernfs_ops *)|
                                         +------------------------+
 
 
@@ -638,12 +686,16 @@ cft  = of->kn->priv;
 
 0.4.2 cgroup_subsys_state
 ================================================================================
+There are two kinds of cgroup_subsys_state
+
+  * css.ss == NULL: this is a cgrp->self
+  * css.ss != NULL: this is a cgrp->subsys[]
 
     struct cgroup_subsys_state
     +--------------------------------------+
     |cgroup                                |             
     |    (struct cgroup*)                  |
-    |ss                                    |
+    |ss                                    | = NULL or cgroup_subsys[]
     |    (struct cgroup_subsys*)           |
     |id                                    | subsys unique id
     |    (int)                             |
@@ -660,6 +712,7 @@ cft  = of->kn->priv;
     |                                      |
     |sibling                               |
     |children                              |
+    |rstat_css_node                        |
     |    (struct list_head)                |
     |                                      |
     +--------------------------------------+
@@ -719,24 +772,32 @@ cft  = of->kn->priv;
 ================================================================================
 
     cgroup
-    +--------------------------------------+<-----+
-    |                                      |      |
-    |subsys[CGROUP_SUBSYS_COUNT]           |      |
-    |    (struct cgroup_subsys_state*)     |      |
-    |[0]      [1]      [2]      [3]        |      |
-    |+--------+--------+--------+---------+|      |
-    ||cgroup--|cgroup--|cgroup--|cgroup---||------+
-    ||        |        |        |         ||
-    ||ss--+   |ss---+  |ss----+ |ss-----+ ||
-    ||    |   |     |  |      | |       | ||
-    ++--------+--------+--------+---------++
-          |         |         |         |    
-          v         v         v         v    
-     subsys    subsys    subsys    subsys    
-     +-------+ +-------+ +-------+ +-------+ 
-     |       | |       | |       | |       | 
-     |       | |       | |       | |       | 
-     +-------+ +-------+ +-------+ +-------+ 
+    +--------------------------------------+<--------------------------+
+    |                                      |                           |
+    |subsys[CGROUP_SUBSYS_COUNT]           |                           |
+    |    (struct cgroup_subsys_state*)     |                           |
+    |    [0]  +----------------------------+                           |
+    |         |cgroup                      |---------------------------+
+    |         |   (struct cgroup*)         |                           |
+    |         |ss                          |  = cgroup_subsys[0]       |
+    |         |   (struct cgroup_subsys*)  |                           |
+    |    [1]  +----------------------------+                           |
+    |         |cgroup                      |---------------------------+
+    |         |   (struct cgroup*)         |                           |
+    |         |ss                          |  = cgroup_subsys[1]       |
+    |         |   (struct cgroup_subsys*)  |                           |
+    |    [2]  +----------------------------+                           |
+    |         |                            |                           |
+    |         .                            .                           |
+    |         .                            .                           |
+    |         |                            |                           |
+    |    [15] +----------------------------+                           |
+    |         |cgroup                      |---------------------------+
+    |         |   (struct cgroup*)         |
+    |         |ss                          |  = cgroup_subsys[15]
+    |         |   (struct cgroup_subsys*)  |
+    |         |                            |
+    +---------+----------------------------+
 
 0.4.4 cgroup hierarchy -> cgroup.self
 ================================================================================
