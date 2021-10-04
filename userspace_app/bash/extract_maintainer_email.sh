@@ -25,7 +25,6 @@ if [ $save -eq 0 ]; then
 	do
 		printf "%s" "$line "
 	done
-	rm .tmp_maintainer
 else
 	rm -f email_receiver
 	touch email_receiver
@@ -33,5 +32,6 @@ else
 	do
 		printf "%s" "$line " >> email_receiver
 	done
-	rm .tmp_maintainer
 fi
+
+rm .tmp_maintainer
