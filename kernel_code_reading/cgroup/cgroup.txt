@@ -166,34 +166,34 @@ start_kernel
 4.8.2 dsct->subtree_ss_mask = cgroup_calc_subtree_ss_mask(dsct->subtree_control, cgroup_ss_mask(dsct));
 ================================================================================
 
-4. css_create(cgrp, ss)
+5. css_create(cgrp, ss)
 ================================================================================
-4.1 parent = cgroup_parent(cgrp)
+5.1 parent = cgroup_parent(cgrp)
 ================================================================================
-4.2 parent_css = cgroup_css(parent, ss)
+5.2 parent_css = cgroup_css(parent, ss)
 ================================================================================
-4.3 css = ss->css_alloc(parent_css)
+5.3 css = ss->css_alloc(parent_css)
 ================================================================================
-4.4 init_and_link_css(css, ss, cgrp)
+5.4 init_and_link_css(css, ss, cgrp)
 ================================================================================
-4.4.1 memset(css, 0, sizeof(*css))
+5.4.1 memset(css, 0, sizeof(*css))
 ================================================================================
-4.5 percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL)
+5.5 percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL)
 ================================================================================
-4.6 css->id = cgroup_idr_alloc(&ss->css_idr, )
+5.6 css->id = cgroup_idr_alloc(&ss->css_idr, )
 ================================================================================
-4.7 list_add_tail_rcu(&css->sibling, &parent_css->children)
+5.7 list_add_tail_rcu(&css->sibling, &parent_css->children)
 ================================================================================
-4.8 online_css(css)
+5.8 online_css(css)
 ================================================================================
-4.8.1 css->ss->css_online(css)
+5.8.1 css->ss->css_online(css)
 ================================================================================
-4.8.2 css->flags |= CSS_ONLINE
+5.8.2 css->flags |= CSS_ONLINE
 ================================================================================
-4.8.3 css->cgroup->subsys[ss->id] = css
+5.8.3 css->cgroup->subsys[ss->id] = css
 ================================================================================
 
-4. css_populate_dir(struct cgroup_subsys_state *css), create subsys file in cgroup dir
+6. css_populate_dir(struct cgroup_subsys_state *css), create subsys file in cgroup dir
 ================================================================================
 Depends on css type, css->ss, the cfts are:
 
@@ -206,11 +206,11 @@ into two category by the css type:
   * cgrp->self(css.ss == NULL):      cgroup_setup_root() / cgroup_mkdir()
   * cgropu_subsys[](css.ss == NULL): cgroup_init() / cgroup_apply_control_enable()
 
-4.1 cgroup_addrm_files(css, cgrp, cfts, true)
+6.1 cgroup_addrm_files(css, cgrp, cfts, true)
 ================================================================================
-4.1.1 cgroup_add_file(css, cgrp, cft)
+6.1.1 cgroup_add_file(css, cgrp, cft)
 ================================================================================
-4.1.1.1 kn = __kernfs_create_file(cgrp->kn, )
+6.1.1.1 kn = __kernfs_create_file(cgrp->kn, )
 ================================================================================
 
 4. interfaces
