@@ -17,6 +17,15 @@ for ss in $subsys; do
 done
 ```
 
+0.1 CoMount two controller
+
+According to the man page:
+https://man7.org/linux/man-pages/man7/cgroups.7.html
+
+It is possible to comount multiple controllers against the same hierarchy. 
+
+$ mount -t cgroup -o cpu,cpuacct none /sys/fs/cgroup/cpu,cpuacct
+
 1. Limit cpu resource for process
 
 1.1 Create a new controller under cpuset
