@@ -145,6 +145,27 @@ start_kernel
 
 4. cgroup_create()
 ================================================================================
+4.1 cgrp = kzalloc()
+================================================================================
+4.2 percpu_ref_init(&cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
+================================================================================
+4.3 cgroup_rstat_init(cgrp);
+================================================================================
+4.4 kn = kernfs_create_dir(parent->kn, name, mode, cgrp)
+================================================================================
+4.5 init_cgroup_housekeeping(cgrp)
+================================================================================
+4.6 cgrp->ancestor_ids[tcgrp->level] = cgrpu_id(tcgrp), for tcgrp = cgroup_parent(cgrp)
+================================================================================
+4.7 list_add_tail_rcu(&cgrp->self.sibling, &cgroup_parent(cgrp)->self.children);
+================================================================================
+4.8 cgroup_propagate_control(cgrp)
+================================================================================
+4.8.1 dsct->subtree_control &= cgroup_control(dsct)
+================================================================================
+4.8.2 dsct->subtree_ss_mask = cgroup_calc_subtree_ss_mask(dsct->subtree_control, cgroup_ss_mask(dsct));
+================================================================================
+
 4. css_create(cgrp, ss)
 ================================================================================
 4.1 parent = cgroup_parent(cgrp)
@@ -218,14 +239,6 @@ into two category by the css type:
 4.0.4 cgroup_apply_control_enable(cgrp)
 ================================================================================
 4.0.4.1 css = css_create(cgrp, ss), for each subsys
-================================================================================
-4.0.4.1.1 css = ss->css_alloc(parent_css)
-================================================================================
-4.0.4.1.2 init_and_link_css(css, ss, cgrp)
-================================================================================
-4.0.4.1.3 online_css(css)
-================================================================================
-4.0.4.2 css_populate_dir(css), populate subsys interface
 ================================================================================
 
 4.1 cgroup.controllers
@@ -461,7 +474,7 @@ cgroup_roots(struct list_head)
           |    (u64)                      |
           |                               |
           |subsys_mask                    |  bitmask of subsys attached
-          |    (unsigned int)             |
+          |    (unsigned int)             |  set in cgroup_init()
           |                               |
           |nr_cgrps                       |
           |    (atomic_t)                 |
@@ -652,6 +665,10 @@ created/connected by css_populate_dir()
     |    (struct list_head)                |    |               |     |               |
     |                                      |    +---------------+     +---------------+
     |                                      |
+    |subtree_control                       |  = parent->subtree_control or root->subsys_mask
+    |subtree_ss_mask                       |
+    |    (u16)                             |
+    |                                      |
     |                                      |
     |level                                 |
     |max_depth                             |  = INT_MAX
@@ -734,7 +751,7 @@ There are two kinds of cgroup_subsys_state
     |root                           |  = &cgrp_dfl_root                       |
     |    (struct cgroup_root*)      |                                         |
     |                               |                                         |
-    |dfl_cftypes                    |                                         |
+    |dfl_cftypes                    |  be populated by css_populate_dir()     |
     |legacy_cftypes                 |                                         |
     |    (struct cftype*)           |                                         |
     |                               |    dfl_cftypes       legacy_cftypes     |
@@ -768,7 +785,7 @@ There are two kinds of cgroup_subsys_state
     |bind                           |
     +-------------------------------+
 
-0.4.3.1 cgroup/cgroup_subsys_state/cgroup_subsys
+0.4.4 cgroup/cgroup_subsys_state/cgroup_subsys
 ================================================================================
 
     cgroup
@@ -799,7 +816,7 @@ There are two kinds of cgroup_subsys_state
     |         |                            |
     +---------+----------------------------+
 
-0.4.4 cgroup hierarchy -> cgroup.self
+0.4.5 cgroup hierarchy -> cgroup.self
 ================================================================================
 
 linked by cgroup_create()
@@ -839,7 +856,7 @@ linked by cgroup_create()
     |    |    (struct list_head)           |               |    |    (struct list_head)           |
     +----+---------------------------------+               +----+---------------------------------+
 
-0.4.5 cgroup hierarchy -> cgroup.subsys[]
+0.4.6 cgroup hierarchy -> cgroup.subsys[]
 ================================================================================
 
 linked by css_create()
