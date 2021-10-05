@@ -456,8 +456,8 @@ cgroup_roots(struct list_head)
           |    |  |  (void *)             |  = cgrp_dfl_root.cgrp 
           |    |  |cgroup_base_files      |
           |    |  |cgroup1_base_files     |
-          |    |  |"cgroup.procs"         |  = cgroup_kf_ops
-          |    |  |"cgroup.threads"       |  = cgroup_kf_ops
+          |    |  |     "cgroup.procs"    |  = cgroup_kf_ops
+          |    |  |     "cgroup.threads"  |  = cgroup_kf_ops
           |    |  |                       |
           |    +--+-----------------------+
           |    |syscall_ops               |  = cgroup_kf_syscall_ops     
@@ -493,7 +493,9 @@ cgroup_roots(struct list_head)
  *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
  */
 
-css_populate_dir()
+initialized by cgroup_init_cftypes(), and set cft->kf_ops to cgroup_kf_ops or
+cgroup_kf_single_ops, which will be set to kernfs_node->attr.ops.
+populated by css_populate_dir()
 
     cftype
     +-------------------------------+
@@ -515,6 +517,23 @@ css_populate_dir()
     |                               |
     |seq_show                       |
     |seq_start|stop|next            |
+    |                               |
+    +-------------------------------+
+
+0.3.1.1 cgroup_kf_ops
+================================================================================
+
+    kernfs_ops
+    +-------------------------------+
+    |open                           |  = cgroup_file_open
+    |release                        |  = cgroup_file_release
+    |write                          |  = cgroup_file_write
+    |poll                           |  = cgroup_file_poll
+    |                               |
+    |seq_start                      |  = cgroup_seqfile_start
+    |seq_stop                       |  = cgroup_seqfile_stop
+    |seq_next                       |  = cgroup_seqfile_next
+    |seq_show                       |  = cgroup_seqfile_show
     |                               |
     +-------------------------------+
 
