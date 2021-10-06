@@ -382,6 +382,78 @@ struct cgroup_subsys *cgroup_subsys[] = {
 
 };
 
+0.1.4 static_key, checked for cgroup_subsys_enabled()
+================================================================================
+Enable and disabled by static_branch_enable/static_branch_disable.
+
+/* array of static_keys for cgroup_subsys_enabled() and cgroup_subsys_on_dfl() */
+#define SUBSYS(_x)								\
+	DEFINE_STATIC_KEY_TRUE(_x ## _cgrp_subsys_enabled_key);			\
+	DEFINE_STATIC_KEY_TRUE(_x ## _cgrp_subsys_on_dfl_key);			\
+	EXPORT_SYMBOL_GPL(_x ## _cgrp_subsys_enabled_key);			\
+	EXPORT_SYMBOL_GPL(_x ## _cgrp_subsys_on_dfl_key);
+#include <linux/cgroup_subsys.h>
+#undef SUBSYS
+
+#define SUBSYS(_x) [_x ## _cgrp_id] = &_x ## _cgrp_subsys_enabled_key,
+static struct static_key_true *cgroup_subsys_enabled_key[] = {
+#include <linux/cgroup_subsys.h>
+};
+#undef SUBSYS
+
+#define SUBSYS(_x) [_x ## _cgrp_id] = &_x ## _cgrp_subsys_on_dfl_key,
+static struct static_key_true *cgroup_subsys_on_dfl_key[] = {
+#include <linux/cgroup_subsys.h>
+};
+#undef SUBSYS
+
+
+#define SUBSYS(_x)								\
+	extern struct static_key_true _x ## _cgrp_subsys_enabled_key;		\
+	extern struct static_key_true _x ## _cgrp_subsys_on_dfl_key;
+#include <linux/cgroup_subsys.h>
+#undef SUBSYS
+
+Will be expanded to two array:
+
+struct cgroup_subsys *cgroup_subsys_enabled_key[] = {
+
+	[cpuset_cgrp_id]       =      cpuset_cgrp_subsys_enabled_key,
+	[cpu_cgrp_id]          =      cpu_cgrp_subsys_enabled_key,
+	[cpuacct_cgrp_id]      =      cpuacct_cgrp_subsys_enabled_key,
+	[io_cgrp_id]           =      io_cgrp_subsys_enabled_key,
+	[memory_cgrp_id]       =      memory_cgrp_subsys_enabled_key,
+	[devices_cgrp_id]      =      devices_cgrp_subsys_enabled_key,
+	[freezer_cgrp_id]      =      freezer_cgrp_subsys_enabled_key,
+	[net_cls_cgrp_id]      =      net_cls_cgrp_subsys_enabled_key,
+	[perf_event_cgrp_id]   =      perf_event_cgrp_subsys_enabled_key,
+	[net_prio_cgrp_id]     =      net_prio_cgrp_subsys_enabled_key,
+	[hugetlb_cgrp_id]      =      hugetlb_cgrp_subsys_enabled_key,
+	[pids_cgrp_id]         =      pids_cgrp_subsys_enabled_key,
+	[rdma_cgrp_id]         =      rdma_cgrp_subsys_enabled_key,
+	[debug_cgrp_id]        =      debug_cgrp_subsys_enabled_key,
+
+};
+
+struct cgroup_subsys *cgroup_subsys_on_dfl_key[] = {
+
+	[cpuset_cgrp_id]       =      cpuset_cgrp_subsys_on_dfl_key,
+	[cpu_cgrp_id]          =      cpu_cgrp_subsys_on_dfl_key,
+	[cpuacct_cgrp_id]      =      cpuacct_cgrp_subsys_on_dfl_key,
+	[io_cgrp_id]           =      io_cgrp_subsys_on_dfl_key,
+	[memory_cgrp_id]       =      memory_cgrp_subsys_on_dfl_key,
+	[devices_cgrp_id]      =      devices_cgrp_subsys_on_dfl_key,
+	[freezer_cgrp_id]      =      freezer_cgrp_subsys_on_dfl_key,
+	[net_cls_cgrp_id]      =      net_cls_cgrp_subsys_on_dfl_key,
+	[perf_event_cgrp_id]   =      perf_event_cgrp_subsys_on_dfl_key,
+	[net_prio_cgrp_id]     =      net_prio_cgrp_subsys_on_dfl_key,
+	[hugetlb_cgrp_id]      =      hugetlb_cgrp_subsys_on_dfl_key,
+	[pids_cgrp_id]         =      pids_cgrp_subsys_on_dfl_key,
+	[rdma_cgrp_id]         =      rdma_cgrp_subsys_on_dfl_key,
+	[debug_cgrp_id]        =      debug_cgrp_subsys_on_dfl_key,
+
+};
+
 0.2 cgroup_fs_context, cgroup filesystem superblock mount/create context
 ================================================================================
 
