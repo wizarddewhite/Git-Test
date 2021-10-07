@@ -96,6 +96,7 @@ http://www.shlug.org/about/#hacking-thursday
 SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片以及信息发布
 `
 	}
+	fmt.Println(Templ)
 
 	var body bytes.Buffer
 	t, _ := template.New("cm").Parse(Templ)
@@ -109,4 +110,5 @@ SHLUG的新浪微博地址：http://weibo.com/shanghailug 有每次活动照片�
 
 func main() {
 	H4Notify("a", "shlug@googlegroups.com", "abc")
+	// H4Notify("a", "shyw13@gmail.com", "abc")
 }
