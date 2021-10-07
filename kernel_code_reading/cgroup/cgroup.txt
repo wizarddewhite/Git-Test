@@ -64,7 +64,7 @@ start_kernel
 ================================================================================
 3.7.2 allocate_cgrp_cset_links(2 * css_set_count, &tmp_links)
 ================================================================================
-3.7.2.1 kzalloc(sizeof(struct cgrp_cset_link))
+3.7.2.1 kzalloc(sizeof(struct cgrp_cset_link)), allocate list of cgrp_cset_link
 ================================================================================
 3.7.3 cgroup_init_root_id(&cgrp_dfl_root)
 ================================================================================
@@ -90,7 +90,7 @@ start_kernel
 ================================================================================
 3.7.9.2 list_add_tail(&link->cgrp_link, &cset->cgrp_links) 
 ================================================================================
-3.7.10 kernfs_activate(root_cgrp->kn)
+3.7.10 cgroup_update_populated(root_cgrp, true)
 ================================================================================
 3.8 cgroup_init_subsys(ss, false)
 ================================================================================
@@ -102,7 +102,7 @@ start_kernel
 ================================================================================
 3.8.4 css->id = cgroup_idr_alloc(&css->css_idr, css, )
 ================================================================================
-3.8.5 onlie_css(css)
+3.8.5 online_css(css)
 ================================================================================
 3.8.5.1 ss->css_online(css)
 ================================================================================
@@ -128,7 +128,7 @@ start_kernel
 ================================================================================
 3.11 cgroup_add_legacy_cftypes(ss, ss->legacy_cftypes)
 ================================================================================
-3.12 ss->bind(init_css_set.subsys[ssid])
+3.12 ss->bind(init_css_set.subsys[ssid]), if necessary
 ================================================================================
 3.13 css_populate_dir(init_css_set.subsys[ssid]), add ss->cfts for each subsys
 ================================================================================
@@ -241,6 +241,39 @@ into two category by the css type:
 4.0.4.1 css = css_create(cgrp, ss), for each subsys
 ================================================================================
 
+4.1 cgroup.procs, __cgroup1_procs_write()
+================================================================================
+4.1.1 cgrp = cgroup_kn_lock_live(of->kn, false), get and lock cgrp
+================================================================================
+4.1.2 task = cgroup_procs_write_start(buf, threadgroup, )
+================================================================================
+4.1.2.1 kstrtoint(strstrip(buf), 0, &pid)
+================================================================================
+4.1.2.2 tsk = find_task_by_vpid(pid)
+================================================================================
+4.1.2.3 get_task_struct(tsk)
+================================================================================
+4.1.3 cgroup_attach_task(cgrp, task, threadgroup), attach task to a cgroup
+================================================================================
+4.1.3.1 cgroup_migrate_add_src(task_css_set(task), cgrp, &mgctx)
+================================================================================
+4.1.3.1.1 src_cgrp = cset_cgroup_from_root(src_cset, dst_cgrp->root)
+================================================================================
+4.1.3.2 cgroup_migrate_prepare_dst()
+================================================================================
+4.1.3.2.1 dst_cset = find_css_set(src_cset, src_cset->mg_dst_cgrp), create new css_set
+================================================================================
+4.1.3.3 cgroup_migrate(leader, threadgroup, )
+================================================================================
+4.1.3.4 cgroup_migrate_finish(&mgctx)
+================================================================================
+4.1.4 cgroup_procs_write_finish(task, locked)
+================================================================================
+4.1.4.1 put_task_struct(task)
+================================================================================
+4.1.4.2 ss->post_attach()
+================================================================================
+
 4.1 cgroup.controllers
 ================================================================================
 
@@ -261,15 +294,6 @@ into two category by the css type:
 4.2.1.2 cgroup_finalize_control(cgrp)
 ================================================================================
 
-5. css_for_each_descendant_pre(pos, css), cgroup iteration
-================================================================================
-5.1 pos = css_next_descendant_pre(NULL, css)
-================================================================================
-5.1 pos = css_next_descendant_pre(pos, css)
-================================================================================
-5.1.1 next = css_next_child(NULL, pos)
-================================================================================
-
 0. data struct
 ================================================================================
 
@@ -278,6 +302,13 @@ into two category by the css type:
 
 cgrp_dfl_root      (struct cgroup_root)
 cgrp_dfl_root.cgrp (struct cgroup)
+
+cgrp_dfl_implicit_ss_mask
+cgrp_dfl_inhibit_ss_mask
+cgrp_dfl_threaded_ss_mask
+
+cgroup_mutex
+css_set_lock
 
 0.1 cgroup id/name/category
 
@@ -492,6 +523,18 @@ struct cgroup_subsys *cgroup_subsys_on_dfl_key[] = {
 
 cgroup_init
     cgroup_setup_root
+
+For cgroup-v1, each directory under /sys/fs/cgroup/ is a cgroup_root.
+The call trace is:
+
+[    2.009597]  cgroup_setup_root+0x4d/0x2a7
+[    2.010063]  cgroup1_get_tree+0x21c/0x3c0
+[    2.010528]  vfs_get_tree+0x20/0xb0
+[    2.010935]  path_mount+0x425/0x990
+[    2.011343]  do_mount+0x70/0x90
+[    2.011708]  __x64_sys_mount+0xbf/0xe0
+[    2.012141]  do_syscall_64+0x3a/0x80
+[    2.012585]  entry_SYSCALL_64_after_hwframe+0x44/0xae
 
 cgroup_roots(struct list_head)
   |
@@ -735,6 +778,35 @@ created/connected by css_populate_dir()
     |    |    (struct cgroup_subsys*)      |
     |    |                                 |
     |    +---------------------------------+
+    |                                      |
+    |subtree_control                       |  = parent->subtree_control or root->subsys_mask
+    |subtree_ss_mask                       |
+    |    (u16)                             |
+    |                                      |
+    |                                      |
+    |level                                 |
+    |max_depth                             |  = INT_MAX
+    |                                      |
+    |max_descendants                       |  = INT_MAX
+    |nr_descendants                        |
+    |nr_dying_descendants                  |
+    |    (int)                             |
+    |                                      |
+    |ancestor_ids[]                        |
+    |    (u64)                             |
+    |                                      |
+    |kn                                    |  = cgrp_dfl_root->kf_root->kn
+    |    (struct kernfs_node *)            |    or a child
+    |                                      |
+    |flags                                 |  CGRP_NOTIFY_ON_RELEASE | CGRP_CPUSET_CLONE_CHILDREN
+    |    (unsigned long)                   |  CGRP_FREEZE | CGRP_FROZEN
+    |                                      |
+    |                                      |
+    |                                      |  Above are fields connecting cgroup hierarchy
+    +======================================+
+    |                                      |  Below are fields connecting tasks
+    |                                      |
+    |                                      |
     |                                      |    cgrp_cset_link    cgrp_cset_link
     |                                      |    +--------------+     +--------------+
     |cset_links                         ---|--->|cset_link    -| --->|cset_link     |
@@ -756,29 +828,10 @@ created/connected by css_populate_dir()
     |    (struct list_head)                |    |               |     |               |
     |                                      |    +---------------+     +---------------+
     |                                      |
-    |subtree_control                       |  = parent->subtree_control or root->subsys_mask
-    |subtree_ss_mask                       |
-    |    (u16)                             |
-    |                                      |
-    |                                      |
-    |level                                 |
-    |max_depth                             |  = INT_MAX
-    |                                      |
-    |max_descendants                       |  = INT_MAX
-    |nr_descendants                        |
-    |nr_dying_descendants                  |
-    |    (int)                             |
-    |                                      |
-    |kn                                    |  = cgrp_dfl_root->kf_root->kn
-    |    (struct kernfs_node *)            |    or a child
-    |                                      |
-    |flags                                 |  CGRP_NOTIFY_ON_RELEASE | CGRP_CPUSET_CLONE_CHILDREN
-    |    (unsigned long)                   |  CGRP_FREEZE | CGRP_FROZEN
     |                                      |
     |procs_file                            |  cgroup.procs
     |events_file                           |  cgroup.events
     |    (struct cgroup_file)              |
-    |                                      |
     |                                      |
     |pidlists                              |
     |    (struct list_head)                |
@@ -788,8 +841,13 @@ created/connected by css_populate_dir()
     |release_agent_work                    |  = cgroup1_release_agent
     |    (struct work_struct)              |
     |                                      |
-    |ancestor_ids[]                        |
-    |    (u64)                             |
+    |nr_populated_csets                    |
+    |nr_populated_domain_children          |
+    |nr_populated_threaded_children        |
+    |nr_threaded_children                  |
+    |    (struct int)                      |
+    |                                      |
+    |                                      |
     +--------------------------------------+
 
 0.4.2 cgroup_subsys_state
@@ -911,6 +969,7 @@ There are two kinds of cgroup_subsys_state
 ================================================================================
 
 linked by cgroup_create()
+iterated by css_for_each_descendant_[pre|post]
 
                      cgroup
                      +--------------------------------------+
@@ -1017,20 +1076,32 @@ linked by css_create()
                               |tasks                          |
                               |mg_tasks                       |
                               |dying_tasks                    |
+                              |    (struct list_head)         |
                               |                               |
                               |task_iters                     |
                               |    (struct list_head)         |
                               |                               |
                               |cgrp_links                     |
                               |    (struct list_head)         |
+                              |                               |
+                              |mg_preload_node                |
+                              |mg_node                        |
+                              |    (struct list_head)         |
+                              |                               |
+                              |mg_src_cgrp                    |
+                              |mg_dst_cgrp                    |
+                              |    (struct cgroup*)           |
+                              |mg_dst_cset                    |
+                              |    (struct css_set*)          |
+                              |                               |
                               +-------------------------------+
 
-0.7.1 init_css_set (struct css_set), used by init and its children by default
+0.7.1 css_set/task, used by init and its children by default
 ================================================================================
 
     init_task(struct task_struct)
     +-------------------------------+
-    |cgroups                        |  = &init_css_set
+    |cgroups                        |  = &init_css_set(struct css_set)
     |    (struct css_set)           |    +-------------------------+
     +-------------------------------+    |subsys[]                 |  = assigned in cgroup_init_subsys()
                                          |                         |    the same as cgrp_dfl_root.cgrp.subsys[]
@@ -1038,9 +1109,23 @@ linked by css_create()
                                          |                         |
                                          +-------------------------+
 
-0.7.2 css_set_table, hash table for css_set
+0.7.2 css_set/css_set_table
 ================================================================================
 
+   css_set_table              css_set
+   +---------------+          +-------------------------------+
+   |               |     +--->|hlist                          |
+   |               |     |    |    (struct hlist_node)        |
+   +---------------+     |    |                               |
+   |css_set_hash() |-----+    |                               |
+   |               |          +-------------------------------+
+   +---------------+
+   |               |
+   |               |
+   +---------------+
+
+0.7.3 init_css_set/cgrp_dfl_root.cgrp
+================================================================================
 
 0.8 cgrp_cset_link
 ================================================================================
@@ -1057,8 +1142,9 @@ linked by css_create()
     |    (struct list_head)         |
     +-------------------------------+
 
-0.8.1 cgrp_cset_link <-> css_set and cgroup
+0.8.1 cgrp_cset_link connects css_set / cgroup
 ================================================================================
+linked by link_css_set()
 
  css_set
  +--------------------+------------+-----------------------------+
