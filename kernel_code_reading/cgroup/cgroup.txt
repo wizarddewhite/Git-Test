@@ -216,6 +216,9 @@ into two category by the css type:
 4. interfaces
 ================================================================================
 
+4.0 cgroup1_get_tree(), called on mount -t cgroup -o cpu none /sys/fs/cgroup/cpu
+================================================================================
+
 4.0 cgroup_mkdir(parent_kn, name, mode), a new cgroup
 ================================================================================
 4.0.1 parent = cgroup_kn_lock_live(parent_kn)
@@ -485,38 +488,90 @@ struct cgroup_subsys *cgroup_subsys_on_dfl_key[] = {
 
 };
 
-0.2 cgroup_fs_context, cgroup filesystem superblock mount/create context
+0.2 cgroup filesystem
 ================================================================================
 
-    cgroup_fs_context
+0.2.1 cgroup_fs_type / cgroup2_fs_type
+================================================================================
+
+    cgroup_fs_type
     +-------------------------------+
-    |root                           |
-    |    (struct cgroup_root*)      |
-    |kfc                            |  kernfs superblock
-    |    (struct kernfs_fs_context*)|
-    |    +--------------------------+
-    |    |root                      |
-    |    |    (struct kernfs_root*) |
-    |    |                          |
-    |    +--------------------------+
-    |                               |
-    |ns                             |
-    |    (struct cgroup_namespace*) |
-    |    +--------------------------+
-    |    |ns                        |
-    |    |  (struct ns_common)      |
-    |    |user_ns                   |
-    |    |  (struct user_namespace*)|
-    |    |ucounts                   |
-    |    |  (struct ucounts*)       |
-    |    |root_cset                 |
-    |    |  (struct css_set*)       |
-    |    +--------------------------+
-    |flags                          |
-    |                               |
+    |name                           |  = "cgroup"
+    |init_fs_context                |  = cgroup_init_fs_context
+    |parameters                     |  = cgroup1_fs_parameters
+    |kill_sb                        |  = cgroup_kill_sb
+    |fs_flags                       |  = FS_USERNS_MOUNT
     |                               |
     +-------------------------------+
 
+    cgroup2_fs_type
+    +-------------------------------+
+    |name                           |  = "cgroup2"
+    |init_fs_context                |  = cgroup_init_fs_context
+    |parameters                     |  = cgroup2_fs_parameters
+    |kill_sb                        |  = cgroup_kill_sb
+    |fs_flags                       |  = FS_USERNS_MOUNT
+    |                               |
+    +-------------------------------+
+
+
+    +-----------------------+
+    |get_tree               |
+    |                       |
+    |                       |
+    +-----------------------+
+
+0.2.2 fs_context / cgroup_fs_context / fs_context_operations
+================================================================================
+
+created and setup by cgroup_init_fs_context()
+
+    fs_context
+    +-------------------------------+
+    |ops                            |  = cgroup_fs_context_ops / cgroup1_fs_context_ops
+    |(struct fs_context_operations*)|    +-----------------------+
+    |                               |    |get_tree               |  = cgroup_get_tree / cgroup1_get_tree
+    |                               |    |                       |
+    |                               |    |                       |
+    |                               |    +-----------------------+
+    |                               |
+    |                               |
+    |                               |
+    |                               |
+    |                               |
+    |                               |         cgroup_fs_context
+    |private                        |         +-------------------------------+                    
+    |    (void *)                ---|-------->|kfc                            |  kernfs superblock
+    +-------------------------------+         |    (struct kernfs_fs_context*)|
+                                              |    +--------------------------+
+                                              |    |root                      |
+                                              |    |    (struct kernfs_root*) |
+                                              |    |                          |
+                                              |    +--------------------------+
+                                              |                               |
+                                              |root                           |
+                                              |    (struct cgroup_root*)      |
+                                              |                               |
+                                              |ns                             |
+                                              |    (struct cgroup_namespace*) |
+                                              |    +--------------------------+
+                                              |    |ns                        |
+                                              |    |  (struct ns_common)      |
+                                              |    |user_ns                   |
+                                              |    |  (struct user_namespace*)|
+                                              |    |ucounts                   |
+                                              |    |  (struct ucounts*)       |
+                                              |    |root_cset                 |
+                                              |    |  (struct css_set*)       |
+                                              |    +--------------------------+
+                                              |flags                          |
+                                              |                               |
+                                              |                               |
+                                              +-------------------------------+
+    
+    
+    
+    
 
 0.3 cgroup_root / cgroup / kernfs_root / cftype
 ================================================================================
