@@ -216,7 +216,33 @@ into two category by the css type:
 4. interfaces
 ================================================================================
 
-4.0 cgroup1_get_tree(), called on mount -t cgroup -o cpu none /sys/fs/cgroup/cpu
+4.0 cgroup1_get_tree(fc), called on mount -t cgroup -o cpu none /sys/fs/cgroup/cpu
+================================================================================
+4.0.1 ctx = cgroup_fc2context(fc)
+================================================================================
+4.0.2 cgroup_lock_and_drain_offline(&cgrp_dfl_root.cgrp)
+================================================================================
+4.0.3 cgroup1_root_to_use(fc), find or create cgroup_root
+================================================================================
+4.0.3.1 check_cgroupfs_options(fc), find desired ss
+================================================================================
+4.0.3.2 root = kzalloc()
+================================================================================
+4.0.3.3 ctx->root = root
+================================================================================
+4.0.3.4 init_cgroup_root(ctx)
+================================================================================
+4.0.3.5 cgroup_setup_root(root, ctx->subsys_mask)
+================================================================================
+4.0.3.5.1 rebind_subsystems(root, ss_mask)
+================================================================================
+4.0.4 cgroup_do_get_tree(fc)
+================================================================================
+4.0.4.1 kernfs_get_tree(fc)
+================================================================================
+4.0.4.1.1 sb = sget_fc(fc, kernfs_test_super, kernfs_set_supter)
+================================================================================
+4.0.4.1.2 fc->root = dget(sb->s_root)
 ================================================================================
 
 4.0 cgroup_mkdir(parent_kn, name, mode), a new cgroup
@@ -524,33 +550,48 @@ struct cgroup_subsys *cgroup_subsys_on_dfl_key[] = {
 0.2.2 fs_context / cgroup_fs_context / fs_context_operations
 ================================================================================
 
-created and setup by cgroup_init_fs_context()
+cgroup_fs_context_ops is created and setup by cgroup_init_fs_context().
+Other things are setup by vfs_get_tree(), cgroup1_get_tree().
 
     fs_context
     +-------------------------------+
     |ops                            |  = cgroup_fs_context_ops / cgroup1_fs_context_ops
     |(struct fs_context_operations*)|    +-----------------------+
     |                               |    |get_tree               |  = cgroup_get_tree / cgroup1_get_tree
-    |                               |    |                       |
+    |                               |    |parse_param            |  = cgroup1_parse_param / cgroup2_parse_param
     |                               |    |                       |
     |                               |    +-----------------------+
     |                               |
+    |                               |    struct kernfs_super_info
+    |s_fs_info                   ---|--->+--------------------------+
+    |    (void*)                    |    |root                      |  = kfc->root
+    |                               |    |ns                        |  = kfc->ns_tag
+    |                               |    |                          |
+    |                               |    +--------------------------+
     |                               |
     |                               |
-    |                               |
+    |root                           |
+    |    (struct dentry*)           |
     |                               |
     |                               |         cgroup_fs_context
     |private                        |         +-------------------------------+                    
     |    (void *)                ---|-------->|kfc                            |  kernfs superblock
-    +-------------------------------+         |    (struct kernfs_fs_context*)|
+    +-------------------------------+         |    (struct kernfs_fs_context) |
                                               |    +--------------------------+
-                                              |    |root                      |
-                                              |    |    (struct kernfs_root*) |
+                                              |    |magic                     |  = CGROUP_SUPER_MAGIC / CGROUP2_SUPER_MAGIC
+                                              |    |    (unsigned long)       |
                                               |    |                          |
+                                              |    |root                   ---|-----+
+                                              |    |    (struct kernfs_root*) |     |
+                                              |    |                          |     |
+                                              |    +--------------------------+     |
+                                              |                               |     |
+                                              |root                           |     |
+                                              |    (struct cgroup_root*)      |     |
+                                              |    +--------------------------+     |
+                                              |    |kf_root                   |<----+
+                                              |    |    (struct kernfs_root*) |
                                               |    +--------------------------+
-                                              |                               |
-                                              |root                           |
-                                              |    (struct cgroup_root*)      |
                                               |                               |
                                               |ns                             |
                                               |    (struct cgroup_namespace*) |
@@ -564,9 +605,15 @@ created and setup by cgroup_init_fs_context()
                                               |    |root_cset                 |
                                               |    |  (struct css_set*)       |
                                               |    +--------------------------+
+                                              |                               |
                                               |flags                          |
                                               |                               |
+                                      v1 bits +-------------------------------+
                                               |                               |
+                                              |none/all_ss                    |
+                                              |    (bool)                     |
+                                              |subsys_mask                    |
+                                              |    (u16)                      |
                                               +-------------------------------+
     
     
@@ -644,7 +691,8 @@ cgroup_roots(struct list_head)
           |    (u64)                      |
           |                               |
           |subsys_mask                    |  bitmask of subsys attached
-          |    (unsigned int)             |  set in cgroup_init()
+          |    (unsigned int)             |  set in cgroup_init() for cgrp_dfl_root
+          |                               |      in rebind_subsystems() for others
           |                               |
           |nr_cgrps                       |
           |    (atomic_t)                 |
@@ -953,7 +1001,9 @@ There are two kinds of cgroup_subsys_state
     |    (struct idr)               |                                         |
     |                               |                                         |
     |root                           |  = &cgrp_dfl_root                       |
-    |    (struct cgroup_root*)      |                                         |
+    |    (struct cgroup_root*)      |    init in cgroup_init_subsys()         |
+    |                               |    rebind in rebind_subsystems()        |
+    |                               |                                         |
     |                               |                                         |
     |dfl_cftypes                    |  be populated by css_populate_dir()     |
     |legacy_cftypes                 |                                         |
