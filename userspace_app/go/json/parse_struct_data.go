@@ -77,13 +77,15 @@ type Config struct {
 
 func simple_test() {
 	file, _ := os.Open("json.conf")
-	config := &Config{}
+	configs := []Config{}
 	decoder := json.NewDecoder(file)
-	decoder.Decode(config)
-	fmt.Println("ID:", config.Setting.ID)
-	fmt.Println("Port:", config.Port)
-	fmt.Println("Setting:", config.Settings.ID)
-	fmt.Println("Process:", config.Process.User)
+	decoder.Decode(&configs)
+	for _, config := range configs {
+		fmt.Println("ID:", config.Setting.ID)
+		fmt.Println("Port:", config.Port)
+		fmt.Println("Setting:", config.Settings.ID)
+		fmt.Println("Process:", config.Process.User)
+	}
 }
 
 type ObjStatus struct {
@@ -109,6 +111,6 @@ func main() {
 	// array()
 	// embedded_struct()
 	// custom_attr_name()
-	// simple_test()
-	timestamp_parse()
+	simple_test()
+	// timestamp_parse()
 }
