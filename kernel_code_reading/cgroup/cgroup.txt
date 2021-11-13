@@ -588,12 +588,6 @@ struct cgroup_subsys *cgroup_subsys_on_dfl_key[] = {
     +-------------------------------+
 
 
-    +-----------------------+
-    |get_tree               |
-    |                       |
-    |                       |
-    +-----------------------+
-
 0.2.2 fs_context / cgroup_fs_context / fs_context_operations
 ================================================================================
 
@@ -621,7 +615,7 @@ Other things are setup by vfs_get_tree(), cgroup1_get_tree().
     |    (struct dentry*)           |
     |                               |
     |                               |         cgroup_fs_context
-    |private                        |         +-------------------------------+                    
+    |fs_private                     |         +-------------------------------+                    
     |    (void *)                ---|-------->|kfc                            |  kernfs superblock
     +-------------------------------+         |    (struct kernfs_fs_context) |
                                               |    +--------------------------+
@@ -663,9 +657,63 @@ Other things are setup by vfs_get_tree(), cgroup1_get_tree().
                                               |    (u16)                      |
                                               +-------------------------------+
     
-    
+   
+0.2.3 cftype, cgroup_base_files/cgroup1_base_files
+================================================================================
+/*
+ * struct cftype: handler definitions for cgroup control files
+ *
+ * When reading/writing to a file:
+ *	- the cgroup to use is file->f_path.dentry->d_parent->d_fsdata
+ *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
+ */
 
-0.3 cgroup_root / cgroup / kernfs_root / cftype
+initialized by cgroup_init_cftypes(), and set cft->kf_ops to cgroup_kf_ops or
+cgroup_kf_single_ops, which will be set to kernfs_node->attr.ops.
+populated by css_populate_dir()
+
+    cftype
+    +-------------------------------+
+    |name[MAX_CFTYPE_NAME]          |
+    |    (char)                     |
+    |ss                             |  = NULL for core interface
+    |    (struct cgroup_subsys*)    |    non-NULL for subsys
+    |node                           |
+    |    (struct list_head)         |
+    |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops
+    |    (struct kernfs_ops*)       |
+    |                               |
+    |open                           |
+    |release                        |
+    |read|write_u64                 |
+    |read|write_s64                 |
+    |write                          |
+    |poll                           |
+    |                               |
+    |seq_show                       |
+    |seq_start|stop|next            |
+    |                               |
+    +-------------------------------+
+
+0.2.3.1 cgroup_kf_ops, cgroup_kf_ops | cgroup_kf_single_ops
+================================================================================
+
+    kernfs_ops
+    +-------------------------------+
+    |open                           |  = cgroup_file_open
+    |release                        |  = cgroup_file_release
+    |write                          |  = cgroup_file_write
+    |poll                           |  = cgroup_file_poll
+    |                               |
+    |seq_start                      |  = cgroup_seqfile_start
+    |seq_stop                       |  = cgroup_seqfile_stop
+    |seq_next                       |  = cgroup_seqfile_next
+    |seq_show                       |  = cgroup_seqfile_show
+    |                               |
+    +-------------------------------+
+
+
+0.2.4 cgroup_root / cgroup / kernfs_root / cftype
 ================================================================================
 
 cgroup_init
@@ -722,7 +770,7 @@ cgroup_roots(struct list_head)
           |    |  |     "cgroup.threads"  |  = cgroup_kf_ops
           |    |  |                       |
           |    +--+-----------------------+
-          |    |syscall_ops               |  = cgroup_kf_syscall_ops     
+          |    |syscall_ops               |  = cgroup_kf_syscall_ops | cgroup1_kf_syscall_ops
           |    |  (struct kernfs_syscall*)|
           |    |  +-----------------------+
           |    |  |mkdir                  |  = cgroup_mkdir
@@ -746,61 +794,7 @@ cgroup_roots(struct list_head)
           |                               |
           +-------------------------------+
 
-0.3.1 cftype, cgroup_base_files/cgroup1_base_files
-================================================================================
-/*
- * struct cftype: handler definitions for cgroup control files
- *
- * When reading/writing to a file:
- *	- the cgroup to use is file->f_path.dentry->d_parent->d_fsdata
- *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
- */
-
-initialized by cgroup_init_cftypes(), and set cft->kf_ops to cgroup_kf_ops or
-cgroup_kf_single_ops, which will be set to kernfs_node->attr.ops.
-populated by css_populate_dir()
-
-    cftype
-    +-------------------------------+
-    |name[MAX_CFTYPE_NAME]          |
-    |    (char)                     |
-    |ss                             |  = NULL for core interface
-    |    (struct cgroup_subsys*)    |    non-NULL for subsys
-    |node                           |
-    |    (struct list_head)         |
-    |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops
-    |    (struct kernfs_ops*)       |
-    |                               |
-    |open                           |
-    |release                        |
-    |read|write_u64                 |
-    |read|write_s64                 |
-    |write                          |
-    |poll                           |
-    |                               |
-    |seq_show                       |
-    |seq_start|stop|next            |
-    |                               |
-    +-------------------------------+
-
-0.3.1.1 cgroup_kf_ops
-================================================================================
-
-    kernfs_ops
-    +-------------------------------+
-    |open                           |  = cgroup_file_open
-    |release                        |  = cgroup_file_release
-    |write                          |  = cgroup_file_write
-    |poll                           |  = cgroup_file_poll
-    |                               |
-    |seq_start                      |  = cgroup_seqfile_start
-    |seq_stop                       |  = cgroup_seqfile_stop
-    |seq_next                       |  = cgroup_seqfile_next
-    |seq_show                       |  = cgroup_seqfile_show
-    |                               |
-    +-------------------------------+
-
-0.3.2 cgroup_root.kf_root.kn / root_cgroup.kn / cftype
+0.2.5 cgroup_root.kf_root.kn / root_cgroup.kn / cftype
 ================================================================================
 
 cgrp = of->kn->parent->priv;
@@ -813,6 +807,15 @@ created/connected by css_populate_dir()
   |kf_root                    |                                      |
   |    (struct kernfs_root*)  |                                      |
   |    +----------------------+                                      |
+  |    |syscall_ops           | = cgroup_kf_syscall_ops              |
+  |    | (kernfs_syscall_ops*)|   | cgroup1_kf_syscall_ops           |
+  |    |  +-------------------+                                      |
+  |    |  |mkdir              |  = cgroup_mkdir                      |
+  |    |  |rmdir              |  = cgroup_rmdir                      |
+  |    |  |show_path          |  = cgroup_show_path                  |
+  |    |  |show_options       |  = cgroup_show_options               |
+  |    |  +-------------------+                                      |
+  |    |                      |                                      |
   |    |kn                 ---|-----+                                |
   |    | (struct kernfs_node*)|     |                                |
   +----+----------------------+     +-->kernfs_node                  |
@@ -846,6 +849,24 @@ created/connected by css_populate_dir()
                                         |   (struct kernfs_ops *)|
                                         +------------------------+
 
+0.2.6 kernfs_node / kernfs_file_ops / cftype
+================================================================================
+
+                                    cgroup1_base_files["cgroup.procs"]
+                                +-->+-------------+
+  kernfs_node                   |   |             |
+  +------------------------+    |   |write        | = cgroup1_procs_write
+  |parent                  |    |   |             |
+  |   (struct kernfs_root*)|    |   |             |
+  |priv                    |----+   +-------------+
+  |   (void *)             |
+  |                        |        cgroup_kf[_single]_ops
+  |attr.ops                |------->+-------------+
+  |   (struct kernfs_ops *)|        |open         | = cgroup_file_open
+  +------------------------+        |write        | = cgroup_file_write
+                                    |poll         |
+                                    |             |
+                                    +-------------+
 
 0.4 cgroup / cgroup_subsys_state / cgroup_subsys
 ================================================================================
