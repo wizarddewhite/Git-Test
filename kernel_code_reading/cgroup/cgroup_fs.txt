@@ -1,0 +1,448 @@
+1. cgroup_init
+================================================================================
+1.1 sysfs_create_mount_point(fs_kobj, "cgroup")
+================================================================================
+1.2 (register_filesystem(&cgroup_fs_type)
+================================================================================
+1.3 (register_filesystem(&cgroup2_fs_type)
+================================================================================
+1.4 proc_create_single("cgroups", 0, NULL, proc_cgroupstats_show)
+================================================================================
+
+1. css_populate_dir(struct cgroup_subsys_state *css), create subsys file in cgroup dir
+================================================================================
+Depends on css type, css->ss, the cfts are:
+
+  * css.ss == NULL: cfts = cgroup_base_files/cgroup1_base_files
+  * css.ss != NULL: cfts = css->ss-cfts
+
+There are three places css_populate_dir() be called, and could be classified
+into two category by the css type:
+
+  * cgrp->self(css.ss == NULL):      cgroup_setup_root() / cgroup_mkdir()
+  * cgropu_subsys[](css.ss == NULL): cgroup_init() / cgroup_apply_control_enable()
+
+1.1 cgroup_addrm_files(css, cgrp, cfts, true)
+================================================================================
+1.1.1 cgroup_add_file(css, cgrp, cft)
+================================================================================
+1.1.1.1 kn = __kernfs_create_file(cgrp->kn, )
+================================================================================
+
+2. interfaces
+================================================================================
+
+2.0 cgroup1_get_tree(fc), called on mount -t cgroup -o cpu none /sys/fs/cgroup/cpu
+================================================================================
+2.0.1 ctx = cgroup_fc2context(fc)
+================================================================================
+2.0.2 cgroup_lock_and_drain_offline(&cgrp_dfl_root.cgrp)
+================================================================================
+2.0.3 cgroup1_root_to_use(fc), find or create cgroup_root
+================================================================================
+2.0.3.1 check_cgroupfs_options(fc), find desired ss
+================================================================================
+2.0.3.2 root = kzalloc()
+================================================================================
+2.0.3.3 ctx->root = root
+================================================================================
+2.0.3.4 init_cgroup_root(ctx)
+================================================================================
+2.0.3.5 cgroup_setup_root(root, ctx->subsys_mask)
+================================================================================
+2.0.3.5.1 rebind_subsystems(root, ss_mask)
+================================================================================
+2.0.4 cgroup_do_get_tree(fc)
+================================================================================
+2.0.4.1 kernfs_get_tree(fc)
+================================================================================
+2.0.4.1.1 sb = sget_fc(fc, kernfs_test_super, kernfs_set_supter)
+================================================================================
+2.0.4.1.2 fc->root = dget(sb->s_root)
+================================================================================
+
+2.0 cgroup_mkdir(parent_kn, name, mode), a new cgroup
+================================================================================
+2.0.1 parent = cgroup_kn_lock_live(parent_kn)
+================================================================================
+2.0.2 cgrp = cgroup_create(parent, name, mode)
+================================================================================
+2.0.2.1 cgrp = kzalloc()
+================================================================================
+2.0.2.2 kn = kernfs_create_dir()
+================================================================================
+2.0.2.3 cgrp->kn = kn
+================================================================================
+2.0.2.4 list_add_tail_rcu(&cgrp->self.sibling, &cgroup_parent(cgrp)->self.children);
+================================================================================
+2.0.2.5 cgroup_propagate_control(cgrp)
+================================================================================
+2.0.3 cgroup_kn_set_ugid(cgrp->kn)
+================================================================================
+2.0.3 css_populate_dir(&cgrp->self), populate core interface
+================================================================================
+2.0.4 cgroup_apply_control_enable(cgrp)
+================================================================================
+2.0.4.1 css = css_create(cgrp, ss), for each subsys
+================================================================================
+
+4.1 cgroup.procs, __cgroup1_procs_write()
+================================================================================
+4.1.1 cgrp = cgroup_kn_lock_live(of->kn, false), get and lock cgrp
+================================================================================
+4.1.2 task = cgroup_procs_write_start(buf, threadgroup, )
+================================================================================
+4.1.2.1 kstrtoint(strstrip(buf), 0, &pid)
+================================================================================
+4.1.2.2 tsk = find_task_by_vpid(pid)
+================================================================================
+4.1.2.3 get_task_struct(tsk)
+================================================================================
+4.1.3 cgroup_attach_task(cgrp, task, threadgroup), attach task to a cgroup
+================================================================================
+4.1.3.1 cgroup_migrate_add_src(task_css_set(task), cgrp, &mgctx)
+================================================================================
+4.1.3.1.1 src_cgrp = cset_cgroup_from_root(src_cset, dst_cgrp->root)
+================================================================================
+4.1.3.2 cgroup_migrate_prepare_dst()
+================================================================================
+4.1.3.2.1 dst_cset = find_css_set(src_cset, src_cset->mg_dst_cgrp), create new css_set
+================================================================================
+4.1.3.3 cgroup_migrate(leader, threadgroup, )
+================================================================================
+4.1.3.4 cgroup_migrate_finish(&mgctx)
+================================================================================
+4.1.4 cgroup_procs_write_finish(task, locked)
+================================================================================
+4.1.4.1 put_task_struct(task)
+================================================================================
+4.1.4.2 ss->post_attach()
+================================================================================
+
+4.1 cgroup.controllers
+================================================================================
+
+4.1.1 cgroup_controllers_show
+================================================================================
+
+4.2 cgroup.subtree_control
+================================================================================
+
+4.2.1 cgroup_subtree_control_write
+================================================================================
+4.2.1.1 cgroup_apply_control(cgrp)
+================================================================================
+4.2.1.1.1 cgroup_propagate_control(cgrp)
+================================================================================
+4.2.1.1.2 cgroup_apply_control_enable(cgrp)
+================================================================================
+4.2.1.2 cgroup_finalize_control(cgrp)
+================================================================================
+
+0. cgroup filesystem
+================================================================================
+
+0.1 cgroup_fs_type / cgroup2_fs_type
+================================================================================
+
+    cgroup_fs_type
+    +-------------------------------+
+    |name                           |  = "cgroup"
+    |init_fs_context                |  = cgroup_init_fs_context
+    |parameters                     |  = cgroup1_fs_parameters
+    |kill_sb                        |  = cgroup_kill_sb
+    |fs_flags                       |  = FS_USERNS_MOUNT
+    |                               |
+    +-------------------------------+
+
+    cgroup2_fs_type
+    +-------------------------------+
+    |name                           |  = "cgroup2"
+    |init_fs_context                |  = cgroup_init_fs_context
+    |parameters                     |  = cgroup2_fs_parameters
+    |kill_sb                        |  = cgroup_kill_sb
+    |fs_flags                       |  = FS_USERNS_MOUNT
+    |                               |
+    +-------------------------------+
+
+
+0.2 fs_context / cgroup_fs_context / fs_context_operations
+================================================================================
+
+cgroup_fs_context_ops is created and setup by cgroup_init_fs_context().
+Other things are setup by vfs_get_tree(), cgroup1_get_tree().
+
+    fs_context
+    +-------------------------------+
+    |ops                            |  = cgroup_fs_context_ops / cgroup1_fs_context_ops
+    |(struct fs_context_operations*)|    +-----------------------+
+    |                               |    |get_tree               |  = cgroup_get_tree / cgroup1_get_tree
+    |                               |    |parse_param            |  = cgroup1_parse_param / cgroup2_parse_param
+    |                               |    |                       |
+    |                               |    +-----------------------+
+    |                               |
+    |                               |    struct kernfs_super_info
+    |s_fs_info                   ---|--->+--------------------------+
+    |    (void*)                    |    |root                      |  = kfc->root
+    |                               |    |ns                        |  = kfc->ns_tag
+    |                               |    |                          |
+    |                               |    +--------------------------+
+    |                               |
+    |                               |
+    |root                           |
+    |    (struct dentry*)           |
+    |                               |
+    |                               |         cgroup_fs_context
+    |fs_private                     |         +-------------------------------+                    
+    |    (void *)                ---|-------->|kfc                            |  kernfs superblock
+    +-------------------------------+         |    (struct kernfs_fs_context) |
+                                              |    +--------------------------+
+                                              |    |magic                     |  = CGROUP_SUPER_MAGIC / CGROUP2_SUPER_MAGIC
+                                              |    |    (unsigned long)       |
+                                              |    |                          |
+                                              |    |root                   ---|-----+
+                                              |    |    (struct kernfs_root*) |     |
+                                              |    |                          |     |
+                                              |    +--------------------------+     |
+                                              |                               |     |
+                                              |root                           |     |
+                                              |    (struct cgroup_root*)      |     |
+                                              |    +--------------------------+     |
+                                              |    |kf_root                   |<----+
+                                              |    |    (struct kernfs_root*) |
+                                              |    +--------------------------+
+                                              |                               |
+                                              |ns                             |
+                                              |    (struct cgroup_namespace*) |
+                                              |    +--------------------------+
+                                              |    |ns                        |
+                                              |    |  (struct ns_common)      |
+                                              |    |user_ns                   |
+                                              |    |  (struct user_namespace*)|
+                                              |    |ucounts                   |
+                                              |    |  (struct ucounts*)       |
+                                              |    |root_cset                 |
+                                              |    |  (struct css_set*)       |
+                                              |    +--------------------------+
+                                              |                               |
+                                              |flags                          |
+                                              |                               |
+                                      v1 bits +-------------------------------+
+                                              |                               |
+                                              |none/all_ss                    |
+                                              |    (bool)                     |
+                                              |subsys_mask                    |
+                                              |    (u16)                      |
+                                              +-------------------------------+
+    
+   
+0.3 cftype, cgroup_base_files/cgroup1_base_files
+================================================================================
+/*
+ * struct cftype: handler definitions for cgroup control files
+ *
+ * When reading/writing to a file:
+ *	- the cgroup to use is file->f_path.dentry->d_parent->d_fsdata
+ *	- the 'cftype' of the file is file->f_path.dentry->d_fsdata
+ */
+
+initialized by cgroup_init_cftypes(), and set cft->kf_ops to cgroup_kf_ops or
+cgroup_kf_single_ops, which will be set to kernfs_node->attr.ops.
+populated by css_populate_dir()
+
+    cftype
+    +-------------------------------+
+    |name[MAX_CFTYPE_NAME]          |
+    |    (char)                     |
+    |ss                             |  = NULL for core interface
+    |    (struct cgroup_subsys*)    |    non-NULL for subsys
+    |node                           |
+    |    (struct list_head)         |
+    |kf_ops                         |  = cgroup_kf_ops | cgroup_kf_single_ops
+    |    (struct kernfs_ops*)       |
+    |                               |
+    |open                           |
+    |release                        |
+    |read|write_u64                 |
+    |read|write_s64                 |
+    |write                          |
+    |poll                           |
+    |                               |
+    |seq_show                       |
+    |seq_start|stop|next            |
+    |                               |
+    +-------------------------------+
+
+0.3.1 cgroup_kf_ops, cgroup_kf_ops | cgroup_kf_single_ops
+================================================================================
+
+    kernfs_ops
+    +-------------------------------+
+    |open                           |  = cgroup_file_open
+    |release                        |  = cgroup_file_release
+    |write                          |  = cgroup_file_write
+    |poll                           |  = cgroup_file_poll
+    |                               |
+    |seq_start                      |  = cgroup_seqfile_start
+    |seq_stop                       |  = cgroup_seqfile_stop
+    |seq_next                       |  = cgroup_seqfile_next
+    |seq_show                       |  = cgroup_seqfile_show
+    |                               |
+    +-------------------------------+
+
+
+0.4 cgroup_root / cgroup / kernfs_root / cftype
+================================================================================
+
+cgroup_init
+    cgroup_setup_root
+
+For cgroup-v1, each directory under /sys/fs/cgroup/ is a cgroup_root.
+The call trace is:
+
+[    2.009597]  cgroup_setup_root+0x4d/0x2a7
+[    2.010063]  cgroup1_get_tree+0x21c/0x3c0
+[    2.010528]  vfs_get_tree+0x20/0xb0
+[    2.010935]  path_mount+0x425/0x990
+[    2.011343]  do_mount+0x70/0x90
+[    2.011708]  __x64_sys_mount+0xbf/0xe0
+[    2.012141]  do_syscall_64+0x3a/0x80
+[    2.012585]  entry_SYSCALL_64_after_hwframe+0x44/0xae
+
+cgroup_roots(struct list_head)
+  |
+  |       cgroup_root(cgrp_dfl_root)
+  |       +-------------------------------+<----+
+  +------>|root_lists                     |     |
+          |    (struct list_head)         |     |
+          |name[]                         |     |
+          |    (char)                     |     |
+          |hierarchy_id                   |     |
+          |    (int)                      |     |
+          |                               |     |
+          |cgrp                           |     |
+          |    (struct cgroup)            |     |
+          |    +--------------------------+<----|--------------------------+
+          |    |root                   ---|-----+                          |
+          |    |   (struct cgroup_root*)  |                                |
+          |    |                          |                                |
+          |    |rstat_cpu                 |  = &cgrp_dfl_root_rstat_cpu    |
+          |    |(struct cgroup_rstat_cpu*)|                                |
+          |    |                          |                                |
+          |    |kn                        |  = kf_root->kn                 |
+          |    |    (struct kernfs_node *)|-----+                          |
+          |    |  +-----------------------+     |                          |
+          |    |  |                       |     |                          |
+          |    +--+-----------------------+     |                          |
+          |kf_root                        |     |                          |
+          |    (struct kernfs_root*)      |     |                          |
+          |    +--------------------------+     |                          |
+          |    |kn                        |     |                          |
+          |    |  (struct kernfs_node*)   |     |                          |
+          |    |  +-----------------------+<----+                          |
+          |    |  |priv                   |--------------------------------+
+          |    |  |  (void *)             |  = cgrp_dfl_root.cgrp 
+          |    |  |cgroup_base_files      |
+          |    |  |cgroup1_base_files     |
+          |    |  |     "cgroup.procs"    |  = cgroup_kf_ops
+          |    |  |     "cgroup.threads"  |  = cgroup_kf_ops
+          |    |  |                       |
+          |    +--+-----------------------+
+          |    |syscall_ops               |  = cgroup_kf_syscall_ops | cgroup1_kf_syscall_ops
+          |    |  (struct kernfs_syscall*)|
+          |    |  +-----------------------+
+          |    |  |mkdir                  |  = cgroup_mkdir
+          |    |  |rmdir                  |  = cgroup_rmdir
+          |    |  |show_path              |  = cgroup_show_path
+          |    |  |show_options           |  = cgroup_show_options
+          |    |  +-----------------------+
+          |    +--------------------------+
+          |                               |
+          |cgrp_ancestor_id_storage       |  = cgroup_id() = cgrp->kn->id = kf_root->kn->id
+          |    (u64)                      |
+          |                               |
+          |subsys_mask                    |  bitmask of subsys attached
+          |    (unsigned int)             |  set in cgroup_init() for cgrp_dfl_root
+          |                               |      in rebind_subsystems() for others
+          |                               |
+          |nr_cgrps                       |
+          |    (atomic_t)                 |
+          |root_list                      |
+          |    (struct list_head)         |
+          |                               |
+          +-------------------------------+
+
+0.5 cgroup_root.kf_root.kn / root_cgroup.kn / cftype
+================================================================================
+
+cgrp = of->kn->parent->priv;
+cft  = of->kn->priv;
+
+created/connected by css_populate_dir()
+
+  cgroup_root
+  +---------------------------+<-------------------------------------+
+  |kf_root                    |                                      |
+  |    (struct kernfs_root*)  |                                      |
+  |    +----------------------+                                      |
+  |    |syscall_ops           | = cgroup_kf_syscall_ops              |
+  |    | (kernfs_syscall_ops*)|   | cgroup1_kf_syscall_ops           |
+  |    |  +-------------------+                                      |
+  |    |  |mkdir              |  = cgroup_mkdir                      |
+  |    |  |rmdir              |  = cgroup_rmdir                      |
+  |    |  |show_path          |  = cgroup_show_path                  |
+  |    |  |show_options       |  = cgroup_show_options               |
+  |    |  +-------------------+                                      |
+  |    |                      |                                      |
+  |    |kn                 ---|-----+                                |
+  |    | (struct kernfs_node*)|     |                                |
+  +----+----------------------+     +-->kernfs_node                  |
+                                    |   +------------------------+<--|-----------------+
+                                    |   |parent               ---|---+                 |
+  cgropu_root.cgrp                  |   |   (struct kernfs_root*)|                     |
+  +---------------------------+     |   |priv                    |  = struct cgroup *  |
+  |kn                      ---|-----+   |   (void *)             |                     |
+  |    (struct kernfs_node*)  |         +------------------------+                     |
+  +---------------------------+                                                        |
+                                                                                       |
+                                                                                       |
+                                        kernfs_node                                    |
+                                        +------------------------+                     |
+                                        |parent               ---|---------------------+
+                                        |   (struct kernfs_root*)|                     |
+                                        |priv                    |  = struct cftype *  |
+                                        |   (void *)             |                     |
+                                        |attr.ops                |  = cft->kf_ops      |
+                                        |   (struct kernfs_ops *)|                     |
+                                        +------------------------+                     |
+                                                                                       |
+                                                                                       |
+                                        kernfs_node                                    |
+                                        +------------------------+                     |
+                                        |parent               ---|---------------------+
+                                        |   (struct kernfs_root*)|
+                                        |priv                    |  = struct cftype *
+                                        |   (void *)             |
+                                        |attr.ops                |  = cft->kf_ops
+                                        |   (struct kernfs_ops *)|
+                                        +------------------------+
+
+0.6 kernfs_node / kernfs_file_ops / cftype
+================================================================================
+
+                                    cgroup1_base_files["cgroup.procs"]
+                                +-->+-------------+
+  kernfs_node                   |   |             |
+  +------------------------+    |   |write        | = cgroup1_procs_write
+  |parent                  |    |   |             |
+  |   (struct kernfs_root*)|    |   |             |
+  |priv                    |----+   +-------------+
+  |   (void *)             |
+  |                        |        cgroup_kf[_single]_ops
+  |attr.ops                |------->+-------------+
+  |   (struct kernfs_ops *)|        |open         | = cgroup_file_open
+  +------------------------+        |write        | = cgroup_file_write
+                                    |poll         |
+                                    |             |
+                                    +-------------+
+
