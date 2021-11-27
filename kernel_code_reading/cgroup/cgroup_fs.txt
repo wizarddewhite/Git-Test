@@ -313,7 +313,7 @@ cgroup_roots(struct list_head)
   |
   |       cgroup_root(cgrp_dfl_root)
   |       +-------------------------------+<----+
-  +------>|root_lists                     |     |
+  +------>|root_list                      |     |
           |    (struct list_head)         |     |
           |name[]                         |     |
           |    (char)                     |     |
@@ -367,9 +367,6 @@ cgroup_roots(struct list_head)
           |                               |
           |nr_cgrps                       |
           |    (atomic_t)                 |
-          |root_list                      |
-          |    (struct list_head)         |
-          |                               |
           +-------------------------------+
 
 0.5 cgroup_root.kf_root.kn / root_cgroup.kn / cftype
