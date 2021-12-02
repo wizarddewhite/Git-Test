@@ -513,7 +513,7 @@ struct cgroup_subsys *cgroup_subsys_on_dfl_key[] = {
     |                                      |
     |subtree_control                       |  = parent->subtree_control or root->subsys_mask
     |subtree_ss_mask                       |    cgroup_propagate_control()
-    |    (u16)                             |
+    |    (u16)                             |    used by css_visible()
     |                                      |
     |                                      |
     |level                                 |
