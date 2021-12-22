@@ -1,0 +1,13 @@
+https://lore.kernel.org/all/20210209163304.77088-6-hannes@cmpxchg.org/T/#mb538b78c369d6961594db538a9392cb66514f0a6
+
+
+f1286fae5406 2021-04-30 mm: memcontrol: inline __memcg_kmem_{un}charge() into obj_cgroup_{un}charge_pages()
+b4e0b68fbd9d 2021-04-30 mm: memcontrol: use obj_cgroup APIs to charge kmem pages
+7ab345a89730 2021-04-30 mm: memcontrol: change ug->dummy_page only if memcg changed
+48060834f227 2021-04-30 mm: memcontrol: directly access page->memcg_data in mm/page_alloc.c
+e74d225910ec 2021-04-30 mm: memcontrol: introduce obj_cgroup_{un}charge_pages
+9f38f03ae8d5 2021-04-30 mm: memcontrol: slab: fix obtain a reference to a freeing memcg
+0add0c77a9bd 2021-04-30 memcg: charge before adding to swapcache on swapin
+4bbcc5a41c54 2021-04-30 kselftests: cgroup: update kmem test for new vmstat implementation
+2cd21c89800c 2021-04-30 mm: memcontrol: consolidate lruvec stat flushing
+2d146aa3aa84 2021-04-30 mm: memcontrol: switch to rstat
