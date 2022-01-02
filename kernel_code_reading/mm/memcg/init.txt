@@ -1,0 +1,228 @@
+1. overview
+===============================================================================
+cgroup_init_subsys(ss, early)
+    ss->root = &cgrp_dfl_root
+    css = ss->css_alloc()
+    init_and_link_css(css, ss, &cgrp_dfl_root.cgrp)
+        css->cgroup = cgrp
+        css->ss = ss
+    init_css_set.subsys[ss->id] = css
+    online_css(css)
+        ss->css_online(css)
+        css->cgroup->subsys[ss->id] = css
+
+2. mem_cgroup_css_alloc(parent_css)
+===============================================================================
+2.1 parent = mem_cgroup_from_css(parent_css)
+===============================================================================
+2.2 old_memcg = set_active_memcg(parent)
+===============================================================================
+2.3 memcg = mem_cgroup_alloc()
+===============================================================================
+2.3.1 memcg = kzalloc()
+===============================================================================
+2.3.2 memcg->id.id = idr_alloc(&mem_cgroup_idr, )
+===============================================================================
+2.3.3 memcg->vmstats_percpu = alloc_percpu_gfp()
+===============================================================================
+2.3.4 alloc_mem_cgroup_per_node_info(memcg, node)
+===============================================================================
+2.3.5 memcg_wb_domain_init(memcg, )
+===============================================================================
+2.3.6 idr_replace(&mem_cgroup_idr, memcg, memcg->id.id)
+===============================================================================
+2.4 set_active_memcg(old_memcg)
+===============================================================================
+2.4.1 int_active_memcg = old_memcg
+===============================================================================
+2.5 memcg_online_kmem(memcg)
+===============================================================================
+2.6 return &memcg->css
+===============================================================================
+
+
+3. mem_cgroup_css_online(css)
+===============================================================================
+3.1 memcg = mem_cgroup_from_css(css)
+===============================================================================
+3.2 alloc_shrinker_info(memcg)
+===============================================================================
+3.3 refcount_set(&memcg->id.ref, 1)
+===============================================================================
+3.4 css_get(css)
+===============================================================================
+3.5 queue_delayed_work(system_unbound_wq, &stats_flush_dwork, 2 * HZ)
+===============================================================================
+
+4. memcg_rstat_updated, the core for memcg_rstat change
+===============================================================================
+
+4.1 __mod_memcg_state(memcg, idx, val)
+===============================================================================
+4.2 __mod_memcg_lruvec_state(lruvec, idx, val)
+===============================================================================
+4.3 __count_memcg_events(memcg, idx, count)
+===============================================================================
+
+5. mem_cgroup_flush_stats()
+===============================================================================
+5.1 cgroup_rstat_flush_irqsafe(root_mem_cgroup->css.cgroup), flush root
+===============================================================================
+5.2 mem_cgroup_css_rstat_flush
+===============================================================================
+
+6. mem_cgroup_write()
+===============================================================================
+6.1 memcg = mem_cgroup_from_css(of_css(of))
+===============================================================================
+6.2 page_counter_memparse(buf, "-1", &nr_pages)
+===============================================================================
+6.2.1 nr_pages = min(bytes / PAGE_SIZE, (u64)PAGE_COUNTER_MAX)
+===============================================================================
+6.3 mem_cgroup_resize_max(memcg, nr_pages, false)
+===============================================================================
+6.3.1 page_counter_set_max()
+===============================================================================
+6.3.2 drain_all_stock()
+===============================================================================
+6.3.3 try_to_free_mem_cgroup_pages(memcg, 1, )
+===============================================================================
+6.3.4 memcg_oom_recover(memcg)
+===============================================================================
+
+0. data structure
+===============================================================================
+struct mem_cgroup *root_mem_cgroup;
+
+0.1 mem_cgroup, allocated by mem_cgroup_alloc()
+===============================================================================
+LRU: https://www.geeksforgeeks.org/lru-full-form/
+
+
+    mem_cgroup
+    +-------------------------------------+
+    |css                                  |
+    |    (struct cgroup_subsys_state)     |
+    |                                     |
+    |id                                   |
+    |    (struct mem_cgroup_id)           |
+    |    +--------------------------------+
+    |    |id(int)                         |
+    |    |ref(refcount_t)                 |
+    |    +--------------------------------+
+    |high_work                            |  = high_work_func
+    |    (struct work_struct)             |
+    |                                     |
+    |memory/swap/memsw/kmem/tcpmem        |
+    |    (struct page_counter)            |
+    |    +--------------------------------+
+    |    |usage                           |
+    |    |    (atomic_long_t)             |
+    |    |min/low/high/max                |
+    |    |    (unsigned long)             |
+    |    |emin                            |
+    |    |min_usage/children_min_usage    |
+    |    |elow                            |
+    |    |low_usage/children_low_usage    |
+    |    |    (atomic_long_t)             |
+    |    |parent                          |
+    |    |    (struct page_counter*)      |
+    |    +--------------------------------+
+    |                                     |
+    |vmstats                              |  memory.stat
+    |    (struct memcg_vmstats)           |
+    |    +--------------------------------+
+    |    |state[MEMCG_NR_STAT]            |
+    |    |events[NR_VM_EVENT_ITEMS]       |
+    |    |    (long)                      |
+    |    |                                |
+    |    |state_pending[MEMCG_NR_STAT]    |
+    |    |event_pending[NR_VM_EVENT_ITEMS]|
+    |    |    (long)                      |
+    |    +--------------------------------+
+    |vmstats_percpu                       |
+    |    (struct memcg_vmstats_percpu)    |
+    |    +--------------------------------+
+    |    |state[MEMCG_NR_STAT]            |
+    |    |events[NR_VM_EVENT_ITEMS]       |
+    |    |    (long)                      |
+    |    |                                |
+    |    |state_prev[MEMCG_NR_STAT]       |
+    |    |events_prev[NR_VM_EVENT_ITEMS]  |
+    |    |    (long)                      |
+    |    |                                |
+    |    |nr_page_events                  |
+    |    |targets[MEM_CGROUP_NTARGETS]    |
+    |    |    (long)                      |
+    |    +--------------------------------+
+    |vmpressure                           |
+    |    (struct vmpressure)              |
+    |    +--------------------------------+
+    |    |scanned                         |
+    |    |reclaimed                       |
+    |    |tree_scanned                    |
+    |    |tree_reclaimed                  |
+    |    |    (unsigned long)             |
+    |    |work                            |  = vmpressure_work_fn
+    |    |    (struct work_struct)        |
+    |    |events                          |
+    |    |events                          |
+    |    |    (struct list_head)          |
+    |    +--------------------------------+
+    |                                     |
+    |[]nodeinfo                           |  one for each node
+    |    (struct mem_cgroup_per_node*)    |
+    |    +--------------------------------+
+    |    |memcg                           |
+    |    |    (struct mem_cgroup*)        |
+    |    |on_tree(bool)                   |
+    |    |usage_in_excess                 |
+    |    |    (unsigned long)             |
+    |    |iter                            |
+    |    |    (mem_cgroup_reclaim_iter)   |
+    |    |    +---------------------------+
+    |    |    |generation(unsigned int)   |
+    |    |    |position                   |
+    |    |    |    (struct mem_cgroup*)   |
+    |    |    +---------------------------+
+    |    |                                |
+    |    |shrinker_info                   |
+    |    |    (struct shrinker_info *)    |
+    |    |lru_zone_size                   |
+    |    |    [MAX_NR_ZONES][NR_LRU_LISTS]|
+    |    |    (unsigned long)             |
+    |    |lruvec                          |
+    |    |    (struct lruvec)             |
+    |    |    +---------------------------+
+    |    |    |lists[NR_LRU_LISTS]        |
+    |    |    |    (struct list_head)     |
+    |    |    |anon_cost/file_cost        |
+    |    |    |    (unsigned long)        |
+    |    |    |nonresident_age            |
+    |    |    |    (atomic_long_t)        |
+    |    |    |refaults[ANON_AND_FILE]    |
+    |    |    |    (unsigned long)        |
+    |    |    |pgdat                      |
+    |    |    |    (struct pglist_data*)  |
+    |    |    +---------------------------+
+    |    |lruvec_stats                    |
+    |    |    (struct lruvec_stats)       |
+    |    |    +---------------------------+
+    |    |    |stat[NR_VM_NODE_STAT_ITEMS]|
+    |    |    |state_pending              |
+    |    |    |    [NR_VM_NODE_STAT_ITEMS]|
+    |    |    |    (long)                 |
+    |    |    +---------------------------+
+    |    |lruvec_stats_percpu             |
+    |    |   (struct lruvec_stats_percpu*)|
+    |    |    +---------------------------+
+    |    |    |stat[NR_VM_NODE_STAT_ITEMS]|
+    |    |    |state_prev                 |
+    |    |    |    [NR_VM_NODE_STAT_ITEMS]|
+    |    |    |    (long)                 |
+    |    |    +---------------------------+
+    |    |tree_node                       |
+    |    |    (struct rb_node)            |
+    +----+--------------------------------+
+
+
