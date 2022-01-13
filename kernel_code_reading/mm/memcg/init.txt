@@ -112,7 +112,21 @@ LRU: https://www.geeksforgeeks.org/lru-full-form/
     |    +--------------------------------+
     |high_work                            |  = high_work_func
     |    (struct work_struct)             |
-    |                                     |
+    |thresholds/memsw_thresholds          |
+    |    (struct mem_cgroup_thresholds)   |
+    |    +--------------------------------+
+    |    |primary/spare                   | __mem_cgroup_usage_register_event
+    |    |    ( mem_cgroup_threshold_ary*)| __mem_cgroup_usage_unregister_event
+    |    |    +---------------------------+
+    |    |    |current_threshold          |
+    |    |    |                           |
+    |    |    |size                       |
+    |    |    |entries[]                  | ordered by threshold
+    |    |    |   (mem_cgroup_threshold)  |
+    |    |    |   +-----------------------+
+    |    |    |   |threshold              |
+    |    |    |   |eventfd                |
+    |    +----+---+-----------------------+
     |memory/swap/memsw/kmem/tcpmem        |
     |    (struct page_counter)            |
     |    +--------------------------------+

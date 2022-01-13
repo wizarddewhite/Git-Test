@@ -1,0 +1,66 @@
+1. mem_cgroup_charge(folio, mm, gfp), called on various page fault path
+================================================================================
+1.1 __mem_cgroup_charge(folio, mm, gfp)
+================================================================================
+1.1.1 memcg = get_mem_cgroup_from_mm(mm)
+================================================================================
+1.1.1.1 memcg = mem_cgroup_from_task(mm->owner)
+================================================================================
+1.1.2 charge_memcg(folio, memcg, grp)
+================================================================================
+1.1.3 css_put(memcg->css)
+================================================================================
+
+2 charge_memcg(folio, memcg, grp)
+================================================================================
+2.1 try_charge(memcg, gfp, nr_pages)
+================================================================================
+2.2 css_get(memcg->css) 
+================================================================================
+2.3 commit_charge(folio, memcg) -> folio->memcg_data = memcg
+================================================================================
+2.4 mem_cgroup_charge_statistics(memcg, nr_pages)
+================================================================================
+2.4.1 __this_cpu_add(memcg->vmstats_percpu->nr_page_events, nr_pages);
+================================================================================
+2.5 memcg_check_events(memcg, folio_nid(folio))
+================================================================================
+2.5.1 mem_cgroup_event_ratelimit()
+================================================================================
+2.5.2 mem_cgroup_threshold(memcg) -> __mem_cgroup_threshold(memcg, false), notify userspace and update t->current_threshold
+================================================================================
+2.5.2.1 t = memcg->thresholds.primary
+================================================================================
+2.5.2.2 usage = mem_cgroup_usage(memcg, false)
+================================================================================
+2.5.3 mem_cgroup_update_tree(memcg, nid)
+================================================================================
+
+2. try_charge() -> try_charge_memcg()
+================================================================================
+
+0. data struct
+================================================================================
+
+0.1 folio
+================================================================================
+7b230db3b8d373219f88a3d25c8fbbf12cc7f233
+mm: Introduce struct folio
+
+
+/* Which page is the flag stored in */
+#define FOLIO_PF_ANY		0
+#define FOLIO_PF_HEAD		0
+#define FOLIO_PF_ONLY_HEAD	0
+#define FOLIO_PF_NO_TAIL	0
+#define FOLIO_PF_NO_COMPOUND	0
+#define FOLIO_PF_SECOND		1
+
+#define TESTPAGEFLAG(uname, lname, policy)				\
+static __always_inline bool folio_test_##lname(struct folio *folio)	\
+{ return test_bit(PG_##lname, folio_flags(folio, FOLIO_##policy)); }
+
+#define SETPAGEFLAG(uname, lname, policy)				\
+static __always_inline							\
+void folio_set_##lname(struct folio *folio)				\
+{ set_bit(PG_##lname, folio_flags(folio, FOLIO_##policy)); }
