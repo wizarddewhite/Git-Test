@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define UMA_FIVE
+#define UMA_SIX
 
 #ifdef NUMA_FOUR
 #define INT_MAX		((int)(~0U >> 1))
@@ -70,6 +70,20 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 };
 #endif
 
+#ifdef UMA_SIX
+#define INT_MAX		((int)(~0U >> 1))
+#define NUM_NODES 6
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 10, 10, 10, 20, 20},
+	{10, 10, 10, 10, 20, 20},
+	{10, 10, 10, 10, 20, 20},
+	{10, 10, 10, 10, 20, 20},
+	{20, 20, 20, 20, 10, 10},
+	{20, 20, 20, 20, 10, 10},
+};
+#endif
+
 int node_load[NUM_NODES];
 int used_node[NUM_NODES];
 
@@ -116,8 +130,9 @@ void build_zonelist(int local_node)
 
 	while ((node = find_next_best_node(local_node)) >= 0) {
 
-		if (node_distance[local_node][node] != 
-		    node_distance[local_node][prev_node])
+		if ((node_distance[local_node][node] != 
+		     node_distance[local_node][prev_node]) ||
+		     node == local_node)
 			node_load[node] += load;
 
 		node_order[nr_nodes++] = node;
