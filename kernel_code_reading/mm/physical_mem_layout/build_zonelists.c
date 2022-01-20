@@ -19,6 +19,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define UMA_FIVE
+
+#ifdef NUMA_FOUR
 #define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 4
 
@@ -28,6 +31,44 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 	{32, 32, 10, 12},
 	{32, 32, 12, 10},
 };
+#endif
+
+#ifdef UMA_FOUR
+#define INT_MAX		((int)(~0U >> 1))
+#define NUM_NODES 4
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 10, 10, 10},
+	{10, 10, 10, 10},
+	{10, 10, 10, 10},
+	{10, 10, 10, 10},
+};
+#endif
+
+#ifdef UMA_FOUR2
+#define INT_MAX		((int)(~0U >> 1))
+#define NUM_NODES 4
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 10, 20, 20},
+	{10, 10, 20, 20},
+	{20, 20, 10, 10},
+	{20, 20, 10, 10},
+};
+#endif
+
+#ifdef UMA_FIVE
+#define INT_MAX		((int)(~0U >> 1))
+#define NUM_NODES 5
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 10, 10, 20, 20},
+	{10, 10, 10, 20, 20},
+	{10, 10, 10, 20, 20},
+	{20, 20, 20, 10, 10},
+	{20, 20, 20, 10, 10},
+};
+#endif
 
 int node_load[NUM_NODES];
 int used_node[NUM_NODES];
