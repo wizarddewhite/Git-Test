@@ -77,7 +77,7 @@ void build_zonelist(int local_node)
 
 		if (node_distance[local_node][node] != 
 		    node_distance[local_node][prev_node])
-			node_load[node] = load;
+			node_load[node] += load;
 
 		node_order[nr_nodes++] = node;
 		prev_node = node;
