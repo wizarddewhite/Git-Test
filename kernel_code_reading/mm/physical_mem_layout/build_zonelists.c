@@ -81,7 +81,6 @@ void build_zonelist(int local_node)
 
 		node_order[nr_nodes++] = node;
 		prev_node = node;
-		load--;
 	}
 
 	printf("Fallback order for Node %d: ", local_node);
