@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define UMA_SIX
+#define NUMA_EIGHT
 
 #ifdef NUMA_FOUR
 #define INT_MAX		((int)(~0U >> 1))
@@ -30,6 +30,36 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 	{12, 10, 32, 32},
 	{32, 32, 10, 12},
 	{32, 32, 12, 10},
+};
+#endif
+
+#ifdef NUMA_SIX
+#define INT_MAX		((int)(~0U >> 1))
+#define NUM_NODES 6
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 12, 12, 32, 32, 32},
+	{12, 10, 12, 32, 32, 32},
+	{12, 12, 10, 32, 32, 32},
+	{32, 32, 32, 10, 12, 12},
+	{32, 32, 32, 12, 10, 12},
+	{32, 32, 32, 12, 12, 10},
+};
+#endif
+
+#ifdef NUMA_EIGHT
+#define INT_MAX		((int)(~0U >> 1))
+#define NUM_NODES 8
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 12, 12, 12, 32, 32, 32, 32},
+	{12, 10, 12, 12, 32, 32, 32, 32},
+	{12, 12, 10, 12, 32, 32, 32, 32},
+	{12, 12, 12, 10, 32, 32, 32, 32},
+	{32, 32, 32, 32, 10, 12, 12, 12},
+	{32, 32, 32, 32, 12, 10, 12, 12},
+	{32, 32, 32, 32, 12, 12, 10, 12},
+	{32, 32, 32, 32, 12, 12, 12, 10},
 };
 #endif
 
