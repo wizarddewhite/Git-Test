@@ -149,6 +149,38 @@ int find_next_best_node(int node)
 	return best_node;
 }
 
+// before 54d032ced98378bcb9d32dd5e378b7e402b36ad8
+void build_zonelist_nonaccumulate(int local_node)
+{
+	int prev_node, node, nr_nodes = 0;
+	int node_order[NUM_NODES];
+	memset(used_node, 0, sizeof(used_node));
+	int load = NUM_NODES;
+
+	prev_node = local_node;
+
+	while ((node = find_next_best_node(local_node)) >= 0) {
+
+		if (node_distance[local_node][node] !=
+		     node_distance[local_node][prev_node])
+			node_load[node] = load;
+
+		node_order[nr_nodes++] = node;
+		prev_node = node;
+		load--;
+	}
+
+	printf("Fallback order for Node %d: ", local_node);
+	for (node = 0; node < nr_nodes; node++)
+		printf("%3d", node_order[node]);
+	printf("\n");
+	printf("\t node_load : ");
+	for (node = 0; node < NUM_NODES; node++)
+		printf("%3d", node_load[node]);
+	printf("\n");
+}
+
+// current kernel
 void build_zonelist(int local_node)
 {
 	int prev_node, node, nr_nodes = 0;
@@ -160,7 +192,66 @@ void build_zonelist(int local_node)
 
 	while ((node = find_next_best_node(local_node)) >= 0) {
 
-		if ((node_distance[local_node][node] != 
+		if (node_distance[local_node][node] !=
+		     node_distance[local_node][prev_node])
+			node_load[node] += load;
+
+		node_order[nr_nodes++] = node;
+		prev_node = node;
+		load--;
+	}
+
+	printf("Fallback order for Node %d: ", local_node);
+	for (node = 0; node < nr_nodes; node++)
+		printf("%3d", node_order[node]);
+	printf("\n");
+	printf("\t node_load : ");
+	for (node = 0; node < NUM_NODES; node++)
+		printf("%3d", node_load[node]);
+	printf("\n");
+}
+
+void build_zonelist_same_penalty(int local_node)
+{
+	int prev_node, node, nr_nodes = 0;
+	int node_order[NUM_NODES];
+	memset(used_node, 0, sizeof(used_node));
+	int load = NUM_NODES;
+
+	prev_node = local_node;
+
+	while ((node = find_next_best_node(local_node)) >= 0) {
+
+		if (node_distance[local_node][node] !=
+		     node_distance[local_node][prev_node])
+			node_load[node] += load;
+
+		node_order[nr_nodes++] = node;
+		prev_node = node;
+	}
+
+	printf("Fallback order for Node %d: ", local_node);
+	for (node = 0; node < nr_nodes; node++)
+		printf("%3d", node_order[node]);
+	printf("\n");
+	printf("\t node_load : ");
+	for (node = 0; node < NUM_NODES; node++)
+		printf("%3d", node_load[node]);
+	printf("\n");
+}
+
+void build_zonelist_penalty_local_node(int local_node)
+{
+	int prev_node, node, nr_nodes = 0;
+	int node_order[NUM_NODES];
+	memset(used_node, 0, sizeof(used_node));
+	int load = NUM_NODES;
+
+	prev_node = local_node;
+
+	while ((node = find_next_best_node(local_node)) >= 0) {
+
+		if ((node_distance[local_node][node] !=
 		     node_distance[local_node][prev_node]) ||
 		     node == local_node)
 			node_load[node] += load;
