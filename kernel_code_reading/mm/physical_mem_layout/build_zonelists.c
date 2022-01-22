@@ -149,6 +149,21 @@ int find_next_best_node(int node)
 	return best_node;
 }
 
+void dump_reslut(int local_node, int nr_nodes, int* node_order)
+{
+	int node;
+
+	printf("Fallback order for Node %d: ", local_node);
+	for (node = 0; node < nr_nodes; node++)
+		printf("%3d", node_order[node]);
+	printf("\n");
+
+	printf("\t node_load : ");
+	for (node = 0; node < NUM_NODES; node++)
+		printf("%3d", node_load[node]);
+	printf("\n");
+}
+
 // before 54d032ced98378bcb9d32dd5e378b7e402b36ad8
 void build_zonelist_nonaccumulate(int local_node)
 {
@@ -170,15 +185,9 @@ void build_zonelist_nonaccumulate(int local_node)
 		load--;
 	}
 
-	printf("Fallback order for Node %d: ", local_node);
-	for (node = 0; node < nr_nodes; node++)
-		printf("%3d", node_order[node]);
-	printf("\n");
-	printf("\t node_load : ");
-	for (node = 0; node < NUM_NODES; node++)
-		printf("%3d", node_load[node]);
-	printf("\n");
+	dump_reslut(local_node, nr_nodes, node_order);
 }
+
 
 // current kernel
 void build_zonelist(int local_node)
@@ -201,14 +210,7 @@ void build_zonelist(int local_node)
 		load--;
 	}
 
-	printf("Fallback order for Node %d: ", local_node);
-	for (node = 0; node < nr_nodes; node++)
-		printf("%3d", node_order[node]);
-	printf("\n");
-	printf("\t node_load : ");
-	for (node = 0; node < NUM_NODES; node++)
-		printf("%3d", node_load[node]);
-	printf("\n");
+	dump_reslut(local_node, nr_nodes, node_order);
 }
 
 void build_zonelist_same_penalty(int local_node)
@@ -230,14 +232,7 @@ void build_zonelist_same_penalty(int local_node)
 		prev_node = node;
 	}
 
-	printf("Fallback order for Node %d: ", local_node);
-	for (node = 0; node < nr_nodes; node++)
-		printf("%3d", node_order[node]);
-	printf("\n");
-	printf("\t node_load : ");
-	for (node = 0; node < NUM_NODES; node++)
-		printf("%3d", node_load[node]);
-	printf("\n");
+	dump_reslut(local_node, nr_nodes, node_order);
 }
 
 void build_zonelist_penalty_local_node(int local_node)
@@ -260,14 +255,7 @@ void build_zonelist_penalty_local_node(int local_node)
 		prev_node = node;
 	}
 
-	printf("Fallback order for Node %d: ", local_node);
-	for (node = 0; node < nr_nodes; node++)
-		printf("%3d", node_order[node]);
-	printf("\n");
-	printf("\t node_load : ");
-	for (node = 0; node < NUM_NODES; node++)
-		printf("%3d", node_load[node]);
-	printf("\n");
+	dump_reslut(local_node, nr_nodes, node_order);
 }
 
 int main()
