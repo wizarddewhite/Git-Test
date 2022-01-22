@@ -22,7 +22,6 @@
 #define NUMA_EIGHT
 
 #ifdef NUMA_FOUR
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 4
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -34,7 +33,6 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 #endif
 
 #ifdef NUMA_SIX
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 6
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -48,7 +46,6 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 #endif
 
 #ifdef NUMA_EIGHT
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 8
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -64,7 +61,6 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 #endif
 
 #ifdef UMA_FOUR
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 4
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -76,7 +72,6 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 #endif
 
 #ifdef UMA_FOUR2
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 4
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -88,7 +83,6 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 #endif
 
 #ifdef UMA_FIVE
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 5
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -101,7 +95,6 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 #endif
 
 #ifdef UMA_SIX
-#define INT_MAX		((int)(~0U >> 1))
 #define NUM_NODES 6
 
 int node_distance[NUM_NODES][NUM_NODES] = {
@@ -114,6 +107,22 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 };
 #endif
 
+#ifdef UMA_EIGHT
+#define NUM_NODES 8
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 10, 10, 10, 20, 20, 20, 20},
+	{10, 10, 10, 10, 20, 20, 20, 20},
+	{10, 10, 10, 10, 20, 20, 20, 20},
+	{10, 10, 10, 10, 20, 20, 20, 20},
+	{20, 20, 20, 20, 10, 10, 10, 10},
+	{20, 20, 20, 20, 10, 10, 10, 10},
+	{20, 20, 20, 20, 10, 10, 10, 10},
+	{20, 20, 20, 20, 10, 10, 10, 10},
+};
+#endif
+
+#define INT_MAX		((int)(~0U >> 1))
 int node_load[NUM_NODES];
 int used_node[NUM_NODES];
 
