@@ -107,6 +107,19 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 };
 #endif
 
+#ifdef UMA_SIX2
+#define NUM_NODES 6
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 10, 10, 20, 20, 20},
+	{10, 10, 10, 20, 20, 20},
+	{10, 10, 10, 20, 20, 20},
+	{20, 20, 20, 10, 10, 10},
+	{20, 20, 20, 10, 10, 10},
+	{20, 20, 20, 10, 10, 10},
+};
+#endif
+
 #ifdef UMA_EIGHT
 #define NUM_NODES 8
 
