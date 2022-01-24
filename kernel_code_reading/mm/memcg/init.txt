@@ -64,30 +64,35 @@ cgroup_init_subsys(ss, early)
 4.3 __count_memcg_events(memcg, idx, count)
 ===============================================================================
 
-5. mem_cgroup_flush_stats()
+5. mem_cgroup_flush_stats() -> __mem_cgroup_flush_stats()
 ===============================================================================
 5.1 cgroup_rstat_flush_irqsafe(root_mem_cgroup->css.cgroup), flush root
 ===============================================================================
-5.2 mem_cgroup_css_rstat_flush
+5.1.1 cgroup_rstat_flush_locked(root_mem_cgroup->css.cgroup, false), cgroup rstat facility
+===============================================================================
+5.1.1.1 css->ss->css_rstat_flush(css, cpu) -> mem_cgroup_css_rstat_flush()
 ===============================================================================
 
-6. mem_cgroup_write()
+5. mem_cgroup_css_rstat_flush(), aggregate percpu stat
 ===============================================================================
-6.1 memcg = mem_cgroup_from_css(of_css(of))
+
+7. mem_cgroup_write()
 ===============================================================================
-6.2 page_counter_memparse(buf, "-1", &nr_pages)
+7.1 memcg = mem_cgroup_from_css(of_css(of))
 ===============================================================================
-6.2.1 nr_pages = min(bytes / PAGE_SIZE, (u64)PAGE_COUNTER_MAX)
+7.2 page_counter_memparse(buf, "-1", &nr_pages)
 ===============================================================================
-6.3 mem_cgroup_resize_max(memcg, nr_pages, false)
+7.2.1 nr_pages = min(bytes / PAGE_SIZE, (u64)PAGE_COUNTER_MAX)
 ===============================================================================
-6.3.1 page_counter_set_max()
+7.3 mem_cgroup_resize_max(memcg, nr_pages, false)
 ===============================================================================
-6.3.2 drain_all_stock()
+7.3.1 page_counter_set_max()
 ===============================================================================
-6.3.3 try_to_free_mem_cgroup_pages(memcg, 1, )
+7.3.2 drain_all_stock()
 ===============================================================================
-6.3.4 memcg_oom_recover(memcg)
+7.3.3 try_to_free_mem_cgroup_pages(memcg, 1, )
+===============================================================================
+7.3.4 memcg_oom_recover(memcg)
 ===============================================================================
 
 0. data structure
