@@ -259,6 +259,14 @@ LRU: https://www.geeksforgeeks.org/lru-full-form/
     |    |                                |
     |    |shrinker_info                   |
     |    |    (struct shrinker_info *)    |
+    |    |    +---------------------------+
+    |    |    |rcu                        |
+    |    |    |    (struct rcu_head)      |
+    |    |    |nr_deferred                |
+    |    |    |    (atomic_long_t*)       |
+    |    |    |map                        |
+    |    |    |    (unsigned long*)       |
+    |    |    +---------------------------+
     |    |lru_zone_size                   |
     |    |    [MAX_NR_ZONES][NR_LRU_LISTS]|
     |    |    (unsigned long)             |
