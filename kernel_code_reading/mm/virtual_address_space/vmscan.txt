@@ -14,7 +14,7 @@ static int __init kswapd_init(void)
 	return 0;
 }
 
-1.1 kswapd_run(), for each numa node
+1.1 kswapd_run(), for each node with memory
 ================================================================================
 int kswapd_run(int nid)
 {
@@ -38,15 +38,23 @@ int kswapd_run(int nid)
 1.2 kswapd_cpu_online(), set kswapd cpu affinity
 ================================================================================
 
-2. kswapd()
+2. kswapd(pg_data_t *pgdat), kswapd thread, the background pageout daemon for each node
 ================================================================================
-2.1 set_cpus_allowed_ptr()
+2.0 cpumask = cpumask_of_node(pgdat->node_id)
+================================================================================
+2.1 set_cpus_allowed_ptr(tsk, cpumask), set cpu affinity
+================================================================================
+2.1 tsk->flags |= PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD;
 ================================================================================
 2.2 set_freezable()
 ================================================================================
+2.3 alloc_order = reclaim_order = READ_ONCE(pgdat->kswapd_order)
+================================================================================
+2.3 highest_zoneidx = kswapd_highest_zoneidx(pgdat, highest_zoneidx)
+================================================================================
 2.3 kswapd_try_to_sleep()
 ================================================================================
-2.3.1 prepare_to_wait(, TASK_INTERRUPTIBLE)
+2.3.1 prepare_to_wait(pgdat->kswapd_wait, &wait, TASK_INTERRUPTIBLE)
 ================================================================================
 2.3.2 prepare_kswapd_sleep(pgdat, reclaim_order, classzone_idx), return true if kswapd is ready to sleep
 ================================================================================
@@ -72,7 +80,7 @@ int kswapd_run(int nid)
 ================================================================================
 2.3.8 prepare_kswapd_sleep(), real sleep till woken up by others
 ================================================================================
-2.4 balance_pgdat()
+2.4 balance_pgdat(pgdat, alloc_order, highest_zoneidx)
 ================================================================================
 2.4.1 age_active_anon(pgdat, sc), move some page from active to inactive
 ================================================================================
@@ -109,7 +117,7 @@ int kswapd_run(int nid)
 2.4.5 wake_up_all(&pgdat->pfmemalloc_wait)
 ================================================================================
 
-3. pgdat_balanced(pgdat, order, classzone_idx), more free_pages than WMHIGH
+3. pgdat_balanced(pgdat, order, highest_zoneidx), more free_pages than WMHIGH
 ================================================================================
 3.1 mark = high_wmark_pages(zone)
 ================================================================================
@@ -121,6 +129,15 @@ int kswapd_run(int nid)
 ================================================================================
 3.2.3 __zone_watermark_ok(zone, order, mark, classzone_idx, alloc_flags, free_pages)
 ================================================================================
+3.2.3.1 min = mark
+================================================================================
+3.2.3.2 free_pages <= min + z->lowmem_reserve[highest_zoneidx], return false
+================================================================================
+3.2.3.3 !order, return true
+================================================================================
+3.2.3.4 a high-order request, check at least one suitable page is free
+================================================================================
+
 
 4. shrink_node(pgdat, sc)
 ================================================================================
@@ -264,6 +281,13 @@ int kswapd_run(int nid)
 
 0. data structure
 ================================================================================
+
+0.1 questions on vmscan
+================================================================================
+
+  * In kswapd_try_to_sleep(), if woken prematurely it reset kswapd_highest_zoneidx
+    and reclaim_order. But why we don't reset it if woken maturely?
+  * If reserve hugepage, would kswapd always wakeup?
 
 0.2 pgdat
 ================================================================================
