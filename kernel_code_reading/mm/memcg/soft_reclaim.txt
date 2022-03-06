@@ -1,0 +1,82 @@
+1. mem_cgroup_tree operation
+===============================================================================
+
+1.1 __mem_cgroup_insert_exceeded(mz, mctz, new_usage_in_excess)
+===============================================================================
+1.2 __mem_cgroup_remove_exceeded()
+===============================================================================
+1.3 mem_cgroup_update_tree(memcg, nid)
+===============================================================================
+1.3.1 mctz = soft_limit_tree.rb_tree_per_node[nid]
+===============================================================================
+1.3.2 mz = memcg->nodeinfo[nid]
+===============================================================================
+1.3.3 excess = soft_limit_excess(memcg)
+===============================================================================
+1.3.4 __mem_cgroup_remove_exceeded(mz, mctz)
+===============================================================================
+1.3.5 __mem_cgroup_insert_exceeded(mz, mctz, excess)
+===============================================================================
+1.4 mem_cgroup_remove_from_trees()
+===============================================================================
+1.5 mem_cgroup_largest_soft_limit_node()
+===============================================================================
+
+2. mem_cgroup_soft_limit_reclaim(pgdat, order, gfp_mask, total_scanned)
+===============================================================================
+2.1 mctz = soft_limit_tree.rb_tree_per_node[pgdat->node_id]
+===============================================================================
+2.2 mz = mem_cgroup_largest_soft_limit_node(mctz), remove from rb_tree and css_get memcg
+===============================================================================
+2.3 reclaimed = mem_cgroup_soft_reclaim()
+===============================================================================
+
+3. memcg_check_events(memcg, nid), add memcg to soft_limit_tree
+===============================================================================
+3.1 do_softlimit = mem_cgroup_event_ratelimit(memcg, MEM_CGROUP_TARGET_SOFTLIMIT)
+===============================================================================
+3.2 mem_cgroup_update_tree(memcg, nid)
+===============================================================================
+
+4. trigger soft limit reclaim
+===============================================================================
+mkdir /sys/fs/cgroup/memory/test
+echo 100M > /sys/fs/cgroup/memory/test/memory.soft_limit_in_bytes
+echo $$ > /sys/fs/cgroup/memory/test/cgroup.procs
+echo 1800000 > /proc/sys/vm/min_free_kbytes
+for ((i=0;i<2;i++));
+do
+        memhog 1500M
+done
+
+0. data struct
+===============================================================================
+
+0.1 mem_cgroup_tree
+===============================================================================
+
+    struct mem_cgroup_tree
+    +-------------------------------------+
+    |rb_tree_per_node[MAX_NUMNODES]       |
+    |   (struct mem_cgroup_tree_per_node*)|
+    |   +---------------------------------+
+    |   |rb_rightmost                     |
+    |   |    (struct rb_node*)            |
+    |   |rb_root                          |
+    |   |    (struct rb_root)             |
+    |   |lock                             |
+    |   |    (spinlock_t)                 |
+    +---+---------------------------------+
+
+
+
+           struct mem_cgroup
+           +-----------------------+
+           |nodeinfo[]             |
+           |  (mem_cgroup_per_node)|
+           |  +--------------------+
+           |  |tree_node           |
+           |  |on_tree             |
+           |  |usage_in_excess     |
+           |  |                    |
+           +--+--------------------+
