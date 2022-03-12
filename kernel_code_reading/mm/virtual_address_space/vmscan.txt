@@ -82,42 +82,45 @@ int kswapd_run(int nid)
 ================================================================================
 2.4 balance_pgdat(pgdat, alloc_order, highest_zoneidx)
 ================================================================================
-2.4.1 age_active_anon(pgdat, sc), move some page from active to inactive
+
+3. balance_pgdat(pgdat, order, highest_zoneidx)
 ================================================================================
-2.4.1.1 inactive_is_low(lruvec, LRU_INACTIVE_ANON)
+3.0 sc = {.gfp_mask = GFP_KERNEL, .order = order, .may_unmap = 1}
 ================================================================================
-2.4.1.2 shrink_active_list(SWAP_CLUSTER_MAX, lruvec, sc, LRU_ACTIVE_ANON)
+3.1 __fs_reclaim_acquire(_THIS_IP_)
 ================================================================================
-2.4.2 mem_cgroup_soft_limit_reclaim()
+3.2 set_reclaim_active(pgdat, highest_zoneidx)
 ================================================================================
-2.4.2.1 mctz = soft_limit_tree_node()
+3.2.1 update_reclaim_active(pgdat, highest_zoneidx, true)
 ================================================================================
-2.4.2.2 mz = mem_cgroup_largest_soft_limit_node(mctz)
+3.2.1.1 set_bit(ZONE_RECLAIM_ACTIVE, &zone->flags)
 ================================================================================
-2.4.2.3 mem_cgroup_soft_limit_reclaim(mz->memcg, pgdat, )
+3.3 sc.priority = DEF_PRIORITY
 ================================================================================
-2.4.3 kswapd_shrink_node(pgdat, &sc)
+3.4 sc.reclaim_idx = highest_zoneidx
 ================================================================================
-2.4.3.1 sc->nr_to_reclaim = 0 
+3.5 age_active_anon(pgdat, &sc)
 ================================================================================
-2.4.3.2 sc->nr_to_reclaim += max(high_wmark_pages(zone), SWAP_CLUSTER_MAX)
+3.6 nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(pgdat, sc.order, sc.gfp_mask, &nr_soft_scanned)
 ================================================================================
-2.4.3.3 shrink_node(pgdat, sc)
+3.7 sc.nr_reclaimed += nr_soft_reclaimed
 ================================================================================
-2.4.3.4 return sc->nr_scanned >= sc->nr_to_reclaim
+3.8 kswapd_shrink_node(pgdat, &sc)
 ================================================================================
-2.4.4 allow_direct_reclaim(pgdat)
+3.9 __fs_reclaim_release(_THIS_IP_), try_to_freeze(), __fs_reclaim_acquire(_THIS_IP_)
 ================================================================================
-2.4.4.1 pfmemalloc_reserve += min_wmark_pages(zon)
+3.10 sc.priority--
 ================================================================================
-2.4.4.2 free_pages += zone_pages_state(zone, NR_FREE_PAGES)
+3.11 clear_reclaim_active(pgdat, highest_zoneidx)
 ================================================================================
-2.4.4.3 return free_pages > pfmemalloc_reserve / 2
+3.12 snapshot_refaults(NULL, pgdat)
 ================================================================================
-2.4.5 wake_up_all(&pgdat->pfmemalloc_wait)
+3.13 __fs_reclaim_release(_THIS_IP_)
+================================================================================
+3.14 return sc.order
 ================================================================================
 
-3. pgdat_balanced(pgdat, order, highest_zoneidx), more free_pages than WMHIGH
+3. pgdat_balanced(pgdat, order, highest_zoneidx), more free_pages than WMARK_HIGH
 ================================================================================
 3.1 mark = high_wmark_pages(zone)
 ================================================================================
@@ -137,7 +140,6 @@ int kswapd_run(int nid)
 ================================================================================
 3.2.3.4 a high-order request, check at least one suitable page is free
 ================================================================================
-
 
 4. shrink_node(pgdat, sc)
 ================================================================================
@@ -373,22 +375,7 @@ d = (MIN / 4) or (part of zone_managed_pages)
 
 0.4 setup_per_zone_lowmem_reserve()
 ================================================================================
-    Zone0              Zone1              Zone2
-
-    lowmem_reserve[]   lowmem_reserve[]   lowmem_reserve[]
-    +-------------+    +-------------+    +-------------+
-    |for 1 & 2    |    |for 2        |    |0            |
-    +-------------+    +-------------+    +-------------+
-    |for 1        |    |0            |    |0            |
-    +-------------+    +-------------+    +-------------+
-    |0            |    |0            |    |0            |
-    +-------------+    +-------------+    +-------------+
-
-For example:
-
-Zone1.lowmem_reserve[2] = zone_managed_pages(Zone2) / ratio
-
-Zone0.lowmem_reserve[2] = zone_managed_pages(Zone1 + Zone2) / ratio
+refer to physical_mem_layout/page_alloc.txt
 
 0.5 scan_control
 ================================================================================
@@ -443,22 +430,93 @@ Zone0.lowmem_reserve[2] = zone_managed_pages(Zone1 + Zone2) / ratio
 
 0.6 lruvec
 ================================================================================
-recent_scanned/recent_rotated is updated during shrink_inactive_list().
+# recent_scanned/recent_rotated is updated during shrink_inactive_list().
+
+Use mem_cgroup_lruvec() to retrieve lruvec:
+  * pg_data_t.__lruvec
+  * memcg.nodeinfo[nid].lruvec
 
    lruvec
    +-------------------------------+
    |lists[NR_LRU_LISTS]            |
-   |inactive_age                   |
-   |refaults                       |
-   |    (long)                     |
+   |    (struct list_head)         |
+   |lru_lock                       |
+   |    (spinlock_t)               |
+   |anon_cost                      |
+   |file_cost                      |
+   |    (unsigned long)            |
+   |nonresident_age                |
+   |    (atomic_long_t)            |
    |flags                          |
-   |    (enum lruvec_flags)        |
-   |reclaim_stat                   |
-   |    (zone_reclaim_stat)        |
-   |    +--------------------------+
-   |    |recent_rotated[2]         | [0] for anon, [1] for file
-   |    |recent_scanned[2]         |
-   |    |     (unsigned long)      |
-   |    |                          |
-   +----+--------------------------+
+   |    (unsigned long)            |
+   |refaults[ANON_AND_FILE]        |
+   |    (unsigned long)            |
+   |pgdat                          |
+   |    (struct pglist_data*)      |
+   +-------------------------------+
 
+0.7 big picture
+================================================================================
+
+
+                          +--------------------+
+                          | __alloc_pages      |
+                          +--------------------+
+                             /            \
+                         /                   \
+                     /                          \
+   +----------------------------+     +---------------------------------+      +----------------------------+       +-------------------+
+   |get_page_from_freelist      |     |__alloc_pages_slowpath           |      |try_to_free_mem_cgroup_pages|       |kswapd             |
+   +----------------------------+     |    __alloc_pages_direct_reclaim |      |                            |       |                   |
+                   |                  |        __perform_reclaim        |      |                            |       +-------------------+
+                   |                  |            try_to_free_pages    |      +----------------------------+                 |
+                   |                  +---------------------------------+                     |                               |
+                   |                                     |                                    |                               |
+                   |                                     |                                    |                               |
+                   |                                     +------------------------------------+                               |
+                   |                                     |                                                                    |
+                   |                                     |                                                                    |
+                   v                                     v                                                                    v
+          +-------------------+       +-------------------------------------+                     +-------------------------------------+
+          |node_reclaim       |       |do_try_to_free_pages                 |                     |balance_pgdat                        |
+          |  __node_reclaim   |       |    shrink_zones                     |                     |     mem_cgroup_soft_limit_reclaim   |
+          +-------------------+       |        mem_cgroup_soft_limit_reclaim|                     |     kswapd_shrink_node              |
+                   |                  |        shrink_node                  |                     |         shrink_node                 |
+                   |                  |                                     |                     |                                     |
+                   |                  +-------------------------------------+                     +-------------------------------------+
+                   |                                     |                                               |
+                   |                                     |                                               |
+                   |                                     +-----------------------------------------------+
+                   |                                     |                                               |
+                   |                                     v                                               v
+                   |                           +---------+---------+                 +-------------------+----------+
+                   |                           |shrink_node        |                 |mem_cgroup_soft_limit_reclaim |
+                   |                           |                   |                 |    mem_cgroup_soft_reclaim   |
+                   |                           |                   |                 |        mem_cgroup_shrink_node|
+                   |                           +-------------------+                 +------------------------------+
+                   |                                    |                                     |
+                   |                                    |                                     |
+                   +------------------------------------+                                     |
+                                                        |                                     |
+                                                        v                                     |
+                                               +------------------------+                     |
+                                               |shrink_node             |                     |
+                                               |     shrink_node_memcgs |                     |
+                                               |         shrink_lruvec  |                     |
+                                               |         shrink_slab    |                     |
+                                               +------------------------+                     |
+                                                           |                                  |
+                                                           +-----------------+----------------+
+                                                                             |
+                                                                             v
+                                                              +---------------------------------+
+                                                              |   shrink_lruvec                 |
+                                                              |       shrink_list               |
+                                                              |           shrink_inactive_list  |
+                                                              +---------------------------------+
+                                                                             |
+                                                                             v
+                                                                 +-----------------------+
+		                                                 |shrink_page_list       |
+                                                                 |                       |
+                                                                 +-----------------------+
