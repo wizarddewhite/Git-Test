@@ -138,6 +138,22 @@ struct mem_cgroup *root_mem_cgroup;
 ===============================================================================
 LRU: https://www.geeksforgeeks.org/lru-full-form/
 
+    mem_cgroup
+    +-------------------------------------+
+    |thresholds/memsw_thresholds          |
+    |    (struct mem_cgroup_thresholds)   |
+    |                                     |
+    |memory/swap/memsw/kmem/tcpmem        |
+    |    (struct page_counter)            |
+    |                                     |
+    |vmstats                              |
+    |    (struct memcg_vmstats)           |
+    |vmstats_percpu                       |
+    |    (struct memcg_vmstats_percpu)    |
+    |                                     |
+    |[]nodeinfo                           |
+    |    (struct mem_cgroup_per_node*)    |
+    +-------------------------------------+
 
     mem_cgroup
     +-------------------------------------+
@@ -341,4 +357,3 @@ memcg_list_lrus
     |    |    |                           |
     |    +----+---------------------------+
     +-------------------------------------+
-
