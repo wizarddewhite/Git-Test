@@ -290,6 +290,13 @@ int kswapd_run(int nid)
   * In kswapd_try_to_sleep(), if woken prematurely it reset kswapd_highest_zoneidx
     and reclaim_order. But why we don't reset it if woken maturely?
   * If reserve hugepage, would kswapd always wakeup?
+  * in kswapd(), there are two order: alloc_order, reclaim_order. Why we use
+    reclaim_order for kswapd_try_to_sleep() and use alloc_order for
+    balance_pgdat()
+  * we reset kswapd_order to 0 on each iteration. but if we do reclaim
+    successfully on alloc_order, alloc_order == reclaim_order. we would check
+    pgdat_balanced() with reclaim_order. would this be expected?
+  * When we would trigger/stop kswapd
 
 0.2 pgdat
 ================================================================================
@@ -423,6 +430,7 @@ refer to physical_mem_layout/page_alloc.txt
    |    (struct reclaim_state)     |
    |    +--------------------------+
    |    |reclaimed_slab            |
+   |    |    (unsigned long)       |
    |    +--------------------------+
    |                               |
    |                               |
