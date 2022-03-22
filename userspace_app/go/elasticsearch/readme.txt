@@ -114,3 +114,76 @@ curl --user user:passwd -X DELETE http://localhost:9200/asong_golang_dream
 
 2.5 Query
 https://www.tizi365.com/archives/628.html
+
+2.5.1 agg sum
+
+curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "query": { // 设置query查询条件，后面的aggs统计，仅对query查询结果进行统计
+    "constant_score": {
+      "filter": {
+        "match": {
+          "instype": "abcd"
+        }
+      }
+    }
+  },
+  "aggs": { // aggregation
+    "sum_cpu" : { "sum" : { "field" : "capcpu" } }
+  }
+}'
+
+2.5.2 agg instype
+
+curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "aggs": {
+    "type_ins" : { "terms" : { "field" : "instype" } }
+  }
+}'
+
+2.5.3 data histogram
+
+curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "aggs" : {
+        "sales_over_time" : { // 聚合查询名字，随便取一个
+            "date_histogram" : { // 聚合类型为: date_histogram
+                "field" : "time", // 根据date字段分组
+                "calendar_interval" : "day", // 分组间隔：month代表每月、支持minute（每分钟）、hour（每小时）、day（每天）、week（每周）、year（每年）
+                "format" : "yyyy-MM-dd" // 设置返回结果中桶key的时间格式
+            }
+        }
+    }
+}'
+
+2.5.4 agg on instype and get sum/max
+
+curl --user user:passwd -X POST \
+http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "aggs" : {
+        "sales_over_time" : { // 聚合查询名字，随便取一个
+            "date_histogram" : { // 聚合类型为: date_histogram
+                "field" : "time", // 根据date字段分组
+                "calendar_interval" : "day", // 分组间隔：month代表每月、支持minute（每分钟）、hour（每小时）、day（每天）、week（每周）、year（每年）
+                "format" : "yyyy-MM-dd" // 设置返回结果中桶key的时间格式
+            },
+            "aggs" : {
+                "type_ins" : {
+                    "terms" : {
+                        "field" : "instype"
+                    },
+                    "aggs": {
+                        "total_cpu" : { "sum" : { "field" : "capcpu" } },
+                        "max_cpu" : { "max" : { "field" : "capcpu" } }
+                    }
+                }
+            }
+        }
+    }
+}'
