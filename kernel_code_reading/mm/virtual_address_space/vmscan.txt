@@ -297,6 +297,10 @@ int kswapd_run(int nid)
     successfully on alloc_order, alloc_order == reclaim_order. we would check
     pgdat_balanced() with reclaim_order. would this be expected?
   * When we would trigger/stop kswapd
+  * how swappiness works: commit fe35004fbf9e mm: avoid swapping out with swappiness==0
+    memory access latency https://www.yumpu.com/en/document/read/30212700/direct-reclaim-the-linux-foundation
+  * who can invoke direct reclaim
+  * fix writeback in direct reclaim: https://lwn.net/Articles/396561/
 
 0.2 pgdat
 ================================================================================
