@@ -165,6 +165,7 @@ int find_next_best_node(int node)
 		return node;
 	}
 
+	printf("  calculate penalty for %d\n", node);
 	for (n = 0; n < NUM_NODES; n++) {
 		int val;
 
@@ -182,6 +183,7 @@ int find_next_best_node(int node)
 			min_val = val;
 			best_node = n;
 		}
+		printf("     %d: %d\n", n, val);
 	}
 	if (best_node >= 0)
 		used_node[best_node] = 1;
