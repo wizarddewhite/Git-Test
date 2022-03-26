@@ -135,6 +135,22 @@ int node_distance[NUM_NODES][NUM_NODES] = {
 };
 #endif
 
+// this distance pattern is copied from qmeu
+#ifdef QEMU_EIGHT
+#define NUM_NODES 8
+
+int node_distance[NUM_NODES][NUM_NODES] = {
+	{10, 20, 20, 20, 20, 20, 20, 20},
+	{20, 10, 20, 20, 20, 20, 20, 20},
+	{20, 20, 10, 20, 20, 20, 20, 20},
+	{20, 20, 20, 10, 20, 20, 20, 20},
+	{20, 20, 20, 20, 10, 20, 20, 20},
+	{20, 20, 20, 20, 20, 10, 20, 20},
+	{20, 20, 20, 20, 20, 20, 10, 20},
+	{20, 20, 20, 20, 20, 20, 20, 10},
+};
+#endif
+
 #define INT_MAX		((int)(~0U >> 1))
 int node_load[NUM_NODES];
 int used_node[NUM_NODES];
