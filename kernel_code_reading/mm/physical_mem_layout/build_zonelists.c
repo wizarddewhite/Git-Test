@@ -173,6 +173,8 @@ int find_next_best_node(int node)
 
 		val = node_distance[node][n];
 
+		val += (n < node);
+
 		val *= 1000;
 		val += node_load[n];
 
