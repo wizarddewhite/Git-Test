@@ -203,14 +203,13 @@ LRU: https://www.geeksforgeeks.org/lru-full-form/
     |memory/swap/memsw/kmem/tcpmem        |
     |    (struct page_counter)            |
     |    +--------------------------------+
-    |    |usage                           |
+    |    |usage                           | current usage
     |    |    (atomic_long_t)             |
-    |    |min/low/high/max                |
+    |    |min/low/high/max                | configurable watermark
     |    |    (unsigned long)             |
-    |    |emin                            |
-    |    |min_usage/children_min_usage    |
-    |    |elow                            |
-    |    |low_usage/children_low_usage    |
+    |    |emin/elow                       | updated in mem_cgroup_calculate_protection
+    |    |[min|low]_usage                 | updated in propagate_protected_usage
+    |    |children_[min|low]_usage        |
     |    |    (atomic_long_t)             |
     |    |parent                          |
     |    |    (struct page_counter*)      |
