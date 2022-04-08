@@ -181,6 +181,10 @@ int find_next_best_node(int node)
 
 		val += (n < node);
 
+		if (debug) {
+			printf("     %d: %d", n, val);
+		}
+
 		val *= NUM_NODES;
 		val += node_load[n];
 
@@ -189,7 +193,7 @@ int find_next_best_node(int node)
 			best_node = n;
 		}
 		if (debug) {
-			printf("     %d: %d\n", n, val);
+			printf("   %d\n", val);
 		}
 	}
 	if (best_node >= 0)
