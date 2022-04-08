@@ -181,7 +181,7 @@ int find_next_best_node(int node)
 
 		val += (n < node);
 
-		val *= 1000;
+		val *= (NUM_NODES*NUM_NODES);
 		val += node_load[n];
 
 		if (val < min_val) {
