@@ -267,7 +267,7 @@ void build_zonelist_same_penalty(int local_node)
 	int prev_node, node, nr_nodes = 0;
 	int node_order[NUM_NODES];
 	memset(used_node, 0, sizeof(used_node));
-	int load = NUM_NODES;
+	int load = 1;
 
 	prev_node = local_node;
 
