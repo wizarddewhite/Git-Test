@@ -17,7 +17,10 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
+
+bool debug = false;
 
 #define NUMA_EIGHT
 
@@ -165,7 +168,9 @@ int find_next_best_node(int node)
 		return node;
 	}
 
-	printf("  calculate penalty for %d\n", node);
+	if (debug) {
+		printf("  calculate penalty for %d\n", node);
+	}
 	for (n = 0; n < NUM_NODES; n++) {
 		int val;
 
@@ -183,7 +188,9 @@ int find_next_best_node(int node)
 			min_val = val;
 			best_node = n;
 		}
-		printf("     %d: %d\n", n, val);
+		if (debug) {
+			printf("     %d: %d\n", n, val);
+		}
 	}
 	if (best_node >= 0)
 		used_node[best_node] = 1;
@@ -300,11 +307,16 @@ void build_zonelist_penalty_local_node(int local_node)
 	dump_reslut(local_node, nr_nodes, node_order);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	int node;
 	memset(node_load, 0, sizeof(node_load));
 
+	if (argc != 1) {
+		debug = true;
+	}
+
+	printf("Current number of nodes: %d\n", NUM_NODES);
 	for (node = 0; node < NUM_NODES; node++)
 		build_zonelist(node);
 	return 0;
