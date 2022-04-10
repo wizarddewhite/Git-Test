@@ -75,14 +75,47 @@ so memcg->vmstat is a variant of vm_node_stat.
 
 Also it forms a hierachy.
 
-                         mem_cgroup                          
+                         mem_cgroup
                          +----------------------------+
                          |vmstats[MEMCG_NR_STAT]      |
                          |   (atomic_long_t)          |
-                         |                            |
-                         |vmstats_local               |
                          |vmstats_percpu              |
                          |   +------------------------+
                          |   |stat[MEMCG_NR_STAT]     |
                          |   |                        |
+                         |   +------------------------+
+                         |                            |
+                         |nodeinfo[]                  |
+                         |   +------------------------+
+                         |   |lruvec_stats            |
+                         |   |    state[]             |
+                         |   |lruvec_stats_percpu     |
+                         |   |    state[]             |
+                         |   |lru_zone_size[][]       |
+                         |   |                        |
+                         |   |                        |
                          +---+------------------------+
+
+                             /                 \
+                         /                         \
+
+  mem_cgroup                                    mem_cgroup
+  +----------------------------+                +----------------------------+
+  |vmstats[MEMCG_NR_STAT]      |                |vmstats[MEMCG_NR_STAT]      |
+  |   (atomic_long_t)          |                |   (atomic_long_t)          |
+  |vmstats_percpu              |                |vmstats_percpu              |
+  |   +------------------------+                |   +------------------------+
+  |   |stat[MEMCG_NR_STAT]     |                |   |stat[MEMCG_NR_STAT]     |
+  |   |                        |                |   |                        |
+  |   +------------------------+                |   +------------------------+
+  |                            |                |                            |
+  |nodeinfo[]                  |                |nodeinfo[]                  |
+  |   +------------------------+                |   +------------------------+
+  |   |lruvec_stats            |                |   |lruvec_stats            |
+  |   |    state[]             |                |   |    state[]             |
+  |   |lruvec_stats_percpu     |                |   |lruvec_stats_percpu     |
+  |   |    state[]             |                |   |    state[]             |
+  |   |lru_zone_size[][]       |                |   |lru_zone_size[][]       |
+  |   |                        |                |   |                        |
+  |   |                        |                |   |                        |
+  +---+------------------------+                +---+------------------------+
