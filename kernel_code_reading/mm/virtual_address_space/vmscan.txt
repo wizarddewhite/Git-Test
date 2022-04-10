@@ -461,37 +461,6 @@ refer to physical_mem_layout/page_alloc.txt
    |                               |
    +-------------------------------+
 
-0.6 lruvec
-================================================================================
-# recent_scanned/recent_rotated is updated during shrink_inactive_list().
-
-Use mem_cgroup_lruvec() to retrieve lruvec:
-  * pg_data_t.__lruvec
-  * memcg.nodeinfo[nid].lruvec
-
-Helpers:
-  * lruvec_pgdat()
-  * lruvec_memcg()
-  * lruvec_size(), update_lru_size()
-
-   lruvec
-   +-------------------------------+
-   |lists[NR_LRU_LISTS]            |
-   |    (struct list_head)         |
-   |lru_lock                       |
-   |    (spinlock_t)               |
-   |anon_cost                      |
-   |file_cost                      |
-   |    (unsigned long)            |
-   |nonresident_age                |
-   |    (atomic_long_t)            |
-   |flags                          |
-   |    (unsigned long)            |
-   |refaults[ANON_AND_FILE]        |
-   |    (unsigned long)            |
-   |pgdat                          |
-   |    (struct pglist_data*)      |
-   +-------------------------------+
 
 0.7 big picture
 ================================================================================

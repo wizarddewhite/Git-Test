@@ -216,38 +216,6 @@ https://www.kernel.org/doc/gorman/html/understand/understand013.html
 0. Data Structure
 ================================================================================
 
-0.1 lruvec, lru list
-================================================================================
-
-    lruvec
-    +---------------------------+
-    |lists[NR_LRU_LISTS]        |
-    |reclaim_stat               |
-    |    (zone_reclaim_stat)    |
-    |inactive_age               |
-    |refaults                   |
-    |    (unsigned long)        |
-    +---------------------------+
-
-0.2 pagevec, lru per cpu cache
-================================================================================
-lru_add_pvec
-lru_rotate_pvecs
-lru_deactivate_file_pvecs
-lru_deactivate_pvecs
-lru_lazyfree_pvecs
-activate_page_pvecs
-
-    pagevec
-    +---------------------------+
-    |pages[PAGEVEC_SIZE]        |
-    |    (struct page*)         |
-    |nr                         |
-    |    (char)                 |
-    |percpu_pvec_drained        |
-    |    (bool)                 |
-    +---------------------------+
-
 0.3 address_space
 ================================================================================
 
