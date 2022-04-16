@@ -10,7 +10,7 @@ usage()
 }
 
 # getopts optstring name
-while getopts "hvp:s:" opt; do
+while getopts ":hvp:s:" opt; do
 	case "$opt" in
 	"h")
 		usage
@@ -27,10 +27,11 @@ while getopts "hvp:s:" opt; do
 		path=${OPTARG}
 		;;
 	":")
+		# this works when ":" is the first letter in optstring
 		echo "no argument for option: $OPTARG"
+		usage
 		;;
 	"?")
-		# this works when ":" is the first letter in optstring
 		echo "not valid option: $OPTARG"
 		;;
 	esac
