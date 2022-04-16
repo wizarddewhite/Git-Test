@@ -2,9 +2,19 @@
 
 path=""
 
+usage()
+{
+	echo "Usage: example on getopts"
+	echo $0 [-h] [-v] -p path
+	exit
+}
+
 # getopts optstring name
-while getopts "vp:" opt; do
+while getopts "hvp:" opt; do
 	case "$opt" in
+	"h")
+		usage
+		;;
 	"v")
 		echo "get option v"
 		;;
