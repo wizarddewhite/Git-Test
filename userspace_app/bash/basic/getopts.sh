@@ -33,6 +33,7 @@ while getopts ":hvp:s:" opt; do
 		;;
 	"?")
 		echo "not valid option: $OPTARG"
+		usage
 		;;
 	esac
 done
