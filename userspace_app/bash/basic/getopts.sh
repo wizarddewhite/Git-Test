@@ -5,15 +5,19 @@ path=""
 usage()
 {
 	echo "Usage: example on getopts"
-	echo $0 [-h] [-v] -p path
+	echo "$0 [-h] [-v] [-s <45|90>] -p path"
 	exit
 }
 
 # getopts optstring name
-while getopts "hvp:" opt; do
+while getopts "hvp:s:" opt; do
 	case "$opt" in
 	"h")
 		usage
+		;;
+	"s")
+		s=${OPTARG}
+		((s == 45 || s == 90)) || usage
 		;;
 	"v")
 		echo "get option v"
