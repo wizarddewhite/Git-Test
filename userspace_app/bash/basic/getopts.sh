@@ -42,3 +42,5 @@ if [ -z "${path}" ] ; then
     echo path is a must
 fi
 
+shift "$(($OPTIND - 1))"
+printf "Remaining arguments are: %s\n" "$*"
