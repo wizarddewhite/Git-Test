@@ -39,23 +39,6 @@ fi
 
 echo "#page: " $1
 
-UNIT=('K' 'M' 'G' 'P')
 raw_size=`echo "$1 * 4" | bc`
-echo size : $raw_size K
 
-for ((i=1;i<10;i++));
-do
-	size=$raw_size
-	out=$raw_size
-	for ((j=1;j<i;j++));
-	do
-		size=`echo "$size / 1024" | bc`
-		out=`echo "scale=3; $out / 1024" | bc`
-	done
-
-	if (( $size < 1024)); then
-		echo equal: $out ${UNIT[$i - 1]}
-		break
-	fi
-done
-
+./readable_size.sh -u K $raw_size
