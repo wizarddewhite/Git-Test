@@ -2,7 +2,7 @@
 
 UNIT=('B' 'K' 'M' 'G' 'T')
 unit=''
-uidx=0
+uidx=1
 
 is_int ()
 {
@@ -12,6 +12,7 @@ is_int ()
 usage()
 {
 	echo "Usage: make a size more readable"
+	echo "       Default unit is K"
 	echo "$0 [-u <B|K|M|G>] size"
 	exit
 }
