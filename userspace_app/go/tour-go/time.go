@@ -59,8 +59,17 @@ func time_format() {
 	fmt.Println("parse:  ", t)
 }
 
+func beginning_end_of_day() {
+	t := time.Now()
+	bt := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	fmt.Println(bt)
+	et := time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, t.Location())
+	fmt.Println(et)
+}
+
 func main() {
 
-	time_format()
+	// time_format()
 	// ticker()
+	beginning_end_of_day()
 }
