@@ -37,7 +37,7 @@
 ================================================================================
 2.4 lruvec_add_folio(lruvec, folio)
 ================================================================================
-2.4.1 lru = folio_lru_list(folio)
+2.4.1 lru = folio_lru_list(folio), decide which lru list to add
 ================================================================================
 2.4.2 update_lru_size(lruvec, lru, folio_zonenum(folio), folio_nr_pages(folio))
 ================================================================================
@@ -148,18 +148,19 @@
 0.0 from pagevec to lru
 ================================================================================
 
-                                folio_add_lru                    folio_activate
-	                        lru_pvecs.lru_add                lru_pvecs.activate_page
-                                      |                               /
-                                                                /
-  folio_rotate_reclaimable            |  deactivate_file_folio             deactivate_page
-  lru_rotate.pvec                        lru_pvecs.lru_deactivate_file     lru_pvecs.lru_deactivate
-           \                          |             /     /                     /
-               \                                 /    /                 /
-                   \            mark_page_lazyfree              /
-		       \        lru_pvecs.lru_lazyfree  /
-                           \          |     /   /
-                            v         v    v   v
+                                folio_rotate_reclaimable
+	                        lru_rotate.pvec
+                                      |
+
+                                      |  folio_activate                    deactivate_page
+	                                 lru_pvecs.activate_page           lru_pvecs.lru_deactivate
+                                      |       /                              /
+                                             /                         /
+  folio_add_lru                       |  deactivate_file_folio             mark_page_lazyfree
+  lru_pvecs.lru_add                      lru_pvecs.lru_deactivate_file     lru_pvecs.lru_lazyfree
+           \                          |   /          /                       /
+                    \                 |  /     /                 /
+                            v         v v     v      v
                           pagevec_add_and_need_flush
                                    /     \
                            /                     \
@@ -167,11 +168,22 @@
 
 
 
+     mlock_page_drain     mlock_folio      mlock_new_page   munlock_page
+             \                  \            /                 /
+                      \          \          /         /
+                               \  \        / /
+                                mlock_pagevec
+                                   /     \
+                           /                     \
+                __mlock_page   __mlock_new_page  __munlock_page
+
+
+
                              pagevec_lru_move_fn
                              /        |        \
                      /                |                \
              /                        |                        \
-    pagevec_move_tail_fn     __activate_page                  lru_deactivate_fn       
+    pagevec_move_tail_fn     __activate_page                  lru_deactivate_fn
     lru_rotate.pvec          lru_pvecs.activate_page          lru_pvecs.lru_deactivate
                                       |
                                       |
@@ -229,20 +241,20 @@ Helpers:
   * lru_lazyfree_pvecs
   * activate_page_pvecs
 
-   lru_pvecs
-   +-------------------------------+
-   |lock                           |
-   |    (local_lock_t)             |
-   |lru_add                        |
-   |lru_deactivate_file            |
-   |lru_deactivate                 |
+   lru_pvecs                                  lru_rotate
+   +-------------------------------+          +-------------------------------+
+   |lock                           |          |lock                           |
+   |    (local_lock_t)             |          |    (local_lock_t)             |
+   |lru_add                        |          |pvec                           |
+   |lru_deactivate_file            |          |    (struct pagevec)           |
+   |lru_deactivate                 |          +-------------------------------+
    |lru_lazyfree                   |
    |activate_page                  |
-   |    pagevec                    |
-   |    +--------------------------+
-   |    |pages[PAGEVEC_SIZE]       |
-   |    |    (struct page*)        |
-   |    |nr                        |
+   |    (struct pagevec)           |
+   |    +--------------------------+          mlock_pvec(struct pagevec)
+   |    |pages[PAGEVEC_SIZE]       |          +-------------------------------+
+   |    |    (struct page*)        |          |                               |
+   |    |nr                        |          +-------------------------------+
    |    |    (unsigned char)       |
    |    |percpu_pvec_drained       |
    |    |    (bool)                |
