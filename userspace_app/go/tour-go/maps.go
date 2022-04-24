@@ -185,8 +185,22 @@ func mapField() {
 	fmt.Println(v)
 }
 
+func func_with_map(m map[string]string, key, val string) {
+	m[key] = val
+}
+
+func map_parameter() {
+	var m = map[string]string{"one": "1", "two": "2", "three": "3"}
+
+	func_with_map(m, "one", "一")
+	for key := range m {
+		fmt.Println(key, m[key])
+	}
+}
+
 func main() {
-	general_operation()
+	map_parameter()
+	// general_operation()
 	// newMap()
 	// map_compare()
 	// map_serialize()
