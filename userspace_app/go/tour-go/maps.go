@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 )
 
 type Vertex struct {
@@ -198,8 +199,25 @@ func map_parameter() {
 	}
 }
 
+func map_concurrent_crash() {
+	c := make(map[string]int)
+	go func() { //开一个协程写map
+		for j := 0; j < 1000000; j++ {
+			c[fmt.Sprintf("%d", j)] = j
+		}
+	}()
+	go func() { //开一个协程读map
+		for j := 0; j < 1000000; j++ {
+			fmt.Println(c[fmt.Sprintf("%d", j)])
+		}
+	}()
+
+	time.Sleep(time.Second * 20)
+}
+
 func main() {
-	map_parameter()
+	map_concurrent_crash()
+	// map_parameter()
 	// general_operation()
 	// newMap()
 	// map_compare()
