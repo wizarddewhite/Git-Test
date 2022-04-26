@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 )
 
@@ -215,8 +216,30 @@ func map_concurrent_crash() {
 	time.Sleep(time.Second * 20)
 }
 
+func map_concurrent_mutex() {
+	var m sync.Mutex
+	c := make(map[string]int)
+	go func() { //开一个协程写map
+		for j := 0; j < 1000000; j++ {
+			m.Lock()
+			c[fmt.Sprintf("%d", j)] = j
+			m.Unlock()
+		}
+	}()
+	go func() { //开一个协程读map
+		for j := 0; j < 1000000; j++ {
+			m.Lock()
+			fmt.Println(c[fmt.Sprintf("%d", j)])
+			m.Unlock()
+		}
+	}()
+
+	time.Sleep(time.Second * 20)
+}
+
 func main() {
-	map_concurrent_crash()
+	map_concurrent_mutex()
+	// map_concurrent_crash()
 	// map_parameter()
 	// general_operation()
 	// newMap()
