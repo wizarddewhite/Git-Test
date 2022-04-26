@@ -237,8 +237,49 @@ func map_concurrent_mutex() {
 	time.Sleep(time.Second * 20)
 }
 
+type Lock struct {
+	ch chan struct{}
+}
+
+func NewLock() *Lock {
+	return &Lock{
+		ch: make(chan struct{}, 1),
+	}
+}
+
+func (t *Lock) Lock() {
+	<-t.ch
+}
+
+func (t *Lock) Unlock() {
+	t.ch <- struct{}{}
+}
+
+func map_concurrent_channel() {
+	m := NewLock()
+	m.ch <- struct{}{}
+	c := make(map[string]int)
+	go func() { //开一个协程写map
+		for j := 0; j < 1000000; j++ {
+			m.Lock()
+			c[fmt.Sprintf("%d", j)] = j
+			m.Unlock()
+		}
+	}()
+	go func() { //开一个协程读map
+		for j := 0; j < 1000000; j++ {
+			m.Lock()
+			fmt.Println(c[fmt.Sprintf("%d", j)])
+			m.Unlock()
+		}
+	}()
+
+	time.Sleep(time.Second * 20)
+}
+
 func main() {
-	map_concurrent_mutex()
+	map_concurrent_channel()
+	// map_concurrent_mutex()
 	// map_concurrent_crash()
 	// map_parameter()
 	// general_operation()
