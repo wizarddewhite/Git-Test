@@ -1,0 +1,19 @@
+{
+  "colors": {
+    "black": {
+      "sold": 14
+    },
+    "white": {
+      "sold": 13
+    },
+    "red": {
+      "sold": 4
+    },
+    "pink": {
+      "sold": 10
+    },
+    "blue": {
+      "sold": 3
+    }
+  }
+}

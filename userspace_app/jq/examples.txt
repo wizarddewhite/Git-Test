@@ -30,6 +30,11 @@ $ jq '{name: .volumeClaimTemplates[].metadata.name, class: .volumeClaimTemplates
 
 jq '.volumeClaimTemplates | map(.metadata.name == "sysvol") | index(true)' example.json
 
+1.2.2 Print Key or with its value
+
+jq '.colors | to_entries[] | .key' example2.json
+jq '.colors | to_entries[] | {"key": .key, "value": .value.sold}' example2.json
+
 2. Modify
 
 2.1 Modify a key's value
