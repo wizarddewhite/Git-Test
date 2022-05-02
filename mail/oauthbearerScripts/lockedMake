@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# Public Domain
+
+# Instructions:
+# - Install in /etc/postfix/lockedMake (along with Makefile and other
+#   map files).
+# - Add a sudoers rule such as:
+#     LOCALUSER ALL=(root) NOPASSWD: /etc/postfix/lockedMake
+#   (Replace LOCALUSER.)
+
+# If multiple passwords try to do this simultaneously, the locking and
+# timestamp logic is currently such that it could end up using an
+# old password file for some passwords while giving the saslpass file
+# a timestamp newer than the new file, so make won't update it at all
+# until ANOTHER password file changes.  This is OK as long as another
+# update happens before old password actually expires (or is used),
+# but try to make it better anyays: Under normal conditions this
+# sleep should prevent using old passwords for the update...
+#
+# This is only an "old password" problem, not anything more serious,
+# as long as the input password files are always replaced
+# atomically (via rename).
+sleep 3
+
+cd /etc/postfix && flock -w 40 -e Makefile -c make

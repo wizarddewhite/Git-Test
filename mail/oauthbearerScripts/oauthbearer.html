@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background-color: white; }
+pre
+{ white-space: pre-wrap;
+  border: 2px solid Black;
+  margin-left: 10px;
+}
+code { background-color: #d0d0d0; }
+</style>
+<title>Setting Up OAUTH2 Support for Fetchmail and Postfix</title>
+</head>
+<body>
+<center><h1>Setting Up OAUTH2 Support for Fetchmail and Postfix</h1></center>
+
+<p>This web page describes how to piece together various patches,
+plugins, configurations, and scripts to support relaying the
+local machine's mailbox through gmail with OAUTH2.
+Then you can use <b>any mail client</b>
+that uses your local machine's UNIX/Linux mailbox to read
+and send email.  (I personally prefer
+<a href="http://www.mutt.org/">mutt</a>, but any email client,
+gui-based or not, should work.)
+
+<p>It might also work to serve out
+the local mailbox(es) to other machines using basic
+POP/IMAP/SMTP services to bypasss gmail OAUTH2, although I haven't tested
+or documented that.
+
+<p>It is kind of complex to get all the pieces set up, but
+on the plus side, you can leave out (incoming only?), replace (prefer
+something other than postfix?), or tweak the details of any of these
+pieces as desired.
+
+<p><b>Table of Contents</b>
+<ul>
+  <li><a href="#whatIsOuath2">What is OAUTH2?</a>
+  <li><a href="#commonSetup">Common Setup</a>
+  <li><a href="#setupFetchmail">Setup Fetchmail</a>
+  <li><a href="#setupPostfix">Setup Postfix</a>
+  <li><a href="#finalSetup">Final Setup</a>
+  <li><a href="#gmailTroubleshooting">Gmail Troubleshooting Notes</a>
+</ul>
+
+<hr/>
+<a name="whatIsOauth2"></a>
+<h2>What is OAUTH2?</h2>
+
+<p>OAUTH2 is a fancy mechanism for apps/websites/etc to delegate
+arbitrarily complex multi-factor login capabilities to a central
+authentication management web site.  It is primarily driven by
+Google for use in mobile-phone-based apps, but can be used in other
+ways as well.
+
+<p>It is usually optional on the part of the individual user,
+but in some cases can be required.  One such case I've encountered
+is when my $DAYJOB offloaded company email to Google's
+business "G Suite" service, and configured it at the organization
+level to require the use of OAUTH2.  It is really just gmail, even
+though the hostname belongs to $DAYJOB instead of using "gmail.com".
+
+<p>Basically OAUTH2 works as follows:
+<ul>
+  <li>The user tries to access some tool they are interested
+      in (mail or whatever).
+  <li>That tool redirects to an authentication server web page,
+      with a string that identifies the service that needs to be
+      logged in.
+  <li>The authentication server can do whatever complex javascript
+      driven hoops it wants in order to log the user in.  This may
+      involve multi-factor authentication, etc.
+  <li>Once it is finally satisfied, the server redirects back to
+      the original tool, along with a string that embeds
+      a couple of "tokens": An "access token" is typically good
+      for one hour, while a "refresh token" can be used to
+      transparently obtain new access tokens without requiring that
+      the user login again.  "Refresh" tokens seem to work for
+      a long time: at least until the user changes his/her password,
+      or similar.
+  <li>Unless it is very short-lived, the tool will probably want
+      to regularly use the "refresh" token to obtain new "access"
+      tokens.
+  <li>When the tool needs to access resources protected by this
+      mechanism, it uses a recent "access" token to authenticate,
+      which it then uses a lot like a password.
+  <li>These tokens behave essentially like passwords during
+      the critical access phase, except for all the extra
+      complexity surrounding them outside of that phase.
+</ul>
+"OAUTH2" is the general name for the overall system.  "XOAUTH2" is
+the name of the original scheme for embedding the access token
+into POP, IMAP, SMTP, or similar protocols, and is still supported
+by Google and others.  The newer standardized way of embedding the
+access token is called "OAUTHBEARER", and is documented in various
+internet standard RFCs.  OAUTH version 1 is a little different and
+not directly compatible (it requires various higher level digital
+signatures in token operations, instead of simply relying on
+TLS/SSL).
+
+<p>For more details about how it actually works under
+the hood, see Google documentation such as
+<a href="https://developers.google.com/identity/protocols/OAuth2">Using
+OAuth 2.0 to Access Google APIs</a>,
+<a href="https://github.com/google/gmail-oauth2-tools/wiki/OAuth2DotPyRunThrough">A
+Run-Through</a> of semi-manually going through the various steps
+with the aid of small-ish "oauth2.py" script, etc.  (My
+"fetchmail-oauth2.py" script (below) was derived from this
+script, and should still support the arguments used by the
+run-through.)
+
+<p>It is doubtful that oauth2 is really more secure than just picking
+a strong password and protecting it carefully.  Especially for
+"application specific passwords" generated by the server.  The
+extra complexity significantly expands the vulnerability footprint,
+even if in some vague theoretical ways it might have some slight
+advantages.
+
+<hr/>
+<a name="commonSetup"></a>
+<h2>Common Setup</h2>
+
+<p>These instructions are mostly geared towards "gmail" and/or "G Suite",
+but can probably be adapted to other providers that use OAUTH2.
+For others, you may need to find an equivalent to the "Google API Console"
+and research various optional settings for fetchmail-oauth2.py's config
+file (some settings not mentioned below default to Google).</p>
+
+<ol>
+  <li>Configure your gmail (or equivalent) account to enable
+      IMAP and/or POP access.  <b>If it will let you set up an
+      "application password" instead of OAUTH2, that would generally
+      be a whole lot simpler and arguably just as secure.</b>  If not,
+      continue:
+  <li>Download
+      <a href="../downloads/oauthbearerScripts-2020-11-03.tar.bz2">oauthbearerScripts-2020-11-03.tar.bz2</a>.
+      It contains various patches and scripts
+      that are needed by the instructions below.
+  <li>Pick where to "install" scripts, a config file, token files,
+      etc.
+
+      <p>"Makefile" and "lockedMake" probably belong under
+      /etc/postfix, some files are patches only needed when rebuilding
+      packages, and others should go somewhere under your
+      home directory.  Perhaps re-use existing directories where you've
+      put cron jobs or other mail-related scripts and configurations.
+      I'm intentionally avoiding specific recommendations to make it
+      slightly less likely worms and rootkits will try to look for
+      sensitive information in variable locations, although that is
+      a pretty weak form of so-called "security".
+  <li>Copy "fetchmail-oauth2.py", "cron.fetchmail", and "cron.oauth2"
+      to a desired scripts directory.  They don't need
+      to be in your PATH.  You can rename these scripts if desired.
+      If you rename them, then fix up the cross-references while editing
+      them below.
+  <li>Edit the copy of "cron.oauth2" and customize as desired.
+      You at least need to specify a config file name,
+      which you'll actually generate below.  It should probably
+      be somewhere under your home directory unless you want to experiment
+      with running oauth2 and fetchmail as a separate no-login "service"
+      user so that the token files aren't readable by you, or any
+      malware running as you.
+
+      <p>You might want to comment out the
+      "<code>sudo /etc/postfix/lockedMake</code>" line until you
+      get to the postfix setup section below.
+  <li>Edit the copy of "cron.fetchmail" and customize as desired.
+      You at least need to either specify a log file name, let cron email
+      the output (very noisy in your mailbox), or feed it to
+      "/dev/null".
+  <li>Refer to <a href="https://developers.google.com/identity/sign-in/web/devconsole-project">Google's
+      Instructions</a> for how to use the
+      <a href="https://console.developers.google.com/project/_/apiui/apis/library">Google
+      API Console</a> to generate a "Client ID" and a corresponding
+      "Client secret" for fetchmail and postfix to use for oauth2.
+      This console tool doesn't seem to be very intuitive, so here
+      are some notes about how I've navigated through it:
+      <ul>
+        <li>"Select a project"
+        <li>"+" icon
+        <li>Make up a name.  Perhaps include your name and some random
+            digits to be unique.
+        <li>Don't email, agree to terms of service.
+        <li>"Create"
+        <li>Wait a while?
+        <li>Select in the same place as
+            "Select a project" -&gt; All -&gt; Select.
+        <li>Sidebar "Credentials"
+        <li>Middle "Create credentials" -&gt; "Oauth client ID".
+        <li>Enter a product name to show to the users.  (Perhaps the
+            same as above?)
+        <li>"Application Type" of "Other".
+      </ul>
+  <li>Create a configuration file for the
+      "fetchmail-oauth2.py" script.
+      For full details, see the output of
+      "<code>fetchmail-oauth2.py --help</code>",
+      but the following example may be adequate:
+      <pre>client_id=FROM_GOOGLE_CONSOLE_ABOVE
+client_secret=FROM_GOOGLE_CONSOLE_ABOVE
+refresh_token_file=/FULL/PATH/TO/REFRESH_FILE
+access_token_file=/FULL/PATH/TO/ACCESS_TOKEN_FILE
+max_age_sec=1900
+</pre>
+
+      <p>Some other settings (not in example) default to Google, so if you
+      are using some other provider, you might need to research them.
+  <li>You probably want to "<code>chmod 600 THE_CONFIG_FILE</code>"
+      so that no one else can read it.
+  <li>Obtain initial tokens by running
+      "<code>fetchmail-oauth2.py -c /PATH/TO/CONFIG_FILE --obtain_refresh_token_file</code>".
+      It will print a URL that you need to log into using a
+      browser.  After you do, the browser will print a code you
+      need to cut and paste into the still-running script.
+
+      <p>Depending on how your account is setup, you might be able
+      to make use of the extra
+      "googleAuthenticator" script while logging in.
+      When you first set up the server to use Google Authenticator,
+      click on the "I can't scan it" link to get the secret authenticator
+      string.  Strip out the spaces and save it somewhere (probably
+      your password manager).  Then when you need to generate an
+      authentication code, run the "googleAuthenticator" script and
+      paste the secret into it.  It will then print the
+      current 6 digit code.  Your system clock needs to be
+      reasonably accurate.  (It doesn't use command line
+      arguments, to try to keep the secret out of .bash_history.)
+  <li>You may occasionally need to repeat the previous step, but not
+      regularly.  For example, it may be necessary after you
+      change your password, or after some other major change
+      on the server side.  It might be worth wrapping the command in a
+      short shell script so you don't need to remember the correct
+      arguments.
+</ol>
+
+<hr/>
+<a name="setupFetchmail"></a>
+<h2>Setup Fetchmail</h2>
+
+Officially released versions of
+<a href="http://www.fetchmail.info/">fetchmail</a> do not currently support
+any form of oauth, but there are at least two ways to get a version
+that does:
+
+<h3>Option 1: Patch fetchmail 6.X</h3>
+
+<p>The "fetchmail-oauth2-passwordfile-*.patch" files are patches
+that can be applied to the 6.3 or 6.4 branches
+of fetchmail.  "...v2.patch" applies to 6.3.* and early 6.4 development,
+"...br64-v3.patch" applies to 6.4.1, "...br64-v4.patch" applies to
+some intermediate 6.4.x versions, and "...br64-v6.patch" applies to
+6.4.8 (on gentoo) through at least 6.4.13 (according to
+Andrew C Aitchison - andrew at aitchison dot me dot uk) and
+probably the tip of the legacy_64 branch tip
+as of 2020-11-03.  Once you build and install the patched fetchmail,
+configure ".fetchmailrc" using something similar to the following:
+<pre>poll imap.gmail.com protocol imap
+   auth oauthbearer username "USER@gmail.com"
+   passwordfile "/PATH/TO/ACCESS_TOKEN_FILE"
+   is LOCALUSER here ssl sslcertck sslproto tls1
+</pre>
+The way this older, rough patch is constructed, it actually implements
+xoauth2 only, but "oauthbearer" is a synonym for future
+compatibility with version 7 below.  This version of the
+patch only reads the token file once, and so fetchmail's daemon
+mode is unlikely to work.  Run fetchmail using cron instead.
+It also only supports IMAP (not POP).</p>
+
+<p>If you are using <a href="https://www.gentoo.org/">Gentoo Linux</a>,
+then it is possible to use the
+<a href="https://wiki.gentoo.org/wiki//etc/portage/patches">/etc/portage/patches
+(documentation)</a> feature to
+automatically apply the patch when re-emerging fetchmail:
+<pre>mkdir -p /etc/portage/patches/net-mail/fetchmail
+cp fetchmail-oauth2-passwordfile-br64-v6.patch /etc/portage/patches/net-mail/fetchmail/.</pre>
+You could optionally try to tweak names to restrict the patch
+to specific versions; see documentation link above.
+</p>
+
+<h3>Option 2: fetchmail 7</h3>
+
+<p>The development branch for fetchmail 7 already includes an enhanced
+version of this patch.  Additional improvements include: daemon mode
+will re-read the passwordfile regularly, it actually implements (and prefers)
+standardized "oauthbearer" in addition to "xoauth2", and adds POP support.
+See <a href="https://sourceforge.net/p/fetchmail/git/merge-requests/">merge
+requests</a>.
+
+<p>Fetchmail 7 is apparently going improve how to configure
+ssl, so the "ssl" keyword in the configuration file will
+probably need to change to "sslmode wrapped" to avoid warnings from
+fetchmail.</p>
+
+<hr/>
+<a name="setupPostfix"></a>
+<h2>Setup Postfix</h2>
+
+<ol>
+  <li>Install <a href="http://www.postfix.org/">Postfix</a>.  It is
+      usually available pre-packaged as part of most Linux distributions.
+      It needs to be configured and built to support SASL plugins,
+      which is probably the default.  On
+      <a href="https://www.gentoo.org/">Gentoo Linux</a>,
+      enable the "sasl" USE flag.
+  <li>Install the xoauth2 SASL plugin from the "release" tab of
+      <a href="https://github.com/moriyoshi/cyrus-sasl-xoauth2">https://github.com/moriyoshi/cyrus-sasl-xoauth2</a>
+      into a place where SASL infrastructure
+      can find it.  You can install it manually, or on Gentoo you can
+      use my "cyrus-sasl-xoauth2-0.1.ebuild" ebuild file.
+      Copy the ebuild into your own
+      <a href="https://wiki.gentoo.org/wiki/Handbook:Parts/Portage/CustomTree#Defining_a_custom_repository">custom
+      portage overlay</a> (perhaps under a "dev-libs/cyrus-sasl-xoauth2"
+      directory), run
+      "<code>ebuild cyrus-sasl-xoauth2-0.1.ebuild digest</code>"
+      on the copy, and then "<code>emerge cyrus-sasl-xoauth2</code>".
+      See also the plugin's own instructions, although they are a bit terse.
+      There may be <b>other tools that can use this plugin</b> (both
+      as a client and as a server), although I haven't tried any.
+  <li>Configure and copy the custom postfix configuration "Makefile"
+      and "lockedMake" files into the "/etc/postfix" directory.  In
+      the "Makefile", you need to set up the XOAUTH2_MAP variable
+      appropriately for one or more users, and you may want to adjust
+      exactly which ".db" files the "all" rule depends on / generates.
+  <li>Use "visudo" or similar to set up a sudoers rule similar to
+      "<code>LOCALUSER ALL=(root) NOPASSWD: /etc/postfix/lockedMake</code>".
+      Replace "LOCALUSER" with your username.
+  <li>Create an "/etc/postfix/tls_policy" file with the
+      line "<code>[smtp.gmail.com]:587 encrypt</code>", since xoauth2
+      generally requires SSL in order to work.
+  <li>Create one or more lines in "/etc/postfix/relayhost_map":
+      "<code>USER@HOST [smtp.gmail.com]:587</code>".
+  <li>Stick any "extra" (non-xoauth2) passwords in
+      "/etc/postfix/saslpass".
+      Or just create an empty file.  Unfortunately, such passwords
+      might not actually work because of limitations of the
+      "smtp_sasl_mechanism_filter" setting below.  As a workaround,
+      at least you can set it up to work by just commenting/uncommenting
+      the "smtp_sasl_mechanism_filter" setting as necessary.
+  <li>Postfix has lots of configuration settings for
+      "/etc/postfix/main.cf".  The following snippet shows most of the
+      settings that are relevant to oauth2-based mail relaying,
+      but not any general settings:
+<pre># single or default/fallback relay:
+relayhost = [smtp.gmail.com]:587
+# optional multiple relays:
+sender_dependent_relayhost_maps = hash:/etc/postfix/relayhost_map
+
+smtp_sasl_password_maps = hash:/etc/postfix/saslpass-autogen
+
+smtp_sasl_auth_enable = yes
+smtp_sasl_security_options =
+
+# Unfortunately, this filter applies to all authenticated relays.  There
+# does not currently seem to be a way to mix xoauth2 and non-xoauth2
+# authenticated relays in postfix at one time, but you can switch which
+# work by switching between which of these two lines is uncommented:
+# (Update: It is somewhat indeterminate which enabled mechanism it
+# actually tries, perhaps based on order of directory entries in
+# /usr/lib64/sasl2.  So you need to exclude xoauth2 from the filter
+# when you don't want to use it.)
+smtp_sasl_mechanism_filter = xoauth2
+#smtp_sasl_mechanism_filter = plain, login
+
+smtp_tls_security_level = may
+# The "may" above should work most of the time, but xoauth2 won't
+# work without ssl:
+smtp_tls_policy_maps = hash:/etc/postfix/tls_policy
+
+#### Optional related:
+# Potentially useful if the machine wants to relay multiple different
+# local users to gmail:
+smtp_sender_dependent_authentication = yes
+</pre>
+  <li>Also configure the rest of postfix appropriately.  Set it up
+      so that "local" mail has a separate appropriate hostname, and
+      stays local.  See
+      <a href="http://www.postfix.org/documentation.html">Postfix
+      Documentation</a>.
+  <li>If you commented out the "<code>sudo /etc/postfix/lockedMake</code>"
+      line in the cron.oauth2 script above, you should uncomment it now.
+  <li>FYI: It should be safe for multiple users to set this up,
+      as long as they all use oauth2 (see FUTURE below).  They'll
+      all need to be in the various map files, in the XOAUTH2_MAP
+      variable (Makefile), and be allowed to run lockedMake
+      via the sudoers file.  The "lockedMake" utility is designed
+      to avoid actual corruption by using a lock, although there is still a
+      remote possibility that if run simultaneously by multiple users,
+      timestamps might end up such that some updated token values
+      might be delayed until the next time one of the access token
+      files change (if so, it will continue using the old value
+      until then).
+</ol>
+
+<p>FUTURE: Postfix currently has some significant limitations when trying to
+support multiple outgoing relays, especially if you have a mix of xoauth2 and
+non-xoauth2 relays.  Some potential improvements:
+<ul>
+  <li>future: No current good workaround: Add <b>per-host or
+      per-user authentication filters</b> (generalize
+      "smtp_sasl_mechanism_filter" to a map).  I
+      took a brief look at the code.  It shouldn't be too difficult
+      to enhance this, but it isn't completely trivial either, and
+      I don't currently need mixed relays on any one machine.
+      <ul>
+        <li>Michael Grant (mgrant at grant dot org) reported he was
+            working on some postfix patches to support something like
+            this on 2020-09-24, by special formatting of the entries in
+            the smtp_sasl_password_maps file to indicate using
+            the "password" as either an xoauth2 token or a normal
+            password.
+      </ul>
+      <p>As an alternative, in some cases it might be useful to
+      somehow configure SASL to give
+      priority to xoauth2 if it is supported, but I'm not sure how to
+      do this, and even if it can be done, it isn't a complete solution.
+      If a non-xoauth2 account is on a server that advertises xoauth2
+      support, then tweaking plugin priorities globally is unlikely
+      to help distinguish that from an xoauth2 account on the same
+      (or similar) server.
+  <li>future: Standards: Enhance the xoauth2 SASL plugin to also support
+      oauthbearer.
+  <li>future: Authentication Server Load: Figure out and implement a robust
+      strategy to allow the SASL plugin to trigger a refresh
+      on demand, instead of cron-ing it at least once an hour
+      even when outgoing email is extremely rare.  (Permissions,
+      "as user", and other local security concerns...)
+  <li>future: Convenience: Add an option where you supply a filename
+      that contains the password, instead of the password directly.
+      Then you don't need deal with sudo, "lockedMake" scripts, etc
+      to update tokens...
+  <li>future: Convenience: It might be handy to rework the strategy
+      for configuring relaying for different accounts to different
+      relays to somehow put all the settings for a particular relay
+      account into a single file, instead of spreading out settings
+      for one account across a few different "map" files...
+</ul></p>
+
+<hr/>
+<a name="finalSetup"></a>
+<h2>Final Setup</h2>
+<ul>
+  <li>Use any local email client (or combination of clients) you
+      want.  Configure them to use the local system mailbox for
+      incoming mail, and to send outgoing mail to the sendmail
+      daemon (emulated by postfix) either directly (piped to command)
+      or via port 25.
+  <li>Setup cron to run fetchmail (via the cron.fetchmail wrapper
+      script) periodically.
+      Run "crontab -e" and add a line similar to
+      "<code>14,39 * * * * /path/to/cron.fetchmail</code>".  You might
+      also configure it to avoid nights and weekends, as appropriate,
+      since you can always run "fetchmail" manually (as long as the
+      access token isn't expired; see below).  You might need to be
+      a member of the "cron" group (in /etc/groups) to be allowed to
+      use crontab and cron.
+      <p>Standard trick: avoid "even" minutes to avoid overloading
+      the machine on the hour if it has a lot of cron jobs set to
+      start at the same time...
+  <li>You may want to set up cron to call cron.oauth2 script a few times
+      per hour around the clock, especially if you don't cron fetchmail
+      around the clock, and/or some automated outgoing emails might be
+      sent at any time.  Use "crontab -e" similar to above.
+  <li>Periodically cleanup or rotate logs written by "oauth.fetchmail",
+      or just direct log data into "/dev/null".
+</ul>
+
+<hr/>
+<a name="gmailTroubleshooting"></a>
+<h2>Gmail Troubleshooting Notes</h2>
+
+<p>Recently one of my gmail accounts spontaneously stopped working
+in fetchmail with just my normal password.  Other gmail accounts
+were still working.  I was never able to figure out why it just
+stopped working, but here are various details:
+
+<ul>
+  <li>"fetchmail -v" verbose logs included two URLs: The first was a
+      really long accounts.google.com URL with a comment "Web login required".
+      It allowed me to log me into my google account (after I
+      temporarily re-enabled google.com cookies and noscript -
+      google is everwhere, I'm certainly not enabling these all the
+      time).  I was hoping the page could give me more information,
+      but it was just an account management page, with no notifications
+      about recent errors that I could find anywhere.  The second
+      was just a not-very-useful FAQ response:
+      <a href="https://support.google.com/mail/accounts/answer/78754">https://support.google.com/mail/accounts/answer/78754</a>.
+  <li>I had (and still have) "Allow Less Secure Apps" enabled.
+  <li>It didn't give me the option to add an application password
+      until I turned on "Use 2-Step Verification".
+      Some forum posts I found suggest this is intentional, although
+      I don't really understand why.  I'm going with the application
+      password for this account, not OAUTH2.
+  <li>I use this troubled account for monitoring some high-volume mailing
+      lists, and never send anything but subscription confirmations
+      out through it.  So currently <b>my best guess</b> is that I hit some
+      threshold volume of mail past which gmail just refuses to support
+      normal passwords?  But I haven't seen any mention of any
+      such limit anywhere.
+  <li>Despite having my gmail "When a message is marked as deleted
+      and expunged from the last visible IMAP folder" IMAP setting
+      set to "Move the message to Trash", I noticed that I had over a
+      thousand messages apparently just archived somewhere.  I guess
+      fetchmail only "deletes", not "expunges"?  Setting "Auto-Expunge on"
+      disables "Move the message to Trash", and hard
+      codes "Archive the message".  So I guess on high-volume accounts
+      I annoyingly have to go into webmail and cleanup old emails manually
+      every once in a while?
+</ul>
+
+<hr/>
+By Matthew Ogilvie.  <a href="http://mmogilvi.users.sourceforge.net/software/oauthbearer.html">[online copy of this page]</a>,
+<a href="index.html">[up/unrelated software]</a>
+<br/>
+I last updated this line on 2020-11-03.
+
+</body>
+</html>

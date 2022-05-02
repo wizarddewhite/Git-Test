@@ -1,0 +1,12 @@
+#!/bin/sh
+# Public Domain
+
+## To generate initial (or new) refresh token, configure the file and
+## then run:
+##   fetchmail-oath2.py -c "/PATH/TO/CONFIG_FILE" -obtain_refresh_token_file
+
+scriptDir="$(dirname "$0")"
+"$scriptDir/fetchmail-oauth2.py" -c "/PATH/TO/CONFIG_FILE" \
+                                 --auto_refresh
+
+sudo /etc/postfix/lockedMake

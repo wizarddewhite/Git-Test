@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Public Domain
+
+# - Adjust the log file logic, or other desired changs.
+# - Install under your home directory somewhere, and run periodically
+#   using cron.
+
+(
+  date
+  scriptDir="$(dirname "$0")"
+  "$scriptDir/cron.oauth2"
+  fetchmail -s
+) >> ${HOME}/Mail/cron.fetchmail.log 2>&1

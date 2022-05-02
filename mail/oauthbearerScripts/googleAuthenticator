@@ -1,0 +1,36 @@
+#!/usr/bin/python
+
+# Copyright (C) 2017 Matthew Ogilvie [ mmogilvi+ggla at zoho.com ]
+# GPLv2
+
+from __future__ import print_function
+import hmac, base64, struct, hashlib, time
+import sys
+
+def get_hotp_token(secret, intervals_no):
+    key = base64.b32decode(secret, True)
+    msg = struct.pack(">Q", intervals_no)
+    h = bytearray(hmac.new(key, msg, hashlib.sha1).digest())
+    o = h[19] & 15
+    h = (struct.unpack(">I", h[o:o+4])[0] & 0x7fffffff) % 1000000
+    return h
+
+def get_totp_token(secret):
+    return get_hotp_token(secret, intervals_no=int(time.time())//30)
+
+##### Self Test
+sec2='MZXW633PN5XW6MZX'
+expect=(-1,448400,656122,457125,35022,401553,581333,16329,529359,171710)
+for i in range(1,10):
+    if expect[i]!=get_hotp_token(sec2,intervals_no=i):
+        print("ERROR %d: %06d!=%06d"%
+              (i,get_hotp_token(sec2,intervals_no=i),expect[i]))
+        exit(1)
+
+## Read secret:
+sys.stdout.write('Enter authenticator secret (base32 string): ')
+sys.stdout.flush()
+sec = sys.stdin.readline().strip()
+
+# Solution:
+print("%s: %06d"%(sec,get_totp_token(sec)))
