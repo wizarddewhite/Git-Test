@@ -25,8 +25,7 @@ def move_mail(mbox_name, month):
     start = month.replace(day=1)
     end =  month.replace(day=ld)
     end += timedelta(days=1)
-    print "start: ", start
-    print "end  : ", end
+    print "before  : ", start
 
     mbox = mailbox.mbox(mbox_name)
     mbox_new = mailbox.mbox(mbox_name + "_" + month.strftime('%Y%m'))
@@ -36,7 +35,7 @@ def move_mail(mbox_name, month):
         if not message['date']:
             continue
         date = parse(re.sub('\(.*?\)', '', message['date'])).replace(tzinfo=None)
-        if date < start or date > end:
+        if date > start:
             continue
         #print message['subject']
         mbox_new.add(message)
