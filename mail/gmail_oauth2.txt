@@ -1,0 +1,88 @@
+1. Create Gmail Oauth2
+按照[1]在google上配置一个使用oath2的项目。然后好像就不需要用到了。
+
+最后看了一下[4]里面写得更清楚一些，指出了需要添加gmail api的权限。
+
+3. Build Fetchmail
+
+git clone https://gitlab.com/fetchmail/fetchmail.git
+git checkout -t origin/next
+./autogen.sh
+./configure
+make
+
+最后我用的是这个commit
+9c011ca4 Merge branch 'legacy_6x' into next
+
+3.1 Upgrade OpenSSL if necessary
+
+因为系统版本比较老，openssl库也没发更新了，只能重新编译安装。
+
+主要参考了[6]，但是openssl version -a检查的时候发现版本没有更新。
+然后又报了动态链接库找不到，最后参考了[5]上执行了ldconfig，就好了。
+系统没挂真是万幸。这种高难度操作希望以后不要再做了。
+
+4. Config
+
+4.1. Get Google ACCESS_TOKEN
+
+./oauthbearerScripts/fetchmail-oauth2.py -c oauth.conf --obtain_refresh_token_file
+
+这个脚本啥的是从[2]里下载下来的，最后发现这个fetchmail-oauth2.py在源代码中也有。
+而且[4]中讲得也很详细。
+
+PS: 这个token有时间限制，所以有好几次是报这个错误。然后重新刷了就可以。
+
+4.1.1 Refresh Token
+
+这个token还需要更新，在crontab里加
+
+*/30 * * * *    root    (/root/Mail/fetchmail-oauth2.py -c /root/Mail/oauth.conf --auto_refresh && /usr/local/bin/fetchmail)
+
+4.2 Setup .fetchmailrc
+
+当前实验成功的配置
+
+```
+# this is the user account on linux system
+#set postmaster ubuntu
+#set syslog
+set daemon 120
+set logfile /root/Mail/fetchmail.log
+
+poll pop.gmail.com with proto POP3 and options no dns
+authenticate oauthbearer
+username "richard.weiyang@gmail.com" is 'root' here options keep
+passwordfile "/root/Mail/oauth-access-token"
+sslmode wrapped sslcertck
+sslcertpath "/etc/ssl/certs"
+
+mda "/usr/bin/procmail -d %T"
+```
+
+试了半天，终于成功了。
+
+4.2.1 Config cert path
+
+其中遇到一个卡壳的问题是tls验证不过。这个问题的原理我还没弄清楚，解决方法是配置增加
+sslcertpath。
+
+通过 fetchmail -V 查到 
+
+  SSL default trusted certificate file: /usr/local/ssl/cert.pem
+  SSL default trusted certificate directory: /usr/local/ssl/certs
+
+而我系统上这两个都是空的。配置说明上sslcertpath说可以改，试了一下可以。
+
+4.2.2 Debug fetchmail
+
+fetchmail -vvv 用来显示更多的信息，可以帮助查看问题。
+
+
+Reference
+[1]: https://docs.microsoft.com/zh-cn/power-platform/admin/connect-gmail-oauth2
+[2]: http://mmogilvi.users.sourceforge.net/software/oauthbearer.html
+[3]: https://www.mail-archive.com/gentoo-user@lists.gentoo.org/msg187930.html
+[4]: https://gitlab.com/fetchmail/fetchmail/-/blob/7.0.0-alpha9/README.OAUTH2
+[5]: https://obuil1202.online/?p=477
+[6]: https://blog.zhheo.com/p/87f1d743.html
