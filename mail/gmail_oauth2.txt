@@ -3,7 +3,9 @@
 
 最后看了一下[4]里面写得更清楚一些，指出了需要添加gmail api的权限。
 
-3. Build Fetchmail
+3. Build From Source
+
+3.1 Fetchmail
 
 git clone https://gitlab.com/fetchmail/fetchmail.git
 git checkout -t origin/next
@@ -14,13 +16,39 @@ make
 最后我用的是这个commit
 9c011ca4 Merge branch 'legacy_6x' into next
 
-3.1 Upgrade OpenSSL if necessary
+3.1.1 Upgrade OpenSSL if necessary
 
 因为系统版本比较老，openssl库也没发更新了，只能重新编译安装。
 
 主要参考了[6]，但是openssl version -a检查的时候发现版本没有更新。
 然后又报了动态链接库找不到，最后参考了[5]上执行了ldconfig，就好了。
 系统没挂真是万幸。这种高难度操作希望以后不要再做了。
+
+3.2 Msmtp
+
+Refer to [7]
+
+git clone https://github.com/marlam/msmtp-mirror.git
+git branch 1.8.8 msmtp-1.8.8
+git checkout 1.8.8
+autoreconf -i
+./configure; make; make install
+
+TIP: specify search directory for macro
+
+autoreconf -I /usr/local/share/aclocal -i
+
+Looks like gettext install into /usr/local/share/aclocal
+
+3.2.1 Build gettext
+
+wget https://ftp.gnu.org/gnu/gettext/gettext-0.20.1.tar.gz
+tar xvfz gettext-0.20.1.tar.gz
+cd gettext-0.20/
+./configure
+make
+sudo make install
+
 
 4. Config
 
@@ -78,6 +106,9 @@ sslcertpath。
 
 fetchmail -vvv 用来显示更多的信息，可以帮助查看问题。
 
+4.3 Config msmtp
+
+Refer to [8]
 
 Reference
 [1]: https://docs.microsoft.com/zh-cn/power-platform/admin/connect-gmail-oauth2
@@ -86,3 +117,5 @@ Reference
 [4]: https://gitlab.com/fetchmail/fetchmail/-/blob/7.0.0-alpha9/README.OAUTH2
 [5]: https://obuil1202.online/?p=477
 [6]: https://blog.zhheo.com/p/87f1d743.html
+[7]: https://marlam.de/msmtp/download/
+[8]: https://github.com/tenllado/dotfiles/tree/master/config/msmtp
