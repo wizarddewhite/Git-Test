@@ -35,6 +35,13 @@ jq '.volumeClaimTemplates | map(.metadata.name == "sysvol") | index(true)' examp
 jq '.colors | to_entries[] | .key' example2.json
 jq '.colors | to_entries[] | {"key": .key, "value": .value.sold}' example2.json
 
+jq '.colors | to_entries[] | [.key, .value.sold]' example2.json
+
+1.2.3 Print a csv
+
+jq -r '.colors | to_entries[] | [.key, .value.sold] | @csv' example2.json
+jq -r '.colors | to_entries[] | [.key, .value.sold] | join(", ")' example2.json
+
 2. Modify
 
 2.1 Modify a key's value
@@ -95,3 +102,7 @@ $ echo "{\"a\": 1, \"b\": 2, \"c\": 3}" | jq 'map_values(.+1)'
 
 $ echo "[1,5,3,0,7]" | jq 'map(select(. >= 2))'
 $ jq '.volumeClaimTemplates[] | select(has("bandwidth")) ' example.json
+
+0. Reference
+
+https://programminghistorian.org/en/lessons/json-and-jq#create-new-json--and-
