@@ -275,8 +275,9 @@ Helpers:
             |                                                  |
             |                                                  |
     folio(page)          folio_memcg()    memcg                |
-    +-----------------+  +--------------->+-----------------+  |
-    |memcg_data     --|--+                |nodeinfo[]       |  |   mem_cgroup_lruvec()
+    +-----------------+    +------------->+-----------------+  |
+    |                 |   /               |nodeinfo[]       |  |
+    |memcg_data     --|--+                |                 |  |   mem_cgroup_lruvec()
     |                 |  folio_lruvec()   |                 |  |   lruvec_memcg()
     |                 |-------------------|--> lruvec       |  |
     |                 |                   |        pgdat  --|--+
