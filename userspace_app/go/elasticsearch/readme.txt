@@ -115,7 +115,27 @@ curl --user user:passwd -X DELETE http://localhost:9200/asong_golang_dream
 2.5 Query
 https://www.tizi365.com/archives/628.html
 
-2.5.1 agg sum
+2.5.1 Filter by date
+{
+    "query": {
+        "bool": {
+            "must": [
+                {
+                  "range": {
+                        "create_time": {
+                          "gte": "2018-01-01 00:00:00", 
+                          "format": "yyyy-MM-dd hh:mm:ss"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
+
+2.6 Aggregation
+
+2.6.1 agg sum
 
 curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
 --header 'Content-Type: application/json' \
@@ -134,7 +154,7 @@ curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search
   }
 }'
 
-2.5.2 agg instype
+2.6.2 agg instype
 
 curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
 --header 'Content-Type: application/json' \
@@ -144,7 +164,7 @@ curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search
   }
 }'
 
-2.5.3 data histogram
+2.6.3 data histogram
 
 curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
 --header 'Content-Type: application/json' \
@@ -160,7 +180,7 @@ curl --user user:passwd -X POST http://localhost:9200/asong_golang_dream/_search
     }
 }'
 
-2.5.4 agg on instype and get sum/max
+2.6.4 agg on instype and get sum/max
 
 curl --user user:passwd -X POST \
 http://localhost:9200/asong_golang_dream/_search?size=0\&pretty=true \
