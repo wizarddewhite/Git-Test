@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 /* 
  * At most one node with ORDER could store (ORDER - 1) number of key
  *
