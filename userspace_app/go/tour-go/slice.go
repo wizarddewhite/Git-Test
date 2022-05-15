@@ -119,6 +119,15 @@ func sort_slice() {
 
 }
 
+func cut_slice() {
+	/* Format 1 */
+	var p = []int{2, 3, 15, 7, 1, 13}
+	printSlice("p", p)
+
+	p = p[:3]
+	printSlice("p", p)
+}
+
 func main() {
 	//create_slice()
 	// clear_slice()
@@ -126,7 +135,8 @@ func main() {
 	//append_slice()
 	// methodOnSlice()
 	//replace_slice()
-	sort_slice()
+	// sort_slice()
+	cut_slice()
 }
 
 func printSlice(s string, x []int) {
