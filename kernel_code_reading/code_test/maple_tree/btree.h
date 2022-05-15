@@ -29,4 +29,5 @@ struct btree {
 bool get_idx(struct btree_node *node, int key, int *index);
 void *btree_lookup(struct btree *tree, int key);
 struct btree_node *new_btree_node();
+void dump_btree(struct btree *tree);
 #endif // __BTREE_H__

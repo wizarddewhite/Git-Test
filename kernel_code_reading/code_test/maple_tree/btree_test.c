@@ -59,13 +59,33 @@ void lookup_key()
 	// assign it to root's left most child
 	tree.root->children[0] = node;
 	node->key[0] = key[2];
-	node->data[0] = &key[3];
-	node->key[1] = key[2];
+	node->data[0] = &key[2];
+	node->key[1] = key[3];
 	node->data[1] = &key[3];
 	node->used = 2;
 	data = btree_lookup(&tree, key[2]);
 	if (data)
 		printf("Found key %d with data %p: %p\n", key[2], data, &key[2]);
+
+	node = new_btree_node();
+	if (!node)
+		return;
+	// assign it to root's second
+	tree.root->children[1] = node;
+	node->key[0] = 24;
+	node->key[1] = 30;
+	node->used = 2;
+
+	node = new_btree_node();
+	if (!node)
+		return;
+	// assign it to root's third
+	tree.root->children[2] = node;
+	node->key[0] = 40;
+	node->key[1] = 52;
+	node->used = 2;
+
+	dump_btree(&tree);
 }
 
 int main()

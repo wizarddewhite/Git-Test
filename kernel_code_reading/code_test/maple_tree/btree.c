@@ -51,3 +51,24 @@ void *btree_lookup(struct btree *tree, int key)
 	}
 	return NULL;
 }
+
+void dump_btree_node(struct btree_node *node, int level)
+{
+	int idx;
+
+	if (!node)
+		return;
+
+	for (idx = 0; idx < node->used; idx++) {
+		dump_btree_node(node->children[idx], level + 1);
+		printf("%*s %d\n", level * 4, " ", node->key[idx]);
+	}
+	dump_btree_node(node->children[idx], level + 1);
+}
+
+void dump_btree(struct btree *tree)
+{
+	struct btree_node *node = tree->root;
+
+	dump_btree_node(node, 0);
+}
