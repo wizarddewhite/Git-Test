@@ -88,8 +88,31 @@ void lookup_key()
 	dump_btree(&tree);
 }
 
+void insert_to_node() 
+{
+	int i, idx;
+	int key[] = {22, 10, 33, 15, 45};
+	struct btree_node *node = new_btree_node();
+	void *data;
+	if (!node)
+		return;
+
+	for (i = 0; i < 5; i++) {
+		get_idx(node, key[i], &idx);
+		printf("key: %d may at idx %d\n", key[i], idx);
+		btree_node_insert(node, idx, NULL, key[i], NULL);
+		dump_btree_node(node, 0);
+	}
+
+	node = split_node(node, &i, &data);
+	printf("dump split right node:\n");
+	dump_btree_node(node, 0);
+}
+
 int main()
 {
 	// getidx_in_node();
-	lookup_key();
+	// lookup_key();
+	// insert_key();
+	insert_to_node();
 }
