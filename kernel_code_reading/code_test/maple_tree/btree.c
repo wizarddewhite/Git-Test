@@ -102,8 +102,16 @@ bool btree_node_insert(struct btree_node *node, int idx,
 	node->key[idx] = key;
 	node->data[idx] = data;
 
-	node->children[idx] = left;
-	node->children[idx+1] = right;
+	if (left) {
+		node->children[idx] = left;
+		left->parent = node;
+		left->parent_index = idx;
+	}
+	if (right) {
+		node->children[idx+1] = right;
+		right->parent = node;
+		right->parent_index = idx+1;
+	}
 	node->used++;
 
 	return (node->used == ORDER);
@@ -138,8 +146,11 @@ void btree_insert(struct btree *tree, int key, void *data)
 
 	//printf("not found key %d, try to insert to %p\n", key, node);
 insert:
-	if (!btree_node_insert(node, idx, left, right, key, data))
+	if (!btree_node_insert(node, idx, left, right, key, data)) {
+		if (!node->parent)
+			tree->root = node;
 		return;
+	}
 
 	// node is full, let's split it
 	right = split_node(node, &key, &data);
@@ -147,9 +158,9 @@ insert:
 	node = new_btree_node();
 	if (!node)
 		panic("failed to allocate new node\n");
+	// get_idx(node, key, &idx);
 	idx = 0;
-	btree_node_insert(node, idx, left, right, key, data);
-	tree->root = node;
+	goto insert;
 }
 
 struct btree_node *split_node(struct btree_node *node, int *key, void **data)
