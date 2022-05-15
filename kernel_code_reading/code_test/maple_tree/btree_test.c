@@ -100,7 +100,7 @@ void insert_to_node()
 	for (i = 0; i < 5; i++) {
 		get_idx(node, key[i], &idx);
 		printf("key: %d may at idx %d\n", key[i], idx);
-		btree_node_insert(node, idx, NULL, key[i], NULL);
+		btree_node_insert(node, idx, NULL, NULL, key[i], NULL);
 		dump_btree_node(node, 0);
 	}
 
@@ -109,10 +109,21 @@ void insert_to_node()
 	dump_btree_node(node, 0);
 }
 
+void insert_key()
+{
+	struct btree tree = BTREE;
+	int key[] = {22, 33, 10, 15, 16};
+	int i;
+	for (i = 0; i < 5; i++) {
+		btree_insert(&tree, key[i], &key[i]);
+	}
+	dump_btree(&tree);
+}
+
 int main()
 {
 	// getidx_in_node();
 	// lookup_key();
-	// insert_key();
-	insert_to_node();
+	insert_key();
+	// insert_to_node();
 }
