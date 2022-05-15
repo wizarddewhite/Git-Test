@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 func create_slice() {
 	/* Format 1 */
@@ -99,13 +102,31 @@ func replace_slice() {
 	fmt.Println(hs.Slice)
 }
 
+func sort_slice() {
+	/* Format 1 */
+	var p = []int{2, 3, 15, 7, 1, 13}
+	printSlice("p", p)
+
+	sort.Slice(p, func(i, j int) bool {
+		return p[i] < p[j]
+	})
+	printSlice("p", p)
+
+	sort.Slice(p, func(i, j int) bool {
+		return p[i] > p[j]
+	})
+	printSlice("p", p)
+
+}
+
 func main() {
 	//create_slice()
-	clear_slice()
+	// clear_slice()
 	// make_slice()
 	//append_slice()
 	// methodOnSlice()
 	//replace_slice()
+	sort_slice()
 }
 
 func printSlice(s string, x []int) {
