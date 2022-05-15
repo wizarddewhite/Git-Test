@@ -93,6 +93,7 @@ void insert_to_node()
 	int i, idx;
 	int key[] = {22, 10, 33, 15, 45};
 	struct btree_node *node = new_btree_node();
+	struct btree_node *right;
 	void *data;
 	if (!node)
 		return;
@@ -104,9 +105,11 @@ void insert_to_node()
 		dump_btree_node(node, 0);
 	}
 
-	node = split_node(node, &i, &data);
-	printf("dump split right node:\n");
+	right = split_node(node, &i, &data);
+	printf("dump split left node:\n");
 	dump_btree_node(node, 0);
+	printf("dump split right node:\n");
+	dump_btree_node(right, 0);
 }
 
 void insert_key()
