@@ -126,11 +126,7 @@ void btree_insert(struct btree *tree, int key, void *data)
 	// empty tree, create node and insert to first
 	if (!node) {
 		node = new_btree_node();
-		node->key[0] = key;
-		node->data[0] = data;
-		node->used = 1;
-		tree->root = node;
-		return;
+		goto insert;
 	}
 
 	while (true) {
