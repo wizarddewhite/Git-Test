@@ -127,6 +127,7 @@ void btree_insert(struct btree *tree, int key, void *data)
 	if (!node) {
 		node = new_btree_node();
 		tree->root = node;
+		idx = 0;
 		goto insert;
 	}
 
