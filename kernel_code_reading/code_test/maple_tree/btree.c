@@ -94,8 +94,10 @@ bool btree_node_insert(struct btree_node *node, int idx,
 	if (node->used == ORDER)
 		panic("node overflow\n");
 	// shift right from idx
-	for (i = node->used - 1; i >= idx; i--)
+	for (i = node->used - 1; i >= idx; i--) {
 		node->key[i+1] = node->key[i];
+		node->data[i+1] = node->data[i];
+	}
 	for (i = node->used; i > idx; i--) {
 		node->children[i+1] = node->children[i];
 	}
