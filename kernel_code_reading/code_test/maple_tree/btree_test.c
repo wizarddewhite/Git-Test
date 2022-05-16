@@ -115,14 +115,23 @@ void insert_to_node()
 void insert_key()
 {
 	struct btree tree = BTREE;
-	int key[] = {22, 33, 10, 15, 16, 7, 8, 9, 199, 120, 800,
-		     2000, 1200, 130,
-		     50, 100, 101};
+	void *data;
 	int i;
+	int key[] = {22, 33, 10, 15, 16,
+		     // 7, 8, 9, 199, 120, 800,
+		     //2000, 1200, 130,
+		     //50, 100, 101};
+		};
 	for (i = 0; i < ARRAY_SIZE(key); i++) {
 		btree_insert(&tree, key[i], &key[i]);
 	}
 	dump_btree(&tree);
+
+	data = btree_lookup(&tree, key[0]);
+	if (data)
+		printf("Found key %d with data %p\n", key[0], data);
+	else
+		printf("not found\n");
 }
 
 int main()
