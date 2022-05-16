@@ -104,7 +104,8 @@ bool btree_node_insert(struct btree_node *node, int idx,
 	node->key[idx] = key;
 	node->data[idx] = data;
 
-	if (left) {
+	// based on current split_node operation, left child is not changed
+	if (left && !node->children[idx]) {
 		node->children[idx] = left;
 		left->parent = node;
 		left->parent_index = idx;
