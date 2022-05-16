@@ -132,9 +132,11 @@ void btree_insert(struct btree *tree, int key, void *data)
 	}
 
 	do {
-		// we don't update it if already exist
-		if (get_idx(node, key, &idx))
+		// key already exist, update data only
+		if (get_idx(node, key, &idx)) {
+			node->data[idx] = data;
 			return;
+		}
 	} while (node->children[idx] && (node = node->children[idx]));
 
 	//printf("not found key %d, try to insert to %p\n", key, node);

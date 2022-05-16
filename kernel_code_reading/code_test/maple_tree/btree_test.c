@@ -132,6 +132,12 @@ void insert_key()
 		printf("Found key %d with data %p\n", key[0], data);
 	else
 		printf("not found\n");
+	// update the key
+	btree_insert(&tree, key[0], &tree);
+	printf("The tree's pointer is %p\n", &tree);
+	data = btree_lookup(&tree, key[0]);
+	if (data)
+		printf("Found key %d with data %p\n", key[0], data);
 }
 
 int main()
