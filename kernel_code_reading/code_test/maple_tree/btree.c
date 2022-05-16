@@ -120,7 +120,7 @@ bool btree_node_insert(struct btree_node *node, int idx,
 void btree_insert(struct btree *tree, int key, void *data)
 {
 	struct btree_node *node = tree->root;
-	struct btree_node *tmp, *left = NULL, *right = NULL;
+	struct btree_node *left = NULL, *right = NULL;
 	int idx;
 
 	// empty tree, create node and set it to root
@@ -129,16 +129,11 @@ void btree_insert(struct btree *tree, int key, void *data)
 		tree->root = node;
 	}
 
-	while (true) {
+	do {
 		// we don't update it if already exist
 		if (get_idx(node, key, &idx))
 			return;
-
-		tmp = node->children[idx];
-		if (!tmp)
-			break;
-		node = tmp;
-	}
+	} while (node->children[idx] && (node = node->children[idx]));
 
 	//printf("not found key %d, try to insert to %p\n", key, node);
 	while (btree_node_insert(node, idx, left, right, key, data)) {
