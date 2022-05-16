@@ -115,7 +115,9 @@ void insert_to_node()
 void insert_key()
 {
 	struct btree tree = BTREE;
-	int key[] = {22, 33, 10, 15, 16, 7, 8, 9};
+	int key[] = {22, 33, 10, 15, 16, 7, 8, 9, 199, 120, 800,
+		     2000, 1200, 130,
+		     50, 100, 101};
 	int i;
 	for (i = 0; i < ARRAY_SIZE(key); i++) {
 		btree_insert(&tree, key[i], &key[i]);
