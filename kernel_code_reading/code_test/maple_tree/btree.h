@@ -12,6 +12,7 @@
  * split.
  */
 #define ORDER 5
+#define PIVOT (ORDER/2)
 
 struct btree_node {
 	struct btree_node *parent;

@@ -162,6 +162,7 @@ void btree_insert(struct btree *tree, int key, void *data)
 struct btree_node *split_node(struct btree_node *node, int *key, void **data)
 {
 	struct btree_node *right;
+	int i, j;
 
 	if (node->used != ORDER)
 		panic("try to split a non-full node\n");
@@ -171,23 +172,21 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data)
 		panic("failed to allocate node on split\n");
 
 	// assign middle one to key/data
-	*key = node->key[ORDER/2];
-	*data = node->data[ORDER/2];
+	*key = node->key[PIVOT];
+	*data = node->data[PIVOT];
 
 	// assign right part to new node
-	right->key[0] = node->key[ORDER/2+1];
-	right->data[0] = node->data[ORDER/2+1];
-	right->children[0] = node->children[ORDER/2+1];
+	for (i = 0, j = PIVOT +1; j < ORDER; i++, j++) {
+		right->key[i] = node->key[j];
+		right->data[i] = node->data[j];
+		right->children[i] = node->children[j];
+	}
+	right->children[i] = node->children[j];
 
-	right->key[1] = node->key[ORDER/2+2];
-	right->data[1] = node->data[ORDER/2+2];
-	right->children[1] = node->children[ORDER/2+2];
-
-	right->children[2] = node->children[ORDER/2+3];
-	right->used = 2;
+	right->used = ORDER - PIVOT - 1;
 	right->parent = node->parent;
 
 	// clear right part in node
-	node->used = ORDER/2;
+	node->used = PIVOT;
 	return right;
 }
