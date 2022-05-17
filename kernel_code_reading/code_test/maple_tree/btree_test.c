@@ -112,21 +112,26 @@ void insert_to_node()
 	dump_btree_node(right, 0);
 }
 
+void __insert_key(struct btree *tree, int *key, int len)
+{
+	int i;
+	for (i = 0; i < len; i++) {
+		btree_insert(tree, key[i], &key[i]);
+	}
+	dump_btree(tree);
+}
+
 void insert_key()
 {
-	struct btree tree = BTREE;
 	void *data;
-	int i;
+	struct btree tree = BTREE;
 	int key[] = {22, 33, 10, 15, 16,
 		     7, 8, 9, 199, 120, 800,
 		     2000, 1200, 130,
 		     50, 100, 101,
 		     110, 168, 198,
 		};
-	for (i = 0; i < ARRAY_SIZE(key); i++) {
-		btree_insert(&tree, key[i], &key[i]);
-	}
-	dump_btree(&tree);
+	__insert_key(&tree, key, ARRAY_SIZE(key));
 
 	data = btree_lookup(&tree, key[0]);
 	if (data)
