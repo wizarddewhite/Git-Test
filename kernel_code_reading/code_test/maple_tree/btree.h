@@ -11,7 +11,7 @@
  * But we allocate ORDER number of key and (ORDER + 1) number of pointer for
  * split.
  */
-#define ORDER 5
+#define ORDER 6
 #define PIVOT (ORDER/2)
 
 struct btree_node {
