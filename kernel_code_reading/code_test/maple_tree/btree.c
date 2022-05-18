@@ -99,6 +99,9 @@ bool btree_node_insert(struct btree_node *node, int idx,
 		node->data[i+1] = node->data[i];
 	}
 	for (i = node->used; i > idx; i--) {
+		// shift parent_index too
+		if (node->children[i])
+			node->children[i]->parent_index++;
 		node->children[i+1] = node->children[i];
 	}
 	node->key[idx] = key;
