@@ -35,14 +35,16 @@ struct btree_iterator {
 	int idx;
 };
 
+#define BTREE_START	((struct btree_node*)1UL)
+
 #define BTREE_ITERATOR(name, btree)		\
 	struct btree_iterator name = {		\
 		.tree = btree,			\
-		.node = NULL,			\
+		.node = BTREE_START,		\
 	}
 
 #define BTREE_ITERATOR_INIT(name)		\
-		name.node = NULL;
+		name.node = BTREE_START;
 
 bool get_idx(struct btree_node *node, int key, int *index);
 void *btree_lookup(struct btree *tree, int key);
@@ -57,4 +59,5 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data);
 
 void btree_first(struct btree_iterator *iter);
 void btree_last(struct btree_iterator *iter);
+void btree_next(struct btree_iterator *iter);
 #endif // __BTREE_H__

@@ -196,16 +196,15 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data)
 
 void btree_first(struct btree_iterator *iter)
 {
-	// first entry in leftmost child
 	struct btree *tree = iter->tree;
 	struct btree_node *node = iter->node;
 
-	if (!node)
+	if (node == BTREE_START)
 		node = tree->root;
 
-	while (node && node->children[0]) {
+	// first entry in leftmost child
+	while (node && node->children[0])
 		node = node->children[0];
-	}
 
 	iter->node = node;
 	iter->idx = 0;
@@ -214,18 +213,67 @@ void btree_first(struct btree_iterator *iter)
 
 void btree_last(struct btree_iterator *iter)
 {
-	// last entry in rightmost child
 	struct btree *tree = iter->tree;
 	struct btree_node *node = iter->node;
 
-	if (!node)
+	if (node == BTREE_START)
 		node = tree->root;
 
-	while (node && node->children[node->used]) {
+	// last entry in rightmost child
+	while (node && node->children[node->used])
 		node = node->children[node->used];
-	}
 
 	iter->node = node;
 	iter->idx = node? node->used - 1:0;
+	return;
+}
+
+void btree_next(struct btree_iterator *iter)
+{
+	struct btree *tree = iter->tree;
+	struct btree_node *node = iter->node;
+	struct btree_node *parent;
+
+	if (node == BTREE_START)
+		return btree_first(iter);
+
+	// leftmost child if has right child
+	if (node->children[iter->idx+1]) {
+		node = node->children[iter->idx+1];
+		while (node && node->children[0])
+			node = node->children[0];
+
+		iter->node = node;
+		iter->idx = 0;
+		return;
+	}
+
+	// printf("iter index: %d\n", iter->idx);
+	// or next sibling
+	if (iter->idx + 1 < node->used) {
+		iter->idx++;
+		return;
+	}
+
+	// or the first ancestor who's child is left one
+	while (node) {
+		parent = node->parent;
+
+		// we are the root
+		if (!parent) {
+			iter->node = parent;
+			return;
+		}
+
+		// printf("node %p parent index: %d\n", node, node->parent_index);
+		if (node->parent_index < parent->used) {
+			iter->node = parent;
+			iter->idx = node->parent_index;
+			return;
+		}
+		node = parent;
+	}
+
+	iter->node = node;
 	return;
 }
