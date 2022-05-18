@@ -189,6 +189,14 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data)
 	right->used = ORDER - PIVOT - 1;
 	right->parent = node->parent;
 
+	// adjust children's parent/parent_index in right
+	for (i = 0; i <= right->used; i++) {
+		if (right->children[i]) {
+			right->children[i]->parent_index = i;
+			right->children[i]->parent = right;
+		}
+	}
+
 	// clear right part in node
 	node->used = PIVOT;
 	return right;
@@ -265,7 +273,8 @@ void btree_next(struct btree_iterator *iter)
 			return;
 		}
 
-		// printf("node %p parent index: %d\n", node, node->parent_index);
+		//printf(" node(%p:%d) parent(%p:%d) index: %d\n",
+		//	node, node->used, parent, parent->used, node->parent_index);
 		if (node->parent_index < parent->used) {
 			iter->node = parent;
 			iter->idx = node->parent_index;

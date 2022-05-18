@@ -173,8 +173,12 @@ void iterate_btree()
 
 	int key[] = {22, 33, 10, 15, 16,
 		     7, 8, 9, 199, 120, 800,
+		     900, 1034, 1056,24, 29, 30,
+		     44, 45, 49, 34, 55, 99, 189,
+		     188,
 		};
 	__insert_key(&tree, key, ARRAY_SIZE(key));
+
 	BTREE_ITERATOR_INIT(biter);
 	btree_first(&biter);
 	if (biter.node)
