@@ -264,14 +264,8 @@ void btree_next(struct btree_iterator *iter)
 	}
 
 	// or the first ancestor who's child is left one
-	while (node) {
+	while (node && node->parent) {
 		parent = node->parent;
-
-		// we are the root
-		if (!parent) {
-			iter->node = parent;
-			return;
-		}
 
 		//printf(" node(%p:%d) parent(%p:%d) index: %d\n",
 		//	node, node->used, parent, parent->used, node->parent_index);
@@ -283,6 +277,6 @@ void btree_next(struct btree_iterator *iter)
 		node = parent;
 	}
 
-	iter->node = node;
+	iter->node = NULL;
 	return;
 }
