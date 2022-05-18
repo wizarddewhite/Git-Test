@@ -248,7 +248,7 @@ void btree_next(struct btree_iterator *iter)
 	// leftmost child if has right child
 	if (node->children[iter->idx+1]) {
 		node = node->children[iter->idx+1];
-		while (node && node->children[0])
+		while (node->children[0])
 			node = node->children[0];
 
 		iter->node = node;
