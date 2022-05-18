@@ -190,3 +190,39 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data)
 	node->used = PIVOT;
 	return right;
 }
+
+void btree_first(struct btree_iterator *iter)
+{
+	// first entry in leftmost child
+	struct btree *tree = iter->tree;
+	struct btree_node *node = iter->node;
+
+	if (!node)
+		node = tree->root;
+
+	while (node && node->children[0]) {
+		node = node->children[0];
+	}
+
+	iter->node = node;
+	iter->idx = 0;
+	return;
+}
+
+void btree_last(struct btree_iterator *iter)
+{
+	// last entry in rightmost child
+	struct btree *tree = iter->tree;
+	struct btree_node *node = iter->node;
+
+	if (!node)
+		node = tree->root;
+
+	while (node && node->children[node->used]) {
+		node = node->children[node->used];
+	}
+
+	iter->node = node;
+	iter->idx = node? node->used - 1:0;
+	return;
+}

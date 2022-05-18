@@ -29,6 +29,21 @@ struct btree {
 };
 #define BTREE (struct btree) { NULL, }
 
+struct btree_iterator {
+	struct btree *tree;
+	struct btree_node *node;
+	int idx;
+};
+
+#define BTREE_ITERATOR(name, btree)		\
+	struct btree_iterator name = {		\
+		.tree = btree,			\
+		.node = NULL,			\
+	}
+
+#define BTREE_ITERATOR_INIT(name)		\
+		name.node = NULL;
+
 bool get_idx(struct btree_node *node, int key, int *index);
 void *btree_lookup(struct btree *tree, int key);
 struct btree_node *new_btree_node();
@@ -39,4 +54,7 @@ bool btree_node_insert(struct btree_node *node, int idx,
 		int key, void *data);
 void btree_insert(struct btree *tree, int key, void *data);
 struct btree_node *split_node(struct btree_node *node, int *key, void **data);
+
+void btree_first(struct btree_iterator *iter);
+void btree_last(struct btree_iterator *iter);
 #endif // __BTREE_H__

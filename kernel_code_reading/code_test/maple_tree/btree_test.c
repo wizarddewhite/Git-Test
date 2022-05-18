@@ -146,10 +146,50 @@ void insert_key()
 		printf("Found key %d with data %p\n", key[0], data);
 }
 
+void iterate_btree()
+{
+	void *data;
+	struct btree tree = BTREE;
+	BTREE_ITERATOR(biter, &tree);
+
+	btree_first(&biter);
+	if (!biter.node)
+		printf("There is no first entry in tree\n");
+	btree_last(&biter);
+	if (!biter.node)
+		printf("There is no last entry in tree\n");
+
+	int key1[] = {618 };
+	__insert_key(&tree, key1, ARRAY_SIZE(key1));
+
+	BTREE_ITERATOR_INIT(biter);
+	btree_first(&biter);
+	if (biter.node)
+		printf("The first entry in tree is %d\n", biter.node->key[biter.idx]);
+	BTREE_ITERATOR_INIT(biter);
+	btree_last(&biter);
+	if (biter.node)
+		printf("The last entry in tree is %d\n", biter.node->key[biter.idx]);
+
+	int key[] = {22, 33, 10, 15, 16,
+		     7, 8, 9, 199, 120, 800,
+		};
+	__insert_key(&tree, key, ARRAY_SIZE(key));
+	BTREE_ITERATOR_INIT(biter);
+	btree_first(&biter);
+	if (biter.node)
+		printf("The first entry in tree is %d\n", biter.node->key[biter.idx]);
+	BTREE_ITERATOR_INIT(biter);
+	btree_last(&biter);
+	if (biter.node)
+		printf("The last entry in tree is %d\n", biter.node->key[biter.idx]);
+}
+
 int main()
 {
 	// getidx_in_node();
 	// lookup_key();
-	insert_key();
+	// insert_key();
 	// insert_to_node();
+	iterate_btree();
 }
