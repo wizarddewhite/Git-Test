@@ -189,11 +189,7 @@ void iterate_btree()
 		printf("The last entry in tree is %d\n", biter.node->key[biter.idx]);
 
 	BTREE_ITERATOR_INIT(biter);
-	while (true) {
-		btree_next(&biter);
-		if (!biter.node)
-			break;
-
+	while (btree_next(&biter)) {
 		// printf("node: %p, idx %d ", biter.node, biter.idx);
 		printf("%5d", biter.node->key[biter.idx]);
 	}

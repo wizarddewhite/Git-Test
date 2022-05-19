@@ -57,7 +57,7 @@ bool btree_node_insert(struct btree_node *node, int idx,
 void btree_insert(struct btree *tree, int key, void *data);
 struct btree_node *split_node(struct btree_node *node, int *key, void **data);
 
-void btree_first(struct btree_iterator *iter);
-void btree_last(struct btree_iterator *iter);
-void btree_next(struct btree_iterator *iter);
+struct btree_node *btree_first(struct btree_iterator *iter);
+struct btree_node *btree_last(struct btree_iterator *iter);
+struct btree_node *btree_next(struct btree_iterator *iter);
 #endif // __BTREE_H__

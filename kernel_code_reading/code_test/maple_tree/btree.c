@@ -202,7 +202,7 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data)
 	return right;
 }
 
-void btree_first(struct btree_iterator *iter)
+struct btree_node *btree_first(struct btree_iterator *iter)
 {
 	struct btree *tree = iter->tree;
 	struct btree_node *node = iter->node;
@@ -216,10 +216,10 @@ void btree_first(struct btree_iterator *iter)
 
 	iter->node = node;
 	iter->idx = 0;
-	return;
+	return node;
 }
 
-void btree_last(struct btree_iterator *iter)
+struct btree_node *btree_last(struct btree_iterator *iter)
 {
 	struct btree *tree = iter->tree;
 	struct btree_node *node = iter->node;
@@ -233,17 +233,19 @@ void btree_last(struct btree_iterator *iter)
 
 	iter->node = node;
 	iter->idx = node? node->used - 1:0;
-	return;
+	return node;
 }
 
-void btree_next(struct btree_iterator *iter)
+struct btree_node *btree_next(struct btree_iterator *iter)
 {
 	struct btree *tree = iter->tree;
 	struct btree_node *node = iter->node;
 	struct btree_node *parent;
 
-	if (node == BTREE_START)
-		return btree_first(iter);
+	if (node == BTREE_START) {
+		btree_first(iter);
+		goto out;
+	}
 
 	// leftmost child if has right child
 	if (node->children[iter->idx+1]) {
@@ -253,14 +255,14 @@ void btree_next(struct btree_iterator *iter)
 
 		iter->node = node;
 		iter->idx = 0;
-		return;
+		goto out;
 	}
 
 	// printf("iter index: %d\n", iter->idx);
 	// or next sibling
 	if (iter->idx + 1 < node->used) {
 		iter->idx++;
-		return;
+		goto out;
 	}
 
 	// or the first ancestor who's child is left one
@@ -272,11 +274,12 @@ void btree_next(struct btree_iterator *iter)
 		if (node->parent_index < parent->used) {
 			iter->node = parent;
 			iter->idx = node->parent_index;
-			return;
+			goto out;
 		}
 		node = parent;
 	}
 
 	iter->node = NULL;
-	return;
+out:
+	return iter->node;
 }
