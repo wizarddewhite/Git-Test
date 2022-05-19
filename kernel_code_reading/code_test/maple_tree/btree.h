@@ -60,4 +60,5 @@ struct btree_node *split_node(struct btree_node *node, int *key, void **data);
 struct btree_node *btree_first(struct btree_iterator *iter);
 struct btree_node *btree_last(struct btree_iterator *iter);
 struct btree_node *btree_next(struct btree_iterator *iter);
+struct btree_node *btree_prev(struct btree_iterator *iter);
 #endif // __BTREE_H__

@@ -193,6 +193,13 @@ void iterate_btree()
 		// printf("node: %p, idx %d ", biter.node, biter.idx);
 		printf("%5d", biter.node->key[biter.idx]);
 	}
+	printf("\n\n\n");
+
+	BTREE_ITERATOR_INIT(biter);
+	while (btree_prev(&biter)) {
+		// printf("node: %p, idx %d ", biter.node, biter.idx);
+		printf("%5d", biter.node->key[biter.idx]);
+	}
 	printf("\n");
 }
 

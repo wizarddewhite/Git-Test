@@ -288,3 +288,50 @@ struct btree_node *btree_next(struct btree_iterator *iter)
 out:
 	return iter->node;
 }
+
+struct btree_node *btree_prev(struct btree_iterator *iter)
+{
+	struct btree *tree = iter->tree;
+	struct btree_node *node = iter->node;
+	struct btree_node *parent;
+
+	if (node == BTREE_START) {
+		btree_last(iter);
+		goto out;
+	}
+
+	// rightmost child if has left child
+	if ((iter->idx > 1) && node->children[iter->idx-1]) {
+		node = node->children[iter->idx-1];
+		while (node->children[node->used])
+			node = node->children[node->used];
+
+		iter->node = node;
+		iter->idx = node->used - 1;
+		goto out;
+	}
+
+	// or previous sibling
+	if (iter->idx > 0) {
+		iter->idx--;
+		goto out;
+	}
+
+	// or the first ancestor who's child is right one
+	while (node && node->parent) {
+		parent = node->parent;
+
+		//printf(" node(%p:%d) parent(%p:%d) index: %d\n",
+		//	node, node->used, parent, parent->used, node->parent_index);
+		if (node->parent_index > 0) {
+			iter->node = parent;
+			iter->idx = node->parent_index - 1;
+			goto out;
+		}
+		node = parent;
+	}
+
+	iter->node = NULL;
+out:
+	return iter->node;
+}
