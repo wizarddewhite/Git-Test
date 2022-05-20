@@ -301,8 +301,8 @@ struct btree_node *btree_prev(struct btree_iterator *iter)
 	}
 
 	// rightmost child if has left child
-	if ((iter->idx > 1) && node->children[iter->idx-1]) {
-		node = node->children[iter->idx-1];
+	if ((iter->idx >= 0) && node->children[iter->idx]) {
+		node = node->children[iter->idx];
 		while (node->children[node->used])
 			node = node->children[node->used];
 
