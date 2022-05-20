@@ -201,6 +201,11 @@ void iterate_btree()
 		printf("%5d", biter.node->key[biter.idx]);
 	}
 	printf("\n");
+
+	BTREE_ITERATOR_INIT(biter);
+	for_each_btree(&biter)
+		printf("%5d", biter.node->key[biter.idx]);
+	printf("\n");
 }
 
 int main()

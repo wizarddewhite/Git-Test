@@ -61,4 +61,8 @@ struct btree_node *btree_first(struct btree_iterator *iter);
 struct btree_node *btree_last(struct btree_iterator *iter);
 struct btree_node *btree_next(struct btree_iterator *iter);
 struct btree_node *btree_prev(struct btree_iterator *iter);
+
+#define for_each_btree(iter)				\
+	while (btree_next(iter))
+
 #endif // __BTREE_H__
