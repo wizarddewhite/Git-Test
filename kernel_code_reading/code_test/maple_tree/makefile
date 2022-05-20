@@ -5,20 +5,24 @@ ALL_OBJS := $(subst .c,.o,$(SOURCES))
 OBJS := $(filter-out $(PROGRAM_OBJS),$(ALL_OBJS))
 LIB :=
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -g -I../ -Ilib/
+CFLAGS = -I../ -Ilib/
 LD_FLAGS = -lm
 
+ifeq ($(DEBUG),1)
+DEBUG_FLAGS = -g -DDEBUG
+endif
+
 # $(warning $(PROGRAM_OBJS))
-# $(warning $(OBJS))
+$(warning $(DEBUG))
 
 .PHONY: all clean cscope
 all: $(LIB) $(PROGRAM)
 
 %: %.c $(OBJS)
-	gcc $(CFLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
+	gcc $(CFLAGS) $(DEBUG_FLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
 
 %.o: %.c
-	gcc $(CFLAGS) -c $< -o $@
+	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
 
 %.a: %.o
 	ar cr $@ $^
