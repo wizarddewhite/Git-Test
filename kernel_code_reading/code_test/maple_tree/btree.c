@@ -335,3 +335,22 @@ struct btree_node *btree_prev(struct btree_iterator *iter)
 out:
 	return iter->node;
 }
+
+void *btree_node_delete(struct btree_node *node, int idx)
+{
+	int i;
+	void *data;
+
+	if (idx >= node->used)
+		panic("Deleting out of range\n");
+
+	data = node->data[idx];
+
+	// shift left from idx + 1
+	for (i = idx; i < node->used - 1; i++) {
+		node->key[idx] = node->key[idx+1];
+		node->data[idx] = node->data[idx+1];
+	}
+	node->used--;
+	return data;
+}

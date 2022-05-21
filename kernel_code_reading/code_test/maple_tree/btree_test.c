@@ -208,11 +208,38 @@ void iterate_btree()
 	printf("\n");
 }
 
+void delete_from_node()
+{
+	int i, idx;
+	int key[] = {22, 10, 33, 15};
+	struct btree_node *node = new_btree_node();
+	struct btree_node *right;
+	void *data;
+	if (!node)
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(key); i++) {
+		get_idx(node, key[i], &idx);
+		btree_node_insert(node, idx, NULL, NULL, key[i], NULL);
+	}
+	printf("Now we have a node like: \n");
+	dump_btree_node(node, 0);
+
+	btree_node_delete(node, 2);
+	printf("After deletion idx 2 : \n");
+	dump_btree_node(node, 0);
+
+	btree_node_delete(node, 1);
+	printf("After deletion idx 1 : \n");
+	dump_btree_node(node, 0);
+}
+
 int main()
 {
 	// getidx_in_node();
 	// lookup_key();
 	// insert_key();
 	// insert_to_node();
-	iterate_btree();
+	// iterate_btree();
+	delete_from_node();
 }
