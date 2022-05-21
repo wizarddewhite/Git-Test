@@ -49,18 +49,29 @@ bool get_idx(struct btree_node *node, int key, int *index)
 	return false;
 }
 
+bool __btree_lookup(struct btree_iterator *iter, int key)
+{
+	struct btree *tree = iter->tree;
+	struct btree_node *node = iter->node;
+
+	if (iter->node == BTREE_START)
+		iter->node = tree->root;
+
+	while (iter->node) {
+		if (get_idx(iter->node, key, &iter->idx)) {
+			return true;
+		}
+
+		iter->node = iter->node->children[iter->idx];
+	}
+	return false;
+}
+
 void *btree_lookup(struct btree *tree, int key)
 {
-	struct btree_node *node = tree->root;
-	int index;
-
-	while (node) {
-		if (get_idx(node, key, &index))
-			return node->data[index];
-
-		node = node->children[index];
-	}
-	return NULL;
+	BTREE_ITERATOR(biter, tree);
+	return __btree_lookup(&biter, key) ?
+		biter.node->data[biter.idx] : NULL;
 }
 
 void dump_btree_node(struct btree_node *node, int level)
