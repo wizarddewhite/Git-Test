@@ -374,3 +374,26 @@ void btree_node_replace(struct btree_node *node, int idx, int key, void *data)
 	node->key[idx] = key;
 	node->data[idx] = data;
 }
+
+/*
+ * There are four cases on deletion:
+ * 1. In leaf node, just delete it
+ * 2. Replace key/data with next, which must be in leaf. Then remove next and
+ *    node point to next.
+ * 3. If node->used < PIVOT
+ *    a. if sibling->used >= PIVOT, rotate at parent
+ *    b. else, merge with sibling
+ */
+void *btree_delete(struct btree *tree, int key)
+{
+	BTREE_ITERATOR(biter, tree);
+
+	if (!__btree_lookup(&biter, key))
+		return NULL;
+
+	// case 1
+	if (is_leaf(biter.node))
+		return btree_node_delete(biter.node, biter.idx);
+
+	return NULL;
+}
