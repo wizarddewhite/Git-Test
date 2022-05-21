@@ -116,7 +116,11 @@ curl --user user:passwd -X DELETE http://localhost:9200/asong_golang_dream
 https://www.tizi365.com/archives/628.html
 
 2.5.1 Filter by date
+Time Format https://blog.csdn.net/weixin_30608131/article/details/98046992
+2.5.1.1 Start From
+POST /instance/_search
 {
+    "size" : 0,
     "query": {
         "bool": {
             "must": [
@@ -125,6 +129,25 @@ https://www.tizi365.com/archives/628.html
                         "create_time": {
                           "gte": "2018-01-01 00:00:00", 
                           "format": "yyyy-MM-dd hh:mm:ss"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
+
+2.5.1.2 Start From yesterday
+POST /instance/_search
+{
+  "size" : 10,
+    "query": {
+        "bool": {
+            "must": [
+                {
+                  "range": {
+                        "create_time": {
+                          "gte": "now-1d/d"
                         }
                     }
                 }
