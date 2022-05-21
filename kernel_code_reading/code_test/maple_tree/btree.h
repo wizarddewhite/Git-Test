@@ -46,6 +46,7 @@ struct btree_iterator {
 #define BTREE_ITERATOR_INIT(name)		\
 		name.node = BTREE_START;
 
+void panic(const char *fmt, ...);
 bool get_idx(struct btree_node *node, int key, int *index);
 void *btree_lookup(struct btree *tree, int key);
 struct btree_node *new_btree_node();
