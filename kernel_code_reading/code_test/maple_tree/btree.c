@@ -365,3 +365,12 @@ void *btree_node_delete(struct btree_node *node, int idx)
 	node->used--;
 	return data;
 }
+
+void btree_node_replace(struct btree_node *node, int idx, int key, void *data)
+{
+	if (idx >= node->used)
+		panic("replace idx out of range\n");
+
+	node->key[idx] = key;
+	node->data[idx] = data;
+}

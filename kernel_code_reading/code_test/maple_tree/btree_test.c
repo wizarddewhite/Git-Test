@@ -194,14 +194,18 @@ void delete_from_node()
 	btree_node_delete(node, 1);
 	printf("After deletion idx 1 : \n");
 	dump_btree_node(node, 0);
+
+	btree_node_replace(node, 0, key[0], &key[0]);
+	printf("After replace idx 0 with %d: \n", key[0]);
+	dump_btree_node(node, 0);
 }
 
 int main()
 {
 	// getidx_in_node();
-	lookup_key();
+	// lookup_key();
 	// insert_key();
 	// insert_to_node();
 	// iterate_btree();
-	// delete_from_node();
+	delete_from_node();
 }
