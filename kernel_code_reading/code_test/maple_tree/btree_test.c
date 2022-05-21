@@ -26,6 +26,7 @@ void getidx_in_node()
 		printf("key %d at index %d\n", 53, index);
 }
 
+void __insert_key(struct btree *tree, int *key, int len);
 void lookup_key()
 {
 	struct btree tree = BTREE;
@@ -37,54 +38,13 @@ void lookup_key()
 	data = btree_lookup(&tree, key[0]);
 	if (data)
 		printf("Found key %d with data %p\n", key[0], data);
+	else
+		printf("Not find key %d \n", key[0]);
 
-	node = new_btree_node();
-	if (!node)
-		return;
-	// assign it to root
-	tree.root = node;
-	node->key[0] = key[0];
-	node->data[0] = &key[0];
-	node->key[1] = key[1];
-	node->data[1] = &key[1];
-	node->used = 2;
-
+	__insert_key(&tree, key, ARRAY_SIZE(key));
 	data = btree_lookup(&tree, key[0]);
 	if (data)
 		printf("Found key %d with data %p: %p\n", key[0], data, &key[0]);
-
-	node = new_btree_node();
-	if (!node)
-		return;
-	// assign it to root's left most child
-	tree.root->children[0] = node;
-	node->key[0] = key[2];
-	node->data[0] = &key[2];
-	node->key[1] = key[3];
-	node->data[1] = &key[3];
-	node->used = 2;
-	data = btree_lookup(&tree, key[2]);
-	if (data)
-		printf("Found key %d with data %p: %p\n", key[2], data, &key[2]);
-
-	node = new_btree_node();
-	if (!node)
-		return;
-	// assign it to root's second
-	tree.root->children[1] = node;
-	node->key[0] = 24;
-	node->key[1] = 30;
-	node->used = 2;
-
-	node = new_btree_node();
-	if (!node)
-		return;
-	// assign it to root's third
-	tree.root->children[2] = node;
-	node->key[0] = 40;
-	node->key[1] = 52;
-	node->used = 2;
-
 	dump_btree(&tree);
 }
 
@@ -237,9 +197,9 @@ void delete_from_node()
 int main()
 {
 	// getidx_in_node();
-	// lookup_key();
+	lookup_key();
 	// insert_key();
 	// insert_to_node();
 	// iterate_btree();
-	delete_from_node();
+	// delete_from_node();
 }
