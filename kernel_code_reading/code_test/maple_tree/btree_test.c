@@ -37,15 +37,17 @@ void lookup_key()
 
 	data = btree_lookup(&tree, key[0]);
 	if (data)
-		printf("Found key %d with data %p\n", key[0], data);
-	else
-		printf("Not find key %d \n", key[0]);
+		panic("We shouldn't find %d in empty tree\n", key[0]);
+	printf("Not find key %d \n", key[0]);
 
 	__insert_key(&tree, key, ARRAY_SIZE(key));
 	data = btree_lookup(&tree, key[0]);
-	if (data)
-		printf("Found key %d with data %p: %p\n", key[0], data, &key[0]);
-	dump_btree(&tree);
+	if (!data)
+		panic("We failed to find %d in tree\n", key[0]);
+	if (data != &key[0])
+		panic("We find wrong data for key:%d %p -> %p\n",
+				key[0], &key[0], data);
+	printf("Found key %d with data %p: %p\n", key[0], data, &key[0]);
 }
 
 void insert_to_node() 
