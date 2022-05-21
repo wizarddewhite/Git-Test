@@ -359,8 +359,8 @@ void *btree_node_delete(struct btree_node *node, int idx)
 
 	// shift left from idx + 1
 	for (i = idx; i < node->used - 1; i++) {
-		node->key[idx] = node->key[idx+1];
-		node->data[idx] = node->data[idx+1];
+		node->key[i] = node->key[i+1];
+		node->data[i] = node->data[i+1];
 	}
 	node->used--;
 	return data;
