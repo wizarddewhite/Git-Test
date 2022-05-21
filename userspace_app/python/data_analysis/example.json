@@ -1,0 +1,6 @@
+[{"name": "apple", "area": "shandong", "price": 3},
+ {"name": "banana", "area": "guangdong", "price": 6},
+ {"name": "pear", "area": "shandong", "price": 6},
+ {"name": "pinapple", "area": "guangdong", "price": 6},
+ {"name": "persimmon", "area": "shandong", "price": 6},
+ {"name": "peach", "area": "jiangsu", "price": 9}]
