@@ -187,11 +187,11 @@ void delete_from_node()
 	printf("Now we have a node like: \n");
 	dump_btree_node(node, 0);
 
-	btree_node_delete(node, 2);
+	btree_node_delete(node, 2, false);
 	printf("After deletion idx 2 : \n");
 	dump_btree_node(node, 0);
 
-	btree_node_delete(node, 1);
+	btree_node_delete(node, 1, false);
 	printf("After deletion idx 1 : \n");
 	dump_btree_node(node, 0);
 
@@ -245,6 +245,8 @@ void delete_key()
 		if (data && data != &key[i])
 			panic("delete a wrong data at %d\n", key[i]);
 	}
+	if (tree.root)
+		panic("still has root %p\n", tree.root);
 }
 
 int main()

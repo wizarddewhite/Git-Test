@@ -348,7 +348,7 @@ out:
 	return iter->node;
 }
 
-void *btree_node_delete(struct btree_node *node, int idx)
+void *btree_node_delete(struct btree_node *node, int idx, bool keep)
 {
 	int i;
 	void *data;
@@ -358,17 +358,20 @@ void *btree_node_delete(struct btree_node *node, int idx)
 
 	data = node->data[idx];
 
-	// shift left from idx + 1
+	// key shift left from idx + 1
 	for (i = idx; i < node->used - 1; i++) {
 		node->key[i] = node->key[i+1];
 		node->data[i] = node->data[i+1];
+	}
+
+	// data shift left from idx + 1 or idx + 2
+	i = keep ? idx + 1 : idx;
+	for (; i < node->used; i++) {
 		node->children[i] = node->children[i+1];
 		if (node->children[i])
 			node->children[i]->parent_index--;
 	}
-	node->children[i] = node->children[i+1];
-	if (node->children[i])
-		node->children[i]->parent_index--;
+
 	node->used--;
 	return data;
 }
@@ -411,11 +414,11 @@ void *btree_delete(struct btree *tree, int key)
 		btree_next(&biter);
 		btree_node_replace(node, index,
 			biter.node->key[biter.idx], biter.node->data[biter.idx]);
-		btree_node_delete(biter.node, biter.idx);
+		btree_node_delete(biter.node, biter.idx, false);
 		goto out;
 	}
 
-	btree_node_delete(biter.node, biter.idx);
+	btree_node_delete(biter.node, biter.idx, false);
 
 	// case 3
 	node = biter.node;
@@ -472,7 +475,7 @@ void rotate(struct btree_node *node, int idx)
       btree_node_replace(node, idx, right->key[0], right->data[0]);
 
       // remove right[0]
-      btree_node_delete(right, 0);
+      btree_node_delete(right, 0, false);
 }
 
 void merge(struct btree_node *node, int idx)
@@ -486,8 +489,7 @@ void merge(struct btree_node *node, int idx)
 	// move idx to left
 	btree_node_insert(left, left->used, NULL, NULL,
 			node->key[idx], node->data[idx]);
-	btree_node_delete(node, idx);
-	node->children[idx] = left;
+	btree_node_delete(node, idx, true);
 
 	// move right to left
 	for (i = 0; i < right->used; i++) {
