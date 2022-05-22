@@ -82,8 +82,9 @@ void dump_btree_node(struct btree_node *node, int level)
 		return;
 
 #ifdef DEBUG
-	printf("%*s %p -> %p(%d)\n", level * 4, " ",
-			node, node->parent, node->parent_index);
+	printf("%*s %p:%d -> %p(%d)\n", level * 4, " ",
+			node, node->used,
+			node->parent, node->parent_index);
 #endif
 
 	for (idx = 0; idx < node->used; idx++) {
