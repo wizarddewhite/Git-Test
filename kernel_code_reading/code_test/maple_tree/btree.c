@@ -470,6 +470,7 @@ void merge(struct btree_node *node, int idx)
 	btree_node_insert(left, left->used, NULL, NULL,
 			node->key[idx], node->data[idx]);
 	btree_node_delete(node, idx);
+	node->children[idx] = left;
 
 	// move right to left
 	for (i = 0; i < right->used; i++) {
