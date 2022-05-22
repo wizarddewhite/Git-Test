@@ -426,7 +426,8 @@ goup:
 		// if the root is empty, replace it
 		if (is_empty(node)) {
 			tree->root = node->children[0];
-			node->children[0]->parent = NULL;
+			if (node->children[0])
+				node->children[0]->parent = NULL;
 			free(node);
 		}
 		goto out;
