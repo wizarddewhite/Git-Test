@@ -362,8 +362,12 @@ void *btree_node_delete(struct btree_node *node, int idx)
 		node->key[i] = node->key[i+1];
 		node->data[i] = node->data[i+1];
 		node->children[i] = node->children[i+1];
+		if (node->children[i])
+			node->children[i]->parent_index--;
 	}
 	node->children[i] = node->children[i+1];
+	if (node->children[i])
+		node->children[i]->parent_index--;
 	node->used--;
 	return data;
 }
