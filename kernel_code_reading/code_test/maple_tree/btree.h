@@ -64,7 +64,7 @@ void *btree_node_delete(struct btree_node *node, int idx);
 void btree_node_replace(struct btree_node *node, int idx, int key, void *data);
 void *btree_delete(struct btree *tree, int key);
 void rotate(struct btree_node *node, int idx);
-void merge();
+void merge(struct btree_node *node, int idx);
 
 struct btree_node *btree_first(struct btree_iterator *iter);
 struct btree_node *btree_last(struct btree_iterator *iter);
