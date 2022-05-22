@@ -413,16 +413,24 @@ void *btree_delete(struct btree *tree, int key)
 
 	data = btree_node_delete(biter.node, biter.idx);
 
-	if (!is_low(biter.node))
-		goto out;
-
 	// case 3
 	node = biter.node;
 	index = biter.idx;
-	parent = node->parent;
 
-	if (!parent)
+goup:
+	if (!is_low(node))
 		goto out;
+
+	parent = node->parent;
+	if (!parent) {
+		// if the root is empty, replace it
+		if (is_empty(node)) {
+			tree->root = node->children[0];
+			node->children[0]->parent = NULL;
+			free(node);
+		}
+		goto out;
+	}
 	if (node->parent_index+1 <= parent->used) // !node->parent_index
 		sibling = parent->children[node->parent_index+1];
 	else {
@@ -433,8 +441,12 @@ void *btree_delete(struct btree *tree, int key)
 	// 3.a
 	if (!is_low(sibling))
 		rotate(parent, node->parent_index);
-	else // 3.b
+	else {
+		// 3.b
 		merge(parent, node->parent_index);
+		node = parent;
+		goto goup;
+	}
 
 out:
 	return NULL;
