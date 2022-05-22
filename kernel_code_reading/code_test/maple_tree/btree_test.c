@@ -203,13 +203,14 @@ void delete_from_node()
 void delete_key()
 {
 	void *data;
+	int i;
 	struct btree tree = BTREE;
 	BTREE_ITERATOR(biter, &tree);
 	int key[] = {22, 33, 10, 15, 16,
 		     7, 199, 120, 800,
-		     // 2000, 1200, 130,
-		     // 50, 100, 101,
-		     // 110, 168, 198,
+		     2000, 1200, 130,
+		     50, 100, 101,
+		     110, 168, 198,
 		};
 	__insert_key(&tree, key, ARRAY_SIZE(key));
 
@@ -237,6 +238,13 @@ void delete_key()
 	printf("After delete key 10: \n");
 	data = btree_delete(&tree, 10);
 	dump_btree(&tree);
+
+	for (i = 0; i < ARRAY_SIZE(key); i++) {
+		data = btree_delete(&tree, key[i]);
+
+		if (data && data != &key[i])
+			panic("delete a wrong data at %d\n", key[i]);
+	}
 }
 
 int main()

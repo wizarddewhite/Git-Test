@@ -401,17 +401,21 @@ void *btree_delete(struct btree *tree, int key)
 	if (!__btree_lookup(&biter, key))
 		return NULL;
 
+	node = biter.node;
+	index = biter.idx;
+	data = node->data[index];
+
 	// case 1 & 2
 	if (!is_leaf(biter.node)) {
 		// case 2
-		node = biter.node;
-		index = biter.idx;
 		btree_next(&biter);
 		btree_node_replace(node, index,
 			biter.node->key[biter.idx], biter.node->data[biter.idx]);
+		btree_node_delete(biter.node, biter.idx);
+		goto out;
 	}
 
-	data = btree_node_delete(biter.node, biter.idx);
+	btree_node_delete(biter.node, biter.idx);
 
 	// case 3
 	node = biter.node;
@@ -450,7 +454,7 @@ goup:
 	}
 
 out:
-	return NULL;
+	return data;
 }
 
 void rotate(struct btree_node *node, int idx)
