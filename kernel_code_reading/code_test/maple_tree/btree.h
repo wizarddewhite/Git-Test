@@ -25,6 +25,7 @@ struct btree_node {
 };
 
 #define is_leaf(node)	(!(node->children[0]))
+#define is_low(node)  ((node->used < PIVOT))
 
 struct btree {
 	struct btree_node *root;

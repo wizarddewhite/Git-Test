@@ -386,14 +386,28 @@ void btree_node_replace(struct btree_node *node, int idx, int key, void *data)
  */
 void *btree_delete(struct btree *tree, int key)
 {
+	struct btree_node *node;
+	int index;
+	void *data;
 	BTREE_ITERATOR(biter, tree);
 
 	if (!__btree_lookup(&biter, key))
 		return NULL;
 
-	// case 1
-	if (is_leaf(biter.node))
-		return btree_node_delete(biter.node, biter.idx);
+	// case 1 & 2
+	if (!is_leaf(biter.node)) {
+		// case 2
+		node = biter.node;
+		index = biter.idx;
+		btree_next(&biter);
+		btree_node_replace(node, index,
+			biter.node->key[biter.idx], biter.node->data[biter.idx]);
+	}
+
+	data = btree_node_delete(biter.node, biter.idx);
+
+	if (!is_low(biter.node))
+		return data;
 
 	return NULL;
 }

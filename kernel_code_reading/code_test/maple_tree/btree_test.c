@@ -206,7 +206,7 @@ void delete_key()
 	struct btree tree = BTREE;
 	BTREE_ITERATOR(biter, &tree);
 	int key[] = {22, 33, 10, 15, 16,
-		     7, 8, 9, 199, 120, 800,
+		     7, 199, 120, 800,
 		     // 2000, 1200, 130,
 		     // 50, 100, 101,
 		     // 110, 168, 198,
@@ -219,6 +219,11 @@ void delete_key()
 	// delete first which is a leaf
 	data = btree_delete(&tree, 7);
 	printf("After delete key 7: \n");
+	dump_btree(&tree);
+
+	// delete one in root node
+	printf("After delete key %d: \n", tree.root->key[0]);
+	data = btree_delete(&tree, tree.root->key[0]);
 	dump_btree(&tree);
 }
 
