@@ -425,8 +425,10 @@ void *btree_delete(struct btree *tree, int key)
 		goto out;
 	if (node->parent_index+1 <= parent->used) // !node->parent_index
 		sibling = parent->children[node->parent_index+1];
-	if (!sibling)
-		goto out;
+	else {
+		sibling = parent->children[node->parent_index-1];
+		node = sibling;
+	}
 
 	// 3.a
 	if (!is_low(sibling))
