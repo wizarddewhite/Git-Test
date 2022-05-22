@@ -409,20 +409,16 @@ void *btree_delete(struct btree *tree, int key)
 	data = node->data[index];
 
 	// case 1 & 2
-	if (!is_leaf(biter.node)) {
+	if (!is_leaf(node)) {
 		// case 2
 		btree_next(&biter);
 		btree_node_replace(node, index,
 			biter.node->key[biter.idx], biter.node->data[biter.idx]);
-		btree_node_delete(biter.node, biter.idx, false);
-		goto out;
+		node = biter.node;
+		index = biter.idx;
 	}
 
-	btree_node_delete(biter.node, biter.idx, false);
-
-	// case 3
-	node = biter.node;
-	index = biter.idx;
+	btree_node_delete(node, index, false);
 
 goup:
 	if (!is_low(node))
@@ -439,6 +435,7 @@ goup:
 		}
 		goto out;
 	}
+
 	if (node->parent_index+1 <= parent->used) // !node->parent_index
 		sibling = parent->children[node->parent_index+1];
 	else {
@@ -446,11 +443,11 @@ goup:
 		node = sibling;
 	}
 
-	// 3.a
+	// case 3.a
 	if (!is_low(sibling))
 		rotate(parent, node->parent_index);
 	else {
-		// 3.b
+		// case 3.b
 		merge(parent, node->parent_index);
 		node = parent;
 		goto goup;
