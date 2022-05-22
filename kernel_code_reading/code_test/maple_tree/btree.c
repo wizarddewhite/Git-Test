@@ -386,7 +386,7 @@ void btree_node_replace(struct btree_node *node, int idx, int key, void *data)
  */
 void *btree_delete(struct btree *tree, int key)
 {
-	struct btree_node *node;
+	struct btree_node *node, *parent, *sibling = NULL;
 	int index;
 	void *data;
 	BTREE_ITERATOR(biter, tree);
@@ -407,7 +407,47 @@ void *btree_delete(struct btree *tree, int key)
 	data = btree_node_delete(biter.node, biter.idx);
 
 	if (!is_low(biter.node))
-		return data;
+		goto out;
 
+	// case 3
+	node = biter.node;
+	index = biter.idx;
+	parent = node->parent;
+
+	if (!parent)
+		goto out;
+	if (node->parent_index+1 <= parent->used) // !node->parent_index
+		sibling = parent->children[node->parent_index+1];
+	if (!sibling)
+		goto out;
+
+	// 3.a
+	if (!is_low(sibling))
+		rotate(parent, node->parent_index);
+	else // 3.b
+		merge();
+
+out:
 	return NULL;
 }
+
+void rotate(struct btree_node *node, int idx)
+{
+      struct btree_node *left, *right;
+
+      left = node->children[idx];
+      right = node->children[idx+1];
+
+      // insert idx to left
+      btree_node_insert(left, left->used, NULL, right->children[0],
+                      node->key[idx], node->data[idx]);
+
+      // replace idx with right[0]
+      btree_node_replace(node, idx, right->key[0], right->data[0]);
+
+      // remove right[0]
+      btree_node_delete(right, 0);
+}
+
+void merge()
+{}

@@ -225,6 +225,18 @@ void delete_key()
 	printf("After delete key %d: \n", tree.root->key[0]);
 	data = btree_delete(&tree, tree.root->key[0]);
 	dump_btree(&tree);
+
+	printf("After delete key 15: \n");
+	data = btree_delete(&tree, 15);
+	dump_btree(&tree);
+
+	printf("After delete key 16: \n");
+	data = btree_delete(&tree, 16);
+	dump_btree(&tree);
+
+	printf("After delete key 10: \n");
+	data = btree_delete(&tree, 10);
+	dump_btree(&tree);
 }
 
 int main()
