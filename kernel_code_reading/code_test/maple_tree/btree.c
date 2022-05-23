@@ -420,40 +420,37 @@ void *btree_delete(struct btree *tree, int key)
 
 	btree_node_delete(node, index, false);
 
-goup:
-	if (!is_low(node))
-		goto out;
-
-	parent = node->parent;
-	if (!parent) {
-		// if the root is empty, replace it
-		if (is_empty(node)) {
-			tree->root = node->children[0];
-			if (node->children[0])
-				node->children[0]->parent = NULL;
-			free(node);
+	while (is_low(node)) {
+		parent = node->parent;
+		if (!parent) {
+			// if the root is empty, replace it
+			if (is_empty(node)) {
+				tree->root = node->children[0];
+				if (node->children[0])
+					node->children[0]->parent = NULL;
+				free(node);
+			}
+			break;
 		}
-		goto out;
-	}
 
-	if (node->parent_index+1 <= parent->used) // !node->parent_index
-		sibling = parent->children[node->parent_index+1];
-	else {
-		sibling = parent->children[node->parent_index-1];
-		node = sibling;
-	}
+		if (node->parent_index+1 <= parent->used) { // !node->parent_index
+			sibling = parent->children[node->parent_index+1];
+		} else {
+			sibling = parent->children[node->parent_index-1];
+			node = sibling;
+		}
 
-	// case 3.a
-	if (!is_low(sibling))
-		rotate(parent, node->parent_index);
-	else {
+		// case 3.a
+		if (!is_low(sibling)) {
+			rotate(parent, node->parent_index);
+			break;
+		}
+
 		// case 3.b
 		merge(parent, node->parent_index);
 		node = parent;
-		goto goup;
 	}
 
-out:
 	return data;
 }
 
