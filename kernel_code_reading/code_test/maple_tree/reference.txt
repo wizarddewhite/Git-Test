@@ -1,6 +1,7 @@
 Reference:
 
-Maple Tree:
+Maple Tree: A data structure that could track gaps, store ranges, and be
+implemented in an RCU compatible manner.
 https://lwn.net/Articles/845507/
 https://blogs.oracle.com/linux/post/the-maple-tree-a-modern-data-structure-for-a-complex-problem
 
