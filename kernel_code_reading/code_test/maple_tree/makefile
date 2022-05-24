@@ -1,4 +1,4 @@
-PROGRAM := btree_test
+PROGRAM := btree_test maple_tree_test
 PROGRAM_OBJS := $(addsuffix .o, $(PROGRAM))
 SOURCES := $(wildcard *.c)
 ALL_OBJS := $(subst .c,.o,$(SOURCES))
