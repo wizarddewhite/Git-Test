@@ -4,7 +4,27 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+/* General kernel definition */
 typedef unsigned int gfp_t;
+#define	EINVAL		22	/* Invalid argument */
+
+/* Real Start */
+
+#define MAPLE_NODE_SLOTS	31	/* 256 bytes including ->parent */
+#define MAPLE_RANGE64_SLOTS	16	/* 256 bytes */
+#define MAPLE_ARANGE64_SLOTS	10	/* 240 bytes */
+#define MAPLE_ARANGE64_META_MAX	15	/* Out of range for metadata */
+#define MAPLE_ALLOC_SLOTS	(MAPLE_NODE_SLOTS - 1)
+
+typedef struct maple_enode *maple_enode; /* encoded node */
+typedef struct maple_pnode *maple_pnode; /* parent node */
+
+struct maple_alloc {
+	unsigned long total;
+	unsigned char node_count;
+	unsigned int request_count;
+	struct maple_alloc *slot[MAPLE_ALLOC_SLOTS];
+};
 
 /*
  * If the tree contains a single entry at index 0, it is usually stored in
@@ -64,4 +84,52 @@ int mtree_insert(struct maple_tree *mt, unsigned long index,
 		void *entry, gfp_t gfp);
 int mtree_insert_range(struct maple_tree *mt, unsigned long first,
 		unsigned long last, void *entry, gfp_t gfp);
+
+/* Advanced API */
+
+struct ma_state {
+	struct maple_tree *tree;	/* The tree we're operating in */
+	unsigned long index;		/* The index we're operating on - range start */
+	unsigned long last;		/* The last index we're operating on - range end */
+	struct maple_enode *node;	/* The node containing this entry */
+	unsigned long min;		/* The minimum index of this node - implied pivot min */
+	unsigned long max;		/* The maximum index of this node - implied pivot max */
+	struct maple_alloc *alloc;	/* Allocated nodes for this operation */
+	unsigned char depth;		/* depth of tree descent during write */
+	unsigned char offset;
+	unsigned char mas_flags;
+};
+
+/*
+ * Special values for ma_state.node.
+ * MAS_START means we have not searched the tree.
+ * MAS_ROOT means we have searched the tree and the entry we found lives in
+ * the root of the tree (ie it has index 0, length 1 and is the only entry in
+ * the tree).
+ * MAS_NONE means we have searched the tree and there is no node in the
+ * tree for this entry.  For example, we searched for index 1 in an empty
+ * tree.  Or we have a tree which points to a full leaf node and we
+ * searched for an entry which is larger than can be contained in that
+ * leaf node.
+ * MA_ERROR represents an errno.  After dropping the lock and attempting
+ * to resolve the error, the walk would have to be restarted from the
+ * top of the tree as the tree may have been modified.
+ */
+#define MAS_START	((struct maple_enode *)1UL)
+#define MAS_ROOT	((struct maple_enode *)5UL)
+#define MAS_NONE	((struct maple_enode *)9UL)
+#define MAS_PAUSE	((struct maple_enode *)17UL)
+#define MA_ERROR(err) \
+		((struct maple_enode *)(((unsigned long)err << 2) | 2UL))
+
+#define MA_STATE(name, mt, first, end)					\
+	struct ma_state name = {					\
+		.tree = mt,						\
+		.index = first,						\
+		.last = end,						\
+		.node = MAS_START,					\
+		.min = 0,						\
+		.max = ULONG_MAX,					\
+	}
+
 #endif //_MAPLE_TREE_H
