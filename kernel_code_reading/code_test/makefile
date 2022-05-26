@@ -1,13 +1,15 @@
 PROGRAM := align_test queue_test \
 	map_test sort_test \
-	container_of_test percpu_test
+	container_of_test percpu_test \
+	bitmap_test btree_test maple_tree_test
 PROGRAM_OBJS := $(addsuffix .o, $(PROGRAM))
 SOURCES := $(wildcard *.c)
 ALL_OBJS := $(subst .c,.o,$(SOURCES))
 OBJS := $(filter-out $(PROGRAM_OBJS),$(ALL_OBJS))
-LIB :=
+LIB_SOURCE := $(wildcard lib/*.c)
+LIB := $(subst .c,.o,$(LIB_SOURCE))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -I../ -Ilib/
+CFLAGS = -I./ -Ilib/
 LD_FLAGS = -lm
 
 ifeq ($(DEBUG),1)
@@ -15,7 +17,7 @@ DEBUG_FLAGS = -g -DDEBUG
 endif
 
 # $(warning $(PROGRAM_OBJS))
-$(warning $(DEBUG))
+$(warning $(LIB_SOURCE))
 
 .PHONY: all clean cscope
 all: $(LIB) $(PROGRAM)
