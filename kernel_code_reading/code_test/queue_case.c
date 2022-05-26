@@ -46,7 +46,7 @@ void queue_show_status(struct kfifo *queue)
 {
 	printf("queue size is %d\n", kfifo_size(queue)); // buffer size
 	printf("queue available %d\n", kfifo_avail(queue)); // buffer available
-	printf("queue unused %d\n", kfifo_unused(queue)); // buffer unused, same as above?
+	printf("queue unused %d\n", kfifo_unused(&queue->kfifo)); // buffer unused, same as above?
 	printf("used number is %d\n", kfifo_len(queue)); // buffer used
 	printf("queue is empty: %s\n", kfifo_is_empty(queue)?"yes":"no");
 }

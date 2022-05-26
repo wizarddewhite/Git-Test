@@ -36,25 +36,25 @@ size_t upa_calculate(size_t reserved_size, size_t dyn_size, size_t atom_size)
 	size_t size_sum, min_unit_size, alloc_size;
 	int upa;
 
-	printf("    static_size   0x%x\n", static_size);
+	printf("    static_size   0x%lx\n", static_size);
 	/* size_sum: raw total size */
 	size_sum = __ALIGN_KERNEL(static_size + reserved_size + 
 			max(dyn_size, (size_t)PERCPU_DYNAMIC_EARLY_SIZE), PAGE_SIZE);
 	dyn_size = size_sum - static_size - reserved_size;
-	printf("    size_sum      0x%x\n", size_sum);
-	printf("    dyn_size      0x%x\n", dyn_size);
+	printf("    size_sum      0x%lx\n", size_sum);
+	printf("    dyn_size      0x%lx\n", dyn_size);
 
 	/* min_unit_size: minimum unit size */
 	min_unit_size = max_t(size_t, size_sum, PCPU_MIN_UNIT_SIZE);
-	printf("    min_unit_size 0x%x\n", min_unit_size);
+	printf("    min_unit_size 0x%lx\n", min_unit_size);
 
 	/* alloc_size: atom_size aligned for min_unit_size */
 	alloc_size = roundup(min_unit_size, atom_size);
-	printf("    alloc_size    0x%x\n", alloc_size);
+	printf("    alloc_size    0x%lx\n", alloc_size);
 
 	upa = alloc_size / min_unit_size;
 	printf("    upa  = alloc_size / min_size = %d\n", upa);
-	printf("    alloc_size%%upa = %d\n", alloc_size%upa);
+	printf("    alloc_size%%upa = %ld\n", alloc_size%upa);
 
 	return reserved_size + dyn_size + atom_size;
 }

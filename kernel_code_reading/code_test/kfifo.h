@@ -236,4 +236,15 @@ __kfifo_uint_must_check_helper( \
 )
 
 unsigned int __kfifo_max_r(unsigned int len, unsigned int recsize);
+int __kfifo_init(struct __kfifo *fifo, void *buffer,
+		unsigned int size, unsigned int esize);
+unsigned int kfifo_unused(struct __kfifo *fifo);
+unsigned int __kfifo_out(struct __kfifo *fifo,
+		void *buf, unsigned int len);
+unsigned int __kfifo_out_r(struct __kfifo *fifo, void *buf,
+		unsigned int len, size_t recsize);
+unsigned int __kfifo_in(struct __kfifo *fifo,
+		const void *buf, unsigned int len);
+unsigned int __kfifo_in_r(struct __kfifo *fifo, const void *buf,
+		unsigned int len, int recsize);
 #endif //_KFIFO_H_

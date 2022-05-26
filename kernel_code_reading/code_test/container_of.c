@@ -49,7 +49,7 @@ int main()
 
 	/* This is not correct */
 	p = block.c;
-	pb = container_of(p, struct test, c);
+	pb = container_of(&p, struct test, c);
 	printf("block.a %d, block.b %d block.c %d\n",
 			pb->a, pb->b, *pb->c);
 

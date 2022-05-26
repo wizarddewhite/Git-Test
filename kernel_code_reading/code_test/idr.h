@@ -39,4 +39,5 @@ struct idr {
 	//spinlock_t	  lock;
 };
 
+void idr_init(struct idr *idp);
 #endif
