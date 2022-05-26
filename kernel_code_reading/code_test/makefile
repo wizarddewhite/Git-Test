@@ -1,6 +1,6 @@
-PROGRAM := align_case queue_case \
-	map_case sort_case \
-	container_of percpu
+PROGRAM := align_test queue_test \
+	map_test sort_test \
+	container_of_test percpu_test
 PROGRAM_OBJS := $(addsuffix .o, $(PROGRAM))
 SOURCES := $(wildcard *.c)
 ALL_OBJS := $(subst .c,.o,$(SOURCES))
