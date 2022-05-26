@@ -34,6 +34,57 @@
         "storageClassName": "local-ssd"
       },
       "status": {}
+    },
+    {
+      "metadata": {
+        "name": "data1"
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "3000Gi"
+          }
+        },
+        "storageClassName": "hdd"
+      },
+      "status": {}
+    },
+    {
+      "metadata": {
+        "name": "data2"
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "3000Gi"
+          }
+        },
+        "storageClassName": "hdd"
+      },
+      "status": {}
+    },
+    {
+      "metadata": {
+        "name": "data3"
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "4000Gi"
+          }
+        },
+        "storageClassName": "nvme"
+      },
+      "status": {}
     }
   ]
 }

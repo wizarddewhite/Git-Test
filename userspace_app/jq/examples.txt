@@ -42,6 +42,13 @@ jq '.colors | to_entries[] | [.key, .value.sold]' example2.json
 jq -r '.colors | to_entries[] | [.key, .value.sold] | @csv' example2.json
 jq -r '.colors | to_entries[] | [.key, .value.sold] | join(", ")' example2.json
 
+1.2.4 Print value if content [not] matches a string
+
+jq '.volumeClaimTemplates[] | select(.spec.storageClassName | contains("hdd")) | .spec.resources.requests.storage' example.json
+jq '.volumeClaimTemplates[] | select(.spec.storageClassName | contains("hdd") | not) | [.metadata.name, .spec.resources.requests.storage]' example.json
+
+jq '.volumeClaimTemplates[] | select(.spec.storageClassName | inside("hdd", "nvme")) | .spec.resources.requests.storage' example.json
+
 2. Modify
 
 2.1 Modify a key's value
