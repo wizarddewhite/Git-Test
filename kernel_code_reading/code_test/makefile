@@ -1,29 +1,33 @@
-SOURCES := $(wildcard *.c)
-PROGRAM := $(basename $(SOURCES))
-DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -g
-
-#$(warning $(MAKECMDGOALS) $(PROGRAM))
-
-.PHONY: all clean cscope
-all: align_case queue_case cscope \
+PROGRAM := align_case queue_case \
 	map_case sort_case \
 	container_of percpu
+PROGRAM_OBJS := $(addsuffix .o, $(PROGRAM))
+SOURCES := $(wildcard *.c)
+ALL_OBJS := $(subst .c,.o,$(SOURCES))
+OBJS := $(filter-out $(PROGRAM_OBJS),$(ALL_OBJS))
+LIB :=
+DEPENDENCY = $(subst .c,.d,$(SOURCES))
+CFLAGS = -I../ -Ilib/
+LD_FLAGS = -lm
 
-queue_case: queue_case.c kfifo.c
-	gcc -o $@ -g $^
+ifeq ($(DEBUG),1)
+DEBUG_FLAGS = -g -DDEBUG
+endif
 
-map_case: map_case.c idr.c
-	gcc -o $@ -g $^
+# $(warning $(PROGRAM_OBJS))
+$(warning $(DEBUG))
 
-sort_case: sort_case.c sort.c
-	gcc -o $@ -g $^
+.PHONY: all clean cscope
+all: $(LIB) $(PROGRAM)
 
-%: %.o
-	gcc $(CFLAGS) $<  -o $@ 
+%: %.c $(OBJS)
+	gcc $(CFLAGS) $(DEBUG_FLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
 
-%.o : %.c
-	gcc $(CFLAGS) -c $< -o $@
+%.o: %.c
+	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
+
+%.a: %.o
+	ar cr $@ $^
 
 ifneq "$(MAKECMDGOALS)" "clean"
         include $(DEPENDENCY)
@@ -40,6 +44,7 @@ clean:
 	rm -f *.o
 	rm -f cscope.*
 	rm -f tags
+	rm -f $(LIB)
 
 cscope:
 	cscope -Rbkq
