@@ -2,18 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <stdarg.h>
 #include "btree.h"
-
-void panic(const char *fmt, ...)
-{
-	va_list args;
-	printf("PANIC: ");
-	va_start(args, fmt);
-	vprintf(fmt, args);
-	va_end(args);
-	exit(1);
-}
 
 struct btree_node *new_btree_node()
 {
