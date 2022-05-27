@@ -78,4 +78,6 @@
 	type __max2 = (y);			\
 	__max1 > __max2 ? __max1: __max2; })
 
+# define likely(x)	__builtin_expect(!!(x), 1)
+# define unlikely(x)	__builtin_expect(!!(x), 0)
 #endif // _LINUX_KERNEL_
