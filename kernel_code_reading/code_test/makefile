@@ -22,8 +22,8 @@ $(warning $(LIB_SOURCE))
 .PHONY: all clean cscope
 all: $(LIB) $(PROGRAM)
 
-%: %.c $(OBJS)
-	gcc $(CFLAGS) $(DEBUG_FLAGS) $(LD_FLAGS) $^ $(LIB) -o $@
+%: %.c $(LIB)
+	gcc $(CFLAGS) $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
 
 %.o: %.c
 	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
