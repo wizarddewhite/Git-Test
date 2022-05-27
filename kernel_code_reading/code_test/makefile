@@ -1,3 +1,4 @@
+ifeq ($(MIX),1)
 PROGRAM := align_test queue_test \
 	map_test sort_test \
 	container_of_test percpu_test \
@@ -6,6 +7,11 @@ PROGRAM_OBJS := $(addsuffix .o, $(PROGRAM))
 SOURCES := $(wildcard *.c)
 ALL_OBJS := $(subst .c,.o,$(SOURCES))
 OBJS := $(filter-out $(PROGRAM_OBJS),$(ALL_OBJS))
+else
+SOURCES := $(wildcard *.c)
+PROGRAM := $(subst .c,,$(SOURCES))
+endif
+
 LIB_SOURCE := $(wildcard lib/*.c)
 LIB := $(subst .c,.o,$(LIB_SOURCE))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
