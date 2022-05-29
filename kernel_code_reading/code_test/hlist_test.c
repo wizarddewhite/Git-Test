@@ -18,7 +18,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "hlist_case.h"
+#include "hlist.h"
+
+#define HASHENTRIES 32
+
+struct dummy_struct {
+	int index;
+	char name[12];
+	struct hlist_node name_hlist;
+};
 
 struct hlist_head head[HASHENTRIES];
 
