@@ -35,4 +35,11 @@ void warn_slowpath_fmt(const char *file, const int line, unsigned taint,
 })
 #endif
 
+#define BUG() do { \
+	printf("BUG: failure at %s:%d/%s()!\n", __FILE__, __LINE__, __func__); \
+	abort(); \
+} while (0)
+
+#define BUG_ON(condition) do { if (condition) BUG(); } while (0)
+
 #endif // _ASM_GENERIC_BUG_H

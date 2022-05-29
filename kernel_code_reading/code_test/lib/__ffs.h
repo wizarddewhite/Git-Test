@@ -1,7 +1,7 @@
 #ifndef _ASM_GENERIC_BITOPS___FFS_H_
 #define _ASM_GENERIC_BITOPS___FFS_H_
 
-#include <asm/types.h>
+#include "types.h"
 
 /**
  * __ffs - find first bit in word.
@@ -38,20 +38,6 @@ static unsigned long __ffs(unsigned long word)
 	if ((word & 0x1) == 0)
 		num += 1;
 	return num;
-}
-
-/**
- * __ffs - find first set bit in word
- * @word: The word to search
- *
- * Undefined if no bit exists, so code should check against 0 first.
- */
-unsigned long __ffs_x86(unsigned long word)
-{
-	asm("rep; bsf %1,%0"
-		: "=r" (word)
-		: "rm" (word));
-	return word;
 }
 
 #endif /* _ASM_GENERIC_BITOPS___FFS_H_ */

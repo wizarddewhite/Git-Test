@@ -1,4 +1,5 @@
 #include "radix_tree.h"
+#include "__ffs.h"
 
 static inline gfp_t root_gfp_mask(const struct radix_tree_root *root)
 {
