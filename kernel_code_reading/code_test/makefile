@@ -1,6 +1,6 @@
 ifeq ($(MIX),1)
 PROGRAM := align_test queue_test \
-	map_test sort_test \
+	sort_test \
 	container_of_test percpu_test \
 	bitmap_test btree_test maple_tree_test
 PROGRAM_OBJS := $(addsuffix .o, $(PROGRAM))
