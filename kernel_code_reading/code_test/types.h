@@ -35,4 +35,5 @@ struct callback_head {
 };
 #define rcu_head callback_head
 
+typedef unsigned int gfp_t;
 #endif
