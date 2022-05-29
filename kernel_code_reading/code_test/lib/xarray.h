@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include "bug.h"
 #include "types.h"
+#include "list.h"
+#include "errno-base.h"
 
 /*
  * The bottom two bits of the entry determine how the XArray interprets
@@ -423,4 +425,146 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
 #define xa_for_each(xa, index, entry) \
 	xa_for_each_start(xa, index, entry, 0)
 
+/*
+ * The xarray is constructed out of a set of 'chunks' of pointers.  Choosing
+ * the best chunk size requires some tradeoffs.  A power of two recommends
+ * itself so that we can walk the tree based purely on shifts and masks.
+ * Generally, the larger the better; as the number of slots per level of the
+ * tree increases, the less tall the tree needs to be.  But that needs to be
+ * balanced against the memory consumption of each node.  On a 64-bit system,
+ * xa_node is currently 576 bytes, and we get 7 of them per 4kB page.  If we
+ * doubled the number of slots per node, we'd get only 3 nodes per 4kB page.
+ */
+#ifndef XA_CHUNK_SHIFT
+#define XA_CHUNK_SHIFT		(4)
+#endif
+#define XA_CHUNK_SIZE		(1UL << XA_CHUNK_SHIFT)
+#define XA_CHUNK_MASK		(XA_CHUNK_SIZE - 1)
+#define XA_MAX_MARKS		3
+#define XA_MARK_LONGS		DIV_ROUND_UP(XA_CHUNK_SIZE, BITS_PER_LONG)
+
+/*
+ * @count is the count of every non-NULL element in the ->slots array
+ * whether that is a value entry, a retry entry, a user pointer,
+ * a sibling entry or a pointer to the next level of the tree.
+ * @nr_values is the count of every element in ->slots which is
+ * either a value entry or a sibling of a value entry.
+ */
+struct xa_node {
+	unsigned char	shift;		/* Bits remaining in each slot */
+	unsigned char	offset;		/* Slot offset in parent */
+	unsigned char	count;		/* Total entry count */
+	unsigned char	nr_values;	/* Value entry count */
+	struct xa_node *parent;		/* NULL at top of tree */
+	struct xarray	*array;		/* The array we belong to */
+	union {
+		struct list_head private_list;	/* For tree user */
+		struct rcu_head	rcu_head;	/* Used when freeing node */
+	};
+	void 		*slots[XA_CHUNK_SIZE];
+	union {
+		unsigned long	tags[XA_MAX_MARKS][XA_MARK_LONGS];
+		unsigned long	marks[XA_MAX_MARKS][XA_MARK_LONGS];
+	};
+};
+
+#define XA_RETRY_ENTRY		xa_mk_internal(256)
+
+/**
+ * xa_is_retry() - Is the entry a retry entry?
+ * @entry: Entry retrieved from the XArray
+ *
+ * Return: %true if the entry is a retry entry.
+ */
+static inline bool xa_is_retry(const void *entry)
+{
+	return unlikely(entry == XA_RETRY_ENTRY);
+}
+
+/**
+ * xa_is_advanced() - Is the entry only permitted for the advanced API?
+ * @entry: Entry to be stored in the XArray.
+ *
+ * Return: %true if the entry cannot be stored by the normal API.
+ */
+static inline bool xa_is_advanced(const void *entry)
+{
+	return xa_is_internal(entry) && (entry <= XA_RETRY_ENTRY);
+}
+
+/**
+ * typedef xa_update_node_t - A callback function from the XArray.
+ * @node: The node which is being processed
+ *
+ * This function is called every time the XArray updates the count of
+ * present and value entries in a node.  It allows advanced users to
+ * maintain the private_list in the node.
+ *
+ * Context: The xa_lock is held and interrupts may be disabled.
+ *	    Implementations should not drop the xa_lock, nor re-enable
+ *	    interrupts.
+ */
+typedef void (*xa_update_node_t)(struct xa_node *node);
+
+/*
+ * The xa_state is opaque to its users.  It contains various different pieces
+ * of state involved in the current operation on the XArray.  It should be
+ * declared on the stack and passed between the various internal routines.
+ * The various elements in it should not be accessed directly, but only
+ * through the provided accessor functions.  The below documentation is for
+ * the benefit of those working on the code, not for users of the XArray.
+ *
+ * @xa_node usually points to the xa_node containing the slot we're operating
+ * on (and @xa_offset is the offset in the slots array).  If there is a
+ * single entry in the array at index 0, there are no allocated xa_nodes to
+ * point to, and so we store %NULL in @xa_node.  @xa_node is set to
+ * the value %XAS_RESTART if the xa_state is not walked to the correct
+ * position in the tree of nodes for this operation.  If an error occurs
+ * during an operation, it is set to an %XAS_ERROR value.  If we run off the
+ * end of the allocated nodes, it is set to %XAS_BOUNDS.
+ */
+struct xa_state {
+	struct xarray *xa;
+	unsigned long xa_index;
+	unsigned char xa_shift;
+	unsigned char xa_sibs;
+	unsigned char xa_offset;
+	unsigned char xa_pad;		/* Helps gcc generate better code */
+	struct xa_node *xa_node;
+	struct xa_node *xa_alloc;
+	xa_update_node_t xa_update;
+	struct list_lru *xa_lru;
+};
+
+/*
+ * We encode errnos in the xas->xa_node.  If an error has happened, we need to
+ * drop the lock to fix it, and once we've done so the xa_state is invalid.
+ */
+#define XA_ERROR(errno) ((struct xa_node *)(((unsigned long)errno << 2) | 2UL))
+#define XAS_BOUNDS	((struct xa_node *)1UL)
+#define XAS_RESTART	((struct xa_node *)3UL)
+
+#define __XA_STATE(array, index, shift, sibs)  {	\
+	.xa = array,					\
+	.xa_index = index,				\
+	.xa_shift = shift,				\
+	.xa_sibs = sibs,				\
+	.xa_offset = 0,					\
+	.xa_pad = 0,					\
+	.xa_node = XAS_RESTART,				\
+	.xa_alloc = NULL,				\
+	.xa_update = NULL,				\
+	.xa_lru = NULL,					\
+}
+
+/**
+ * XA_STATE() - Declare an XArray operation state.
+ * @name: Name of this operation state (usually xas).
+ * @array: Array to operate on.
+ * @index: Initial index of interest.
+ *
+ * Declare and initialise an xa_state on the stack.
+ */
+#define XA_STATE(name, array, index)				\
+	struct xa_state name = __XA_STATE(array, index, 0, 0)
 #endif /* _XARRAY_H */

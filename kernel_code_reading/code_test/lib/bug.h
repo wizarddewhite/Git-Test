@@ -24,6 +24,8 @@ void warn_slowpath_fmt(const char *file, const int line, unsigned taint,
 })
 #endif
 
+#define WARN_ON_ONCE(condition) WARN_ON(condition)
+
 #ifndef WARN
 #define WARN(condition, format...) ({					\
 	int __ret_warn_on = !!(condition);				\
