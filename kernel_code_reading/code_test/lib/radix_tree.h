@@ -7,6 +7,7 @@
 #include "bitops.h"
 #include "types.h"
 #include "bug.h"
+#include "list.h"
 
 #define IDR_FREE	0
 
@@ -48,11 +49,13 @@ struct radix_tree_node {
 	struct radix_tree_node *parent;		/* Used when ascending tree */
 	struct radix_tree_root *root;		/* The tree we belong to */
 	union {
-		//struct list_head private_list;	/* For tree user */
+		struct list_head private_list;	/* For tree user */
 		//struct rcu_head	rcu_head;	/* Used when freeing node */
 	};
 	void 		*slots[RADIX_TREE_MAP_SIZE];
+			// [16]
 	unsigned long	tags[RADIX_TREE_MAX_TAGS][RADIX_TREE_TAG_LONGS];
+			// [3][1]
 };
 
 struct radix_tree_root {

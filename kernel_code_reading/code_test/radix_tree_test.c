@@ -134,5 +134,6 @@ int main()
 	//small_test();
 	//large_test();
 	//idr_test();
-	lookup_delete_test();
+	// lookup_delete_test();
+	printf("node size %d\n", sizeof(struct radix_tree_node));
 }
