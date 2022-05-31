@@ -30,19 +30,23 @@ $ jq '{name: .volumeClaimTemplates[].metadata.name, class: .volumeClaimTemplates
 
 jq '.volumeClaimTemplates | map(.metadata.name == "sysvol") | index(true)' example.json
 
-1.2.2 Print Key or with its value
+1.2.2 Print counts of array
+
+jq '.volumeClaimTemplates | length' example.json
+
+1.2.3 Print Key or with its value
 
 jq '.colors | to_entries[] | .key' example2.json
 jq '.colors | to_entries[] | {"key": .key, "value": .value.sold}' example2.json
 
 jq '.colors | to_entries[] | [.key, .value.sold]' example2.json
 
-1.2.3 Print a csv
+1.2.4 Print a csv
 
 jq -r '.colors | to_entries[] | [.key, .value.sold] | @csv' example2.json
 jq -r '.colors | to_entries[] | [.key, .value.sold] | join(", ")' example2.json
 
-1.2.4 Print value if content [not] matches a string
+1.2.5 Print value if content [not] matches a string
 
 jq '.volumeClaimTemplates[] | select(.spec.storageClassName | contains("hdd")) | .spec.resources.requests.storage' example.json
 jq '.volumeClaimTemplates[] | select(.spec.storageClassName | contains("hdd") | not) | [.metadata.name, .spec.resources.requests.storage]' example.json
