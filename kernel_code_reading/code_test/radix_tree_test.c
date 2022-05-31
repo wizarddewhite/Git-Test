@@ -25,7 +25,7 @@ static unsigned long get_offset(struct radix_tree_node *node)
 	return offset;
 }
 
-void dump_radix_tree(struct radix_tree_node *node, int level,
+void dump_radix_tree(struct radix_tree_node *parent, struct radix_tree_node *node, int level,
 		bool supress, int index)
 {
 	int  i;
@@ -36,7 +36,8 @@ void dump_radix_tree(struct radix_tree_node *node, int level,
 	/* This is a leaf, so print the index */
 	if (!radix_tree_is_internal_node(node)) {
 		struct item *iter = (struct item *)node;
-		printf("%4d(%x)\n", iter->index, index);
+		unsigned long offset = parent ? get_offset(parent) + index :0;
+		printf("    %016lx: %p\n", offset, iter);
 		return;
 	}
 
@@ -62,7 +63,7 @@ void dump_radix_tree(struct radix_tree_node *node, int level,
 		else
 			printf("%*s|[%02d]", level*4, " ", i);
 		if (node->slots[i])
-			dump_radix_tree(node->slots[i], level+1, supress, i);
+			dump_radix_tree(node, node->slots[i], level+1, supress, i);
 		else
 			printf("\n");
 	}
@@ -83,7 +84,7 @@ void small_test()
 		radix_tree_insert(&rx_tree, i, &items[i]);
 	}
 	radix_tree_insert(&rx_tree, 0xff, &items[2]);
-	dump_radix_tree(rx_tree.rnode, 0, false, 0);
+	dump_radix_tree(NULL, rx_tree.rnode, 0, false, 0);
 }
 
 void large_test()
@@ -100,7 +101,7 @@ void large_test()
 	//radix_tree_insert(&rx_tree, 0xffffffff, &items[i]);
 	radix_tree_insert(&rx_tree, 0xf000000000000000, &items[i]);
 	radix_tree_insert(&rx_tree, 0xffffffffffffffff, &items[i]);
-	dump_radix_tree(rx_tree.rnode, 0, true, 0);
+	dump_radix_tree(NULL, rx_tree.rnode, 0, true, 0);
 }
 
 void lookup_delete_test()
@@ -118,7 +119,7 @@ void lookup_delete_test()
 			continue;
 		radix_tree_insert(&rx_tree, i, &items[i]);
 	}
-	dump_radix_tree(rx_tree.rnode, 0, false, 0);
+	dump_radix_tree(NULL, rx_tree.rnode, 0, false, 0);
 
 	item = radix_tree_lookup(&rx_tree, 2);
 	if (item)
@@ -131,9 +132,8 @@ void lookup_delete_test()
 
 int main()
 {
-	//small_test();
+	small_test();
 	//large_test();
 	//idr_test();
 	// lookup_delete_test();
-	printf("node size %d\n", sizeof(struct radix_tree_node));
 }
