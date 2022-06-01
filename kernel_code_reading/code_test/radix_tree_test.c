@@ -121,19 +121,28 @@ void lookup_delete_test()
 	}
 	dump_radix_tree(NULL, rx_tree.rnode, 0, false, 0);
 
-	item = radix_tree_lookup(&rx_tree, 2);
-	if (item)
-		printf("Found\n");
-	else
-		printf("Not Found\n");
+	for (i = 0; i < 10; i++) {
+		if (i == 2)
+			continue;
+		item = radix_tree_lookup(&rx_tree, i);
+		BUG_ON(item != &items[i]);
+	}
 
+	item = radix_tree_lookup(&rx_tree, 2);
+	BUG_ON(item);
+
+	item = radix_tree_lookup(&rx_tree, 0);
+	printf("%d's item is %p\n", 0, item);
 	radix_tree_delete(&rx_tree, 0);
+	item = radix_tree_lookup(&rx_tree, 0);
+	if (!item)
+		printf("%d's is removed\n", 0);
 }
 
 int main()
 {
-	small_test();
-	//large_test();
+	// small_test();
+	// large_test();
 	//idr_test();
-	// lookup_delete_test();
+	lookup_delete_test();
 }
