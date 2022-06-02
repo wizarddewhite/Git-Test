@@ -237,6 +237,11 @@ static int radix_tree_extend(struct radix_tree_root *root, gfp_t gfp,
 	while (index > shift_maxindex(maxshift))
 		maxshift += RADIX_TREE_MAP_SHIFT;
 
+	// another way to get maxshift
+	int bits = __ffs(index);
+	if (maxshift != roundup(bits, RADIX_TREE_MAP_SHIFT))
+		printf("hmm....\n");
+
 	entry = (root->rnode);
 	if (!entry && (!is_idr(root) || root_tag_get(root, IDR_FREE)))
 		goto out;
