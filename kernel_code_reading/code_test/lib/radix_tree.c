@@ -642,7 +642,7 @@ static bool __radix_tree_delete(struct radix_tree_root *root,
 			node_tag_clear(root, node, tag, offset);
 
 	replace_slot(slot, NULL, node, -1, exceptional);
-	return node ;//&& delete_node(root, node, NULL, NULL);
+	return node && delete_node(root, node, NULL, NULL);
 }
 
 void *radix_tree_delete_item(struct radix_tree_root *root,

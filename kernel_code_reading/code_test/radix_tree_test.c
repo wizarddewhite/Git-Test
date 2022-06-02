@@ -104,6 +104,26 @@ void large_test()
 	dump_radix_tree(NULL, rx_tree.rnode, 0, true, 0);
 }
 
+void shrink_test()
+{
+	int i;
+
+	items = malloc(sizeof(struct item) * num);
+	if (!items)
+		return;
+
+	for (i = 0; i < num; i++) {
+		items[i].index = i;
+	}
+	//radix_tree_insert(&rx_tree, 0xffffffff, &items[i]);
+	radix_tree_insert(&rx_tree, 0xf000000000000000, &items[i]);
+	radix_tree_insert(&rx_tree, 0xffffffffffffffff, &items[i]);
+	dump_radix_tree(NULL, rx_tree.rnode, 0, true, 0);
+	radix_tree_delete(&rx_tree, 0xf000000000000000);
+	printf("After delete 0xf000000000000000\n");
+	dump_radix_tree(NULL, rx_tree.rnode, 0, true, 0);
+}
+
 void lookup_delete_test()
 {
 	int i;
@@ -142,7 +162,8 @@ void lookup_delete_test()
 int main()
 {
 	// small_test();
-	large_test();
+	// large_test();
 	//idr_test();
 	// lookup_delete_test();
+	shrink_test();
 }
