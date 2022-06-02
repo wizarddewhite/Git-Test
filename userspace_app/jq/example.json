@@ -74,9 +74,6 @@
         "name": "data3"
       },
       "spec": {
-        "accessModes": [
-          "ReadWriteOnce"
-        ],
         "resources": {
           "requests": {
             "storage": "4000Gi"

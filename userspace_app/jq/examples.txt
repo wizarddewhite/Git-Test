@@ -53,6 +53,10 @@ jq '.volumeClaimTemplates[] | select(.spec.storageClassName | contains("hdd") | 
 
 jq '.volumeClaimTemplates[] | select(.spec.storageClassName | inside("hdd", "nvme")) | .spec.resources.requests.storage' example.json
 
+1.2.6 Print default value if not exist
+
+jq '.volumeClaimTemplates[] |  [.metadata.name, .spec.accessModes[0] // "ReadWriteOnce"]' example.json
+
 2. Modify
 
 2.1 Modify a key's value
