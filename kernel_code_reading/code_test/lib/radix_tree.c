@@ -239,7 +239,7 @@ static int radix_tree_extend(struct radix_tree_root *root, gfp_t gfp,
 
 	// another way to get maxshift
 	int bits = __ffs(index);
-	if (maxshift != roundup(bits, RADIX_TREE_MAP_SHIFT))
+	if (maxshift != round_up(bits, RADIX_TREE_MAP_SHIFT))
 		printf("hmm....\n");
 
 	entry = (root->rnode);
