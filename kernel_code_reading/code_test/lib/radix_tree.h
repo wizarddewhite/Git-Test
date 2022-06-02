@@ -28,6 +28,7 @@ static inline bool radix_tree_is_internal_node(void *ptr)
 // This is the radix, divide index for each 4 bits
 #define RADIX_TREE_MAP_SHIFT	4
 #define RADIX_TREE_MAP_SIZE	(1UL << RADIX_TREE_MAP_SHIFT)
+#define RADIX_TREE_MAX_SHIFT	(BITS_PER_LONG - RADIX_TREE_MAP_SHIFT)
 #define RADIX_TREE_MAP_MASK	(RADIX_TREE_MAP_SIZE-1)
 #define RADIX_TREE_TAG_LONGS	BITS_TO_LONGS(RADIX_TREE_MAP_SIZE )
 

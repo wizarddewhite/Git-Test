@@ -261,7 +261,7 @@ static int radix_tree_extend(struct radix_tree_root *root, gfp_t gfp,
 			}
 		}
 
-		BUG_ON(shift > BITS_PER_LONG);
+		BUG_ON(shift > RADIX_TREE_MAX_SHIFT);
 		if (radix_tree_is_internal_node(entry)) {
 			entry_to_node(entry)->parent = node;
 		} else if (radix_tree_exceptional_entry(entry)) {

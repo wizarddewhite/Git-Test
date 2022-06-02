@@ -142,7 +142,7 @@ void lookup_delete_test()
 int main()
 {
 	// small_test();
-	// large_test();
+	large_test();
 	//idr_test();
-	lookup_delete_test();
+	// lookup_delete_test();
 }
