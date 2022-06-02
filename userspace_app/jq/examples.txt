@@ -57,6 +57,15 @@ jq '.volumeClaimTemplates[] | select(.spec.storageClassName | inside("hdd", "nvm
 
 jq '.volumeClaimTemplates[] |  [.metadata.name, .spec.accessModes[0] // "ReadWriteOnce"]' example.json
 
+1.2.7 Extract content by regex
+
+https://stedolan.github.io/jq/manual/#RegularexpressionsPCRE
+
+# convert "150Gi" to 150
+jq '.volumeClaimTemplates |= map(.spec.resources.requests.storage
+		=(.spec.resources.requests.storage | scan("(?<a>[0-9]+)Gi") |
+			.[0] | tonumber))' example.json
+
 2. Modify
 
 2.1 Modify a key's value
