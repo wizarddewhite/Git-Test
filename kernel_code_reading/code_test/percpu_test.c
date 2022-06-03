@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <math.h>
 #include "kernel.h"
-#define INT_MAX		((int)(~0U>>1))
 #define PAGE_SIZE (4 << 10)
 #define PAGE_MASK	(~(PAGE_SIZE-1))
 #define PERCPU_DYNAMIC_EARLY_SIZE	(12 << 10)

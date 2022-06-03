@@ -1,7 +1,6 @@
 #ifndef _LINUX_KERNEL_
 #define _LINUX_KERNEL_
-
-#define INT_MAX		((int)(~0U>>1))
+#include "limits.h"
 
 #define MAX_ERRNO	4095
 #define __force
