@@ -34,6 +34,7 @@
  * Errors are also represented as internal entries, but use the negative
  * space (-4094 to -2).  They're never stored in the slots array; only
  * returned by the normal API.
+ * Question: but xa_is_err() return true for -1.
  *
  * Note: the internal entry's value above, e.g. 256, -2 is the raw value. Not
  * the one encoded.

@@ -23,10 +23,14 @@ static void xa_internal_test()
 	printf("entry1 is %s than entry\n", entry1 > entry ? "bigger":"smaller");
 
 	entry = xa_mk_internal(-MAX_ERRNO);
+	if (!xa_is_err(entry))
+		panic("%016lx is not a valid errno\n", (unsigned long)(-MAX_ERRNO));
 	printf("  MAX_ERRNO = %016lx \n", (unsigned long)MAX_ERRNO);
 	printf("- MAX_ERRNO = %lx \n", (unsigned long)(-MAX_ERRNO));
 	printf("MAX_ERR ent = %lx \n", (unsigned long)entry);
 	entry = xa_mk_internal(-1);
+	if (!xa_is_err(entry))
+		panic("%016lx is not a valid errno\n", (unsigned long)(-1));
 	printf("  MIN_ERRNO = %016lx \n", (unsigned long)1);
 	printf("- MIN_ERRNO = %016lx \n", (unsigned long)(-1));
 	printf("MIN_ERR ent = %lx \n", (unsigned long)entry);
