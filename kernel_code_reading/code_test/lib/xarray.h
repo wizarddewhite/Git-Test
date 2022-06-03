@@ -1,5 +1,12 @@
 #ifndef _XARRAY_H
 #define _XARRAY_H
+/*
+ * eXtensible Arrays
+ * Copyright (c) 2017 Microsoft Corporation
+ * Author: Matthew Wilcox <willy@infradead.org>
+ *
+ * See Documentation/core-api/xarray.rst for how to use the XArray.
+ */
 
 #include <stdbool.h>
 #include "bug.h"
@@ -29,6 +36,10 @@
  * returned by the normal API.
  */
 
+/* This is because 
+ * x1: Value entry
+ * So we could only use (BITS_PER_LONG - 1) bits.
+ */
 #define BITS_PER_XA_VALUE	(BITS_PER_LONG - 1)
 
 /**
@@ -40,6 +51,10 @@
  */
 static inline void *xa_mk_value(unsigned long v)
 {
+	/* This also because 
+	 *   a. Value entry bottom two bits is x1
+	 *   b. two complement encoding, (v<0) means highest bit is set
+	 */
 	WARN_ON((long)v < 0);
 	return (void *)((v << 1) | 1);
 }
