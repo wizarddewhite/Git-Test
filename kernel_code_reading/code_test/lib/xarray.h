@@ -230,6 +230,29 @@ static inline int xa_err(void *entry)
 	return 0;
 }
 
+/**
+ * struct xa_limit - Represents a range of IDs.
+ * @min: The lowest ID to allocate (inclusive).
+ * @max: The maximum ID to allocate (inclusive).
+ *
+ * This structure is used either directly or via the XA_LIMIT() macro
+ * to communicate the range of IDs that are valid for allocation.
+ * Three common ranges are predefined for you:
+ * * xa_limit_32b	- [0 - UINT_MAX]
+ * * xa_limit_31b	- [0 - INT_MAX]
+ * * xa_limit_16b	- [0 - USHRT_MAX]
+ */
+struct xa_limit {
+	u32 max;
+	u32 min;
+};
+
+#define XA_LIMIT(_min, _max) (struct xa_limit) { .min = _min, .max = _max }
+
+#define xa_limit_32b	XA_LIMIT(0, UINT_MAX)
+#define xa_limit_31b	XA_LIMIT(0, INT_MAX)
+#define xa_limit_16b	XA_LIMIT(0, USHRT_MAX)
+
 typedef unsigned xa_mark_t;
 #define XA_MARK_0		((__force xa_mark_t)0U)
 #define XA_MARK_1		((__force xa_mark_t)1U)
@@ -255,6 +278,10 @@ enum xa_lock_type {
 #define XA_FLAGS_ACCOUNT	((__force gfp_t)32U)
 #define XA_FLAGS_MARK(mark)	((__force gfp_t)((1U << __GFP_BITS_SHIFT) << \
 						(__force unsigned)(mark)))
+
+/* ALLOC is for a normal 0-based alloc.  ALLOC1 is for an 1-based alloc */
+#define XA_FLAGS_ALLOC	(XA_FLAGS_TRACK_FREE | XA_FLAGS_MARK(XA_FREE_MARK))
+#define XA_FLAGS_ALLOC1	(XA_FLAGS_TRACK_FREE | XA_FLAGS_ZERO_BUSY)
 
 /**
  * struct xarray - The anchor of the XArray.
@@ -307,6 +334,40 @@ struct xarray {
  * compiletime instead of runtime.
  */
 #define DEFINE_XARRAY(name) DEFINE_XARRAY_FLAGS(name, 0)
+
+/**
+ * DEFINE_XARRAY_ALLOC() - Define an XArray which allocates IDs starting at 0.
+ * @name: A string that names your XArray.
+ *
+ * This is intended for file scope definitions of allocating XArrays.
+ * See also DEFINE_XARRAY().
+ */
+#define DEFINE_XARRAY_ALLOC(name) DEFINE_XARRAY_FLAGS(name, XA_FLAGS_ALLOC)
+
+/**
+ * DEFINE_XARRAY_ALLOC1() - Define an XArray which allocates IDs starting at 1.
+ * @name: A string that names your XArray.
+ *
+ * This is intended for file scope definitions of allocating XArrays.
+ * See also DEFINE_XARRAY().
+ */
+#define DEFINE_XARRAY_ALLOC1(name) DEFINE_XARRAY_FLAGS(name, XA_FLAGS_ALLOC1)
+
+void *xa_load(struct xarray *, unsigned long index);
+void *xa_store(struct xarray *, unsigned long index, void *entry, gfp_t);
+void *xa_erase(struct xarray *, unsigned long index);
+void *xa_store_range(struct xarray *, unsigned long first, unsigned long last,
+			void *entry, gfp_t);
+bool xa_get_mark(struct xarray *, unsigned long index, xa_mark_t);
+void xa_set_mark(struct xarray *, unsigned long index, xa_mark_t);
+void xa_clear_mark(struct xarray *, unsigned long index, xa_mark_t);
+void *xa_find(struct xarray *xa, unsigned long *index,
+		unsigned long max, xa_mark_t);
+void *xa_find_after(struct xarray *xa, unsigned long *index,
+		unsigned long max, xa_mark_t);
+unsigned int xa_extract(struct xarray *, void **dst, unsigned long start,
+		unsigned long max, unsigned int n, xa_mark_t);
+void xa_destroy(struct xarray *);
 
 /**
  * xa_init_flags() - Initialise an empty XArray with flags.
@@ -444,6 +505,76 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
 #define xa_for_each(xa, index, entry) \
 	xa_for_each_start(xa, index, entry, 0)
 
+/**
+ * xa_for_each_marked() - Iterate over marked entries in an XArray.
+ * @xa: XArray.
+ * @index: Index of @entry.
+ * @entry: Entry retrieved from array.
+ * @filter: Selection criterion.
+ *
+ * During the iteration, @entry will have the value of the entry stored
+ * in @xa at @index.  The iteration will skip all entries in the array
+ * which do not match @filter.  You may modify @index during the iteration
+ * if you want to skip or reprocess indices.  It is safe to modify the array
+ * during the iteration.  At the end of the iteration, @entry will be set to
+ * NULL and @index will have a value less than or equal to max.
+ *
+ * xa_for_each_marked() is O(n.log(n)) while xas_for_each_marked() is O(n).
+ * You have to handle your own locking with xas_for_each(), and if you have
+ * to unlock after each iteration, it will also end up being O(n.log(n)).
+ * xa_for_each_marked() will spin if it hits a retry entry; if you intend to
+ * see retry entries, you should use the xas_for_each_marked() iterator
+ * instead.  The xas_for_each_marked() iterator will expand into more inline
+ * code than xa_for_each_marked().
+ *
+ * Context: Any context.  Takes and releases the RCU lock.
+ */
+#define xa_for_each_marked(xa, index, entry, filter) \
+	for (index = 0, entry = xa_find(xa, &index, ULONG_MAX, filter); \
+	     entry; entry = xa_find_after(xa, &index, ULONG_MAX, filter))
+
+#define xa_trylock(xa)		// spin_trylock(&(xa)->xa_lock)
+#define xa_lock(xa)		// spin_lock(&(xa)->xa_lock)
+#define xa_unlock(xa)		// spin_unlock(&(xa)->xa_lock)
+#define xa_lock_bh(xa)		// spin_lock_bh(&(xa)->xa_lock)
+#define xa_unlock_bh(xa)	// spin_unlock_bh(&(xa)->xa_lock)
+#define xa_lock_irq(xa)		// spin_lock_irq(&(xa)->xa_lock)
+#define xa_unlock_irq(xa)	// spin_unlock_irq(&(xa)->xa_lock)
+#define xa_lock_irqsave(xa, flags) \
+				// spin_lock_irqsave(&(xa)->xa_lock, flags)
+#define xa_unlock_irqrestore(xa, flags) \
+				// spin_unlock_irqrestore(&(xa)->xa_lock, flags)
+#define xa_lock_nested(xa, subclass) \
+				// spin_lock_nested(&(xa)->xa_lock, subclass)
+#define xa_lock_bh_nested(xa, subclass) \
+				// spin_lock_bh_nested(&(xa)->xa_lock, subclass)
+#define xa_lock_irq_nested(xa, subclass) \
+				// spin_lock_irq_nested(&(xa)->xa_lock, subclass)
+#define xa_lock_irqsave_nested(xa, flags, subclass) \
+		// spin_lock_irqsave_nested(&(xa)->xa_lock, flags, subclass)
+
+/*
+ * Versions of the normal API which require the caller to hold the
+ * xa_lock.  If the GFP flags allow it, they will drop the lock to
+ * allocate memory, then reacquire it afterwards.  These functions
+ * may also re-enable interrupts if the XArray flags indicate the
+ * locking should be interrupt safe.
+ */
+void *__xa_erase(struct xarray *, unsigned long index);
+void *__xa_store(struct xarray *, unsigned long index, void *entry, gfp_t);
+void *__xa_cmpxchg(struct xarray *, unsigned long index, void *old,
+		void *entry, gfp_t);
+int __xa_insert(struct xarray *, unsigned long index,
+		void *entry, gfp_t);
+int __xa_alloc(struct xarray *, u32 *id, void *entry,
+		struct xa_limit, gfp_t);
+int __xa_alloc_cyclic(struct xarray *, u32 *id, void *entry,
+		struct xa_limit, u32 *next, gfp_t);
+void __xa_set_mark(struct xarray *, unsigned long index, xa_mark_t);
+void __xa_clear_mark(struct xarray *, unsigned long index, xa_mark_t);
+
+/* Everything below here is the Advanced API.  Proceed with caution. */
+
 /*
  * The xarray is constructed out of a set of 'chunks' of pointers.  Choosing
  * the best chunk size requires some tradeoffs.  A power of two recommends
@@ -486,6 +617,75 @@ struct xa_node {
 		unsigned long	marks[XA_MAX_MARKS][XA_MARK_LONGS];
 	};
 };
+
+void xa_dump(const struct xarray *);
+void xa_dump_node(const struct xa_node *);
+
+#ifdef XA_DEBUG
+#define XA_BUG_ON(xa, x) do {					\
+		if (x) {					\
+			xa_dump(xa);				\
+			BUG();					\
+		}						\
+	} while (0)
+#define XA_NODE_BUG_ON(node, x) do {				\
+		if (x) {					\
+			if (node) xa_dump_node(node);		\
+			BUG();					\
+		}						\
+	} while (0)
+#else
+#define XA_BUG_ON(xa, x)	do { } while (0)
+#define XA_NODE_BUG_ON(node, x)	do { } while (0)
+#endif
+
+/* Private */
+static inline void *xa_head(const struct xarray *xa)
+{
+	// return rcu_dereference_check(xa->xa_head, lockdep_is_held(&xa->xa_lock));
+	return xa->xa_head;
+}
+
+/* Private */
+static inline void *xa_head_locked(const struct xarray *xa)
+{
+	// return rcu_dereference_protected(xa->xa_head, lockdep_is_held(&xa->xa_lock));
+	return xa->xa_head;
+}
+
+/* Private */
+static inline void *xa_entry(const struct xarray *xa,
+				const struct xa_node *node, unsigned int offset)
+{
+	XA_NODE_BUG_ON(node, offset >= XA_CHUNK_SIZE);
+	// return rcu_dereference_check(node->slots[offset], lockdep_is_held(&xa->xa_lock));
+	return node->slots[offset];
+}
+
+/* Private */
+static inline void *xa_entry_locked(const struct xarray *xa,
+				const struct xa_node *node, unsigned int offset)
+{
+	XA_NODE_BUG_ON(node, offset >= XA_CHUNK_SIZE);
+	// return rcu_dereference_protected(node->slots[offset], lockdep_is_held(&xa->xa_lock));
+	return node->slots[offset];
+}
+
+/* Private */
+static inline struct xa_node *xa_parent(const struct xarray *xa,
+					const struct xa_node *node)
+{
+	// return rcu_dereference_check(node->parent, lockdep_is_held(&xa->xa_lock));
+	return node->parent;
+}
+
+/* Private */
+static inline struct xa_node *xa_parent_locked(const struct xarray *xa,
+					const struct xa_node *node)
+{
+	// return rcu_dereference_protected(node->parent, lockdep_is_held(&xa->xa_lock));
+	return node->parent;
+}
 
 #define XA_RETRY_ENTRY		xa_mk_internal(256)
 
