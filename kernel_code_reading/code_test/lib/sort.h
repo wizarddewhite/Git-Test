@@ -20,8 +20,7 @@
 #define __SORT_CASE_
 
 #include <stddef.h>
-
-typedef unsigned int u32;
+#include "types.h"
 
 void sort(void *base, size_t num, size_t size,
 	  int (*cmp_func)(const void *, const void *),
