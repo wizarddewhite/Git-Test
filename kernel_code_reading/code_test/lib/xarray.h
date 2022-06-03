@@ -27,13 +27,16 @@
  * Most internal entries are pointers to the next node in the tree.
  * The following internal entries have a special meaning:
  *
- * 0-62: Sibling entries
+ * 0-62: Sibling entries, the possible range is 0-255, only 0-62 is used now
  * 256: Retry entry
  * 257: Zero entry
  *
  * Errors are also represented as internal entries, but use the negative
  * space (-4094 to -2).  They're never stored in the slots array; only
  * returned by the normal API.
+ *
+ * Note: the internal entry's value above, e.g. 256, -2 is the raw value. Not
+ * the one encoded.
  */
 
 /* This is because 
