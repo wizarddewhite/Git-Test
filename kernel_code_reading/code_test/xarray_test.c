@@ -35,6 +35,10 @@ static void xa_internal_test()
 	printf("- MIN_ERRNO = %016lx \n", (unsigned long)(-1));
 	printf("MIN_ERR ent = %lx \n", (unsigned long)entry);
 	printf("error code in entry: %d\n", xa_err(entry));
+
+	printf("sizeof(xa_node): %ld\n", sizeof(struct xa_node));
+
+	xa_is_sibling(entry);
 }
 
 int main()

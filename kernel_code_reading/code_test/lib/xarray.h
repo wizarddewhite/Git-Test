@@ -13,6 +13,7 @@
 #include "types.h"
 #include "list.h"
 #include "errno-base.h"
+#include "kconfig.h"
 
 /*
  * The bottom two bits of the entry determine how the XArray interprets
@@ -685,6 +686,48 @@ static inline struct xa_node *xa_parent_locked(const struct xarray *xa,
 {
 	// return rcu_dereference_protected(node->parent, lockdep_is_held(&xa->xa_lock));
 	return node->parent;
+}
+
+/* Private */
+static inline void *xa_mk_node(const struct xa_node *node)
+{
+	return (void *)((unsigned long)node | 2);
+}
+
+/* Private */
+static inline struct xa_node *xa_to_node(const void *entry)
+{
+	return (struct xa_node *)((unsigned long)entry - 2);
+}
+
+/* Private */
+static inline bool xa_is_node(const void *entry)
+{
+	return xa_is_internal(entry) && (unsigned long)entry > 4096;
+}
+
+/* Private */
+static inline void *xa_mk_sibling(unsigned int offset)
+{
+	return xa_mk_internal(offset);
+}
+
+/* Private */
+static inline unsigned long xa_to_sibling(const void *entry)
+{
+	return xa_to_internal(entry);
+}
+
+/**
+ * xa_is_sibling() - Is the entry a sibling entry?
+ * @entry: Entry retrieved from the XArray
+ *
+ * Return: %true if the entry is a sibling entry.
+ */
+static inline bool xa_is_sibling(const void *entry)
+{
+	return IS_ENABLED(CONFIG_XARRAY_MULTI) && xa_is_internal(entry) &&
+		(entry < xa_mk_sibling(XA_CHUNK_SIZE - 1));
 }
 
 #define XA_RETRY_ENTRY		xa_mk_internal(256)
