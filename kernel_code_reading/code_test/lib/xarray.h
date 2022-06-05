@@ -703,6 +703,7 @@ static inline struct xa_node *xa_to_node(const void *entry)
 /* Private */
 static inline bool xa_is_node(const void *entry)
 {
+	// why entry must bigger than 4096?
 	return xa_is_internal(entry) && (unsigned long)entry > 4096;
 }
 
