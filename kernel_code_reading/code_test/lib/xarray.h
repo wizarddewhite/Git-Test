@@ -834,4 +834,81 @@ struct xa_state {
  */
 #define XA_STATE(name, array, index)				\
 	struct xa_state name = __XA_STATE(array, index, 0, 0)
+/**
+ * XA_STATE_ORDER() - Declare an XArray operation state.
+ * @name: Name of this operation state (usually xas).
+ * @array: Array to operate on.
+ * @index: Initial index of interest.
+ * @order: Order of entry.
+ *
+ * Declare and initialise an xa_state on the stack.  This variant of
+ * XA_STATE() allows you to specify the 'order' of the element you
+ * want to operate on.`
+ */
+#define XA_STATE_ORDER(name, array, index, order)		\
+	struct xa_state name = __XA_STATE(array,		\
+			(index >> order) << order,		\
+			order - (order % XA_CHUNK_SHIFT),	\
+			(1U << (order % XA_CHUNK_SHIFT)) - 1)
+
+#define xas_marked(xas, mark)	xa_marked((xas)->xa, (mark))
+#define xas_trylock(xas)	xa_trylock((xas)->xa)
+#define xas_lock(xas)		xa_lock((xas)->xa)
+#define xas_unlock(xas)		xa_unlock((xas)->xa)
+#define xas_lock_bh(xas)	xa_lock_bh((xas)->xa)
+#define xas_unlock_bh(xas)	xa_unlock_bh((xas)->xa)
+#define xas_lock_irq(xas)	xa_lock_irq((xas)->xa)
+#define xas_unlock_irq(xas)	xa_unlock_irq((xas)->xa)
+#define xas_lock_irqsave(xas, flags) \
+				xa_lock_irqsave((xas)->xa, flags)
+#define xas_unlock_irqrestore(xas, flags) \
+				xa_unlock_irqrestore((xas)->xa, flags)
+
+/**
+ * xas_error() - Return an errno stored in the xa_state.
+ * @xas: XArray operation state.
+ *
+ * Return: 0 if no error has been noted.  A negative errno if one has.
+ */
+static inline int xas_error(const struct xa_state *xas)
+{
+	return xa_err(xas->xa_node);
+}
+
+/**
+ * xas_set_err() - Note an error in the xa_state.
+ * @xas: XArray operation state.
+ * @err: Negative error number.
+ *
+ * Only call this function with a negative @err; zero or positive errors
+ * will probably not behave the way you think they should.  If you want
+ * to clear the error from an xa_state, use xas_reset().
+ */
+static inline void xas_set_err(struct xa_state *xas, long err)
+{
+	xas->xa_node = XA_ERROR(err);
+}
+
+/**
+ * xas_invalid() - Is the xas in a retry or error state?
+ * @xas: XArray operation state.
+ * Refer to XAS_ERROR, XAS_BOUNDS, XAS_RESTART
+ *
+ * Return: %true if the xas cannot be used for operations.
+ */
+static inline bool xas_invalid(const struct xa_state *xas)
+{
+	return (unsigned long)xas->xa_node & 3;
+}
+
+/**
+ * xas_valid() - Is the xas a valid cursor into the array?
+ * @xas: XArray operation state.
+ *
+ * Return: %true if the xas can be used for operations.
+ */
+static inline bool xas_valid(const struct xa_state *xas)
+{
+	return !xas_invalid(xas);
+}
 #endif /* _XARRAY_H */
