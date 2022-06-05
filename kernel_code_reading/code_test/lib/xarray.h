@@ -727,6 +727,7 @@ static inline unsigned long xa_to_sibling(const void *entry)
  */
 static inline bool xa_is_sibling(const void *entry)
 {
+	// Question: why sibling must less than (XA_CHUNK_SIZE - 1)
 	return IS_ENABLED(CONFIG_XARRAY_MULTI) && xa_is_internal(entry) &&
 		(entry < xa_mk_sibling(XA_CHUNK_SIZE - 1));
 }
