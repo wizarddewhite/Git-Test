@@ -770,6 +770,8 @@ static inline bool xa_is_advanced(const void *entry)
  */
 typedef void (*xa_update_node_t)(struct xa_node *node);
 
+void xa_delete_node(struct xa_node *, xa_update_node_t);
+
 /*
  * The xa_state is opaque to its users.  It contains various different pieces
  * of state involved in the current operation on the XArray.  It should be
@@ -807,6 +809,7 @@ struct xa_state {
 #define XA_ERROR(errno) ((struct xa_node *)(((unsigned long)errno << 2) | 2UL))
 #define XAS_BOUNDS	((struct xa_node *)1UL)
 #define XAS_RESTART	((struct xa_node *)3UL)
+// Question: XAS_BOUNDS XAS_RESTART is value entry?
 
 #define __XA_STATE(array, index, shift, sibs)  {	\
 	.xa = array,					\
