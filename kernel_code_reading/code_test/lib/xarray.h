@@ -911,4 +911,214 @@ static inline bool xas_valid(const struct xa_state *xas)
 {
 	return !xas_invalid(xas);
 }
+
+/**
+ * xas_is_node() - Does the xas point to a node?
+ * @xas: XArray operation state.
+ *
+ * Return: %true if the xas currently references a node.
+ */
+static inline bool xas_is_node(const struct xa_state *xas)
+{
+	return xas_valid(xas) && xas->xa_node;
+}
+
+/* True if the pointer is something other than a node */
+static inline bool xas_not_node(struct xa_node *node)
+{
+	return ((unsigned long)node & 3) || !node;
+}
+
+/* True if the node represents RESTART or an error */
+static inline bool xas_frozen(struct xa_node *node)
+{
+	return (unsigned long)node & 2;
+}
+
+/* True if the node represents head-of-tree, RESTART or BOUNDS */
+static inline bool xas_top(struct xa_node *node)
+{
+	return node <= XAS_RESTART;
+}
+
+/**
+ * xas_reset() - Reset an XArray operation state.
+ * @xas: XArray operation state.
+ *
+ * Resets the error or walk state of the @xas so future walks of the
+ * array will start from the root.  Use this if you have dropped the
+ * xarray lock and want to reuse the xa_state.
+ *
+ * Context: Any context.
+ */
+static inline void xas_reset(struct xa_state *xas)
+{
+	xas->xa_node = XAS_RESTART;
+}
+
+/**
+ * xas_retry() - Retry the operation if appropriate.
+ * @xas: XArray operation state.
+ * @entry: Entry from xarray.
+ *
+ * The advanced functions may sometimes return an internal entry, such as
+ * a retry entry or a zero entry.  This function sets up the @xas to restart
+ * the walk from the head of the array if needed.
+ *
+ * Context: Any context.
+ * Return: true if the operation needs to be retried.
+ */
+static inline bool xas_retry(struct xa_state *xas, const void *entry)
+{
+	if (xa_is_zero(entry))
+		return true;
+	if (!xa_is_retry(entry))
+		return false;
+	xas_reset(xas);
+	return true;
+}
+
+void *xas_load(struct xa_state *);
+void *xas_store(struct xa_state *, void *entry);
+void *xas_find(struct xa_state *, unsigned long max);
+void *xas_find_conflict(struct xa_state *);
+
+bool xas_get_mark(const struct xa_state *, xa_mark_t);
+void xas_set_mark(const struct xa_state *, xa_mark_t);
+void xas_clear_mark(const struct xa_state *, xa_mark_t);
+void *xas_find_marked(struct xa_state *, unsigned long max, xa_mark_t);
+void xas_init_marks(const struct xa_state *);
+
+bool xas_nomem(struct xa_state *, gfp_t);
+void xas_pause(struct xa_state *);
+
+void xas_create_range(struct xa_state *);
+
+#ifdef CONFIG_XARRAY_MULTI
+int xa_get_order(struct xarray *, unsigned long index);
+void xas_split(struct xa_state *, void *entry, unsigned int order);
+void xas_split_alloc(struct xa_state *, void *entry, unsigned int order, gfp_t);
+#else
+static inline int xa_get_order(struct xarray *xa, unsigned long index)
+{
+	return 0;
+}
+
+static inline void xas_split(struct xa_state *xas, void *entry,
+		unsigned int order)
+{
+	xas_store(xas, entry);
+}
+
+static inline void xas_split_alloc(struct xa_state *xas, void *entry,
+		unsigned int order, gfp_t gfp)
+{
+}
+#endif
+
+/**
+ * xas_reload() - Refetch an entry from the xarray.
+ * @xas: XArray operation state.
+ *
+ * Use this function to check that a previously loaded entry still has
+ * the same value.  This is useful for the lockless pagecache lookup where
+ * we walk the array with only the RCU lock to protect us, lock the page,
+ * then check that the page hasn't moved since we looked it up.
+ *
+ * The caller guarantees that @xas is still valid.  If it may be in an
+ * error or restart state, call xas_load() instead.
+ *
+ * Return: The entry at this location in the xarray.
+ */
+static inline void *xas_reload(struct xa_state *xas)
+{
+	struct xa_node *node = xas->xa_node;
+	void *entry;
+	char offset;
+
+	if (!node)
+		return xa_head(xas->xa);
+	if (IS_ENABLED(CONFIG_XARRAY_MULTI)) {
+		offset = (xas->xa_index >> node->shift) & XA_CHUNK_MASK;
+		entry = xa_entry(xas->xa, node, offset);
+		if (!xa_is_sibling(entry))
+			return entry;
+		offset = xa_to_sibling(entry);
+	} else {
+		offset = xas->xa_offset;
+	}
+	return xa_entry(xas->xa, node, offset);
+}
+
+/**
+ * xas_set() - Set up XArray operation state for a different index.
+ * @xas: XArray operation state.
+ * @index: New index into the XArray.
+ *
+ * Move the operation state to refer to a different index.  This will
+ * have the effect of starting a walk from the top; see xas_next()
+ * to move to an adjacent index.
+ */
+static inline void xas_set(struct xa_state *xas, unsigned long index)
+{
+	xas->xa_index = index;
+	xas->xa_node = XAS_RESTART;
+}
+
+/**
+ * xas_advance() - Skip over sibling entries.
+ * @xas: XArray operation state.
+ * @index: Index of last sibling entry.
+ *
+ * Move the operation state to refer to the last sibling entry.
+ * This is useful for loops that normally want to see sibling
+ * entries but sometimes want to skip them.  Use xas_set() if you
+ * want to move to an index which is not part of this entry.
+ */
+static inline void xas_advance(struct xa_state *xas, unsigned long index)
+{
+	unsigned char shift = xas_is_node(xas) ? xas->xa_node->shift : 0;
+
+	xas->xa_index = index;
+	xas->xa_offset = (index >> shift) & XA_CHUNK_MASK;
+}
+
+/**
+ * xas_set_order() - Set up XArray operation state for a multislot entry.
+ * @xas: XArray operation state.
+ * @index: Target of the operation.
+ * @order: Entry occupies 2^@order indices.
+ */
+static inline void xas_set_order(struct xa_state *xas, unsigned long index,
+					unsigned int order)
+{
+#ifdef CONFIG_XARRAY_MULTI
+	xas->xa_index = order < BITS_PER_LONG ? (index >> order) << order : 0;
+	xas->xa_shift = order - (order % XA_CHUNK_SHIFT);
+	xas->xa_sibs = (1 << (order % XA_CHUNK_SHIFT)) - 1;
+	xas->xa_node = XAS_RESTART;
+#else
+	BUG_ON(order > 0);
+	xas_set(xas, index);
+#endif
+}
+
+/**
+ * xas_set_update() - Set up XArray operation state for a callback.
+ * @xas: XArray operation state.
+ * @update: Function to call when updating a node.
+ *
+ * The XArray can notify a caller after it has updated an xa_node.
+ * This is advanced functionality and is only needed by the page cache.
+ */
+static inline void xas_set_update(struct xa_state *xas, xa_update_node_t update)
+{
+	xas->xa_update = update;
+}
+
+static inline void xas_set_lru(struct xa_state *xas, struct list_lru *lru)
+{
+	xas->xa_lru = lru;
+}
+
 #endif /* _XARRAY_H */
