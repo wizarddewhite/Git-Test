@@ -46,7 +46,8 @@ static void xa_internal_test()
 
 int main()
 {
-	xa_internal_test();
+	// xa_internal_test();
+	xas_next_entry(NULL, 1);
 
 	return 0;
 }
