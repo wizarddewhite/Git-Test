@@ -39,6 +39,9 @@ static void xa_internal_test()
 	printf("sizeof(xa_node): %ld\n", sizeof(struct xa_node));
 
 	xa_is_sibling(entry);
+
+	printf("right shift (unsigned long)-1: %lx\n", (unsigned long)(-1) >> 1);
+	printf("right shift (long)-1: %lx\n", (long)(-1) >> 1);
 }
 
 int main()
