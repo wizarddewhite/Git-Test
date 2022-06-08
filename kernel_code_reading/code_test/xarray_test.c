@@ -44,10 +44,39 @@ static void xa_internal_test()
 	printf("right shift (long)-1: %lx\n", (long)(-1) >> 1);
 }
 
+void xas_movement()
+{
+	unsigned long offset = 0, index = 0;
+	printf("   XA_CHUNK_MASK     : %016lx\n", XA_CHUNK_MASK);
+	printf("  ~XA_CHUNK_MASK     : %016lx\n", ~XA_CHUNK_MASK);
+	printf("  ~XA_CHUNK_MASK << 4: %016lx\n", ~XA_CHUNK_MASK << 4);
+	printf("~(XA_CHUNK_MASK << 4): %016lx\n", ~(XA_CHUNK_MASK << 4));
+
+	// copied from xas_move_index
+	// this would clear bits in [0, shift]
+	index &= ~XA_CHUNK_MASK << 0;
+	index += offset << 0;
+	printf("current index: %016lx\n", index);
+	offset++;
+	index &= ~XA_CHUNK_MASK << 0;
+	index += offset << 0;
+	printf("move to index: %016lx\n", index);
+
+	index = 0xc49; offset = 4;
+	printf("current index: %016lx\n", index);
+	printf("   next index: %016lx\n", index + 1);
+	offset++;
+	index &= ~XA_CHUNK_MASK << 4;
+	index += offset << 4;
+	printf("move to index: %016lx\n", index);
+
+}
+
 int main()
 {
 	// xa_internal_test();
-	xas_next_entry(NULL, 1);
+	// xas_next_entry(NULL, 1);
+	xas_movement();
 
 	return 0;
 }
