@@ -235,6 +235,133 @@ void *xas_load(struct xa_state *xas)
 	return entry;
 }
 
+#define XA_RCU_FREE	((struct xarray *)1)
+
+#define radix_tree_node		xa_node
+void radix_tree_node_rcu_free(struct rcu_head *head)
+{
+	struct radix_tree_node *node =
+			container_of(head, struct radix_tree_node, rcu_head);
+
+	/*
+	 * Must only free zeroed nodes into the slab.  We can be left with
+	 * non-NULL entries by radix_tree_free_nodes, so clear the entries
+	 * and tags here.
+	 */
+	memset(node->slots, 0, sizeof(node->slots));
+	memset(node->tags, 0, sizeof(node->tags));
+	INIT_LIST_HEAD(&node->private_list);
+
+	// kmem_cache_free(radix_tree_node_cachep, node);
+	free(node);
+}
+
+static void xa_node_free(struct xa_node *node)
+{
+	XA_NODE_BUG_ON(node, !list_empty(&node->private_list));
+	node->array = XA_RCU_FREE;
+	// call_rcu(&node->rcu_head, radix_tree_node_rcu_free);
+	radix_tree_node_rcu_free(&node->rcu_head);
+}
+
+/*
+ * xas_destroy() - Free any resources allocated during the XArray operation.
+ * @xas: XArray operation state.
+ *
+ * This function is now internal-only.
+ */
+static void xas_destroy(struct xa_state *xas)
+{
+	struct xa_node *next, *node = xas->xa_alloc;
+
+	while (node) {
+		XA_NODE_BUG_ON(node, !list_empty(&node->private_list));
+		next = /* rcu_dereference_raw */(node->parent);
+		radix_tree_node_rcu_free(&node->rcu_head);
+		xas->xa_alloc = node = next;
+	}
+}
+
+/**
+ * xas_nomem() - Allocate memory if needed.
+ * @xas: XArray operation state.
+ * @gfp: Memory allocation flags.
+ *
+ * If we need to add new nodes to the XArray, we try to allocate memory
+ * with GFP_NOWAIT while holding the lock, which will usually succeed.
+ * If it fails, @xas is flagged as needing memory to continue.  The caller
+ * should drop the lock and call xas_nomem().  If xas_nomem() succeeds,
+ * the caller should retry the operation.
+ *
+ * Forward progress is guaranteed as one node is allocated here and
+ * stored in the xa_state where it will be found by xas_alloc().  More
+ * nodes will likely be found in the slab allocator, but we do not tie
+ * them up here.
+ *
+ * Return: true if memory was needed, and was successfully allocated.
+ */
+bool xas_nomem(struct xa_state *xas, gfp_t gfp)
+{
+	if (xas->xa_node != XA_ERROR(-ENOMEM)) {
+		xas_destroy(xas);
+		return false;
+	}
+	// if (xas->xa->xa_flags & XA_FLAGS_ACCOUNT)
+	// 	gfp |= __GFP_ACCOUNT;
+	// xas->xa_alloc = kmem_cache_alloc_lru(radix_tree_node_cachep, xas->xa_lru, gfp);
+	xas->xa_alloc = malloc(sizeof(struct xa_node));
+	if (!xas->xa_alloc)
+		return false;
+	xas->xa_alloc->parent = NULL;
+	XA_NODE_BUG_ON(xas->xa_alloc, !list_empty(&xas->xa_alloc->private_list));
+	xas->xa_node = XAS_RESTART;
+	return true;
+}
+
+/*
+ * __xas_nomem() - Drop locks and allocate memory if needed.
+ * @xas: XArray operation state.
+ * @gfp: Memory allocation flags.
+ *
+ * Internal variant of xas_nomem().
+ *
+ * Return: true if memory was needed, and was successfully allocated.
+ */
+static bool __xas_nomem(struct xa_state *xas, gfp_t gfp)
+	// __must_hold(xas->xa->xa_lock)
+{
+	unsigned int lock_type = xa_lock_type(xas->xa);
+
+	if (xas->xa_node != XA_ERROR(-ENOMEM)) {
+		xas_destroy(xas);
+		return false;
+	}
+	// if (xas->xa->xa_flags & XA_FLAGS_ACCOUNT)
+	// 	gfp |= __GFP_ACCOUNT;
+	// if (gfpflags_allow_blocking(gfp)) {
+	// 	xas_unlock_type(xas, lock_type);
+	// 	xas->xa_alloc = kmem_cache_alloc_lru(radix_tree_node_cachep, xas->xa_lru, gfp);
+	// 	xas_lock_type(xas, lock_type);
+	// } else {
+	//	xas->xa_alloc = kmem_cache_alloc_lru(radix_tree_node_cachep, xas->xa_lru, gfp);
+	// }
+	xas->xa_alloc = malloc(sizeof(struct xa_node));
+	if (!xas->xa_alloc)
+		return false;
+	xas->xa_alloc->parent = NULL;
+	XA_NODE_BUG_ON(xas->xa_alloc, !list_empty(&xas->xa_alloc->private_list));
+	xas->xa_node = XAS_RESTART;
+	return true;
+}
+
+static void xas_update(struct xa_state *xas, struct xa_node *node)
+{
+	if (xas->xa_update)
+		xas->xa_update(node);
+	else
+		XA_NODE_BUG_ON(node, !list_empty(&node->private_list));
+}
+
 /**
  * xas_find() - Find the next present entry in the XArray.
  * @xas: XArray operation state.
