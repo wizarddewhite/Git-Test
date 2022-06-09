@@ -1,9 +1,131 @@
 #include "xarray.h"
 #include "bug.h"
+#include "bitmap.h"
+
+/*
+ * Coding conventions in this file:
+ *
+ * @xa is used to refer to the entire xarray.
+ * @xas is the 'xarray operation state'.  It may be either a pointer to
+ * an xa_state, or an xa_state stored on the stack.  This is an unfortunate
+ * ambiguity.
+ * @index is the index of the entry being operated on
+ * @mark is an xa_mark_t; a small number indicating one of the mark bits.
+ * @node refers to an xa_node; usually the primary one being operated on by
+ * this function.
+ * @offset is the index into the slots array inside an xa_node.
+ * @parent refers to the @xa_node closer to the head than @node.
+ * @entry refers to something stored in a slot in the xarray
+ */
+
+static inline unsigned int xa_lock_type(const struct xarray *xa)
+{
+	return (__force unsigned int)xa->xa_flags & 3;
+}
+
+static inline void xas_lock_type(struct xa_state *xas, unsigned int lock_type)
+{
+	if (lock_type == XA_LOCK_IRQ)
+		xas_lock_irq(xas);
+	else if (lock_type == XA_LOCK_BH)
+		xas_lock_bh(xas);
+	else
+		xas_lock(xas);
+}
+
+static inline void xas_unlock_type(struct xa_state *xas, unsigned int lock_type)
+{
+	if (lock_type == XA_LOCK_IRQ)
+		xas_unlock_irq(xas);
+	else if (lock_type == XA_LOCK_BH)
+		xas_unlock_bh(xas);
+	else
+		xas_unlock(xas);
+}
 
 static inline bool xa_track_free(const struct xarray *xa)
 {
 	return xa->xa_flags & XA_FLAGS_TRACK_FREE;
+}
+
+static inline bool xa_zero_busy(const struct xarray *xa)
+{
+	return xa->xa_flags & XA_FLAGS_ZERO_BUSY;
+}
+
+static inline void xa_mark_set(struct xarray *xa, xa_mark_t mark)
+{
+	if (!(xa->xa_flags & XA_FLAGS_MARK(mark)))
+		xa->xa_flags |= XA_FLAGS_MARK(mark);
+}
+
+static inline void xa_mark_clear(struct xarray *xa, xa_mark_t mark)
+{
+	if (xa->xa_flags & XA_FLAGS_MARK(mark))
+		xa->xa_flags &= ~(XA_FLAGS_MARK(mark));
+}
+
+static inline unsigned long *node_marks(struct xa_node *node, xa_mark_t mark)
+{
+	return node->marks[(__force unsigned)mark];
+}
+
+static inline bool node_get_mark(struct xa_node *node,
+		unsigned int offset, xa_mark_t mark)
+{
+	return test_bit(offset, node_marks(node, mark));
+}
+
+/* returns true if the bit was set */
+static inline bool node_set_mark(struct xa_node *node, unsigned int offset,
+				xa_mark_t mark)
+{
+	return __test_and_set_bit(offset, node_marks(node, mark));
+}
+
+/* returns true if the bit was set */
+static inline bool node_clear_mark(struct xa_node *node, unsigned int offset,
+				xa_mark_t mark)
+{
+	return __test_and_clear_bit(offset, node_marks(node, mark));
+}
+
+static inline bool node_any_mark(struct xa_node *node, xa_mark_t mark)
+{
+	return !bitmap_empty(node_marks(node, mark), XA_CHUNK_SIZE);
+}
+
+static inline void node_mark_all(struct xa_node *node, xa_mark_t mark)
+{
+	bitmap_fill(node_marks(node, mark), XA_CHUNK_SIZE);
+}
+
+#define mark_inc(mark) do { \
+	mark = (__force xa_mark_t)((__force unsigned)(mark) + 1); \
+} while (0)
+
+/*
+ * xas_squash_marks() - Merge all marks to the first entry
+ * @xas: Array operation state.
+ *
+ * Set a mark on the first entry if any entry has it set.  Clear marks on
+ * all sibling entries.
+ */
+static void xas_squash_marks(const struct xa_state *xas)
+{
+	unsigned int mark = 0;
+	unsigned int limit = xas->xa_offset + xas->xa_sibs + 1;
+
+	if (!xas->xa_sibs)
+		return;
+
+	do {
+		unsigned long *marks = xas->xa_node->marks[mark];
+		if (find_next_bit(marks, limit, xas->xa_offset + 1) == limit)
+			continue;
+		__set_bit(xas->xa_offset, marks);
+		bitmap_clear(marks, xas->xa_offset + 1, xas->xa_sibs);
+	} while (mark++ != (__force unsigned)XA_MARK_MAX);
 }
 
 /* extracts the offset within this node from the index */
