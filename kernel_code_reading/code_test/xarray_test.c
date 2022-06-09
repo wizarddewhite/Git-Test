@@ -72,11 +72,28 @@ void xas_movement()
 
 }
 
+static void *xa_mk_index(unsigned long index)
+{
+	return xa_mk_value(index & LONG_MAX);
+}
+
+static void *xa_store_index(struct xarray *xa, unsigned long index, gfp_t gfp)
+{
+	return xa_store(xa, index, xa_mk_index(index), gfp);
+}
+
+void check_xa_store()
+{
+	DEFINE_XARRAY(array);
+	xa_store_index(&array, 0, 0);
+}
+
 int main()
 {
 	// xa_internal_test();
 	// xas_next_entry(NULL, 1);
-	xas_movement();
+	// xas_movement();
+	check_xa_store();
 
 	return 0;
 }
