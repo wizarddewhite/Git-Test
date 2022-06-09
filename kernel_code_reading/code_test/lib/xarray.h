@@ -14,6 +14,8 @@
 #include "list.h"
 #include "errno-base.h"
 #include "kconfig.h"
+#include "__ffs.h"
+#include "find.h"
 
 /*
  * The bottom two bits of the entry determine how the XArray interprets
@@ -1155,4 +1157,179 @@ static inline void *xas_next_entry(struct xa_state *xas, unsigned long max)
 
 	return entry;
 }
+
+/* Private */
+static inline unsigned int xas_find_chunk(struct xa_state *xas, bool advance,
+		xa_mark_t mark)
+{
+	unsigned long *addr = xas->xa_node->marks[(__force unsigned)mark];
+	unsigned int offset = xas->xa_offset;
+
+	if (advance)
+		offset++;
+	if (XA_CHUNK_SIZE == BITS_PER_LONG) {
+		if (offset < XA_CHUNK_SIZE) {
+			unsigned long data = *addr & (~0UL << offset);
+			if (data)
+				return __ffs(data);
+		}
+		return XA_CHUNK_SIZE;
+	}
+
+	return find_next_bit(addr, XA_CHUNK_SIZE, offset);
+}
+
+/**
+ * xas_next_marked() - Advance iterator to next marked entry.
+ * @xas: XArray operation state.
+ * @max: Highest index to return.
+ * @mark: Mark to search for.
+ *
+ * xas_next_marked() is an inline function to optimise xarray traversal for
+ * speed.  It is equivalent to calling xas_find_marked(), and will call
+ * xas_find_marked() for all the hard cases.
+ *
+ * Return: The next marked entry after the one currently referred to by @xas.
+ */
+static inline void *xas_next_marked(struct xa_state *xas, unsigned long max,
+								xa_mark_t mark)
+{
+	struct xa_node *node = xas->xa_node;
+	void *entry;
+	unsigned int offset;
+
+	if (unlikely(xas_not_node(xas->xa_node) || node->shift))
+		return xas_find_marked(xas, max, mark);
+	offset = xas_find_chunk(xas, true, mark);
+	xas->xa_offset = offset;
+	xas->xa_index = (xas->xa_index & ~XA_CHUNK_MASK) + offset;
+	if (xas->xa_index > max)
+		return NULL;
+	if (offset == XA_CHUNK_SIZE)
+		return xas_find_marked(xas, max, mark);
+	entry = xa_entry(xas->xa, node, offset);
+	if (!entry)
+		return xas_find_marked(xas, max, mark);
+	return entry;
+}
+
+/*
+ * If iterating while holding a lock, drop the lock and reschedule
+ * every %XA_CHECK_SCHED loops.
+ */
+enum {
+	XA_CHECK_SCHED = 4096,
+};
+
+/**
+ * xas_for_each() - Iterate over a range of an XArray.
+ * @xas: XArray operation state.
+ * @entry: Entry retrieved from the array.
+ * @max: Maximum index to retrieve from array.
+ *
+ * The loop body will be executed for each entry present in the xarray
+ * between the current xas position and @max.  @entry will be set to
+ * the entry retrieved from the xarray.  It is safe to delete entries
+ * from the array in the loop body.  You should hold either the RCU lock
+ * or the xa_lock while iterating.  If you need to drop the lock, call
+ * xas_pause() first.
+ */
+#define xas_for_each(xas, entry, max) \
+	for (entry = xas_find(xas, max); entry; \
+	     entry = xas_next_entry(xas, max))
+
+/**
+ * xas_for_each_marked() - Iterate over a range of an XArray.
+ * @xas: XArray operation state.
+ * @entry: Entry retrieved from the array.
+ * @max: Maximum index to retrieve from array.
+ * @mark: Mark to search for.
+ *
+ * The loop body will be executed for each marked entry in the xarray
+ * between the current xas position and @max.  @entry will be set to
+ * the entry retrieved from the xarray.  It is safe to delete entries
+ * from the array in the loop body.  You should hold either the RCU lock
+ * or the xa_lock while iterating.  If you need to drop the lock, call
+ * xas_pause() first.
+ */
+#define xas_for_each_marked(xas, entry, max, mark) \
+	for (entry = xas_find_marked(xas, max, mark); entry; \
+	     entry = xas_next_marked(xas, max, mark))
+
+/**
+ * xas_for_each_conflict() - Iterate over a range of an XArray.
+ * @xas: XArray operation state.
+ * @entry: Entry retrieved from the array.
+ *
+ * The loop body will be executed for each entry in the XArray that
+ * lies within the range specified by @xas.  If the loop terminates
+ * normally, @entry will be %NULL.  The user may break out of the loop,
+ * which will leave @entry set to the conflicting entry.  The caller
+ * may also call xa_set_err() to exit the loop while setting an error
+ * to record the reason.
+ */
+#define xas_for_each_conflict(xas, entry) \
+	while ((entry = xas_find_conflict(xas)))
+
+void *__xas_next(struct xa_state *);
+void *__xas_prev(struct xa_state *);
+
+/**
+ * xas_prev() - Move iterator to previous index.
+ * @xas: XArray operation state.
+ *
+ * If the @xas was in an error state, it will remain in an error state
+ * and this function will return %NULL.  If the @xas has never been walked,
+ * it will have the effect of calling xas_load().  Otherwise one will be
+ * subtracted from the index and the state will be walked to the correct
+ * location in the array for the next operation.
+ *
+ * If the iterator was referencing index 0, this function wraps
+ * around to %ULONG_MAX.
+ *
+ * Return: The entry at the new index.  This may be %NULL or an internal
+ * entry.
+ */
+static inline void *xas_prev(struct xa_state *xas)
+{
+	struct xa_node *node = xas->xa_node;
+
+	if (unlikely(xas_not_node(xas->xa_node) || node->shift ||
+				xas->xa_offset == 0))
+		return __xas_prev(xas);
+
+	xas->xa_index--;
+	xas->xa_offset--;
+	return xa_entry(xas->xa, node, xas->xa_offset);
+}
+
+/**
+ * xas_next() - Move state to next index.
+ * @xas: XArray operation state.
+ *
+ * If the @xas was in an error state, it will remain in an error state
+ * and this function will return %NULL.  If the @xas has never been walked,
+ * it will have the effect of calling xas_load().  Otherwise one will be
+ * added to the index and the state will be walked to the correct
+ * location in the array for the next operation.
+ *
+ * If the iterator was referencing index %ULONG_MAX, this function wraps
+ * around to 0.
+ *
+ * Return: The entry at the new index.  This may be %NULL or an internal
+ * entry.
+ */
+static inline void *xas_next(struct xa_state *xas)
+{
+	struct xa_node *node = xas->xa_node;
+
+	if (unlikely(xas_not_node(xas->xa_node) || node->shift ||
+				xas->xa_offset == XA_CHUNK_MASK))
+		return __xas_next(xas);
+
+	xas->xa_index++;
+	xas->xa_offset++;
+	return xa_entry(xas->xa, node, xas->xa_offset);
+}
+
 #endif /* _XARRAY_H */
