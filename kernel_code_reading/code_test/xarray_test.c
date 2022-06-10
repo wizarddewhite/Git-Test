@@ -86,6 +86,9 @@ void check_xa_store()
 {
 	DEFINE_XARRAY(array);
 	xa_store_index(&array, 0, 0);
+	xa_store_index(&array, 1, 0);
+	xa_store_index(&array, 0xff, 0);
+	xa_dump(&array);
 }
 
 int main()

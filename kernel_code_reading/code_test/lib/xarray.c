@@ -1135,3 +1135,81 @@ void *xa_store(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp)
 
 	return curr;
 }
+
+void xa_dump_node(const struct xa_node *node)
+{
+	unsigned i, j;
+
+	if (!node)
+		return;
+	if ((unsigned long)node & 3) {
+		printf("node %p\n", node);
+		return;
+	}
+
+	printf("node %p %s %d parent %p shift %d count %d values %d "
+		"array %p list %p %p marks",
+		node, node->parent ? "offset" : "max", node->offset,
+		node->parent, node->shift, node->count, node->nr_values,
+		node->array, node->private_list.prev, node->private_list.next);
+	for (i = 0; i < XA_MAX_MARKS; i++)
+		for (j = 0; j < XA_MARK_LONGS; j++)
+			printf(" %lx", node->marks[i][j]);
+	printf("\n");
+}
+
+void xa_dump_index(unsigned long index, unsigned int shift)
+{
+	if (!shift)
+		printf("%lu: ", index);
+	else if (shift >= BITS_PER_LONG)
+		printf("0-%lu: ", ~0UL);
+	else
+		printf("%lu-%lu: ", index, index | ((1UL << shift) - 1));
+}
+
+void xa_dump_entry(const void *entry, unsigned long index, unsigned long shift)
+{
+	if (!entry)
+		return;
+
+	xa_dump_index(index, shift);
+
+	if (xa_is_node(entry)) {
+		if (shift == 0) {
+			printf("%p\n", entry);
+		} else {
+			unsigned long i;
+			struct xa_node *node = xa_to_node(entry);
+			xa_dump_node(node);
+			for (i = 0; i < XA_CHUNK_SIZE; i++)
+				xa_dump_entry(node->slots[i],
+				      index + (i << node->shift), node->shift);
+		}
+	} else if (xa_is_value(entry))
+		printf("value %ld (0x%lx) [%p]\n", xa_to_value(entry),
+						xa_to_value(entry), entry);
+	else if (!xa_is_internal(entry))
+		printf("%p\n", entry);
+	else if (xa_is_retry(entry))
+		printf("retry (%ld)\n", xa_to_internal(entry));
+	else if (xa_is_sibling(entry))
+		printf("sibling (slot %ld)\n", xa_to_sibling(entry));
+	else if (xa_is_zero(entry))
+		printf("zero (%ld)\n", xa_to_internal(entry));
+	else
+		printf("UNKNOWN ENTRY (%p)\n", entry);
+}
+
+void xa_dump(const struct xarray *xa)
+{
+	void *entry = xa->xa_head;
+	unsigned int shift = 0;
+
+	printf("xarray: %p head %p flags %x marks %d %d %d\n", xa, entry,
+			xa->xa_flags, xa_marked(xa, XA_MARK_0),
+			xa_marked(xa, XA_MARK_1), xa_marked(xa, XA_MARK_2));
+	if (xa_is_node(entry))
+		shift = xa_to_node(entry)->shift + XA_CHUNK_SHIFT;
+	xa_dump_entry(entry, 0, shift);
+}
