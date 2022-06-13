@@ -530,3 +530,52 @@ xa->xa_head = NULL;
                                                         +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
                                                                    | |
                                                                    +-+--> [0x090, 0x0af]
+
+0.6 kind of entries
+================================================================================
+look into following places to get a picture
+  * xa_dump_entry()
+  * head of xarray.h
+  * comment of xa_mk_internal()
+
+(00)Pointer:
+(x1)Value:
+(10)Internal:
+   [0, 255]       sibling entries       --+- advanced entry
+   256            retry entry           -/
+   257            zero entry
+   > 4096         node entry(without left shift)
+   >= -MAX_ERRNO  Error(never stored in slots array)
+
+
+# check on entry
+xa_is_value():    ((unsigned long)entry & 1)
+xa_is_internal(): ((unsigned long)entry & 3) == 2
+xa_is_sibling():  xa_is_internal() && entry < xa_mk_internal(XA_CHUNK_SIZE-1)
+xa_is_retry():    xa_mk_internal(256)
+xa_is_zero():     xa_mk_internal(257)
+xa_is_node():     xa_is_internal() && > 4096, which includes xa_is_err()
+xa_is_err():      xa_is_internal() && entry >= xa_mk_internal(-MAX_ERRNO)
+                  the entry here never stored in slots array
+
+# check on xas, to be specific it checks xas->xa_node
+xas_valid(): !xas_invalid()
+xas_invalid(): (unsigned long)xas->xa_node & 3
+xas_frozen():  node & 2
+xas_top():     node <= XAS_RESTART
+xas_is_node(): xas_valid(xas) && xas->xa_node => !((unsigned long)xas->xa_node & 3)
+               this only check xas->xa_node, which would be set to:
+               * NULL(0)
+               * XAS_BOUNDS(1)/XAS_RESTART(3)
+               * XA_ERROR()
+               * xa_to_node(entry)
+xas_error():   xa_err(xas->xa_node)
+
+
+0.7 userspace test
+================================================================================
+sudo yum install userspace-rcu-devel.x86_64
+cd tools/testing/radix-tree
+make
+./xarray
+
