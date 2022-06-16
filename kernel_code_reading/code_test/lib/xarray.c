@@ -1158,7 +1158,7 @@ void xa_dump_node(const struct xa_node *node)
 	printf("\n");
 }
 
-void xa_dump_index(unsigned long index, unsigned int shift)
+void xa_dump_index(unsigned long index, unsigned int shift, int level)
 {
 	if (!shift)
 		printf("%lu: ", index);
@@ -1168,12 +1168,14 @@ void xa_dump_index(unsigned long index, unsigned int shift)
 		printf("%lu-%lu: ", index, index | ((1UL << shift) - 1));
 }
 
-void xa_dump_entry(const void *entry, unsigned long index, unsigned long shift)
+void xa_dump_entry(const void *entry, unsigned long index,
+		unsigned long shift, int level)
 {
 	if (!entry)
 		return;
 
-	xa_dump_index(index, shift);
+	printf("%*s", level * 4, " ");
+	xa_dump_index(index, shift, level);
 
 	if (xa_is_node(entry)) {
 		if (shift == 0) {
@@ -1184,7 +1186,8 @@ void xa_dump_entry(const void *entry, unsigned long index, unsigned long shift)
 			xa_dump_node(node);
 			for (i = 0; i < XA_CHUNK_SIZE; i++)
 				xa_dump_entry(node->slots[i],
-				      index + (i << node->shift), node->shift);
+				      index + (i << node->shift), node->shift,
+				      level + 1);
 		}
 	} else if (xa_is_value(entry))
 		printf("value %ld (0x%lx) [%p]\n", xa_to_value(entry),
@@ -1211,5 +1214,5 @@ void xa_dump(const struct xarray *xa)
 			xa_marked(xa, XA_MARK_1), xa_marked(xa, XA_MARK_2));
 	if (xa_is_node(entry))
 		shift = xa_to_node(entry)->shift + XA_CHUNK_SHIFT;
-	xa_dump_entry(entry, 0, shift);
+	xa_dump_entry(entry, 0, shift, 0);
 }
