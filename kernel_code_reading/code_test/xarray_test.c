@@ -91,12 +91,37 @@ void check_xa_store()
 	xa_dump(&array);
 }
 
+static void *xa_store_order(struct xarray *xa, unsigned long index,
+		unsigned order, void *entry, gfp_t gfp)
+{
+	XA_STATE_ORDER(xas, xa, index, order);
+	void *curr;
+
+	do {
+		xas_lock(&xas);
+		curr = xas_store(&xas, entry);
+		xas_unlock(&xas);
+	} while (xas_nomem(&xas, gfp));
+
+	return curr;
+}
+
+void check_multi_order()
+{
+	DEFINE_XARRAY(array);
+	xa_store_order(&array, 0, 1, xa_mk_value(0), 0);
+	xa_dump(&array);
+	xa_store_order(&array, 1, 1, xa_mk_value(1), 0);
+	xa_dump(&array);
+}
+
 int main()
 {
 	// xa_internal_test();
 	// xas_next_entry(NULL, 1);
 	// xas_movement();
-	check_xa_store();
+	// check_xa_store();
+	check_multi_order();
 
 	return 0;
 }

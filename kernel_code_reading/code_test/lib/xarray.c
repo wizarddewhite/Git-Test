@@ -2,6 +2,8 @@
 #include "bug.h"
 #include "bitmap.h"
 
+#define CONFIG_XARRAY_MULTI
+
 /*
  * Coding conventions in this file:
  *
