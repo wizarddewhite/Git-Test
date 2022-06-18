@@ -408,7 +408,7 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 
 #ifdef CONFIG_XARRAY_MULTI
 /* Returns the number of indices covered by a given xa_state */
-static unsigned long xas_size(const struct xa_state *xas)
+unsigned long xas_size(const struct xa_state *xas)
 {
 	return (xas->xa_sibs + 1UL) << xas->xa_shift;
 }
@@ -420,7 +420,7 @@ static unsigned long xas_size(const struct xa_state *xas)
  * multi-index entry at index 0, the calculation is a little more complex
  * than you might expect.
  */
-static unsigned long xas_max(struct xa_state *xas)
+unsigned long xas_max(struct xa_state *xas)
 {
 	unsigned long max = xas->xa_index;
 

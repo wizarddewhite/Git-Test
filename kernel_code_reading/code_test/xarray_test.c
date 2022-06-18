@@ -115,13 +115,25 @@ void check_multi_order()
 	xa_dump(&array);
 }
 
+unsigned long xas_size(const struct xa_state *xas);
+unsigned long xas_max(struct xa_state *xas);
+void check_xas_max()
+{
+	XA_STATE_ORDER(xas, NULL, 0xffffffffffffffff, 3);
+	printf("xas_size: %lx\n", xas_size(&xas));
+	printf("max: %lx\n", xas_max(&xas));
+	xas.xa_index = 7;
+	printf("max: %lx\n", xas_max(&xas));
+}
+
 int main()
 {
 	// xa_internal_test();
 	// xas_next_entry(NULL, 1);
 	// xas_movement();
 	// check_xa_store();
-	check_multi_order();
+	// check_multi_order();
+	check_xas_max();
 
 	return 0;
 }
