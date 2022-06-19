@@ -126,6 +126,43 @@ void check_xas_max()
 	printf("max: %lx\n", xas_max(&xas));
 }
 
+static void __check_store_range(struct xarray *xa, unsigned long first,
+		unsigned long last)
+{
+#ifdef CONFIG_XARRAY_MULTI
+	xa_store_range(xa, first, last, xa_mk_index(first), 0);
+
+	XA_BUG_ON(xa, xa_load(xa, first) != xa_mk_index(first));
+	XA_BUG_ON(xa, xa_load(xa, last) != xa_mk_index(first));
+	XA_BUG_ON(xa, xa_load(xa, first - 1) != NULL);
+	XA_BUG_ON(xa, xa_load(xa, last + 1) != NULL);
+
+	xa_store_range(xa, first, last, NULL, 0);
+#endif
+
+	XA_BUG_ON(xa, !xa_empty(xa));
+}
+
+static void check_store_range()
+{
+	DEFINE_XARRAY(xa);
+	unsigned long i, j;
+
+	__check_store_range(&xa, 1, 10);
+#if 0
+	for (i = 0; i < 128; i++) {
+		for (j = i; j < 128; j++) {
+			__check_store_range(&xa, i, j);
+			__check_store_range(&xa, 128 + i, 128 + j);
+			__check_store_range(&xa, 4095 + i, 4095 + j);
+			__check_store_range(&xa, 4096 + i, 4096 + j);
+			__check_store_range(&xa, 123456 + i, 123456 + j);
+			__check_store_range(&xa, (1 << 24) + i, (1 << 24) + j);
+		}
+	}
+#endif
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -133,7 +170,8 @@ int main()
 	// xas_movement();
 	// check_xa_store();
 	// check_multi_order();
-	check_xas_max();
+	// check_xas_max();
+	check_store_range();
 
 	return 0;
 }

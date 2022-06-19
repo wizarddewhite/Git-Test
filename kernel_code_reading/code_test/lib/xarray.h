@@ -17,6 +17,8 @@
 #include "__ffs.h"
 #include "find.h"
 
+#define CONFIG_XARRAY_MULTI
+
 /*
  * The bottom two bits of the entry determine how the XArray interprets
  * the contents:
