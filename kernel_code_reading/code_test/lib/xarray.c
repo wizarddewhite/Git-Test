@@ -1137,7 +1137,7 @@ void *xa_store(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp)
 	return curr;
 }
 
-static void xas_set_range(struct xa_state *xas, unsigned long first,
+void xas_set_range(struct xa_state *xas, unsigned long first,
 		unsigned long last)
 {
 	unsigned int shift = 0;

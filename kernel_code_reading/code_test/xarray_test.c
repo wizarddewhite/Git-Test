@@ -163,6 +163,51 @@ static void check_store_range()
 #endif
 }
 
+void xas_set_range(struct xa_state *xas, unsigned long first,
+		unsigned long last);
+void check_set_range()
+{
+	unsigned long first, last;
+	DEFINE_XARRAY(xa);
+	XA_STATE(xas, &xa, 0);
+
+	/*
+	 * last  1111 1111
+	 * first    1 0000
+	 */
+	first = 0x023, last = 0x2e;
+	xas_set_range(&xas, first, last);
+	printf("first: %lx, last: %lx\n", first, last);
+	printf("  xa->shift: %u, xa->xa_sibs: %u\n", xas.xa_shift, xas.xa_sibs);
+	printf("  xas_size: %lx\n", xas_size(&xas));
+	printf("  range: [%lx, %lx]\n", first, first + xas_size(&xas) - 1);
+
+	/*
+	 * last  1111 1111
+	 * first         0
+	 */
+	first = 0x000, last = 0x1ff;
+	xas_set_range(&xas, first, last);
+	printf("first: %lx, last: %lx\n", first, last);
+	printf("  xa->shift: %u, xa->xa_sibs: %u\n", xas.xa_shift, xas.xa_sibs);
+	printf("  xas_size: %lx\n", xas_size(&xas));
+	printf("  range: [%lx, %lx]\n", first, first + xas_size(&xas) - 1);
+
+	first = 0x000, last = 0xfe;
+	xas_set_range(&xas, first, last);
+	printf("first: %lx, last: %lx\n", first, last);
+	printf("  xa->shift: %u, xa->xa_sibs: %u\n", xas.xa_shift, xas.xa_sibs);
+	printf("  xas_size: %lx\n", xas_size(&xas));
+	printf("  range: [%lx, %lx]\n", first, first + xas_size(&xas) - 1);
+
+	first = 0x000, last = 0x20fe;
+	xas_set_range(&xas, first, last);
+	printf("first: %lx, last: %lx\n", first, last);
+	printf("  xa->shift: %u, xa->xa_sibs: %u\n", xas.xa_shift, xas.xa_sibs);
+	printf("  xas_size: %lx\n", xas_size(&xas));
+	printf("  range: [%lx, %lx]\n", first, first + xas_size(&xas) - 1);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -171,7 +216,8 @@ int main()
 	// check_xa_store();
 	// check_multi_order();
 	// check_xas_max();
-	check_store_range();
+	// check_store_range();
+	check_set_range();
 
 	return 0;
 }
