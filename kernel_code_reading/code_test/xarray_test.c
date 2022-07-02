@@ -149,6 +149,8 @@ static void check_store_range()
 	unsigned long i, j;
 
 	__check_store_range(&xa, 1, 10);
+	xa_store_range(&xa, 2, 64, xa_mk_index(2), 0);
+	xa_dump(&xa);
 #if 0
 	for (i = 0; i < 128; i++) {
 		for (j = i; j < 128; j++) {
@@ -216,8 +218,8 @@ int main()
 	// check_xa_store();
 	// check_multi_order();
 	// check_xas_max();
-	// check_store_range();
-	check_set_range();
+	check_store_range();
+	// check_set_range();
 
 	return 0;
 }
