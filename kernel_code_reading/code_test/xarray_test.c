@@ -151,6 +151,13 @@ static void check_store_range()
 	__check_store_range(&xa, 1, 10);
 	xa_store_range(&xa, 2, 64, xa_mk_index(2), 0);
 	xa_dump(&xa);
+
+	/*
+	 * Then let's just store value to one entry.
+	 * This would keep the range set above.
+	 */
+	xa_store(&xa, 32, xa_mk_value(3), 0);
+	xa_dump(&xa);
 #if 0
 	for (i = 0; i < 128; i++) {
 		for (j = i; j < 128; j++) {
