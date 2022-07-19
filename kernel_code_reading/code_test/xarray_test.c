@@ -217,6 +217,20 @@ void check_set_range()
 	printf("  range: [%lx, %lx]\n", first, first + xas_size(&xas) - 1);
 }
 
+void check_xas_split()
+{
+	unsigned int old_order = 3;
+	unsigned int new_order = 2;
+	DEFINE_XARRAY(xa);
+	XA_STATE_ORDER(xas, &xa, 4, new_order);
+
+	xa_store_order(&xa, 0, old_order, xa_mk_value(5), 0);
+	xa_dump(&xa);
+	xas_split_alloc(&xas, xa_mk_value(3), old_order, 0);
+	xas_split(&xas, xa_mk_value(3), old_order);
+	xa_dump(&xa);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -225,8 +239,9 @@ int main()
 	// check_xa_store();
 	// check_multi_order();
 	// check_xas_max();
-	check_store_range();
+	// check_store_range();
 	// check_set_range();
+	check_xas_split();
 
 	return 0;
 }
