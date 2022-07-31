@@ -245,6 +245,15 @@ void check_create_range()
 	xa_dump(&xa, true);
 }
 
+void check_align_1()
+{
+	char text[] = "Linux";
+	printf("text: %p\n", text);
+	DEFINE_XARRAY(array);
+	xa_store(&array, 0, text, 0);
+	xa_dump(&array, false);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -256,7 +265,8 @@ int main()
 	// check_store_range();
 	// check_set_range();
 	// check_xas_split();
-	check_create_range();
+	// check_create_range();
+	check_align_1();
 
 	return 0;
 }
