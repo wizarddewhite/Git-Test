@@ -1397,6 +1397,7 @@ void xa_dump_node(const struct xa_node *node)
 
 void xa_dump_index(unsigned long index, unsigned int shift, int level)
 {
+	printf("[%2lu]", (index >> shift) & XA_CHUNK_MASK);
 	if (!shift)
 		printf("%lu: ", index);
 	else if (shift >= BITS_PER_LONG)
