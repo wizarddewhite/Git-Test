@@ -231,6 +231,20 @@ void check_xas_split()
 	xa_dump(&xa, false);
 }
 
+void check_create_range()
+{
+	unsigned long index = 0;
+	unsigned int order = 6;
+	DEFINE_XARRAY(xa);
+	XA_STATE_ORDER(xas, &xa, index, order);
+
+	xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+	xa_dump(&xa, false);
+
+	xas_create_range(&xas);
+	xa_dump(&xa, true);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -241,7 +255,8 @@ int main()
 	// check_xas_max();
 	// check_store_range();
 	// check_set_range();
-	check_xas_split();
+	// check_xas_split();
+	check_create_range();
 
 	return 0;
 }
