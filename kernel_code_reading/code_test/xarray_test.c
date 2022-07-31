@@ -88,7 +88,7 @@ void check_xa_store()
 	xa_store_index(&array, 0, 0);
 	xa_store_index(&array, 1, 0);
 	xa_store_index(&array, 0xff, 0);
-	xa_dump(&array);
+	xa_dump(&array, false);
 }
 
 static void *xa_store_order(struct xarray *xa, unsigned long index,
@@ -110,9 +110,9 @@ void check_multi_order()
 {
 	DEFINE_XARRAY(array);
 	xa_store_order(&array, 0, 1, xa_mk_value(0), 0);
-	xa_dump(&array);
+	xa_dump(&array, false);
 	xa_store_order(&array, 1, 1, xa_mk_value(1), 0);
-	xa_dump(&array);
+	xa_dump(&array, false);
 }
 
 unsigned long xas_size(const struct xa_state *xas);
@@ -150,14 +150,14 @@ static void check_store_range()
 
 	__check_store_range(&xa, 1, 10);
 	xa_store_range(&xa, 2, 64, xa_mk_index(2), 0);
-	xa_dump(&xa);
+	xa_dump(&xa, false);
 
 	/*
 	 * Then let's just store value to one entry.
 	 * This would keep the range set above.
 	 */
 	xa_store(&xa, 32, xa_mk_value(3), 0);
-	xa_dump(&xa);
+	xa_dump(&xa, false);
 #if 0
 	for (i = 0; i < 128; i++) {
 		for (j = i; j < 128; j++) {
@@ -225,10 +225,10 @@ void check_xas_split()
 	XA_STATE_ORDER(xas, &xa, 4, new_order);
 
 	xa_store_order(&xa, 0, old_order, xa_mk_value(5), 0);
-	xa_dump(&xa);
+	xa_dump(&xa, false);
 	xas_split_alloc(&xas, xa_mk_value(3), old_order, 0);
 	xas_split(&xas, xa_mk_value(3), old_order);
-	xa_dump(&xa);
+	xa_dump(&xa, false);
 }
 
 int main()

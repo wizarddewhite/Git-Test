@@ -623,7 +623,7 @@ struct xa_node {
 	};
 };
 
-void xa_dump(const struct xarray *);
+void xa_dump(const struct xarray *, bool);
 void xa_dump_node(const struct xa_node *);
 
 #ifdef XA_DEBUG
