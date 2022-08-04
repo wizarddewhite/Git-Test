@@ -115,6 +115,20 @@ void check_multi_order()
 	xa_dump(&array, false);
 }
 
+// expand the order
+void check_multi_order2()
+{
+	void *old;
+
+	DEFINE_XARRAY(array);
+	old = xa_store_order(&array, 2, 1, xa_mk_value(0), 0);
+	printf("The old value %p\n", old);
+	xa_dump(&array, false);
+	old = xa_store_order(&array, 2, 2, xa_mk_value(0), 0);
+	printf("The old value %p\n", old);
+	xa_dump(&array, false);
+}
+
 unsigned long xas_size(const struct xa_state *xas);
 unsigned long xas_max(struct xa_state *xas);
 void check_xas_max()
@@ -261,12 +275,13 @@ int main()
 	// xas_movement();
 	// check_xa_store();
 	// check_multi_order();
+	check_multi_order2();
 	// check_xas_max();
 	// check_store_range();
 	// check_set_range();
 	// check_xas_split();
 	// check_create_range();
-	check_align_1();
+	// check_align_1();
 
 	return 0;
 }
