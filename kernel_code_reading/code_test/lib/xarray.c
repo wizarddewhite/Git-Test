@@ -312,6 +312,8 @@ bool xas_nomem(struct xa_state *xas, gfp_t gfp)
 	xas->xa_alloc = malloc(sizeof(struct xa_node));
 	if (!xas->xa_alloc)
 		return false;
+	memset(xas->xa_alloc, 0, sizeof(struct xa_node));
+	INIT_LIST_HEAD(&xas->xa_alloc->private_list);
 	xas->xa_alloc->parent = NULL;
 	XA_NODE_BUG_ON(xas->xa_alloc, !list_empty(&xas->xa_alloc->private_list));
 	xas->xa_node = XAS_RESTART;
@@ -348,6 +350,8 @@ static bool __xas_nomem(struct xa_state *xas, gfp_t gfp)
 	xas->xa_alloc = malloc(sizeof(struct xa_node));
 	if (!xas->xa_alloc)
 		return false;
+	memset(xas->xa_alloc, 0, sizeof(struct xa_node));
+	INIT_LIST_HEAD(&xas->xa_alloc->private_list);
 	xas->xa_alloc->parent = NULL;
 	XA_NODE_BUG_ON(xas->xa_alloc, !list_empty(&xas->xa_alloc->private_list));
 	xas->xa_node = XAS_RESTART;
@@ -384,6 +388,8 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 			xas_set_err(xas, -ENOMEM);
 			return NULL;
 		}
+		memset(node, 0, sizeof(struct xa_node));
+		INIT_LIST_HEAD(&node->private_list);
 	}
 
 	if (parent) {
@@ -1030,6 +1036,8 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 		node = malloc(sizeof(struct xa_node));
 		if (!node)
 			goto nomem;
+		memset(node, 0, sizeof(struct xa_node));
+		INIT_LIST_HEAD(&node->private_list);
 		node->array = xas->xa;
 		for (i = 0; i < XA_CHUNK_SIZE; i++) {
 			if ((i & mask) == 0) {
