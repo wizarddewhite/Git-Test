@@ -1178,6 +1178,30 @@ void *xas_find(struct xa_state *xas, unsigned long max)
 	return NULL;
 }
 
+/**
+ * xa_load() - Load an entry from an XArray.
+ * @xa: XArray.
+ * @index: index into array.
+ *
+ * Context: Any context.  Takes and releases the RCU lock.
+ * Return: The entry at @index in @xa.
+ */
+void *xa_load(struct xarray *xa, unsigned long index)
+{
+	XA_STATE(xas, xa, index);
+	void *entry;
+
+	// rcu_read_lock();
+	do {
+		entry = xas_load(&xas);
+		if (xa_is_zero(entry))
+			entry = NULL;
+	} while (xas_retry(&xas, entry));
+	// rcu_read_unlock();
+
+	return entry;
+}
+
 static void *xas_result(struct xa_state *xas, void *curr)
 {
 	if (xa_is_zero(curr))
@@ -1227,6 +1251,46 @@ static bool __xas_nomem(struct xa_state *xas, gfp_t gfp)
 }
 #endif
 
+/**
+ * __xa_erase() - Erase this entry from the XArray while locked.
+ * @xa: XArray.
+ * @index: Index into array.
+ *
+ * After this function returns, loading from @index will return %NULL.
+ * If the index is part of a multi-index entry, all indices will be erased
+ * and none of the entries will be part of a multi-index entry.
+ *
+ * Context: Any context.  Expects xa_lock to be held on entry.
+ * Return: The entry which used to be at this index.
+ */
+void *__xa_erase(struct xarray *xa, unsigned long index)
+{
+	XA_STATE(xas, xa, index);
+	return xas_result(&xas, xas_store(&xas, NULL));
+}
+
+/**
+ * xa_erase() - Erase this entry from the XArray.
+ * @xa: XArray.
+ * @index: Index of entry.
+ *
+ * After this function returns, loading from @index will return %NULL.
+ * If the index is part of a multi-index entry, all indices will be erased
+ * and none of the entries will be part of a multi-index entry.
+ *
+ * Context: Any context.  Takes and releases the xa_lock.
+ * Return: The entry which used to be at this index.
+ */
+void *xa_erase(struct xarray *xa, unsigned long index)
+{
+	void *entry;
+
+	xa_lock(xa);
+	entry = __xa_erase(xa, index);
+	xa_unlock(xa);
+
+	return entry;
+}
 
 /**
  * __xa_store() - Store this entry in the XArray.

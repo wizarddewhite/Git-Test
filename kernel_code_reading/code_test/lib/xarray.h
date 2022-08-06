@@ -626,10 +626,12 @@ struct xa_node {
 void xa_dump(const struct xarray *, bool);
 void xa_dump_node(const struct xa_node *);
 
+#define XA_DEBUG
+
 #ifdef XA_DEBUG
 #define XA_BUG_ON(xa, x) do {					\
 		if (x) {					\
-			xa_dump(xa);				\
+			xa_dump(xa, false);			\
 			BUG();					\
 		}						\
 	} while (0)
