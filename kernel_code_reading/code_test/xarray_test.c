@@ -268,6 +268,18 @@ void check_align_1()
 	xa_dump(&array, false);
 }
 
+void check_xa_erase()
+{
+	DEFINE_XARRAY(array);
+
+	xa_store_index(&array, 0, 0);
+	xa_store_index(&array, 1, 0);
+	xa_dump(&array, false);
+
+	xa_erase(&array, 1);
+	xa_dump(&array, false);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -275,13 +287,14 @@ int main()
 	// xas_movement();
 	// check_xa_store();
 	// check_multi_order();
-	check_multi_order2();
+	// check_multi_order2();
 	// check_xas_max();
 	// check_store_range();
 	// check_set_range();
 	// check_xas_split();
 	// check_create_range();
 	// check_align_1();
+	check_xa_erase();
 
 	return 0;
 }
