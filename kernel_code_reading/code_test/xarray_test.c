@@ -280,6 +280,20 @@ void check_xa_erase()
 	xa_dump(&array, false);
 }
 
+void check_xa_mark()
+{
+	DEFINE_XARRAY(xa);
+	xa_store_index(&xa, 0, 0);
+	xa_set_mark(&xa, 0, XA_MARK_0);
+	xa_store_index(&xa, 1, 0);
+	xa_set_mark(&xa, 1, XA_MARK_0);
+	xa_set_mark(&xa, 1, XA_MARK_1);
+	xa_dump(&xa, false);
+
+	xa_store_order(&xa, 0, 2, xa_mk_index(0), 0);
+	xa_dump(&xa, false);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -294,7 +308,8 @@ int main()
 	// check_xas_split();
 	// check_create_range();
 	// check_align_1();
-	check_xa_erase();
+	// check_xa_erase();
+	check_xa_mark();
 
 	return 0;
 }

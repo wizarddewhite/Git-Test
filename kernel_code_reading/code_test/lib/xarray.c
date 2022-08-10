@@ -1445,6 +1445,108 @@ unlock:
 
 	return xas_result(&xas, NULL);
 }
+
+/**
+ * __xa_set_mark() - Set this mark on this entry while locked.
+ * @xa: XArray.
+ * @index: Index of entry.
+ * @mark: Mark number.
+ *
+ * Attempting to set a mark on a %NULL entry does not succeed.
+ *
+ * Context: Any context.  Expects xa_lock to be held on entry.
+ */
+void __xa_set_mark(struct xarray *xa, unsigned long index, xa_mark_t mark)
+{
+	XA_STATE(xas, xa, index);
+	void *entry = xas_load(&xas);
+
+	if (entry)
+		xas_set_mark(&xas, mark);
+}
+
+/**
+ * __xa_clear_mark() - Clear this mark on this entry while locked.
+ * @xa: XArray.
+ * @index: Index of entry.
+ * @mark: Mark number.
+ *
+ * Context: Any context.  Expects xa_lock to be held on entry.
+ */
+void __xa_clear_mark(struct xarray *xa, unsigned long index, xa_mark_t mark)
+{
+	XA_STATE(xas, xa, index);
+	void *entry = xas_load(&xas);
+
+	if (entry)
+		xas_clear_mark(&xas, mark);
+}
+
+/**
+ * xa_get_mark() - Inquire whether this mark is set on this entry.
+ * @xa: XArray.
+ * @index: Index of entry.
+ * @mark: Mark number.
+ *
+ * This function uses the RCU read lock, so the result may be out of date
+ * by the time it returns.  If you need the result to be stable, use a lock.
+ *
+ * Context: Any context.  Takes and releases the RCU lock.
+ * Return: True if the entry at @index has this mark set, false if it doesn't.
+ */
+bool xa_get_mark(struct xarray *xa, unsigned long index, xa_mark_t mark)
+{
+	XA_STATE(xas, xa, index);
+	void *entry;
+
+	//rcu_read_lock();
+	entry = xas_start(&xas);
+	while (xas_get_mark(&xas, mark)) {
+		if (!xa_is_node(entry))
+			goto found;
+		entry = xas_descend(&xas, xa_to_node(entry));
+	}
+	//rcu_read_unlock();
+	return false;
+ found:
+	//rcu_read_unlock();
+	return true;
+}
+
+/**
+ * xa_set_mark() - Set this mark on this entry.
+ * @xa: XArray.
+ * @index: Index of entry.
+ * @mark: Mark number.
+ *
+ * Attempting to set a mark on a %NULL entry does not succeed.
+ *
+ * Context: Process context.  Takes and releases the xa_lock.
+ */
+void xa_set_mark(struct xarray *xa, unsigned long index, xa_mark_t mark)
+{
+	xa_lock(xa);
+	__xa_set_mark(xa, index, mark);
+	xa_unlock(xa);
+}
+
+/**
+ * xa_clear_mark() - Clear this mark on this entry.
+ * @xa: XArray.
+ * @index: Index of entry.
+ * @mark: Mark number.
+ *
+ * Clearing a mark always succeeds.
+ *
+ * Context: Process context.  Takes and releases the xa_lock.
+ */
+void xa_clear_mark(struct xarray *xa, unsigned long index, xa_mark_t mark)
+{
+	xa_lock(xa);
+	__xa_clear_mark(xa, index, mark);
+	xa_unlock(xa);
+}
+
 void xa_dump_node(const struct xa_node *node)
 {
 	unsigned i, j;
