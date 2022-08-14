@@ -1187,6 +1187,105 @@ void *xas_find(struct xa_state *xas, unsigned long max)
 }
 
 /**
+ * xas_find_marked() - Find the next marked entry in the XArray.
+ * @xas: XArray operation state.
+ * @max: Highest index to return.
+ * @mark: Mark number to search for.
+ *
+ * If the @xas has not yet been walked to an entry, return the marked entry
+ * which has an index >= xas.xa_index.  If it has been walked, the entry
+ * currently being pointed at has been processed, and so we return the
+ * first marked entry with an index > xas.xa_index.
+ *
+ * If no marked entry is found and the array is smaller than @max, @xas is
+ * set to the bounds state and xas->xa_index is set to the smallest index
+ * not yet in the array.  This allows @xas to be immediately passed to
+ * xas_store().
+ *
+ * If no entry is found before @max is reached, @xas is set to the restart
+ * state.
+ *
+ * Return: The entry, if found, otherwise %NULL.
+ */
+void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
+{
+	bool advance = true;
+	unsigned int offset;
+	void *entry;
+
+	if (xas_error(xas))
+		return NULL;
+	if (xas->xa_index > max)
+		goto max;
+
+	if (!xas->xa_node) {
+		xas->xa_index = 1;
+		goto out;
+	} else if (xas_top(xas->xa_node)) {
+		advance = false;
+		entry = xa_head(xas->xa);
+		xas->xa_node = NULL;
+		if (xas->xa_index > max_index(entry))
+			goto out;
+		if (!xa_is_node(entry)) {
+			if (xa_marked(xas->xa, mark))
+				return entry;
+			xas->xa_index = 1;
+			goto out;
+		}
+		xas->xa_node = xa_to_node(entry);
+		xas->xa_offset = xas->xa_index >> xas->xa_node->shift;
+	}
+
+	while (xas->xa_index <= max) {
+		if (unlikely(xas->xa_offset == XA_CHUNK_SIZE)) {
+			xas->xa_offset = xas->xa_node->offset + 1;
+			xas->xa_node = xa_parent(xas->xa, xas->xa_node);
+			if (!xas->xa_node)
+				break;
+			advance = false;
+			continue;
+		}
+
+		if (!advance) {
+			entry = xa_entry(xas->xa, xas->xa_node, xas->xa_offset);
+			if (xa_is_sibling(entry)) {
+				xas->xa_offset = xa_to_sibling(entry);
+				xas_move_index(xas, xas->xa_offset);
+			}
+		}
+
+		offset = xas_find_chunk(xas, advance, mark);
+		if (offset > xas->xa_offset) {
+			advance = false;
+			xas_move_index(xas, offset);
+			/* Mind the wrap */
+			if ((xas->xa_index - 1) >= max)
+				goto max;
+			xas->xa_offset = offset;
+			if (offset == XA_CHUNK_SIZE)
+				continue;
+		}
+
+		entry = xa_entry(xas->xa, xas->xa_node, xas->xa_offset);
+		if (!entry && !(xa_track_free(xas->xa) && mark == XA_FREE_MARK))
+			continue;
+		if (!xa_is_node(entry))
+			return entry;
+		xas->xa_node = xa_to_node(entry);
+		xas_set_offset(xas);
+	}
+
+out:
+	if (xas->xa_index > max)
+		goto max;
+	return set_bounds(xas);
+max:
+	xas->xa_node = XAS_RESTART;
+	return NULL;
+}
+
+/**
  * xa_load() - Load an entry from an XArray.
  * @xa: XArray.
  * @index: index into array.
@@ -1447,6 +1546,50 @@ unlock:
 }
 
 /**
+ * __xa_alloc() - Find somewhere to store this entry in the XArray.
+ * @xa: XArray.
+ * @id: Pointer to ID.
+ * @limit: Range for allocated ID.
+ * @entry: New entry.
+ * @gfp: Memory allocation flags.
+ *
+ * Finds an empty entry in @xa between @limit.min and @limit.max,
+ * stores the index into the @id pointer, then stores the entry at
+ * that index.  A concurrent lookup will not see an uninitialised @id.
+ *
+ * Context: Any context.  Expects xa_lock to be held on entry.  May
+ * release and reacquire xa_lock if @gfp flags permit.
+ * Return: 0 on success, -ENOMEM if memory could not be allocated or
+ * -EBUSY if there are no free entries in @limit.
+ */
+int __xa_alloc(struct xarray *xa, u32 *id, void *entry,
+		struct xa_limit limit, gfp_t gfp)
+{
+	XA_STATE(xas, xa, 0);
+
+	if (WARN_ON_ONCE(xa_is_advanced(entry)))
+		return -EINVAL;
+	if (WARN_ON_ONCE(!xa_track_free(xa)))
+		return -EINVAL;
+
+	if (!entry)
+		entry = XA_ZERO_ENTRY;
+
+	do {
+		xas.xa_index = limit.min;
+		xas_find_marked(&xas, limit.max, XA_FREE_MARK);
+		if (xas.xa_node == XAS_RESTART)
+			xas_set_err(&xas, -EBUSY);
+		else
+			*id = xas.xa_index;
+		xas_store(&xas, entry);
+		xas_clear_mark(&xas, XA_FREE_MARK);
+	} while (__xas_nomem(&xas, gfp));
+
+	return xas_error(&xas);
+}
+
+/**
  * __xa_set_mark() - Set this mark on this entry while locked.
  * @xa: XArray.
  * @index: Index of entry.
@@ -1545,6 +1688,102 @@ void xa_clear_mark(struct xarray *xa, unsigned long index, xa_mark_t mark)
 	xa_lock(xa);
 	__xa_clear_mark(xa, index, mark);
 	xa_unlock(xa);
+}
+
+/**
+ * xa_find() - Search the XArray for an entry.
+ * @xa: XArray.
+ * @indexp: Pointer to an index.
+ * @max: Maximum index to search to.
+ * @filter: Selection criterion.
+ *
+ * Finds the entry in @xa which matches the @filter, and has the lowest
+ * index that is at least @indexp and no more than @max.
+ * If an entry is found, @indexp is updated to be the index of the entry.
+ * This function is protected by the RCU read lock, so it may not find
+ * entries which are being simultaneously added.  It will not return an
+ * %XA_RETRY_ENTRY; if you need to see retry entries, use xas_find().
+ *
+ * Context: Any context.  Takes and releases the RCU lock.
+ * Return: The entry, if found, otherwise %NULL.
+ */
+void *xa_find(struct xarray *xa, unsigned long *indexp,
+			unsigned long max, xa_mark_t filter)
+{
+	XA_STATE(xas, xa, *indexp);
+	void *entry;
+
+	//rcu_read_lock();
+	do {
+		if ((__force unsigned int)filter < XA_MAX_MARKS)
+			entry = xas_find_marked(&xas, max, filter);
+		else
+			entry = xas_find(&xas, max);
+	} while (xas_retry(&xas, entry));
+	//rcu_read_unlock();
+
+	if (entry)
+		*indexp = xas.xa_index;
+	return entry;
+}
+
+static bool xas_sibling(struct xa_state *xas)
+{
+	struct xa_node *node = xas->xa_node;
+	unsigned long mask;
+
+	if (!IS_ENABLED(CONFIG_XARRAY_MULTI) || !node)
+		return false;
+	mask = (XA_CHUNK_SIZE << node->shift) - 1;
+	return (xas->xa_index & mask) >
+		((unsigned long)xas->xa_offset << node->shift);
+}
+
+/**
+ * xa_find_after() - Search the XArray for a present entry.
+ * @xa: XArray.
+ * @indexp: Pointer to an index.
+ * @max: Maximum index to search to.
+ * @filter: Selection criterion.
+ *
+ * Finds the entry in @xa which matches the @filter and has the lowest
+ * index that is above @indexp and no more than @max.
+ * If an entry is found, @indexp is updated to be the index of the entry.
+ * This function is protected by the RCU read lock, so it may miss entries
+ * which are being simultaneously added.  It will not return an
+ * %XA_RETRY_ENTRY; if you need to see retry entries, use xas_find().
+ *
+ * Context: Any context.  Takes and releases the RCU lock.
+ * Return: The pointer, if found, otherwise %NULL.
+ */
+void *xa_find_after(struct xarray *xa, unsigned long *indexp,
+			unsigned long max, xa_mark_t filter)
+{
+	XA_STATE(xas, xa, *indexp + 1);
+	void *entry;
+
+	if (xas.xa_index == 0)
+		return NULL;
+
+	//rcu_read_lock();
+	for (;;) {
+		if ((__force unsigned int)filter < XA_MAX_MARKS)
+			entry = xas_find_marked(&xas, max, filter);
+		else
+			entry = xas_find(&xas, max);
+
+		if (xas_invalid(&xas))
+			break;
+		if (xas_sibling(&xas))
+			continue;
+		if (!xas_retry(&xas, entry))
+			break;
+	}
+	//rcu_read_unlock();
+
+	if (entry)
+		*indexp = xas.xa_index;
+	return entry;
 }
 
 void xa_dump_node(const struct xa_node *node)

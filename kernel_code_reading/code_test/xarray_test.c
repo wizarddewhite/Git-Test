@@ -294,6 +294,31 @@ void check_xa_mark()
 	xa_dump(&xa, false);
 }
 
+static DEFINE_XARRAY_ALLOC(xa0);
+void check_xa_alloc()
+{
+	unsigned int i, id;
+	unsigned long index;
+	void *entry;
+	for (i = 0; i < 10; i++)
+		xa_alloc(&xa0, &id, NULL, xa_limit_32b, 0);
+	xa_dump(&xa0, false);
+	xa_store(&xa0, 3, xa_mk_index(3), 0);
+	xa_store(&xa0, 4, xa_mk_index(4), 0);
+	xa_dump(&xa0, false);
+	xa_store(&xa0, 4, NULL, 0);
+	xa_dump(&xa0, false);
+	// difference between store NULL and erase?
+	xa_erase(&xa0, 5);
+	xa_dump(&xa0, false);
+
+	// xa_for_each would skip ZERO entry
+	xa_for_each(&xa0, index, entry) {
+		printf("find entry %p at %lu\n", entry, index);
+		// xa_erase_index(&xa0, index);
+	}
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -309,7 +334,8 @@ int main()
 	// check_create_range();
 	// check_align_1();
 	// check_xa_erase();
-	check_xa_mark();
+	// check_xa_mark();
+	check_xa_alloc();
 
 	return 0;
 }

@@ -578,6 +578,35 @@ int __xa_alloc_cyclic(struct xarray *, u32 *id, void *entry,
 void __xa_set_mark(struct xarray *, unsigned long index, xa_mark_t);
 void __xa_clear_mark(struct xarray *, unsigned long index, xa_mark_t);
 
+/**
+ * xa_alloc() - Find somewhere to store this entry in the XArray.
+ * @xa: XArray.
+ * @id: Pointer to ID.
+ * @entry: New entry.
+ * @limit: Range of ID to allocate.
+ * @gfp: Memory allocation flags.
+ *
+ * Finds an empty entry in @xa between @limit.min and @limit.max,
+ * stores the index into the @id pointer, then stores the entry at
+ * that index.  A concurrent lookup will not see an uninitialised @id.
+ *
+ * Context: Any context.  Takes and releases the xa_lock.  May sleep if
+ * the @gfp flags permit.
+ * Return: 0 on success, -ENOMEM if memory could not be allocated or
+ * -EBUSY if there are no free entries in @limit.
+ */
+static inline int xa_alloc(struct xarray *xa, u32 *id,
+		void *entry, struct xa_limit limit, gfp_t gfp)
+{
+	int err;
+
+	xa_lock(xa);
+	err = __xa_alloc(xa, id, entry, limit, gfp);
+	xa_unlock(xa);
+
+	return err;
+}
+
 /* Everything below here is the Advanced API.  Proceed with caution. */
 
 /*
