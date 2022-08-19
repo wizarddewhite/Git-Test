@@ -295,6 +295,8 @@ void check_xa_mark()
 }
 
 static DEFINE_XARRAY_ALLOC(xa0);
+static DEFINE_XARRAY_ALLOC1(xa1);
+
 void check_xa_alloc()
 {
 	unsigned int i, id;
@@ -319,6 +321,18 @@ void check_xa_alloc()
 	}
 }
 
+void check_xa_alloc1()
+{
+	unsigned int i, id;
+	unsigned long index;
+
+	xa_dump(&xa1, false);
+	xa_alloc(&xa1, &id, xa_mk_index(1), xa_limit_32b, 0);
+	xa_dump(&xa1, false);
+	xa_erase(&xa1, 1);
+	xa_dump(&xa1, false);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -335,7 +349,8 @@ int main()
 	// check_align_1();
 	// check_xa_erase();
 	// check_xa_mark();
-	check_xa_alloc();
+	// check_xa_alloc();
+	check_xa_alloc1();
 
 	return 0;
 }
