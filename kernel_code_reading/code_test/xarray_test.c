@@ -252,9 +252,6 @@ void check_create_range()
 	DEFINE_XARRAY(xa);
 	XA_STATE_ORDER(xas, &xa, index, order);
 
-	xa_store_order(&xa, index, order, xa_mk_index(index), 0);
-	xa_dump(&xa, false);
-
 	xas_create_range(&xas);
 	xa_dump(&xa, true);
 }
