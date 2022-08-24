@@ -333,6 +333,22 @@ void check_xa_alloc1()
 	xa_dump(&xa1, false);
 }
 
+void check_xas_next()
+{
+	void *entry;
+	DEFINE_XARRAY(xa);
+	XA_STATE(xas, &xa, 0);
+
+	xa_store_index(&xa, 0, 0);
+	xas_set(&xas, 0);
+	entry = xas_next(&xas);
+	printf("index: %lu %p\n", xas.xa_index, entry);
+	entry = xas_next(&xas);
+	printf("index: %lu %p\n", xas.xa_index, entry);
+	entry = xas_next(&xas);
+	printf("index: %lu %p\n", xas.xa_index, entry);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -350,7 +366,8 @@ int main()
 	// check_xa_erase();
 	// check_xa_mark();
 	// check_xa_alloc();
-	check_xa_alloc1();
+	// check_xa_alloc1();
+	check_xas_next();
 
 	return 0;
 }
