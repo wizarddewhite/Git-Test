@@ -245,6 +245,43 @@ void check_xas_split()
 	xa_dump(&xa, false);
 }
 
+static void check_create_range_4(struct xarray *xa,
+		unsigned long index, unsigned order)
+{
+	XA_STATE_ORDER(xas, xa, index, order);
+	unsigned long base = xas.xa_index;
+	unsigned long i = 0;
+
+	printf("index: %ld, range [%ld, %ld]\n",
+		index, xas.xa_index, xas.xa_index | (((xas.xa_sibs + 1UL) << xas.xa_shift) - 1));
+
+	xa_store_index(xa, index, 0);
+	xa_dump(xa, false);
+	do {
+		xas_lock(&xas);
+		xas_create_range(&xas);
+		if (xas_error(&xas))
+			goto unlock;
+		for (i = 0; i < (1UL << order); i++) {
+			void *old = xas_store(&xas, xa_mk_index(base + i));
+			if (xas.xa_index == index)
+				XA_BUG_ON(xa, old != xa_mk_index(base + i));
+			else
+				XA_BUG_ON(xa, old != NULL);
+			xas_next(&xas);
+			printf("index after xas_next: %ld\n", xas.xa_index);
+		}
+unlock:
+		xas_unlock(&xas);
+	} while (xas_nomem(&xas, 0));
+
+	XA_BUG_ON(xa, xas_error(&xas));
+
+	// for (i = base; i < base + (1UL << order); i++)
+	// 	xa_erase_index(xa, i);
+	// XA_BUG_ON(xa, !xa_empty(xa));
+}
+
 void check_create_range()
 {
 	unsigned long index = 0;
@@ -254,6 +291,11 @@ void check_create_range()
 
 	xas_create_range(&xas);
 	xa_dump(&xa, true);
+
+	xa_destroy(&xa);
+	xa_dump(&xa, true);
+
+	check_create_range_4(&xa, 2, 2);
 }
 
 void check_align_1()
@@ -358,13 +400,13 @@ int main()
 	// check_store_range();
 	// check_set_range();
 	// check_xas_split();
-	// check_create_range();
+	check_create_range();
 	// check_align_1();
 	// check_xa_erase();
 	// check_xa_mark();
 	// check_xa_alloc();
 	// check_xa_alloc1();
-	check_xas_next();
+	// check_xas_next();
 
 	return 0;
 }
