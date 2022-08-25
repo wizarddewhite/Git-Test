@@ -298,6 +298,21 @@ void check_create_range()
 	check_create_range_4(&xa, 2, 2);
 }
 
+void check_create_range_multi_order()
+{
+	unsigned long index = 0;
+	unsigned int order = 6;
+	DEFINE_XARRAY(xa);
+	XA_STATE_ORDER(xas, &xa, index, order);
+
+	xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+
+	xas_create_range(&xas);
+	xa_dump(&xa, true);
+	xas_create_range(&xas);
+	xa_dump(&xa, true);
+}
+
 void check_align_1()
 {
 	char text[] = "Linux";
@@ -400,7 +415,8 @@ int main()
 	// check_store_range();
 	// check_set_range();
 	// check_xas_split();
-	check_create_range();
+	// check_create_range();
+	check_create_range_multi_order();
 	// check_align_1();
 	// check_xa_erase();
 	// check_xa_mark();
