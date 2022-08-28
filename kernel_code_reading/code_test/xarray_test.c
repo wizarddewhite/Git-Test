@@ -127,6 +127,10 @@ void check_multi_order2()
 	old = xa_store_order(&array, 2, 2, xa_mk_value(0), 0);
 	printf("The old value %p\n", old);
 	xa_dump(&array, false);
+
+	old = xa_store_order(&array, 2, 8, xa_mk_value(0), 0);
+	printf("The old value %p\n", old);
+	xa_dump(&array, false);
 }
 
 unsigned long xas_size(const struct xa_state *xas);
