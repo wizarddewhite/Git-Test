@@ -244,6 +244,7 @@ void check_xas_split()
 
 	xa_store_order(&xa, 0, old_order, xa_mk_value(5), 0);
 	xa_dump(&xa, false);
+	printf("split from order %d to order %d\n", old_order, new_order);
 	xas_split_alloc(&xas, xa_mk_value(3), old_order, 0);
 	xas_split(&xas, xa_mk_value(3), old_order);
 	xa_dump(&xa, false);
@@ -304,17 +305,277 @@ void check_create_range()
 
 void check_create_range_multi_order()
 {
+	int enable_tests[] = {
+		1, 1, 1, 1,
+		1, 1, 1, 1,
+		};
 	unsigned long index = 0;
-	unsigned int order = 6;
+	unsigned int order = 9;
 	DEFINE_XARRAY(xa);
-	XA_STATE_ORDER(xas, &xa, index, order);
 
-	xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+	// case 1: create range from 0
+	if (enable_tests[0]) {
+		void *entry;
+		XA_STATE_ORDER(xas, &xa, index, order);
+		xas_create_range(&xas);
 
-	xas_create_range(&xas);
-	xa_dump(&xa, true);
-	xas_create_range(&xas);
-	xa_dump(&xa, true);
+		xas_set(&xas, 0);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		xas_set(&xas, 1UL << order);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 2: create range from 1 << order
+	if (enable_tests[1]) {
+		XA_STATE_ORDER(xas, &xa, index, order);
+		xas_set(&xas, 1UL << order);
+		xas_create_range(&xas);
+
+		// [1 << order, (2 << order) - 1] is created
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		xas_set(&xas, (2UL << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		// otherwise is empty
+		xas_set(&xas, 0);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		xas_set(&xas, 2UL << order);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 3: create range from 0 after same multi-order created
+	if (enable_tests[2]) {
+		XA_STATE_ORDER(xas, &xa, index, order);
+		xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		// xa_dump(&xa, false);
+		xas_create_range(&xas);
+
+		// [0, (1 << order) - 1] is created
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << order) - 1) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << order)) != NULL);
+
+		xas_set(&xas, 1UL << order);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 4: create range from 0 after same multi-order created with elder sibling
+	if (enable_tests[3]) {
+		XA_STATE_ORDER(xas, &xa, index, order);
+		unsigned long sibling_index = 1 << (order - (order % XA_CHUNK_SHIFT) + XA_CHUNK_SHIFT);
+		xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		xa_store_order(&xa, sibling_index, order, xa_mk_index(index), 0);
+		// xa_dump(&xa, false);
+
+		xas_create_range(&xas);
+
+		// [0, (1 << order) - 1] is created
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << order) - 1) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << order)) != NULL);
+
+		xas_set(&xas, 1UL << order);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 5: create range after same multi-order created with younger sibling
+	if (enable_tests[4]) {
+		XA_STATE_ORDER(xas, &xa, index, order);
+		unsigned long sibling_index = 1 << (order - (order % XA_CHUNK_SHIFT) + XA_CHUNK_SHIFT);
+		// printf("store order %u at %lu\n", order, index);
+		xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		// printf("store order %u at %lu\n", order, sibling_index);
+		xa_store_order(&xa, sibling_index, order, xa_mk_index(index), 0);
+		// xa_dump(&xa, false);
+
+		xas_set(&xas, sibling_index);
+		xas_create_range(&xas);
+
+		// [sibling_index, sibling_index + (1 << order) - 1] is created
+		XA_BUG_ON(&xa, xa_load(&xa, sibling_index) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, sibling_index + (1 << order) - 1) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, sibling_index + (1 << order)) != NULL);
+
+		// otherwise is empty
+		xas_set(&xas, sibling_index - 1);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		xas_set(&xas, sibling_index + (1 << order));
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 6: create range from 0 after lower multi-order created
+	if (enable_tests[5]) {
+		XA_STATE_ORDER(xas, &xa, index, (order+1));
+		// printf("store order %u at %lu\n", order, index);
+		xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		// xa_dump(&xa, false);
+
+		// [(1 << order), (2 << order) - 1] is empty now
+		xas_set(&xas, (1 << order));
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		xas_set(&xas, index);
+		xas_create_range(&xas);
+
+		// [0, (1 << order) - 1] is set
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << order) - 1) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << order)) != NULL);
+
+		// [(1 << order), (2 << order) - 1] is created now
+		xas_set(&xas, (1 << order));
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		xas_set(&xas, (2 << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		// otherwise is empty
+		xas_set(&xas, (2 << order));
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 7: create range from 0 after lower multi-order created at bottom
+	if (enable_tests[6]) { // original code fails
+		XA_STATE_ORDER(xas, &xa, index, (order+1));
+		// printf("store order %u at %lu\n", order, index);
+		xa_store_order(&xa, index + (1 << order), order, xa_mk_index(index), 0);
+		// xa_dump(&xa, false);
+
+		// [0, (1 << order) - 1] is empty now
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift == 0);
+
+		xas_set(&xas, index);
+		xas_create_range(&xas);
+
+		// [(1 << order), (2 << order) - 1] is set
+		XA_BUG_ON(&xa, xa_load(&xa, 1 << order) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, (2 << order) - 1) != xa_mk_index(index));
+		XA_BUG_ON(&xa, xa_load(&xa, 2 << order) != NULL);
+
+		// [0, (1 << order) - 1] is created
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		xas_set(&xas, (1 << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&xas) != NULL);
+		XA_BUG_ON(&xa, xas.xa_node == NULL);
+		XA_BUG_ON(&xa, xas.xa_node->shift != 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 8: create range from 0 after lower multi-order at bottom
+	if (enable_tests[7]) {
+		order = 3;
+		for (index = 0; index < (1 << (order + XA_CHUNK_SHIFT + 2)); index += 1 << order) {
+			if (index == ((1 << (order + XA_CHUNK_SHIFT + 1)) - (1 << order)) || 
+			    index == ((1 << (order + XA_CHUNK_SHIFT + 1)) - (2 << order)))
+			 	continue;
+			xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		}
+		// xa_dump(&xa, false);
+
+		XA_STATE(load_xas, &xa, 0);
+		// [((1 << (order + XA_CHUNK_SHIFT + 1)) - (2 << order)),
+		//  (1 << (order + XA_CHUNK_SHIFT + 1)) - 1] is empty now
+		xas_set(&load_xas, ((1 << (order + XA_CHUNK_SHIFT + 1)) - (2 << order)));
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+		xas_set(&load_xas, ((1 << (order + XA_CHUNK_SHIFT + 1)) - (1 << order)));
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+		xas_set(&load_xas, ((1 << (order + XA_CHUNK_SHIFT + 1)) - 1 ));
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+		// other is set
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(0));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << (order + XA_CHUNK_SHIFT + 1))) !=
+				xa_mk_index(1 << (order + XA_CHUNK_SHIFT + 1)));
+
+		XA_STATE_ORDER(xas, &xa, 0, (order + XA_CHUNK_SHIFT +2));
+		xas_create_range(&xas);
+
+		// [((1 << (order + XA_CHUNK_SHIFT + 1)) - (2 << order)),
+		//  (1 << (order + XA_CHUNK_SHIFT + 1)) - 1] is set now
+		xas_set(&load_xas, ((1 << (order + XA_CHUNK_SHIFT + 1)) - (2 << order)));
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
+
+		// other is set
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(0));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << (order + XA_CHUNK_SHIFT + 1))) !=
+				xa_mk_index(1 << (order + XA_CHUNK_SHIFT + 1)));
+
+		// xa_dump(&xa, true);
+		xa_destroy(&xa);
+	}
+
+	// create range next to multi-order
+	// xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+	//xas_set(&xas, 1UL << order);
+	//xas_create_range(&xas);
+	//xa_dump(&xa, false);
 }
 
 void check_align_1()
