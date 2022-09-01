@@ -685,6 +685,8 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 		shift = node->shift;
 		entry = xa_entry_locked(xa, node, offset);
 		slot = &node->slots[offset];
+
+		// printf("\txas_create locate node %p entry %p\n", node, entry);
 	} else {
 		shift = 0;
 		entry = xa_head_locked(xa);
@@ -704,6 +706,7 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 		} else if (xa_is_node(entry)) {
 			node = xa_to_node(entry);
 		} else {
+			// printf("\txas_create and isn't a node \n");
 			break;
 		}
 		entry = xas_descend(xas, node);
@@ -734,23 +737,45 @@ void xas_create_range(struct xa_state *xas)
 	xas->xa_shift = 0;
 	xas->xa_sibs = 0;
 
+	int idx = 0;
+
 	for (;;) {
+		idx++;
 		xas_create(xas, true);
+		// xa_dump(xas->xa, false);
 		if (xas_error(xas))
 			goto restore;
 		if (xas->xa_index <= (index | XA_CHUNK_MASK))
 			goto success;
 		xas->xa_index -= XA_CHUNK_SIZE;
 
+		// printf("look for index %lu from parent: %p(%u),\n",
+		//  		xas->xa_index, xas->xa_node, xas->xa_offset);
 		for (;;) {
 			struct xa_node *node = xas->xa_node;
-			if (node->shift >= shift)
+			if (node->shift >= shift) {
+				// printf("...bingo! shift %d\n", shift);
+
+				unsigned expe_index = (xas->xa_index >> (node->shift + XA_CHUNK_SHIFT)) << (node->shift + XA_CHUNK_SHIFT);
+				expe_index += xas->xa_offset << node->shift;
+				// printf("  expe index %u\n", expe_index);
+
+				if (expe_index > (index & ~XA_CHUNK_MASK)) {
+					xas->xa_index = expe_index - 1;
+					xas_set(xas, expe_index - 1);
+				} else {
+					goto success;
+				}
+
 				break;
+			}
 			xas->xa_node = xa_parent_locked(xas->xa, node);
 			xas->xa_offset = node->offset - 1;
+			// printf("parent of %p is %p\n", node, xas->xa_node);
 			if (node->offset != 0)
 				break;
 		}
+		// printf(" and found: %p(%u)\n", xas->xa_node, xas->xa_offset);
 	}
 
 restore:
@@ -759,6 +784,7 @@ restore:
 	xas->xa_index = index;
 	return;
 success:
+	printf("total iterations: %d, xas->xa_shift %d\n", idx, xas->xa_shift);
 	xas->xa_index = index;
 	if (xas->xa_node)
 		xas_set_offset(xas);
