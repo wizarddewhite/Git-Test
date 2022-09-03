@@ -306,8 +306,9 @@ void check_create_range()
 void check_create_range_multi_order()
 {
 	int enable_tests[] = {
-		1, 1, 1, 1,
-		1, 1, 1, 1,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		1,
 		};
 	unsigned long index = 0;
 	unsigned int order = 9;
@@ -571,11 +572,28 @@ void check_create_range_multi_order()
 		xa_destroy(&xa);
 	}
 
-	// create range next to multi-order
-	// xa_store_order(&xa, index, order, xa_mk_index(index), 0);
-	//xas_set(&xas, 1UL << order);
-	//xas_create_range(&xas);
-	//xa_dump(&xa, false);
+	// case 9: create range from 0 after lower multi-order created at bottom
+	if (enable_tests[8]) { // original code fails
+		unsigned int next_order;
+
+		order = 9;
+		next_order = roundup(order, XA_CHUNK_SHIFT);
+
+		// printf("store order %u at %lu\n", order, index);
+		for (index = 0; index < (1 << next_order); index += 1 << order) {
+			if (index == (1 << order))
+				continue;
+			xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		}
+		xa_dump(&xa, false);
+
+		XA_STATE_ORDER(xas, &xa, 0, next_order);
+		xas_create_range(&xas);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
 }
 
 void check_align_1()
