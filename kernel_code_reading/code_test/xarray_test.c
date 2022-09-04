@@ -485,8 +485,9 @@ void check_create_range_multi_order()
 		xa_destroy(&xa);
 	}
 
+	// original code doesn't create proper slot
 	// case 7: create range from 0 after lower multi-order created at bottom
-	if (enable_tests[6]) { // original code fails
+	if (enable_tests[6]) {
 		XA_STATE_ORDER(xas, &xa, index, (order+1));
 		// printf("store order %u at %lu\n", order, index);
 		xa_store_order(&xa, index + (1 << order), order, xa_mk_index(index), 0);
@@ -572,8 +573,9 @@ void check_create_range_multi_order()
 		xa_destroy(&xa);
 	}
 
-	// case 9: create range from 0 after lower multi-order created at bottom
-	if (enable_tests[8]) { // original code fails
+	// this one crash before change
+	// case 9: create higher order range
+	if (enable_tests[8]) {
 		unsigned int next_order;
 
 		order = 9;
@@ -585,10 +587,36 @@ void check_create_range_multi_order()
 				continue;
 			xa_store_order(&xa, index, order, xa_mk_index(index), 0);
 		}
-		xa_dump(&xa, false);
+		// xa_dump(&xa, false);
+
+		// value is set
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(0));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << next_order) - (1 << order))
+				!= xa_mk_index((1 << next_order) - (1 << order)));
+
+		// [(1 << order)), (2 << order)) - 1] is empty now
+		XA_STATE(load_xas, &xa, 1 << order);
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+		xas_set(&load_xas, (2 << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
 
 		XA_STATE_ORDER(xas, &xa, 0, next_order);
 		xas_create_range(&xas);
+
+		// [(1 << order)), (2 << order)) - 1] is created now
+		xas_set(&load_xas, (1 << order));
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
+		xas_set(&load_xas, (2 << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
 
 		// xa_dump(&xa, false);
 		xa_destroy(&xa);
