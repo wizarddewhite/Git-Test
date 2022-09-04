@@ -773,7 +773,11 @@ void xas_create_range(struct xa_state *xas)
 
 				break;
 			}
+
 			xas->xa_node = xa_parent_locked(xas->xa, node);
+			if (!xas->xa_node)
+				break;
+
 			xas->xa_offset = node->offset - 1;
 #ifdef DEBUG
 			printf("parent of %p is %p\n", node, xas->xa_node);
