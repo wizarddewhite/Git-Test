@@ -730,6 +730,7 @@ void xas_create_range(struct xa_state *xas)
 	unsigned long index = xas->xa_index;
 	unsigned char shift = xas->xa_shift;
 	unsigned char sibs = xas->xa_sibs;
+	struct xa_node *node;
 
 	xas->xa_index |= ((sibs + 1UL) << shift) - 1;
 	if (xas_is_node(xas) && xas->xa_node->shift == xas->xa_shift)
@@ -753,8 +754,7 @@ void xas_create_range(struct xa_state *xas)
 		printf("look for index %lu from parent: %p(%u),\n",
 			xas->xa_index, xas->xa_node, xas->xa_offset);
 #endif
-		for (;;) {
-			struct xa_node *node = xas->xa_node;
+		node = xas->xa_node;
 			if (node->shift >= shift) {
 
 				unsigned expe_index = (xas->xa_index >> (node->shift + XA_CHUNK_SHIFT)) << (node->shift + XA_CHUNK_SHIFT);
@@ -764,15 +764,15 @@ void xas_create_range(struct xa_state *xas)
 				printf("  expe index %u\n", expe_index);
 #endif
 
-				if (expe_index > (index & ~XA_CHUNK_MASK)) {
-					xas->xa_index = expe_index - 1;
-					xas_set(xas, expe_index - 1);
-				} else {
+				if (expe_index <= (index & ~XA_CHUNK_MASK))
 					goto success;
-				}
 
-				break;
+				xas->xa_index = expe_index - 1;
+				xas_set(xas, expe_index - 1);
+				continue;
 			}
+
+		for (;;) {
 
 			xas->xa_node = xa_parent_locked(xas->xa, node);
 			if (!xas->xa_node)
@@ -785,6 +785,7 @@ void xas_create_range(struct xa_state *xas)
 			if (node->offset != 0) {
 				break;
 			}
+			node = xas->xa_node;
 		}
 #ifdef DEBUG
 		printf(" and found: %p(%u)\n", xas->xa_node, xas->xa_offset);
