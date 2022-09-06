@@ -308,7 +308,7 @@ void check_create_range_multi_order()
 	int enable_tests[] = {
 		0, 0, 0, 0,
 		0, 0, 0, 0,
-		1,
+		0, 1,
 		};
 	unsigned long index = 0;
 	unsigned int order = 9;
@@ -579,6 +579,54 @@ void check_create_range_multi_order()
 		unsigned int next_order;
 
 		order = 9;
+		next_order = roundup(order, XA_CHUNK_SHIFT);
+
+		// printf("store order %u at %lu\n", order, index);
+		for (index = 0; index < (1 << next_order); index += 1 << order) {
+			if (index == (1 << order))
+				continue;
+			xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+		}
+		// xa_dump(&xa, false);
+
+		// value is set
+		XA_BUG_ON(&xa, xa_load(&xa, 0) != xa_mk_index(0));
+		XA_BUG_ON(&xa, xa_load(&xa, (1 << next_order) - (1 << order))
+				!= xa_mk_index((1 << next_order) - (1 << order)));
+
+		// [(1 << order)), (2 << order)) - 1] is empty now
+		XA_STATE(load_xas, &xa, 1 << order);
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+		xas_set(&load_xas, (2 << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+		XA_STATE_ORDER(xas, &xa, 0, next_order);
+		xas_create_range(&xas);
+
+		// [(1 << order)), (2 << order)) - 1] is created now
+		xas_set(&load_xas, (1 << order));
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
+		xas_set(&load_xas, (2 << order) - 1);
+		XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+		XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
+
+		// xa_dump(&xa, false);
+		xa_destroy(&xa);
+	}
+
+	// case 10: same as case 9 with lower order
+	if (enable_tests[9]) {
+		unsigned int next_order;
+
+		order = 5;
 		next_order = roundup(order, XA_CHUNK_SHIFT);
 
 		// printf("store order %u at %lu\n", order, index);
