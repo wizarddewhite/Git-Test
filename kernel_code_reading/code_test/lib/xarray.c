@@ -755,7 +755,7 @@ void xas_create_range(struct xa_state *xas)
 			xas->xa_index, xas->xa_node, xas->xa_offset);
 #endif
 		node = xas->xa_node;
-			if (node->shift >= shift) {
+			if (node->shift != 0) {
 
 				unsigned expe_index = (xas->xa_index >> (node->shift + XA_CHUNK_SHIFT)) << (node->shift + XA_CHUNK_SHIFT);
 				expe_index += xas->xa_offset << node->shift;
@@ -775,8 +775,6 @@ void xas_create_range(struct xa_state *xas)
 		for (;;) {
 
 			xas->xa_node = xa_parent_locked(xas->xa, node);
-			if (!xas->xa_node)
-				break;
 
 			xas->xa_offset = node->offset - 1;
 #ifdef DEBUG
