@@ -757,18 +757,17 @@ void xas_create_range(struct xa_state *xas)
 		node = xas->xa_node;
 			if (node->shift != 0) {
 
-				unsigned expe_index = (xas->xa_index >> (node->shift + XA_CHUNK_SHIFT)) << (node->shift + XA_CHUNK_SHIFT);
-				expe_index += xas->xa_offset << node->shift;
+				unsigned next_index = (xas->xa_index >> (node->shift + XA_CHUNK_SHIFT)) << (node->shift + XA_CHUNK_SHIFT);
+				next_index += xas->xa_offset << node->shift;
 #ifdef DEBUG
 				printf("...bingo! shift %d\n", shift);
-				printf("  expe index %u\n", expe_index);
+				printf("  expe index %u\n", next_index);
 #endif
 
-				if (expe_index <= (index & ~XA_CHUNK_MASK))
+				if (next_index <= (index & ~XA_CHUNK_MASK))
 					goto success;
 
-				xas->xa_index = expe_index - 1;
-				xas_set(xas, expe_index - 1);
+				xas_set(xas, next_index - 1);
 				continue;
 			}
 
