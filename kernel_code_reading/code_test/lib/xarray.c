@@ -769,13 +769,14 @@ void xas_create_range(struct xa_state *xas)
 				if (next_index <= (index & ~XA_CHUNK_MASK))
 					goto success;
 
-				xas_set(xas, next_index - 1);
-				continue;
+				xas->xa_index = next_index - 1;
 			}
 
 		for (;;) {
 
 			xas->xa_node = xa_parent_locked(xas->xa, node);
+			if (!xas->xa_node)
+				break;
 
 			xas->xa_offset = node->offset - 1;
 #ifdef DEBUG
