@@ -748,6 +748,9 @@ void xas_create_range(struct xa_state *xas)
 			goto restore;
 		if (xas->xa_index <= (index | XA_CHUNK_MASK))
 			goto success;
+#ifdef DEBUG
+		printf("index %lu created ", xas->xa_index);
+#endif
 		xas->xa_index -= XA_CHUNK_SIZE;
 
 #ifdef DEBUG
@@ -769,7 +772,8 @@ void xas_create_range(struct xa_state *xas)
 				if (next_index <= (index & ~XA_CHUNK_MASK))
 					goto success;
 
-				xas->xa_index = next_index - 1;
+				xas_set(xas, next_index - 1);
+				continue;
 			}
 
 		for (;;) {
