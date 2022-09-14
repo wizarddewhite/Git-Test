@@ -308,7 +308,7 @@ void check_create_range_multi_order()
 	int enable_tests[] = {
 		0, 0, 0, 0,
 		0, 0, 0, 0,
-		0, 0, 1,
+		0, 0, 0, 1,
 		};
 	unsigned long index = 0;
 	unsigned int order = 9;
@@ -712,6 +712,59 @@ void check_create_range_multi_order()
 			XA_BUG_ON(&xa, load_xas.xa_node == NULL);
 			XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
 			xas_set(&load_xas, (1 << order) - 1);
+			XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
+
+			// xa_dump(&xa, false);
+			xa_destroy(&xa);
+		}
+	}
+
+	// case 12: hole in higher half
+	if (enable_tests[11]) {
+		unsigned int next_order;
+
+		order = 2 * XA_CHUNK_SHIFT - 2;
+
+		for (next_order = order + 3; next_order <= roundup(order, XA_CHUNK_SHIFT) + 1;
+				next_order++) {
+			XA_STATE(load_xas, &xa, 0);
+			XA_STATE_ORDER(xas, &xa, 0, next_order);
+			unsigned long hole = 4 << order;
+
+			for (index = 0; index < (1 << next_order); index += 1 << order) {
+				if (index == hole)
+					continue;
+				xa_store_order(&xa, index, order, xa_mk_index(index), 0);
+			}
+			// xa_dump(&xa, false);
+
+			// value is set
+			// XA_BUG_ON(&xa, xa_load(&xa, (1 << order)) != xa_mk_index(1 << order));
+			// XA_BUG_ON(&xa, xa_load(&xa, (1 << next_order) - (1 << order))
+			//		!= xa_mk_index((1 << next_order) - (1 << order)));
+
+			// [hole, hole + (1 << order) - 1] is empty now
+			xas_set(&load_xas, hole);
+			XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+			xas_set(&load_xas, hole + (1 << order) - 1);
+			XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node->shift == 0);
+
+			xas_create_range(&xas);
+
+			// [hole, hole + (1 << order) - 1] is created now
+			xas_set(&load_xas, hole);
+			XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node == NULL);
+			XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
+
+			xas_set(&load_xas, hole + (1 << order) - 1);
 			XA_BUG_ON(&xa, xas_load(&load_xas) != NULL);
 			XA_BUG_ON(&xa, load_xas.xa_node == NULL);
 			XA_BUG_ON(&xa, load_xas.xa_node->shift != 0);
