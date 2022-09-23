@@ -150,6 +150,7 @@ static void __check_store_range(struct xarray *xa, unsigned long first,
 #ifdef CONFIG_XARRAY_MULTI
 	xa_store_range(xa, first, last, xa_mk_index(first), 0);
 
+	// xa_dump(xa, false);
 	XA_BUG_ON(xa, xa_load(xa, first) != xa_mk_index(first));
 	XA_BUG_ON(xa, xa_load(xa, last) != xa_mk_index(first));
 	XA_BUG_ON(xa, xa_load(xa, first - 1) != NULL);
@@ -167,16 +168,15 @@ static void check_store_range()
 	unsigned long i, j;
 
 	__check_store_range(&xa, 1, 10);
-	xa_store_range(&xa, 2, 64, xa_mk_index(2), 0);
-	xa_dump(&xa, false);
+	__check_store_range(&xa, 0x0000000, 0x000001e);
 
 	/*
 	 * Then let's just store value to one entry.
 	 * This would keep the range set above.
 	 */
-	xa_store(&xa, 32, xa_mk_value(3), 0);
-	xa_dump(&xa, false);
-#if 0
+	// xa_store(&xa, 32, xa_mk_value(3), 0);
+	// xa_dump(&xa, false);
+
 	for (i = 0; i < 128; i++) {
 		for (j = i; j < 128; j++) {
 			__check_store_range(&xa, i, j);
@@ -187,7 +187,6 @@ static void check_store_range()
 			__check_store_range(&xa, (1 << 24) + i, (1 << 24) + j);
 		}
 	}
-#endif
 }
 
 void xas_set_range(struct xa_state *xas, unsigned long first,
@@ -875,11 +874,11 @@ int main()
 	// check_multi_order();
 	// check_multi_order2();
 	// check_xas_max();
-	// check_store_range();
+	check_store_range();
 	// check_set_range();
 	// check_xas_split();
 	// check_create_range();
-	check_create_range_multi_order();
+	// check_create_range_multi_order();
 	// check_align_1();
 	// check_xa_erase();
 	// check_xa_mark();
