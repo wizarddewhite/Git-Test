@@ -865,6 +865,25 @@ void check_xas_next()
 	printf("index: %lu %p\n", xas.xa_index, entry);
 }
 
+void check_find()
+{
+	DEFINE_XARRAY(array);
+	XA_STATE(xas, &array, 0);
+	unsigned int order = 8;
+	unsigned long index;
+
+	for (index = 0; index < (1 << (order + 5)); index += 1 << order) {
+		xa_store_order(&array, index, order, xa_mk_value(index), 0);
+	}
+	xa_dump(&array, false);
+
+	xas_set(&xas, 4095);
+	printf("%p at ", xas_find(&xas, ULONG_MAX));
+	printf("index %ld \n", xas.xa_index);
+	printf("%p at ", xas_find(&xas, 4095));
+	printf("index %ld \n", xas.xa_index);
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -874,7 +893,7 @@ int main()
 	// check_multi_order();
 	// check_multi_order2();
 	// check_xas_max();
-	check_store_range();
+	// check_store_range();
 	// check_set_range();
 	// check_xas_split();
 	// check_create_range();
@@ -885,6 +904,7 @@ int main()
 	// check_xa_alloc();
 	// check_xa_alloc1();
 	// check_xas_next();
+	check_find();
 
 	return 0;
 }
