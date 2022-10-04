@@ -884,6 +884,27 @@ void check_find()
 	printf("index %ld \n", xas.xa_index);
 }
 
+void check_find_conflict()
+{
+	DEFINE_XARRAY(array);
+	unsigned int order = 9;
+	XA_STATE_ORDER(xas, &array, 0, (order + 3));
+	unsigned long index;
+	void *entry;
+
+	for (index = 0; index < (1 << (order + 4)); index += 1 << order) {
+		xa_store_order(&array, index, order, xa_mk_value(index), 0);
+	}
+	xa_dump(&array, false);
+
+	for (index = 0; index < 8; index++) {
+		entry = xas_find_conflict(&xas);
+		printf("index %ld, entry %p, shift %d\n", xas.xa_index, entry, xas.xa_shift);
+		if (!entry)
+			break;
+	}
+}
+
 int main()
 {
 	// xa_internal_test();
@@ -904,7 +925,8 @@ int main()
 	// check_xa_alloc();
 	// check_xa_alloc1();
 	// check_xas_next();
-	check_find();
+	// check_find();
+	check_find_conflict();
 
 	return 0;
 }
