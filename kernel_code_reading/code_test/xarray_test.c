@@ -247,6 +247,26 @@ void check_xas_split()
 	xas_split_alloc(&xas, xa_mk_value(3), old_order, 0);
 	xas_split(&xas, xa_mk_value(3), old_order);
 	xa_dump(&xa, false);
+
+	printf("--- Case 2\n");
+	xa_destroy(&xa);
+	old_order = 3 * XA_CHUNK_SHIFT;
+	new_order = XA_CHUNK_SHIFT;
+	XA_STATE_ORDER(xas2, &xa, 0, new_order);
+	xa_store_order(&xa, 0, new_order, xa_mk_value(5), 0);
+	printf("Expected split to ...\n\n");
+	xa_dump(&xa, false);
+	xa_store_order(&xa, 0, old_order, xa_mk_value(5), 0);
+	// xa_dump(&xa, false);
+	xas_split_alloc(&xas2, xa_mk_value(3), old_order, 0);
+	if (xas_error(&xas2)) {
+		printf("Failed to split alloc\n");
+		xa_destroy(&xa);
+		return;
+	}
+	xas_split(&xas2, xa_mk_value(3), old_order);
+	printf("\n\nFinal result after split ...\n\n");
+	xa_dump(&xa, false);
 }
 
 static void check_create_range_4(struct xarray *xa,
@@ -916,7 +936,7 @@ int main()
 	// check_xas_max();
 	// check_store_range();
 	// check_set_range();
-	// check_xas_split();
+	check_xas_split();
 	// check_create_range();
 	// check_create_range_multi_order();
 	// check_align_1();
@@ -926,7 +946,7 @@ int main()
 	// check_xa_alloc1();
 	// check_xas_next();
 	// check_find();
-	check_find_conflict();
+	// check_find_conflict();
 
 	return 0;
 }
