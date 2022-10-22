@@ -1067,6 +1067,13 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 	unsigned int sibs = (1 << (order % XA_CHUNK_SHIFT)) - 1;
 	unsigned int mask = xas->xa_sibs;
 
+#ifdef DEBUG
+	printf("new order xa_shift: %d xa_sibs: %d\n",
+			xas->xa_shift, xas->xa_sibs);
+	printf("old order xa_shift: %d xa_sibs: %d \n",
+			order - (order % XA_CHUNK_SHIFT), sibs);
+#endif
+
 	/* XXX: no support for splitting really large entries yet */
 	if (WARN_ON(xas->xa_shift + 2 * XA_CHUNK_SHIFT < order))
 		goto nomem;
