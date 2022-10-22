@@ -1065,6 +1065,7 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 		gfp_t gfp)
 {
 	unsigned int sibs = (1 << (order % XA_CHUNK_SHIFT)) - 1;
+	unsigned int xa_shift = order - (order % XA_CHUNK_SHIFT);
 	unsigned int mask = xas->xa_sibs;
 
 #ifdef DEBUG
@@ -1075,7 +1076,7 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 #endif
 
 	/* XXX: no support for splitting really large entries yet */
-	if (WARN_ON(xas->xa_shift + 2 * XA_CHUNK_SHIFT < order))
+	if (WARN_ON(xas->xa_shift + XA_CHUNK_SHIFT < xa_shift))
 		goto nomem;
 	if (xas->xa_shift + XA_CHUNK_SHIFT > order)
 		return;
