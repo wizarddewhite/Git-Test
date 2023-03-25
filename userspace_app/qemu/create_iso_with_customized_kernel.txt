@@ -60,7 +60,7 @@ set timeout=10
 menuentry 'myos' --class os {
     insmod gzio
     insmod part_msdos
-    linux /boot/bzImage
+    linux /boot/bzImage tsc=nowatchdog
     initrd /boot/initramfs.cpio.gz
 }
 ```
