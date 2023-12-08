@@ -8760,8 +8760,7 @@ CONFIG_INTEL_TH_PTI=m
 # end of HW tracing support
 
 # CONFIG_FPGA is not set
-CONFIG_TEE=m
-CONFIG_AMDTEE=m
+# CONFIG_TEE is not set
 CONFIG_MULTIPLEXER=m
 
 #
