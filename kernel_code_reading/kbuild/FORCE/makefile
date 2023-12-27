@@ -1,6 +1,6 @@
 all: test
 
-force.o: force.c
+force.o: force.c FORCE
 unforce.o: unforce.c
 
 %.o: %.c
