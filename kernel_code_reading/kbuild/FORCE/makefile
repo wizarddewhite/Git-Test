@@ -1,7 +1,6 @@
 all: force_test unforce_test
 
-force.o: force.c FORCE
-unforce.o: unforce.c
+force.o: FORCE
 
 %.o: %.c
 	gcc -c $< -o $@ 
@@ -16,4 +15,3 @@ clean:
 	rm *.o force_test unforce_test
 
 .PHONY: FORCE clean
-FORCE:
