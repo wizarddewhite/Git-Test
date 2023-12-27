@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include "force.h"
+#include "unforce.h"
 
 int main()
 {
