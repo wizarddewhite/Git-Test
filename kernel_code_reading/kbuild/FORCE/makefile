@@ -1,4 +1,4 @@
-all: test
+all: force_test unforce_test
 
 force.o: force.c FORCE
 unforce.o: unforce.c
@@ -6,11 +6,14 @@ unforce.o: unforce.c
 %.o: %.c
 	gcc -c $< -o $@ 
 
-test: force.o unforce.o test.o
+force_test: force.o unforce.o force_test.o
+	gcc $^ -o $@
+
+unforce_test: unforce.o unforce_test.o
 	gcc $^ -o $@
 
 clean:
-	rm *.o test
+	rm *.o force_test unforce_test
 
 .PHONY: FORCE clean
 FORCE:
