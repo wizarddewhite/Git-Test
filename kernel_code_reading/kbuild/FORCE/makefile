@@ -1,3 +1,5 @@
+include Kbuild.include
+
 all: force_test unforce_test
 
 force.o: FORCE
@@ -11,7 +13,10 @@ force_test: force.o unforce.o force_test.o
 unforce_test: unforce.o unforce_test.o
 	gcc $^ -o $@
 
+cmd_clean = echo cleanup build result
+
 clean:
-	rm *.o force_test unforce_test
+	$(call cmd,clean)
+	@rm -f *.o force_test unforce_test
 
 .PHONY: FORCE clean

@@ -1,0 +1,3 @@
+
+# print and execute commands
+cmd = @$(if $(cmd_$(1)),set -e; $(cmd_$(1)),:)
