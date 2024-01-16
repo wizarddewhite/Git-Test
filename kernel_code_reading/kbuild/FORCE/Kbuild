@@ -1,0 +1,4 @@
+obj-y := force_test.o
+obj-y += unforce_test.o
+force_test-objs := unforce.o force.o force_test.o
+unforce_test-objs := unforce.o unforce_test.o
