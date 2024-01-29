@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "e820.h"
 
@@ -60,4 +61,140 @@ static void __e820__range_add(struct e820_table *table, u64 start, u64 size, enu
 void e820__range_add(u64 start, u64 size, enum e820_type type)
 {
 	__e820__range_add(e820_table, start, size, type);
+}
+
+static struct change_member	change_point_list[2*E820_MAX_ENTRIES]	;
+static struct change_member	*change_point[2*E820_MAX_ENTRIES]	;
+static struct e820_entry	*overlap_list[E820_MAX_ENTRIES]		;
+static struct e820_entry	new_entries[E820_MAX_ENTRIES]		;
+
+static int cpcompare(const void *a, const void *b)
+{
+	struct change_member * const *app = a, * const *bpp = b;
+	const struct change_member *ap = *app, *bp = *bpp;
+
+	/*
+	 * Inputs are pointers to two elements of change_point[].  If their
+	 * addresses are not equal, their difference dominates.  If the addresses
+	 * are equal, then consider one that represents the end of its region
+	 * to be greater than one that does not.
+	 */
+	if (ap->addr != bp->addr)
+		return ap->addr > bp->addr ? 1 : -1;
+
+	return (ap->addr != ap->entry->addr) - (bp->addr != bp->entry->addr);
+}
+
+static bool e820_nomerge(enum e820_type type)
+{
+	/*
+	 * These types may indicate distinct platform ranges aligned to
+	 * numa node, protection domain, performance domain, or other
+	 * boundaries. Do not merge them.
+	 */
+	if (type == E820_TYPE_PRAM)
+		return true;
+	if (type == E820_TYPE_SOFT_RESERVED)
+		return true;
+	return false;
+}
+
+int e820__update_table(struct e820_table *table)
+{
+	struct e820_entry *entries = table->entries;
+	u32 max_nr_entries = ARRAY_SIZE(table->entries);
+	enum e820_type current_type, last_type;
+	unsigned long long last_addr;
+	u32 new_nr_entries, overlap_entries;
+	u32 i, chg_idx, chg_nr;
+
+	/* If there's only one memory region, don't bother: */
+	if (table->nr_entries < 2)
+		return -1;
+
+	// BUG_ON(table->nr_entries > max_nr_entries);
+
+	/* Bail out if we find any unreasonable addresses in the map: */
+	for (i = 0; i < table->nr_entries; i++) {
+		if (entries[i].addr + entries[i].size < entries[i].addr)
+			return -1;
+	}
+
+	/* Create pointers for initial change-point information (for sorting): */
+	for (i = 0; i < 2 * table->nr_entries; i++)
+		change_point[i] = &change_point_list[i];
+
+	/*
+	 * Record all known change-points (starting and ending addresses),
+	 * omitting empty memory regions:
+	 */
+	chg_idx = 0;
+	for (i = 0; i < table->nr_entries; i++)	{
+		if (entries[i].size != 0) {
+			change_point[chg_idx]->addr	= entries[i].addr;
+			change_point[chg_idx++]->entry	= &entries[i];
+			change_point[chg_idx]->addr	= entries[i].addr + entries[i].size;
+			change_point[chg_idx++]->entry	= &entries[i];
+		}
+	}
+	chg_nr = chg_idx;
+
+	/* Sort change-point list by memory addresses (low -> high): */
+	qsort(change_point, chg_nr, sizeof(*change_point), cpcompare);
+
+	/* Create a new memory map, removing overlaps: */
+	overlap_entries = 0;	 /* Number of entries in the overlap table */
+	new_nr_entries = 0;	 /* Index for creating new map entries */
+	last_type = 0;		 /* Start with undefined memory type */
+	last_addr = 0;		 /* Start with 0 as last starting address */
+
+	/* Loop through change-points, determining effect on the new map: */
+	for (chg_idx = 0; chg_idx < chg_nr; chg_idx++) {
+		/* Keep track of all overlapping entries */
+		if (change_point[chg_idx]->addr == change_point[chg_idx]->entry->addr) {
+			/* Add map entry to overlap list (> 1 entry implies an overlap) */
+			overlap_list[overlap_entries++] = change_point[chg_idx]->entry;
+		} else {
+			/* Remove entry from list (order independent, so swap with last): */
+			for (i = 0; i < overlap_entries; i++) {
+				if (overlap_list[i] == change_point[chg_idx]->entry)
+					overlap_list[i] = overlap_list[overlap_entries-1];
+			}
+			overlap_entries--;
+		}
+		/*
+		 * If there are overlapping entries, decide which
+		 * "type" to use (larger value takes precedence --
+		 * 1=usable, 2,3,4,4+=unusable)
+		 */
+		current_type = 0;
+		for (i = 0; i < overlap_entries; i++) {
+			if (overlap_list[i]->type > current_type)
+				current_type = overlap_list[i]->type;
+		}
+
+		/* Continue building up new map based on this information: */
+		if (current_type != last_type || e820_nomerge(current_type)) {
+			if (last_type) {
+				new_entries[new_nr_entries].size = change_point[chg_idx]->addr - last_addr;
+				/* Move forward only if the new size was non-zero: */
+				if (new_entries[new_nr_entries].size != 0)
+					/* No more space left for new entries? */
+					if (++new_nr_entries >= max_nr_entries)
+						break;
+			}
+			if (current_type) {
+				new_entries[new_nr_entries].addr = change_point[chg_idx]->addr;
+				new_entries[new_nr_entries].type = current_type;
+				last_addr = change_point[chg_idx]->addr;
+			}
+			last_type = current_type;
+		}
+	}
+
+	/* Copy the new entries into the original location: */
+	memcpy(entries, new_entries, new_nr_entries*sizeof(*entries));
+	table->nr_entries = new_nr_entries;
+
+	return 0;
 }

@@ -76,6 +76,7 @@ struct e820_table {
 	__u32 nr_entries;
 	struct e820_entry entries[E820_MAX_ENTRIES];
 };
+extern struct e820_table *e820_table;
 
 /*
  * Sanitize the BIOS e820 map.
@@ -139,10 +140,13 @@ struct e820_table {
  *	   ______________________4_
  */
 struct change_member {
-	struct e820entry *pbios; /* pointer to original bios entry */
-	unsigned long long addr; /* address for this change point */
+	/* Pointer to the original entry: */
+	struct e820_entry	*entry;
+	/* Address for this change point: */
+	unsigned long long	addr;
 };
 
 void e820__range_add(u64 start, u64 size, enum e820_type type);
 void e820__print_table(char *who);
+int e820__update_table(struct e820_table *table);
 #endif //E820_H

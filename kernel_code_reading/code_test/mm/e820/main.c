@@ -38,6 +38,10 @@ void add_range()
 	e820__range_add((u64)0x3000, (u64)(0x2000), E820_TYPE_UNUSABLE);
 	e820__range_add((u64)0x5000, (u64)(0x5000), E820_TYPE_RAM);
 	e820__print_table("e820");
+
+	e820__update_table(e820_table);
+	printf("=== after sanitize ===");
+	e820__print_table("e820");
 }
 
 int main()
