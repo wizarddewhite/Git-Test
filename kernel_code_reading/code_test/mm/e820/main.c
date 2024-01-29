@@ -44,8 +44,22 @@ void add_range()
 	e820__print_table("e820");
 }
 
+void sanitize_range()
+{
+	/* mimic the range in comment  */
+	e820__range_add((u64)0x1020, (u64)(0x0020), E820_TYPE_NVS);
+	e820__range_add((u64)0x1010, (u64)(0x0100), E820_TYPE_ACPI);
+	e820__range_add((u64)0x1100, (u64)(0x0020), E820_TYPE_RESERVED);
+	e820__range_add((u64)0x1000, (u64)(0x1000), E820_TYPE_RAM);
+
+	e820__update_table(e820_table);
+	e820__print_table("e820");
+
+}
+
 int main()
 {
-	add_range();
+	// add_range();
+	sanitize_range();
 	return 0;
 }
