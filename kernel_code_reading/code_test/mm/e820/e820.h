@@ -2,18 +2,7 @@
 #define E820_H
 
 #define E820MAX	128		/* number of entries in E820MAP */
-#define E820_X_MAX E820MAX
-
-#define E820_RAM	1
-#define E820_RESERVED	2
-#define E820_ACPI	3
-#define E820_NVS	4
-#define E820_UNUSABLE	5
-#define E820_PMEM	7
-
-#define E820_PRAM	12
-
-#define E820_RESERVED_KERN        128
+#define E820_MAX_ENTRIES E820MAX
 
 typedef	unsigned long long	__u64;
 typedef	unsigned int		__u32;
@@ -32,15 +21,60 @@ typedef	unsigned int		u32;
 #define max(a,b) ((a) > (b) ? a : b)
 #define min(a,b) ((a) < (b) ? a : b)
 
-struct e820entry {
-	__u64 addr;	/* start of memory segment */
-	__u64 size;	/* size of memory segment */
-	__u32 type;	/* type of memory segment */
+/*
+ * These are the E820 types known to the kernel:
+ */
+enum e820_type {
+	E820_TYPE_RAM		= 1,
+	E820_TYPE_RESERVED	= 2,
+	E820_TYPE_ACPI		= 3,
+	E820_TYPE_NVS		= 4,
+	E820_TYPE_UNUSABLE	= 5,
+	E820_TYPE_PMEM		= 7,
+
+	/*
+	 * This is a non-standardized way to represent ADR or
+	 * NVDIMM regions that persist over a reboot.
+	 *
+	 * The kernel will ignore their special capabilities
+	 * unless the CONFIG_X86_PMEM_LEGACY=y option is set.
+	 *
+	 * ( Note that older platforms also used 6 for the same
+	 *   type of memory, but newer versions switched to 12 as
+	 *   6 was assigned differently. Some time they will learn... )
+	 */
+	E820_TYPE_PRAM		= 12,
+
+	/*
+	 * Special-purpose memory is indicated to the system via the
+	 * EFI_MEMORY_SP attribute. Define an e820 translation of this
+	 * memory type for the purpose of reserving this range and
+	 * marking it with the IORES_DESC_SOFT_RESERVED designation.
+	 */
+	E820_TYPE_SOFT_RESERVED	= 0xefffffff,
+
+	/*
+	 * Reserved RAM used by the kernel itself if
+	 * CONFIG_INTEL_TXT=y is enabled, memory of this type
+	 * will be included in the S3 integrity calculation
+	 * and so should not include any memory that the BIOS
+	 * might alter over the S3 transition:
+	 */
+	E820_TYPE_RESERVED_KERN	= 128,
+};
+
+struct e820_entry {
+	u64 		addr;	/* start of memory segment */
+	u64 		size;	/* size of memory segment */
+	enum e820_type 	type;	/* type of memory segment */
 } __attribute__((packed));
 
-struct e820map {
-	__u32 nr_map;
-	struct e820entry map[E820_X_MAX];
+/*
+ * The whole array of E820 entries:
+ */
+struct e820_table {
+	__u32 nr_entries;
+	struct e820_entry entries[E820_MAX_ENTRIES];
 };
 
 /*
@@ -109,20 +143,6 @@ struct change_member {
 	unsigned long long addr; /* address for this change point */
 };
 
-extern struct e820map bootmap;
-extern struct e820map e820;
-extern struct e820map e820_saved;
-
-int sanitize_e820_map(struct e820entry *biosmap, int max_nr_map,
-			     u32 *pnr_map);
-int append_e820_map(struct e820entry *biosmap, int nr_map);
-unsigned long long e820_end_pfn(unsigned long long limit_pfn);
-void e820_print_map(char *who, struct e820map *e820);
-void e820_add_region(u64 start, u64 size, int type);
-u64 e820_remove_range(struct e820map *e820, u64 start, u64 size,
-			unsigned old_type, int checktype);
-int e820_all_mapped(u64 start, u64 end, unsigned type);
-#define MAX_GAP_END 0x100000000ull
-int e820_search_gap(unsigned long *gapstart, unsigned long *gapsize,
-		unsigned long start_addr, unsigned long long end_addr);
+void e820__range_add(u64 start, u64 size, enum e820_type type);
+void e820__print_table(char *who);
 #endif //E820_H
