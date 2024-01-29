@@ -1,42 +1,40 @@
-1. setup_memory_map(), setup e820
+1. e820__memory_setup(), setup e820
 ================================================================================
 ; called from setup_arch()
 
-void __init setup_memory_map(void)
+void __init e820__memory_setup(void)
 {
 	char *who;
 
-	pr_err("%s: ywtest called setup memory map\n", __func__);
+	/* This is a firmware interface ABI - make sure we don't break it: */
+	BUILD_BUG_ON(sizeof(struct boot_e820_entry) != 20);
+
 	who = x86_init.resources.memory_setup();
-	memcpy(&e820_saved, &e820, sizeof(struct e820map));
-	printk(KERN_INFO "e820: BIOS-provided physical RAM map:\n");
-	e820_print_map(who);
+
+	memcpy(e820_table_kexec, e820_table, sizeof(*e820_table_kexec));
+	memcpy(e820_table_firmware, e820_table, sizeof(*e820_table_firmware));
+
+	pr_info("BIOS-provided physical RAM map:\n");
+	e820__print_table(who);
 }
 
 1.1 x86_init.resources.memory_setup(), copy mem info from boot_param to e820
 ================================================================================
-char *__init default_machine_specific_memory_setup(void)
+char *__init e820__memory_setup_default(void)
 {
 	char *who = "BIOS-e820";
-	u32 new_nr;
+
 	/*
 	 * Try to copy the BIOS-supplied E820-map.
 	 *
 	 * Otherwise fake a memory map; one section from 0k->640k,
 	 * the next section from 1mb->appropriate_mem_k
 	 */
-	new_nr = boot_params.e820_entries;
-	sanitize_e820_map(boot_params.e820_map,
-			ARRAY_SIZE(boot_params.e820_map),
-			&new_nr);
-	boot_params.e820_entries = new_nr;
-	if (append_e820_map(boot_params.e820_map, boot_params.e820_entries)
-	  < 0) {
+	if (append_e820_table(boot_params.e820_table, boot_params.e820_entries) < 0) {
 		u64 mem_size;
 
-		/* compare results from other methods and take the greater */
-		if (boot_params.alt_mem_k
-		    < boot_params.screen_info.ext_mem_k) {
+		/* Compare results from other methods and take the one that gives more RAM: */
+		if (boot_params.alt_mem_k < boot_params.screen_info.ext_mem_k) {
 			mem_size = boot_params.screen_info.ext_mem_k;
 			who = "BIOS-88";
 		} else {
@@ -44,12 +42,14 @@ char *__init default_machine_specific_memory_setup(void)
 			who = "BIOS-e801";
 		}
 
-		e820.nr_map = 0;
-		e820_add_region(0, LOWMEMSIZE(), E820_RAM);
-		e820_add_region(HIGH_MEMORY, mem_size << 10, E820_RAM);
+		e820_table->nr_entries = 0;
+		e820__range_add(0, LOWMEMSIZE(), E820_TYPE_RAM);
+		e820__range_add(HIGH_MEMORY, mem_size << 10, E820_TYPE_RAM);
 	}
 
-	/* In case someone cares... */
+	/* We just appended a lot of ranges, sanitize the table: */
+	e820__update_table(e820_table);
+
 	return who;
 }
 
