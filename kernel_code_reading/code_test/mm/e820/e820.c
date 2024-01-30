@@ -255,10 +255,11 @@ int e820__update_table2(struct e820_table *table)
 		} else {
 			/* Remove entry from list (order independent, so swap with last): */
 			for (i = 0; i < overlap_entries; i++) {
-				if (overlap_list[i] == change_point[chg_idx]->entry)
-					overlap_list[i] = overlap_list[overlap_entries-1];
+				if (overlap_list[i] == change_point[chg_idx]->entry) {
+					overlap_list[i] = overlap_list[--overlap_entries];
+					break;
+				}
 			}
-			overlap_entries--;
 		}
 		/*
 		 * If there are overlapping entries, decide which
