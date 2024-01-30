@@ -52,7 +52,7 @@ void sanitize_range()
 	e820__range_add((u64)0x1100, (u64)(0x0020), E820_TYPE_RESERVED);
 	e820__range_add((u64)0x1000, (u64)(0x1000), E820_TYPE_RAM);
 
-	e820__update_table(e820_table);
+	e820__update_table2(e820_table);
 	e820__print_table("e820");
 
 }
