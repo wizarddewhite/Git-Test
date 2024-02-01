@@ -80,13 +80,14 @@ void sanitize_range3()
 
 void range_update()
 {
-	e820__range_add((u64)0x1000, (u64)(0x0100), E820_TYPE_RAM);
+	/* New range is completely covered */
+	u64 update_size;
 	e820__range_add((u64)0x20a0, (u64)(0x0100), E820_TYPE_RESERVED);
-	e820__range_add((u64)0x30d0, (u64)(0x0020), E820_TYPE_ACPI);
+	e820__range_add((u64)0x30d0, (u64)(0x0020), E820_TYPE_NVS);
 	e820__print_table("e820");
 
-	e820__range_update2(0x20b0, 0x20, E820_TYPE_RESERVED, E820_TYPE_ACPI);
-	printf("=== After update range ===\n");
+	update_size = e820__range_update2(0x20b0, 0x20, E820_TYPE_RESERVED, E820_TYPE_ACPI);
+	printf("=== After update range 0x%llx ===\n", update_size);
 	e820__print_table("e820");
 
 	e820__update_table2(e820_table);
