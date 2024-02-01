@@ -95,12 +95,30 @@ void range_update()
 	e820__print_table("e820");
 }
 
+void range_update2()
+{
+	/* New range is completely covered */
+	u64 update_size;
+	e820__range_add((u64)0x20a0, (u64)(0x0100), E820_TYPE_RESERVED);
+	e820__range_add((u64)0x30d0, (u64)(0x0020), E820_TYPE_NVS);
+	e820__print_table("e820");
+
+	update_size = e820__range_update2(0x20b0, 0x20, E820_TYPE_RESERVED, E820_TYPE_RAM);
+	printf("=== After update range 0x%llx ===\n", update_size);
+	e820__print_table("e820");
+
+	e820__update_table2(e820_table);
+	printf("=== After update table ===\n");
+	e820__print_table("e820");
+}
+
 int main()
 {
 	// add_range();
 	// sanitize_range();
 	// sanitize_range2();
 	// sanitize_range3();
-	range_update();
+	// range_update();
+	range_update2();
 	return 0;
 }
