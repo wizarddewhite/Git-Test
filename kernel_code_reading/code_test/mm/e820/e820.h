@@ -151,4 +151,5 @@ void e820__print_table(char *who);
 int e820__update_table(struct e820_table *table);
 int e820__update_table2(struct e820_table *table);
 u64 e820__range_update(u64 start, u64 size, enum e820_type old_type, enum e820_type new_type);
+u64 e820__range_update2(u64 start, u64 size, enum e820_type old_type, enum e820_type new_type);
 #endif //E820_H

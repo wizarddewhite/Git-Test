@@ -370,3 +370,76 @@ u64 e820__range_update(u64 start, u64 size, enum e820_type old_type, enum e820_t
 {
 	return __e820__range_update(e820_table, start, size, old_type, new_type);
 }
+
+static u64
+__e820__range_update2(struct e820_table *table, u64 start, u64 size, enum e820_type old_type, enum e820_type new_type)
+{
+	u64 end;
+	unsigned int i;
+	u64 real_updated_size = 0;
+
+	// BUG_ON(old_type == new_type);
+
+	if (size > (ULLONG_MAX - start))
+		size = ULLONG_MAX - start;
+
+	end = start + size;
+	printf("e820: update [mem %#010Lx-%#010Lx] ", start, end - 1);
+	e820_print_type(old_type);
+	printf(" ==> ");
+	e820_print_type(new_type);
+	printf("\n");
+
+	for (i = 0; i < table->nr_entries; i++) {
+		struct e820_entry *entry = &table->entries[i];
+		u64 final_start, final_end;
+		u64 entry_end;
+
+		if (entry->type != old_type)
+			continue;
+
+		entry_end = entry->addr + entry->size;
+
+		/* Completely covered by new range? */
+		if (entry->addr >= start && entry_end <= end) {
+			entry->type = new_type;
+			real_updated_size += entry->size;
+			continue;
+		}
+
+		/* New range is completely covered? */
+		if (entry->addr < start && entry_end > end) {
+			__e820__range_add(table, start, size, new_type);
+			__e820__range_add(table, end, entry_end - end, entry->type);
+			entry->size = start - entry->addr;
+			real_updated_size += size;
+			continue; // break?
+		}
+
+		/* Partially covered: */
+		final_start = max(start, entry->addr);
+		final_end = min(end, entry_end);
+		if (final_start >= final_end)
+			continue;
+
+		__e820__range_add(table, final_start, final_end - final_start, new_type);
+
+		real_updated_size += final_end - final_start;
+
+		/*
+		 * Left range could be head or tail, so need to update
+		 * its size first:
+		 */
+		entry->size -= final_end - final_start;
+		if (entry->addr < final_start)
+			continue;
+
+		entry->addr = final_end;
+	}
+	return real_updated_size;
+}
+
+u64 e820__range_update2(u64 start, u64 size, enum e820_type old_type, enum e820_type new_type)
+{
+	return __e820__range_update2(e820_table, start, size, old_type, new_type);
+}

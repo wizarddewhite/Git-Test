@@ -85,7 +85,7 @@ void range_update()
 	e820__range_add((u64)0x30d0, (u64)(0x0020), E820_TYPE_ACPI);
 	e820__print_table("e820");
 
-	e820__range_update(0x20b0, 0x20, E820_TYPE_RESERVED, E820_TYPE_ACPI);
+	e820__range_update2(0x20b0, 0x20, E820_TYPE_RESERVED, E820_TYPE_ACPI);
 	printf("=== After update range ===\n");
 	e820__print_table("e820");
 
