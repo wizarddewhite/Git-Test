@@ -413,7 +413,7 @@ __e820__range_update2(struct e820_table *table, u64 start, u64 size, enum e820_t
 			__e820__range_add(table, end, entry_end - end, entry->type);
 			entry->size = start - entry->addr;
 			real_updated_size += size;
-			continue; // break?
+			break;
 		}
 
 		/* Partially covered: */
