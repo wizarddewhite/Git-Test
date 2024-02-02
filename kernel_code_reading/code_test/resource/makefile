@@ -1,7 +1,7 @@
 SOURCES := $(wildcard *.c)
 PROGRAM := $(basename $(SOURCES))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -g -I../ -I../list/
+CFLAGS = -g -I../ -I../lib/
 
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
