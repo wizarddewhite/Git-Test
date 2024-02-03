@@ -12,10 +12,10 @@ SOURCES := $(wildcard *.c)
 PROGRAM := $(subst .c,,$(SOURCES))
 endif
 
-LIB_SOURCE := $(wildcard lib/*.c)
+LIB_SOURCE := $(wildcard ../lib/*.c)
 LIB := $(subst .c,.o,$(LIB_SOURCE))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -I./ -Ilib/
+CFLAGS = -I../ -I../lib/
 LD_FLAGS = -lm
 
 ifeq ($(DEBUG),1)
@@ -23,7 +23,7 @@ DEBUG_FLAGS = -g -DDEBUG
 endif
 
 # $(warning $(PROGRAM_OBJS))
-$(warning $(LIB_SOURCE))
+# $(warning $(LIB_SOURCE))
 
 .PHONY: all clean cscope
 all: $(LIB) $(PROGRAM)
@@ -32,6 +32,7 @@ all: $(LIB) $(PROGRAM)
 	gcc $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
 
 %.o: %.c
+	@echo building obj from c
 	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
 
 %.a: %.o
