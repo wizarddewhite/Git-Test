@@ -31,30 +31,32 @@ endif
 all: $(LIB) $(PROGRAM)
 
 %: %.o $(LIB)
-	gcc $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
+	@echo [GEN] $@
+	@gcc $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
 
 %.o: %.c
-	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
+	@gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
 
 %.a: $(LIB_OBJS)
-	ar cr $@ $^
+	@echo [AR] $@
+	@ar cr $@ $^
 
 ifneq "$(MAKECMDGOALS)" "clean"
         include $(DEPENDENCY)
 endif
 
 %.d: %.c
-	gcc -MM $(CFLAGS) $< > $@.$$$$ ;            \
+	@gcc -MM $(CFLAGS) $< > $@.$$$$ ;            \
 	sed 's,/($*/)/.o[ :]*,/1.o $@ : ,g' < $@.$$$$ > $@; \
 	rm -f $@.$$$$
 
 clean:
-	rm -f $(PROGRAM)
-	rm -f $(DEPENDENCY)
-	rm -f *.o
-	rm -f cscope.*
-	rm -f tags
-	rm -f $(LIB)
+	@echo [Clean] program/lib/prereques/cscope
+	@rm -f $(PROGRAM)
+	@rm -f $(DEPENDENCY)
+	@rm -f *.o
+	@rm -f cscope.*
+	@rm -f $(LIB_OBJS) $(LIB)
 
 cscope:
 	cscope -Rbkq
