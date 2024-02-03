@@ -53,6 +53,9 @@ int pci_get_max_depth();
 
 resource_size_t calculate_mem_align(resource_size_t *aligns,
 						  int max_order);
+void dump2(struct resource *root, int level);
+int pci_bus_get_depth(struct pci_bus *bus);
+int pci_bus_get_depth2(struct pci_bus *bus);
 
 extern struct pci_bus *root_bus;
 extern struct resource root_res[3];
