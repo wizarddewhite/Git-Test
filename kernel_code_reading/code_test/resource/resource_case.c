@@ -17,7 +17,6 @@
  */
 #include "resource.h"
 #include "resource_case.h"
-#include "resource_request_simulation.h"
 
 struct resource root;
 struct resource res[10];
