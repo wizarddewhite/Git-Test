@@ -20,7 +20,7 @@
 #include <stdlib.h>
 
 #include "resource.h"
-#include "pci_resource_test.h"
+#include "pci.h"
 #include "__ffs.h"
 
 #define LAST_CHILD_INDEX 4
