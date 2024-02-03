@@ -3,18 +3,21 @@ PROGRAM := $(basename $(SOURCES))
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
 CFLAGS = -g -I../ -I../lib/
 
+LIB_SOURCE := $(wildcard ../lib/*.c)
+LIB := $(subst .c,.o,$(LIB_SOURCE))
+
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource 
+all: resource_case
 
 # this program emulate the kernel/resource.c to 
 # get more understanding on this structrure
-resource: resource.c resource_case.o
-	gcc $(CCFLAGS) -o resource resource.c resource_case.o
+resource_case: resource.c resource_case.o $(LIB)
+	gcc $(CFLAGS) $^ -o resource_case
 
 pci_resource_test: resource.o pci_resource_test.o resource_request_simulation.o
-	gcc $(CCFLAGS) -o $@ $^
+	gcc $(CFLAGS) -o $@ $^
 
 
 %: %.o
