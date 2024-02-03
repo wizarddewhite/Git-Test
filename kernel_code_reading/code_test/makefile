@@ -29,7 +29,7 @@ $(warning $(LIB_SOURCE))
 all: $(LIB) $(PROGRAM)
 
 %: %.o $(LIB)
-	gcc $(CFLAGS) $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
+	gcc $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
 
 %.o: %.c
 	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
