@@ -11,7 +11,7 @@ LIB := $(subst .c,.o,$(LIB_SOURCE))
 .PHONY: all clean cscope
 all: pci_resource_test
 
-pci_resource_test: pci_resource_test.o resource_request_simulation.o $(LIB)
+pci_resource_test: pci_resource_test.o $(LIB)
 	gcc $(CFLAGS) -o $@ $^
 
 
