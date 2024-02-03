@@ -9,14 +9,9 @@ LIB := $(subst .c,.o,$(LIB_SOURCE))
 #$(warning $(MAKECMDGOALS) $(PROGRAM))
 
 .PHONY: all clean cscope
-all: resource_case
+all: pci_resource_test
 
-# this program emulate the kernel/resource.c to 
-# get more understanding on this structrure
-resource_case: resource_case.o $(LIB)
-	gcc $(CFLAGS) $^ -o resource_case
-
-pci_resource_test: resource.o pci_resource_test.o resource_request_simulation.o
+pci_resource_test: pci_resource_test.o resource_request_simulation.o $(LIB)
 	gcc $(CFLAGS) -o $@ $^
 
 
