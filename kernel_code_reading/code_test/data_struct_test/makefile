@@ -12,10 +12,12 @@ SOURCES := $(wildcard *.c)
 PROGRAM := $(subst .c,,$(SOURCES))
 endif
 
-LIB_SOURCE := $(wildcard ../lib/*.c)
-LIB := $(subst .c,.o,$(LIB_SOURCE))
+LIB_PATH := ../lib
+LIB_SOURCE := $(wildcard $(LIB_PATH)/*.c)
+LIB_OBJS := $(subst .c,.o,$(LIB_SOURCE))
+LIB := $(LIB_PATH)/libtest.a
 DEPENDENCY = $(subst .c,.d,$(SOURCES))
-CFLAGS = -I../ -I../lib/
+CFLAGS = -I../ -I$(LIB_PATH)/
 LD_FLAGS = -lm
 
 ifeq ($(DEBUG),1)
@@ -32,10 +34,9 @@ all: $(LIB) $(PROGRAM)
 	gcc $(DEBUG_FLAGS) $(LD_FLAGS) $^ -o $@
 
 %.o: %.c
-	@echo building obj from c
 	gcc $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
 
-%.a: %.o
+%.a: $(LIB_OBJS)
 	ar cr $@ $^
 
 ifneq "$(MAKECMDGOALS)" "clean"
