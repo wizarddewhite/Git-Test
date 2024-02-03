@@ -16,7 +16,6 @@
  * =====================================================================================
  */
 #include "resource.h"
-#include "resource_case.h"
 
 struct resource root;
 struct resource res[10];

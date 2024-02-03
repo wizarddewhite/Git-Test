@@ -18,7 +18,6 @@
 #include <time.h>
 #include <stdlib.h>
 #include "resource.h"
-#include "resource_case.h"
 #include "resource_request_simulation.h"
 
 struct pci_bus *root_bus;

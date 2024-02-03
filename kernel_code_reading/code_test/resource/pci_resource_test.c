@@ -18,7 +18,6 @@
 #include <string.h>
 
 #include "resource.h"
-#include "resource_case.h"
 #include "resource_request_simulation.h"
 #include "__ffs.h"
 
