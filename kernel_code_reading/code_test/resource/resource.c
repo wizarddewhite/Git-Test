@@ -21,7 +21,6 @@
 #include <string.h>
 
 #include "resource.h"
-#include "resource_case.h"
 
 struct resource iomem_resource = {
 	.name	= "PCI mem",
