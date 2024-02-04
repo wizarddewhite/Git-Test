@@ -59,4 +59,6 @@ clean:
 	@rm -f $(LIB_OBJS) $(LIB)
 
 cscope:
-	cscope -Rbkq
+	@echo [GEN] $@
+	@find ../lib . -name "*.[ch]" > cscope.files
+	@cscope -b -f cscope.out
