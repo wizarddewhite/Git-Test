@@ -60,4 +60,3 @@ clean:
 
 cscope:
 	cscope -Rbkq
-	ctags -R
