@@ -157,9 +157,9 @@ void list_next_entry_test()
 
 	list_add_tail_test();
 
+	printf("=== Iterate by next ===\n");
 	iter = list_first_entry(&test_list, struct list_dummy, list_node);
 	printf("index of first node is %d\n", iter->index);
-
 
 	i = 2;
 	while(1) {
@@ -167,7 +167,7 @@ void list_next_entry_test()
 		iter = list_next_entry(iter, struct list_dummy, list_node);
 		printf("index of %dth node is %d\n", i++, iter->index);
 
-		if (iter->list_node.next == &test_list) {
+		if (list_is_last(&iter->list_node, &test_list)) {
 			printf("The end of the list, no more entry\n");
 			break;
 		}
@@ -314,7 +314,7 @@ void *traverse_list_tree(struct list_tree *start, traverse_lt_func pre,
 		}
 
 		/* ok, try next sibling instead. */
-		if (nd->list.next != &nd->parent->child) {
+		if (!list_is_last(&nd->list, &nd->parent->child)) {
 			n_nd = list_next_entry(nd, struct list_tree, list);
 			continue;
 		} else {
@@ -325,7 +325,7 @@ void *traverse_list_tree(struct list_tree *start, traverse_lt_func pre,
 				depth--;
 				if (n_nd == start)
 					return NULL;
-			} while (n_nd->list.next == &n_nd->parent->child);
+			} while (list_is_last(&n_nd->list, &n_nd->parent->child));
 			n_nd = list_next_entry(n_nd, struct list_tree, list);
 		}
 	}
@@ -387,9 +387,9 @@ int main()
 	// list_del_test();
 	// list_for_each_test();
 	// list_first_entry_test();
-	// list_next_entry_test();
+	list_next_entry_test();
 	// list_for_each_entry_reverse_test();
-	list_for_each_entry_safe_test(1);
+	// list_for_each_entry_safe_test(1);
 	// list_move_test();
 	// list_move_tail_test();
 	// list_splice_tail_test();
