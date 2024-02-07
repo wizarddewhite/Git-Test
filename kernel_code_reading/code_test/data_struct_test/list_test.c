@@ -283,7 +283,8 @@ struct list_tree {
 	struct list_head child;
 };
 
-struct list_tree nodes[30];
+#define TREE_NODES 30
+struct list_tree nodes[TREE_NODES];
 
 void node_init(struct list_tree *node, int val)
 {
@@ -296,24 +297,27 @@ void node_init(struct list_tree *node, int val)
 	INIT_LIST_HEAD(&node->child);
 }
 
-typedef void *(*traverse_lt_func)(struct list_tree *me, void *data);
+typedef void *(*traverse_lt_func)(struct list_tree *me, void *data, int depth);
 void *traverse_list_tree(struct list_tree *start, traverse_lt_func pre,
 		void *data)
 {
 	struct list_tree *nd, *n_nd;
+	int depth = 0;
 	void *ret;
 
-	/* We started with a tree node, iterate all childs */
+	/* We started with a tree node, iterate all children */
 	for (nd = list_first_entry_or_null(&start->child, struct list_tree, list);
 		nd; nd = n_nd) {
 
-		if (pre && ((ret = pre(nd, data)) != NULL))
+		if (pre && ((ret = pre(nd, data, depth)) != NULL))
 			return ret;
 
 		/* If we have child, go down */
-		if ((n_nd = list_first_entry_or_null(&nd->child, struct list_tree, list)))
+		if ((n_nd = list_first_entry_or_null(&nd->child, struct list_tree, list))) {
 			/* Depth first...do children */
+			depth++;
 			continue;
+		}
 
 		/* ok, try next sibling instead. */
 		if (nd->list.next != &nd->parent->child) {
@@ -324,6 +328,7 @@ void *traverse_list_tree(struct list_tree *start, traverse_lt_func pre,
 			/* Walk up to next valid sibling. */
 			do {
 				n_nd = n_nd->parent;
+				depth--;
 				if (n_nd == start)
 					return NULL;
 			} while (n_nd->list.next == &n_nd->parent->child);
@@ -333,9 +338,9 @@ void *traverse_list_tree(struct list_tree *start, traverse_lt_func pre,
 	return NULL;
 }
 
-void *show_tree(struct list_tree *me, void *data)
+void *show_tree(struct list_tree *me, void *data, int depth)
 {
-	printf("node: %d\n", me->index);
+	printf("node: %*c %d\n", depth*3, ' ', me->index);
 	return NULL;
 }
 
@@ -343,10 +348,10 @@ void list_tree_test()
 {
 	int i;
 	
-	for (i = 0; i < 30; i++)
+	for (i = 0; i < TREE_NODES; i++)
 		node_init(&nodes[i], i);
-	//for (i = 0; i < 30; i++)
-	//	printf("node: %d\n", nodes[i].index);
+	// for (i = 0; i < TREE_NODES; i++)
+	// 	printf("node: %d\n", nodes[i].index);
 
 	/* 0 has child 1, 2 */
 	list_add_tail(&nodes[1].list, &nodes[0].child);
@@ -392,8 +397,8 @@ int main()
 	// list_for_each_entry_safe_test(1);
 	// list_move_test();
 	// list_move_tail_test();
-	list_splice_tail_test();
-	// list_tree_test();
+	// list_splice_tail_test();
+	list_tree_test();
 
 	return 0;
 }
