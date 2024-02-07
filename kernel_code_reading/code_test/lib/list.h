@@ -164,6 +164,16 @@ static inline int list_is_last(const struct list_head *list,
 }
 
 /**
+ * list_is_head - tests whether @list is the list @head
+ * @list: the entry to test
+ * @head: the head of the list
+ */
+static inline int list_is_head(const struct list_head *list, const struct list_head *head)
+{
+	return list == head;
+}
+
+/**
  * list_empty - tests whether a list is empty
  * @head: the list to test.
  */
@@ -254,7 +264,7 @@ static inline void list_splice_tail(struct list_head *list,
  * @head:	the head for your list.
  */
 #define list_for_each(pos, head) \
-	for (pos = (head)->next; pos != (head); pos = pos->next)
+	for (pos = (head)->next; !list_is_head(pos, (head)); pos = pos->next)
 
 /**
  * list_for_each_entry	-	iterate over list of given type

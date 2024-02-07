@@ -390,7 +390,7 @@ int main()
 	// list_add_test();
 	// list_add_tail_test();
 	// list_del_test();
-	// list_for_each_test();
+	list_for_each_test();
 	// list_first_entry_test();
 	// list_next_entry_test();
 	// list_for_each_entry_reverse_test();
@@ -398,7 +398,7 @@ int main()
 	// list_move_test();
 	// list_move_tail_test();
 	// list_splice_tail_test();
-	list_tree_test();
+	// list_tree_test();
 
 	return 0;
 }
