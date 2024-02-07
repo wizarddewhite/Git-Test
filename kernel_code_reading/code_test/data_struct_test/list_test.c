@@ -11,6 +11,7 @@ typedef struct list_dummy list_dummy;
 void list_del_test();
 void list_add_tail_test();
 void list_for_each_entry_safe_test();
+void list_for_each_entry_test(int create);
 
 #define FIRST_LENGTH 11
 LIST_HEAD(test_list);
@@ -30,10 +31,17 @@ void isempty_test()
 
 void islast_test()
 {
+	/* list_head is both first and last element, if it is am empty.*/
+	if (list_empty(&test_list))
+		printf("list is empty\n");
 	if (list_is_last(&test_list, &test_list))
-		printf("list is last\n");
+		printf("head is last\n");
 	else
-		printf("list is non last\n");
+		printf("head is not last\n");
+	if (list_is_first(&test_list, &test_list))
+		printf("head is first too\n");
+	else
+		printf("head is not first\n");
 }
 
 void isfirst_test()
@@ -45,22 +53,31 @@ void isfirst_test()
 	elem = list_first_entry(&test_list, struct list_dummy, list_node);
 	printf("index of first node is %d\n", elem->index);
 
-	if (list_is_first(&elem->list_node, &test_list))
-		printf("list is first\n");
+	if (list_is_last(&test_list, &test_list))
+		printf("head is last\n");
 	else
-		printf("list is non first\n");
+		printf("head is not last\n");
+	if (list_is_first(&elem->list_node, &test_list))
+		printf("elem is first\n");
+	else
+		printf("elem is non first\n");
 }
 
 void list_add_test()
 {
 	int i;
-
-	INIT_LIST_HEAD(&elem[0].list_node);
+	struct list_dummy *iter;
 
 	for (i = 0; i < 10; i++)
 	{
 		elem[i].index = i;
 		list_add(&elem[i].list_node, &test_list);
+	}
+
+	printf("=== After list add ===\n");
+	list_for_each_entry(iter, &test_list, list_node)
+	{
+		printf("index of entry is %d\n", iter->index);
 	}
 }
 
@@ -68,23 +85,28 @@ void list_del_test()
 {
 	printf("prepare the list for test: \n");
 	list_add_tail_test();
-	list_for_each_entry_safe_test(0);
+	// list_for_each_entry_safe_test(0);
 
 	list_del(&elem[7].list_node);
-	printf("after delete the elment 7: \n");
+	printf("=== After delete the elment 7: ===\n");
 	list_for_each_entry_safe_test(0);
 }
 
 void list_add_tail_test()
 {
 	int i;
-
-	INIT_LIST_HEAD(&elem[0].list_node);
+	struct list_dummy *iter;
 
 	for (i = 1; i < FIRST_LENGTH; i++)
 	{
 		elem[i].index = i;
 		list_add_tail(&elem[i].list_node, &test_list);
+	}
+
+	printf("=== After list add tail ===\n");
+	list_for_each_entry(iter, &test_list, list_node)
+	{
+		printf("index of entry is %d\n", iter->index);
 	}
 }
 
@@ -93,8 +115,20 @@ void list_for_each_test()
 	struct list_head *iter;
 	int i = 0;
 
-	list_for_each(iter, &test_list)
-		printf("%d\n", i++);
+	for (i = 0; i < FIRST_LENGTH; i++)
+	{
+		elem[i].index = i;
+		list_add_tail(&elem[i].list_node, &test_list);
+	}
+
+	i = 0;
+
+	list_for_each(iter, &test_list) {
+		struct list_dummy *entry = list_entry(iter, struct list_dummy, list_node);
+		printf("%d %p(%d) %p(%d)\n", i, iter, entry->index,
+			&elem[i], elem[i].index);
+		i++;
+	}
 }
 
 void list_for_each_entry_test(int create)
@@ -104,6 +138,7 @@ void list_for_each_entry_test(int create)
 	if (create)
 		list_add_tail_test();
 
+	printf("=== After list add tail ===\n");
 	list_for_each_entry(iter, &test_list, list_node)
 	{
 		printf("index of entry is %d\n", iter->index);
@@ -123,6 +158,7 @@ void list_first_entry_test()
 
 void list_next_entry_test()
 {
+	int i;
 	struct list_dummy *iter;
 
 	list_add_tail_test();
@@ -131,18 +167,15 @@ void list_next_entry_test()
 	printf("index of first node is %d\n", iter->index);
 
 
+	i = 2;
 	while(1) {
 
 		iter = list_next_entry(iter, struct list_dummy, list_node);
-		printf("index of third node is %d\n", iter->index);
+		printf("index of %dth node is %d\n", i++, iter->index);
 
 		if (iter->list_node.next == &test_list) {
 			printf("The end of the list, no more entry\n");
 			break;
-		}
-		else {
-			iter = list_next_entry(iter, struct list_dummy, list_node);
-			printf("index of forth node is %d\n", iter->index);
 		}
 	}
 
@@ -154,6 +187,7 @@ void list_for_each_entry_reverse_test()
 
 	list_add_tail_test();
 
+	printf("=== Reverse order ===\n");
 	list_for_each_entry_reverse(iter, &test_list, list_node)
 	{
 		printf("index of entry is %d\n", iter->index);
@@ -164,12 +198,13 @@ void list_for_each_entry_reverse_test()
 void list_for_each_entry_safe_test(int create)
 {
 	struct list_dummy *iter;
-	struct list_dummy *tmp;
+	struct list_dummy *next;
 
 	if (create)
 		list_add_tail_test();
 
-	list_for_each_entry_safe(iter, tmp, &test_list, list_node)
+	printf("=== list for each safe ===\n");
+	list_for_each_entry_safe(iter, next, &test_list, list_node)
 	{
 		printf("index of entry is %d\n", iter->index);
 	}
@@ -180,7 +215,7 @@ void list_move_test()
 	struct list_dummy *iter, *iter2;
 	struct list_dummy *tmp;
 
-	list_for_each_entry_test(1);
+	list_add_tail_test();
 
 	printf("---   we want to move 5 after 8\n");
 	list_for_each_entry_safe(iter, tmp, &test_list, list_node) {
@@ -202,7 +237,7 @@ void list_move_tail_test()
 	struct list_dummy *iter, *iter2;
 	struct list_dummy *tmp;
 
-	list_for_each_entry_test(1);
+	list_add_tail_test();
 
 	printf("---   we want to move 5 to tail\n");
 	list_for_each_entry_safe(iter, tmp, &test_list, list_node) {
@@ -220,25 +255,18 @@ void list_splice_tail_test()
 	int i;
 	struct list_dummy *iter;
 
-	INIT_LIST_HEAD(&elem2[0].list_node);
-
 	for (i = 0; i < SECOND_LENGTH; i++)
 	{
 		elem2[i].index = i + 100;
 		list_add_tail(&elem2[i].list_node, &test_list2);
 	}
 
-	printf("--- create test_list2\n");
+	printf("=== After list add test_list2 ===\n");
 	list_for_each_entry(iter, &test_list2, list_node) {
 		printf("index of entry is %d\n", iter->index);
 	}
 
-	printf("--- create test_list\n");
 	list_add_tail_test();
-
-	list_for_each_entry(iter, &test_list, list_node) {
-		printf("index of entry is %d\n", iter->index);
-	}
 
 	list_splice_tail(&test_list, &test_list2);
 
@@ -351,8 +379,21 @@ void list_tree_test()
 
 int main()
 {
+	// isempty_test();
+	// islast_test();
+	// isfirst_test();
+	// list_add_test();
+	// list_add_tail_test();
+	// list_del_test();
+	// list_for_each_test();
+	// list_first_entry_test();
+	// list_next_entry_test();
+	// list_for_each_entry_reverse_test();
+	// list_for_each_entry_safe_test(1);
+	// list_move_test();
 	// list_move_tail_test();
-	list_tree_test();
+	list_splice_tail_test();
+	// list_tree_test();
 
 	return 0;
 }
