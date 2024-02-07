@@ -267,6 +267,15 @@ static inline void list_splice_tail(struct list_head *list,
 	for (pos = (head)->next; !list_is_head(pos, (head)); pos = pos->next)
 
 /**
+ * list_entry_is_head - test if the entry points to the head of the list
+ * @pos:	the type * to cursor
+ * @head:	the head for your list.
+ * @member:	the name of the list_head within the struct.
+ */
+#define list_entry_is_head(pos, head, member)				\
+	(&pos->member == (head))
+
+/**
  * list_for_each_entry	-	iterate over list of given type
  * @pos:	the type * to use as a loop cursor.
  * @head:	the head for your list.
@@ -274,7 +283,7 @@ static inline void list_splice_tail(struct list_head *list,
  */
 #define list_for_each_entry(pos, head, member)				\
 	for (pos = list_entry((head)->next, typeof(*pos), member);	\
-	     &pos->member != (head); 	\
+	     !list_entry_is_head(pos, head, member); 	\
 	     pos = list_entry(pos->member.next, typeof(*pos), member))
 
 /**
@@ -285,7 +294,7 @@ static inline void list_splice_tail(struct list_head *list,
  */
 #define list_for_each_entry_reverse(pos, head, member)			\
 	for (pos = list_entry((head)->prev, typeof(*pos), member);	\
-	     &pos->member != (head); 	\
+	     !list_entry_is_head(pos, head, member); 	\
 	     pos = list_entry(pos->member.prev, typeof(*pos), member))
 
 /**
@@ -298,7 +307,7 @@ static inline void list_splice_tail(struct list_head *list,
 #define list_for_each_entry_safe(pos, n, head, member)			\
 	for (pos = list_entry((head)->next, typeof(*pos), member),	\
 		n = list_entry(pos->member.next, typeof(*pos), member);	\
-	     &pos->member != (head); 					\
+	     !list_entry_is_head(pos, head, member); 					\
 	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
 
 #endif // _LIST_HEAD_

@@ -137,12 +137,6 @@ void list_for_each_entry_test(int create)
 
 	if (create)
 		list_add_tail_test();
-
-	printf("=== After list add tail ===\n");
-	list_for_each_entry(iter, &test_list, list_node)
-	{
-		printf("index of entry is %d\n", iter->index);
-	}
 }
 
 void list_first_entry_test()
@@ -389,12 +383,13 @@ int main()
 	// isfirst_test();
 	// list_add_test();
 	// list_add_tail_test();
+	// list_for_each_entry_test(1);
 	// list_del_test();
-	list_for_each_test();
+	// list_for_each_test();
 	// list_first_entry_test();
 	// list_next_entry_test();
 	// list_for_each_entry_reverse_test();
-	// list_for_each_entry_safe_test(1);
+	list_for_each_entry_safe_test(1);
 	// list_move_test();
 	// list_move_tail_test();
 	// list_splice_tail_test();
