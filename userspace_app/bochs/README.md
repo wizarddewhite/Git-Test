@@ -10,3 +10,34 @@ sudo apt install bochs-x
 sudo apt install nasm
 ```
 
+# 运行例子
+
+先编译
+
+```
+make
+```
+
+在执行
+
+```
+make run
+
+或者
+
+./vm_start.sh
+```
+
+# 查看二进制文件
+
+用vim
+```
+vim -b boot.bin
+:%!xxd
+```
+
+用hexdump
+
+```
+hexdump -C boot.bin
+```
