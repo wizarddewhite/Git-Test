@@ -78,24 +78,24 @@ LABEL_SEARCH_IN_ROOT_DIR_BEGIN:
 	mov	ax, BaseOfLoader
 	mov	es, ax			; es <- BaseOfLoader
 	mov	bx, OffsetOfLoader	; bx <- OffsetOfLoader	于是, es:bx = BaseOfLoader:OffsetOfLoader
-	mov	ax, [wSectorNo]	; ax <- Root Directory 中的某 Sector 号
+	mov	ax, [wSectorNo]		; ax <- Root Directory 中的某 Sector 号
 	mov	cl, 1
-	call	ReadSector
+	call	ReadSector		; 将[wSectorNo]读到BaseOfLoader:OffsetOfLoader
 
 	mov	si, LoaderFileName	; ds:si -> "LOADER  BIN"
 	mov	di, OffsetOfLoader	; es:di -> BaseOfLoader:0100 = BaseOfLoader*10h+100
 	cld
-	mov	dx, 10h
+	mov	dx, 10h			; 每个扇区有 512 / 32 = 16条目录条目
 LABEL_SEARCH_FOR_LOADERBIN:
-	cmp	dx, 0										; ┓循环次数控制,
+	cmp	dx, 0					; ┓循环次数控制,
 	jz	LABEL_GOTO_NEXT_SECTOR_IN_ROOT_DIR	; ┣如果已经读完了一个 Sector,
-	dec	dx											; ┛就跳到下一个 Sector
-	mov	cx, 11
+	dec	dx					; ┛就跳到下一个 Sector
+	mov	cx, 11			; "LOADER  BIN" 共11个字符
 LABEL_CMP_FILENAME:
 	cmp	cx, 0
 	jz	LABEL_FILENAME_FOUND	; 如果比较了 11 个字符都相等, 表示找到
-dec	cx
-	lodsb				; ds:si -> al
+	dec	cx
+	lodsb				; ds:si -> al, si++
 	cmp	al, byte [es:di]
 	jz	LABEL_GO_ON
 	jmp	LABEL_DIFFERENT		; 只要发现不一样的字符就表明本 DirectoryEntry 不是
@@ -105,10 +105,10 @@ LABEL_GO_ON:
 	jmp	LABEL_CMP_FILENAME	;	继续循环
 
 LABEL_DIFFERENT:
-	and	di, 0FFE0h						; else ┓	di &= E0 为了让它指向本条目开头
-	add	di, 20h							;     ┃
-	mov	si, LoaderFileName					;     ┣ di += 20h  下一个目录条目
-	jmp	LABEL_SEARCH_FOR_LOADERBIN;    ┛
+	and	di, 0FFE0h						; else ┓ di &= E0 为了让它指向本条目开头
+	add	di, 20h							;      ┣ di += 20h  下一个目录条目
+	mov	si, LoaderFileName					;      ┃ si -> "LOADER  BIN"
+	jmp	LABEL_SEARCH_FOR_LOADERBIN				;      ┛
 
 LABEL_GOTO_NEXT_SECTOR_IN_ROOT_DIR:
 	add	word [wSectorNo], 1
@@ -128,7 +128,7 @@ LABEL_FILENAME_FOUND:			; 找到 LOADER.BIN 后便来到这里继续
 	mov	ax, RootDirSectors
 	and	di, 0FFE0h		; di -> 当前条目的开始
 	add	di, 01Ah		; di -> 首 Sector
-	mov	cx, word [es:di]
+	mov	cx, word [es:di]	; cx <- DirectoryEntry.FirstCluster
 	push	cx			; 保存此 Sector 在 FAT 中的序号
 	add	cx, ax
 	add	cx, DeltaSectorNo	; 这句完成时 cl 里面变成 LOADER.BIN 的起始扇区号 (从 0 开始数的序号)
@@ -136,6 +136,7 @@ LABEL_FILENAME_FOUND:			; 找到 LOADER.BIN 后便来到这里继续
 	mov	es, ax			; es <- BaseOfLoader
 	mov	bx, OffsetOfLoader	; bx <- OffsetOfLoader	于是, es:bx = BaseOfLoader:OffsetOfLoader = BaseOfLoader * 10h + OffsetOfLoader
 	mov	ax, cx			; ax <- Sector 号
+					; es:bx <- LOADER.BIN将要被拷贝到的地址
 
 LABEL_GOON_LOADING_FILE:
 	push	ax			; ┓
@@ -148,7 +149,7 @@ LABEL_GOON_LOADING_FILE:
 	pop	ax			; ┛
 
 	mov	cl, 1
-	call	ReadSector
+	call	ReadSector		; 读取ax指定的Sector到es:bx中
 	pop	ax			; 取出此 Sector 在 FAT 中的序号
 	call	GetFATEntry
 	cmp	ax, 0FFFh
