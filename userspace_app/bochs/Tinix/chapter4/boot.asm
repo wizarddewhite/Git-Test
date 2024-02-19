@@ -206,7 +206,7 @@ DispStr:
 	mov	cx, MessageLength	; CX = 串长度
 	mov	ax, 01301h		; AH = 13,  AL = 01h
 	mov	bx, 0007h		; 页号为0(BH = 0) 黑底白字(BL = 07h)
-	mov	dl, 0
+	mov	dl, 0			; dh = 行, dl = 列。dh既作为选择子，也作为所要显示的行
 	int	10h			; int 10h
 	ret
 
