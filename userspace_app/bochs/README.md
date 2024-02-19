@@ -10,24 +10,6 @@ sudo apt install bochs-x
 sudo apt install nasm
 ```
 
-# 运行例子
-
-先编译
-
-```
-make
-```
-
-在执行
-
-```
-make run
-
-或者
-
-./vm_start.sh
-```
-
 # 查看二进制文件
 
 用vim
@@ -40,4 +22,33 @@ vim -b boot.bin
 
 ```
 hexdump -C boot.bin
+```
+
+# 用bochs调试
+
+# 查看帮助
+
+```
+help
+help pb
+```
+
+# 断点设置
+
+这里的地址是物理地址
+```
+pb 0x7c00
+```
+
+# 反汇编
+
+```
+u 0x7c00 0x7c1e
+```
+
+# 查看寄存器
+
+```
+sreg
+r
 ```
