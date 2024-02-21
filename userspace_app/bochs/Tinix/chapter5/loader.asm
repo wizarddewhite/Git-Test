@@ -380,7 +380,7 @@ LABEL_PM_START:
 	;              ©§¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö©§
 	;              ©§¡ö¡ö¡ö¡ö¡ö¡öPage  Tables¡ö¡ö¡ö¡ö¡ö¡ö©§
 	;              ©§¡ö¡ö¡ö¡ö¡ö(´óÐ¡ÓÉLOADER¾ö¶¨)¡ö¡ö¡ö¡ö©§
-	;    00101000h ©§¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö©§ PageTblBase
+	;    00101000h ©§¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö©§ PageTblBase  <- 1M + 4K
 	;              ©Ç©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©Ï
 	;              ©§¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö©§
 	;    00100000h ©§¡ö¡ö¡ö¡öPage Directory Table¡ö¡ö¡ö¡ö©§ PageDirBase  <- 1M
@@ -401,7 +401,7 @@ LABEL_PM_START:
 	;       9FC00h ©§¡õ¡õextended BIOS data area (EBDA)¡õ©§
 	;              ©Ç©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©Ï
 	;              ©§¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö©§
-	;       90000h ©§¡ö¡ö¡ö¡ö¡ö¡ö¡öLOADER.BIN¡ö¡ö¡ö¡ö¡ö¡ö©§ somewhere in LOADER ¡û esp
+	;       90000h ©§¡ö¡ö¡ö¡ö¡ö¡ö¡öLOADER.BIN¡ö¡ö¡ö¡ö¡ö¡ö©§ somewhere in LOADER ¡û esp, GDT
 	;              ©Ç©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©¥©Ï
 	;              ©§¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö¡ö©§
 	;       80000h ©§¡ö¡ö¡ö¡ö¡ö¡ö¡öKERNEL.BIN¡ö¡ö¡ö¡ö¡ö¡ö©§
@@ -548,9 +548,9 @@ InitKernel:	; ±éÀúÃ¿Ò»¸ö Program Header£¬¸ù¾Ý Program Header ÖÐµÄÐÅÏ¢À´È·¶¨°ÑÊ²Ã
 	mov	cx, word [BaseOfKernelFilePhyAddr + 2Ch]; ©· ecx <- pELFHdr->e_phnum
 	movzx	ecx, cx					; ©¿
 	mov	esi, [BaseOfKernelFilePhyAddr + 1Ch]	; esi <- pELFHdr->e_phoff
-	add	esi, BaseOfKernelFilePhyAddr		; esi <- OffsetOfKernel + pELFHdr->e_phoff
+	add	esi, BaseOfKernelFilePhyAddr		; esi <- BaseOfKernel + pELFHdr->e_phoff Ö¸ÏòµÚÒ»¸öProgram Header
 .Begin:
-	mov	eax, [esi + 0]
+	mov	eax, [esi + 0]			; ÅÐ¶ÏProgram HeaderÀàÐÍ
 	cmp	eax, 0				; PT_NULL
 	jz	.NoAction
 	push	dword [esi + 010h]		; size	©·
@@ -561,7 +561,7 @@ InitKernel:	; ±éÀúÃ¿Ò»¸ö Program Header£¬¸ù¾Ý Program Header ÖÐµÄÐÅÏ¢À´È·¶¨°ÑÊ²Ã
 	call	MemCpy				;	©§
 	add	esp, 12				;	©¿
 .NoAction:
-	add	esi, 020h			; esi += pELFHdr->e_phentsize
+	add	esi, 020h			; esi += pELFHdr->e_phentsizeÖ¸ÏòÏÂÒ»¸öProgram Header
 	dec	ecx
 	jnz	.Begin
 
