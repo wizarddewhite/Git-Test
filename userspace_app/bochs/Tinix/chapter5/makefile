@@ -9,7 +9,7 @@ boot.img: boot.bin loader.bin kernel.bin
 
 kernel.bin: kernel.asm
 	nasm -f elf kernel.asm -o kernel.o
-	ld -m elf_i386 -s kernel.o -o kernel.bin
+	ld -Ttext 0x30400 -m elf_i386 -s kernel.o -o kernel.bin
 
 .PHONY: run install
 run:
