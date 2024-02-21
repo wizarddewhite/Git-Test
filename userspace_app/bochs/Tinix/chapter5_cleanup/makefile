@@ -1,33 +1,38 @@
-all: boot.img
+ENTRYPOINT	= 0x30400
+OBJS		= kernel/kernel.o kernel/start.o lib/klib.o lib/string.o
 
-boot.img: boot.bin loader.bin kernel.bin
-	dd if=boot.bin of=boot.img
-	dd if=/dev/zero of=boot.img seek=1 bs=512 count=2879
+all: boot/boot.img
+
+boot/boot.img: boot/boot.bin boot/loader.bin kernel.bin
+	dd if=$< of=$@
+	dd if=/dev/zero of=$@ seek=1 bs=512 count=2879
 
 %.bin: %.asm
-	nasm $^ -o $@
+	nasm -I boot/include $^ -o $@
 
 %.o: %.asm
-	nasm -f elf $^ -o $@
+	nasm -I include -f elf $^ -o $@
 
 %.o: %.c
-	gcc -m32 -c $^ -o $@
+	gcc -I include -m32 -c $^ -o $@
 
-kernel.bin: kernel.o string.o klib.o start.o
-	ld -Ttext 0x30400 -m elf_i386 -s $^ -o kernel.bin
+kernel.bin: $(OBJS)
+	ld -Ttext $(ENTRYPOINT) -m elf_i386 -s $^ -o $@
 
 .PHONY: run install
 run:
 	bochs -f bochsrc
 
 install: all
-	sudo mount boot.img /tmp -o loop
-	sudo cp loader.bin /tmp/
+	sudo mount boot/boot.img /tmp -o loop
+	sudo cp boot/loader.bin /tmp/
 	sudo cp kernel.bin /tmp/
 	sudo umount /tmp
 
 clean:
-	rm -f boot.img *.bin *.o disboot.asm
+	rm -f boot/boot.img boot/*.bin
+	rm -f kernel.bin $(OBJS)
+	rm -f disboot.asm
 
 disboot.asm:
 	ndisasm -o 0x7c00 boot.bin >> disboot.asm
