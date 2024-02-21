@@ -31,6 +31,7 @@ hexdump -C boot.bin
 ```
 help
 help pb
+help info
 ```
 
 ## 断点设置
@@ -38,6 +39,11 @@ help pb
 这里的地址是物理地址
 ```
 pb 0x7c00
+```
+
+查看已设置的断点
+```
+info break
 ```
 
 ## 反汇编
