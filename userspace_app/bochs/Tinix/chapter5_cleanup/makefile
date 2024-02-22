@@ -14,7 +14,7 @@ boot/boot.img: boot/boot.bin boot/loader.bin kernel.bin
 	nasm -I include -f elf $^ -o $@
 
 %.o: %.c
-	gcc -I include -m32 -c $^ -o $@
+	gcc -I include -fno-builtin -m32 -c $^ -o $@
 
 kernel.bin: $(OBJS)
 	ld -Ttext $(ENTRYPOINT) -m elf_i386 -s $^ -o $@
