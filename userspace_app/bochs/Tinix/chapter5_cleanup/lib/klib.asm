@@ -19,10 +19,21 @@ global	disp_str
 ;                  void disp_str(char * info);
 ; ========================================================================
 disp_str:
+	push	ebx
 	push	ebp
 	mov	ebp, esp
 
-	mov	esi, [ebp + 8]	; pszInfo
+	; current stack
+	;+----------------------+
+	;|    ebp               |  <- esp
+	;+----------------------+
+	;|    ebx               |
+	;+----------------------+
+	;|    EIP               |
+	;+----------------------+
+	;|    pzInfo            |
+	;+----------------------+
+	mov	esi, [ebp + 12]	; pszInfo
 	mov	edi, [disp_pos]
 	mov	ah, 0Fh
 .1:
@@ -51,5 +62,6 @@ disp_str:
 	mov	[disp_pos], edi
 
 	pop	ebp
+	pop	ebx
 	ret
 
