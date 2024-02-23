@@ -1,5 +1,6 @@
 ENTRYPOINT	= 0x30400
-OBJS		= kernel/kernel.o kernel/start.o lib/klib.o lib/string.o
+OBJS		= kernel/kernel.o kernel/start.o kernel/i8259.o \
+		  lib/klib.o lib/klibc.o lib/string.o
 
 all: boot/boot.img
 
@@ -14,7 +15,7 @@ boot/boot.img: boot/boot.bin boot/loader.bin kernel.bin
 	nasm -I include -f elf $^ -o $@
 
 %.o: %.c
-	gcc -I include -fno-builtin -m32 -c $^ -o $@
+	gcc -I include -fno-builtin -fno-stack-protector -m32 -c $^ -o $@
 
 kernel.bin: $(OBJS)
 	ld -Ttext $(ENTRYPOINT) -m elf_i386 -s $^ -o $@
