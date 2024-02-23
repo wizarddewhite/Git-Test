@@ -73,12 +73,25 @@ disp_str:
 ;                  void disp_color_str(char * info, int color);
 ; ========================================================================
 disp_color_str:
+	push	ebx
 	push	ebp
 	mov	ebp, esp
 
-	mov	esi, [ebp + 8]	; pszInfo
+	; current stack
+	;+----------------------+
+	;|    ebp               |  <- esp
+	;+----------------------+
+	;|    ebx               |
+	;+----------------------+
+	;|    EIP               |
+	;+----------------------+
+	;|    pzInfo            |
+	;+----------------------+
+	;|    color             |
+	;+----------------------+
+	mov	esi, [ebp + 12]	; pszInfo
 	mov	edi, [disp_pos]
-	mov	ah, [ebp + 12]	; color
+	mov	ah, [ebp + 16]	; color
 .1:
 	lodsb
 	test	al, al
@@ -105,6 +118,7 @@ disp_color_str:
 	mov	[disp_pos], edi
 
 	pop	ebp
+	pop	ebx
 	ret
 
 ; ========================================================================
