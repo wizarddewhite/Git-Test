@@ -10,6 +10,19 @@ do
 	echo "  " $i;
 done
 
+# or and
+if [[ 1 > 0 && -1 < 7 ]]; then
+	echo "both meet"
+else
+	echo "one not meet"
+fi
+
+if [[ 1 > 0 || 17 < 7 ]]; then
+	echo "one meet"
+else
+	echo "non meet"
+fi
+
 # check file existence
 if [ ! -f "file_non_exist" ]; then
 	echo "file not exist"
