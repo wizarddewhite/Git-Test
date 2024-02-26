@@ -149,17 +149,23 @@ csinit:		; “这个跳转指令强制使用刚刚初始化的结构”——<<OS:D&I 2nd>> P90.
 
 ALIGN	16
 hwint00:		; Interrupt routine for irq 0 (the clock).
-	sub	esp, 4
+	sub	esp, 4	; skip s_stackfram->retaddr
 	pushad		; ┓
 	push	ds	; ┃
 	push	es	; ┣ 保存原寄存器值
 	push	fs	; ┃
 	push	gs	; ┛
+	mov	dx, ss
+	mov	ds, dx
+	mov	es, dx
 
 	inc	byte [gs:0]	; 改变屏幕第 0 行, 第 0 列的字符
 
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
+
+	lea	eax, [esp + P_STACKTOP]
+	mov	dword [tss + TSS3_S_SP0], eax
 
 	pop	gs	; ┓
 	pop	fs	; ┃
