@@ -11,5 +11,17 @@ PUBLIC t_8	in_byte(t_port port);
 PUBLIC void	disp_int(int input);
 PUBLIC void	disp_str(char * info);
 PUBLIC void	disp_color_str(char * info, int color);
+
+/* protect.c */
 PUBLIC void	init_prot();
 PUBLIC void	init_8259A();
+PUBLIC t_32	seg2phys(t_16 seg);
+
+/* klib.c */
+PUBLIC void	delay(int time);
+
+/* kernel.asm */
+void restart();
+
+/* main.c */
+void TestA();
