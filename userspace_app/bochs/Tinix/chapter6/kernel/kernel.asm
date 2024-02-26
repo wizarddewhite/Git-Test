@@ -13,6 +13,7 @@ extern	cstart
 extern	tinix_main
 extern	exception_handler
 extern	spurious_irq
+extern	disp_str
 
 ; 导入全局变量
 extern	gdt_ptr
@@ -22,6 +23,9 @@ extern	tss
 extern	disp_pos
 
 bits 32
+
+[SECTION .data]
+clock_int_msg		db	"^", 0
 
 [SECTION .bss]
 StackSpace		resb	2 * 1024
@@ -165,6 +169,10 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
+
+	push	clock_int_msg
+	call	disp_str
+	add	esp, 4
 
 	mov	esp, [p_proc_ready]	; 离开内核栈;
 	lea	eax, [esp + P_STACKTOP]
