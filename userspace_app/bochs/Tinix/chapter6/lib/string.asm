@@ -93,6 +93,7 @@ memset:
 	push	esi
 	push	edi
 	push	ecx
+	push	edx
 
 	mov	edi, [ebp + 8]	; Destination
 	mov	edx, [ebp + 12]	; Char to be putted
@@ -108,6 +109,7 @@ memset:
 	jmp	.1		; Ñ­»·
 .2:
 
+	pop	edx
 	pop	ecx
 	pop	edi
 	pop	esi
