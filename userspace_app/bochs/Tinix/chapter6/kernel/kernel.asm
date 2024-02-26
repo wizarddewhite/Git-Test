@@ -159,11 +159,14 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 	mov	ds, dx
 	mov	es, dx
 
+	mov	esp, StackTop	; 切到内核栈
+
 	inc	byte [gs:0]	; 改变屏幕第 0 行, 第 0 列的字符
 
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
 
+	mov	esp, [p_proc_ready]	; 离开内核栈;
 	lea	eax, [esp + P_STACKTOP]
 	mov	dword [tss + TSS3_S_SP0], eax
 
