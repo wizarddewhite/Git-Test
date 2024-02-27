@@ -27,7 +27,7 @@ PUBLIC int tinix_main()
 	t_16		selector_ldt	= SELECTOR_LDT_FIRST;
 	int i;
 	for(i=0;i<NR_TASKS;i++){
-		// strcpy(p_proc->p_name, p_task->name);	// name of the process
+		strcpy(p_proc->p_name, p_task->name);	// name of the process
 		p_proc->pid	= i;			// pid
 
 		p_proc->ldt_sel	= selector_ldt;
