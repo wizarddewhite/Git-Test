@@ -53,7 +53,8 @@ PUBLIC int tinix_main()
 
 	k_reenter = 0;
 
-	p_proc_ready	= proc_table; 
+	p_proc_ready	= proc_table;
+	
 	restart();
 
 

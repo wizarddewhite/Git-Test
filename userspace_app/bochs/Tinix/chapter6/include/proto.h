@@ -11,6 +11,8 @@ PUBLIC t_8	in_byte(t_port port);
 PUBLIC void	disp_int(int input);
 PUBLIC void	disp_str(char * info);
 PUBLIC void	disp_color_str(char * info, int color);
+PUBLIC void 	enable_irq(int irq);
+PUBLIC void 	disable_irq(int irq);
 
 /* protect.c */
 PUBLIC void	init_prot();
@@ -27,3 +29,10 @@ void restart();
 void TestA();
 void TestB();
 void TestC();
+
+/* i8259.c */
+PUBLIC void put_irq_handler(int iIRQ, t_pf_irq_handler handler);
+PUBLIC void spurious_irq(int irq);
+
+/* clock.c */
+PUBLIC void clock_handler(int irq);
