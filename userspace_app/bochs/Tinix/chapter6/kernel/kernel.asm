@@ -13,6 +13,7 @@ extern	cstart
 extern	tinix_main
 extern	exception_handler
 extern	spurious_irq
+extern	clock_handler
 extern	disp_str
 extern	delay
 
@@ -165,7 +166,7 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 	mov	ds, dx
 	mov	es, dx
 
-	inc	byte [gs:0]	; 改变屏幕第 0 行, 第 0 列的字符
+	;inc	byte [gs:0]	; 改变屏幕第 0 行, 第 0 列的字符
 
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
@@ -178,8 +179,8 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 
 	sti
 
-	push	clock_int_msg
-	call	disp_str
+	push	0
+	call	clock_handler
 	add	esp, 4
 	;push	1
 	;call	delay
@@ -188,6 +189,7 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 	cli
 
 	mov	esp, [p_proc_ready]	; 离开内核栈;
+	lldt	[esp + P_LDT_SEL]	; 将LDT切换到当前进程
 	lea	eax, [esp + P_STACKTOP]
 	mov	dword [tss + TSS3_S_SP0], eax
 

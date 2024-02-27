@@ -1,6 +1,7 @@
 ENTRYPOINT	= 0x30400
 OBJS		= kernel/kernel.o kernel/start.o kernel/i8259.o \
 		  kernel/global.o kernel/protect.o kernel/main.o \
+		  kernel/clock.o \
 		  lib/klib.o lib/klibc.o lib/string.o
 
 all: boot/boot.img
