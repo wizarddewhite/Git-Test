@@ -345,15 +345,15 @@ exception:
 ;                                   restart
 ; ====================================================================================
 restart:
-	mov	esp, [p_proc_ready]
-	lldt	[esp + P_LDT_SEL] 
+	mov	esp, [p_proc_ready]	; 离开内核栈;
+	lldt	[esp + P_LDT_SEL]	; 将LDT切换到当前进程
 	lea	eax, [esp + P_STACKTOP]
 	mov	dword [tss + TSS3_S_SP0], eax
-	pop	gs
-	pop	fs
-	pop	es
-	pop	ds
-	popad
+	pop	gs	; ┓
+	pop	fs	; ┃
+	pop	es	; ┣ 恢复原寄存器值
+	pop	ds	; ┃
+	popad		; ┛
 	add	esp, 4
 	iretd
 
