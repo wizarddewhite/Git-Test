@@ -25,3 +25,5 @@ void restart();
 
 /* main.c */
 void TestA();
+void TestB();
+void TestC();
