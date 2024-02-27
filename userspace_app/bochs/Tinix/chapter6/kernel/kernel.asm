@@ -349,6 +349,8 @@ restart:
 	lldt	[esp + P_LDT_SEL]	; 将LDT切换到当前进程
 	lea	eax, [esp + P_STACKTOP]
 	mov	dword [tss + TSS3_S_SP0], eax
+restart_reenter:	; 如果(k_reenter != 0)，会跳转到这里
+	dec	dword [k_reenter]	; k_reenter--;
 	pop	gs	; ┓
 	pop	fs	; ┃
 	pop	es	; ┣ 恢复原寄存器值
