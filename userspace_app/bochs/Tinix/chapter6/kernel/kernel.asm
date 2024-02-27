@@ -171,18 +171,18 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
 
-	mov	esp, StackTop	; 切到内核栈
-
 	inc	dword [k_reenter]
 	cmp	dword [k_reenter], 0
 	jne	.1	; 重入时跳到.1，通常情况下顺序执行
 
-	push	restart			;               ┓
+	mov	esp, StackTop		; 切到内核栈	┓
+					;		┃
+	push	restart			;               ┃
 	;push	.restart_v2		;		┣（中断重入不执行的代码）
 	jmp	.2			;		┛
 
 .1: ; 中断重入
-	push	restart
+	push	restart_reenter
 	;push	.restart_reenter_v2
 
 .2: ; 没有中断重入
