@@ -175,8 +175,17 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 
 	inc	dword [k_reenter]
 	cmp	dword [k_reenter], 0
-	jne	.re_enter
+	jne	.1	; 重入时跳到.1，通常情况下顺序执行
 
+	push	restart			;               ┓
+	;push	.restart_v2		;		┣（中断重入不执行的代码）
+	jmp	.2			;		┛
+
+.1: ; 中断重入
+	push	restart
+	;push	.restart_reenter_v2
+
+.2: ; 没有中断重入
 	sti
 
 	push	0
@@ -188,21 +197,23 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 
 	cli
 
-.re_enter:	; 如果(k_reenter != 0)，会跳转到这里
-	mov	esp, [p_proc_ready]	; 离开内核栈;
-	lldt	[esp + P_LDT_SEL]	; 将LDT切换到当前进程
-	lea	eax, [esp + P_STACKTOP]
-	mov	dword [tss + TSS3_S_SP0], eax
+	ret
 
-	dec	dword [k_reenter]	; k_reenter--;
-	pop	gs	; ┓
-	pop	fs	; ┃
-	pop	es	; ┣ 恢复原寄存器值
-	pop	ds	; ┃
-	popad		; ┛
-	add	esp, 4
-
-	iretd
+;.re_enter:	; 如果(k_reenter != 0)，会跳转到这里
+;	mov	esp, [p_proc_ready]	; 离开内核栈;
+;	lldt	[esp + P_LDT_SEL]	; 将LDT切换到当前进程
+;	lea	eax, [esp + P_STACKTOP]
+;	mov	dword [tss + TSS3_S_SP0], eax
+;
+;	dec	dword [k_reenter]	; k_reenter--;
+;	pop	gs	; ┓
+;	pop	fs	; ┃
+;	pop	es	; ┣ 恢复原寄存器值
+;	pop	ds	; ┃
+;	popad		; ┛
+;	add	esp, 4
+;
+;	iretd
 
 ALIGN	16
 hwint01:		; Interrupt routine for irq 1 (keyboard)
