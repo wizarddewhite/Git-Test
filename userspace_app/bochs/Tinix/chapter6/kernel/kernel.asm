@@ -171,11 +171,11 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
 
+	mov	esp, StackTop	; 切到内核栈
+
 	inc	dword [k_reenter]
 	cmp	dword [k_reenter], 0
 	jne	.re_enter
-
-	mov	esp, StackTop	; 切到内核栈
 
 	sti
 
@@ -188,12 +188,12 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 
 	cli
 
+.re_enter:	; 如果(k_reenter != 0)，会跳转到这里
 	mov	esp, [p_proc_ready]	; 离开内核栈;
 	lldt	[esp + P_LDT_SEL]	; 将LDT切换到当前进程
 	lea	eax, [esp + P_STACKTOP]
 	mov	dword [tss + TSS3_S_SP0], eax
 
-.re_enter:	; 如果(k_reenter != 0)，会跳转到这里
 	dec	dword [k_reenter]	; k_reenter--;
 	pop	gs	; ┓
 	pop	fs	; ┃
