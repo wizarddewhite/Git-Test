@@ -14,6 +14,7 @@ extern	tinix_main
 extern	exception_handler
 extern	spurious_irq
 extern	disp_str
+extern	delay
 
 ; 导入全局变量
 extern	gdt_ptr
@@ -21,6 +22,7 @@ extern	idt_ptr
 extern	p_proc_ready
 extern	tss
 extern	disp_pos
+extern	k_reenter
 
 bits 32
 
@@ -168,15 +170,29 @@ hwint00:		; Interrupt routine for irq 0 (the clock).
 	mov	al, EOI		; ┓reenable master 8259
 	out	INT_M_CTL, al	; ┛
 
+	inc	dword [k_reenter]
+	cmp	dword [k_reenter], 0
+	jne	.re_enter
+
 	mov	esp, StackTop	; 切到内核栈
+
+	sti
+
 	push	clock_int_msg
 	call	disp_str
 	add	esp, 4
+	;push	1
+	;call	delay
+	;add	esp, 4
+
+	cli
 
 	mov	esp, [p_proc_ready]	; 离开内核栈;
 	lea	eax, [esp + P_STACKTOP]
 	mov	dword [tss + TSS3_S_SP0], eax
 
+.re_enter:	; 如果(k_reenter != 0)，会跳转到这里
+	dec	dword [k_reenter]	; k_reenter--;
 	pop	gs	; ┓
 	pop	fs	; ┃
 	pop	es	; ┣ 恢复原寄存器值

@@ -18,6 +18,8 @@ DESCRIPTOR		gdt[GDT_SIZE];
 t_8			idt_ptr[6];	// 0~15:Limit  16~47:Base
 GATE			idt[IDT_SIZE];
 
+t_32			k_reenter;
+
 TSS			tss;
 PROCESS*		p_proc_ready;
 

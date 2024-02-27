@@ -11,6 +11,8 @@ extern	DESCRIPTOR		gdt[GDT_SIZE];
 extern	t_8			idt_ptr[6];	// 0~15:Limit  16~47:Base
 extern	GATE			idt[IDT_SIZE];
 
+extern	t_32			k_reenter;
+
 extern	TSS		tss;
 extern	PROCESS*	p_proc_ready;
 
