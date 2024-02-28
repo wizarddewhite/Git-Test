@@ -25,6 +25,7 @@ extern	tss
 extern	disp_pos
 extern	k_reenter
 extern	irq_table
+extern	sys_call_table
 
 bits 32
 
@@ -39,7 +40,8 @@ StackTop:		; Õ»¶¥
 
 global _start	; µ¼³ö _start
 
-global restart
+global	restart
+global	sys_call
 
 global	divide_error
 global	single_step_exception
@@ -389,6 +391,22 @@ save:
 	push	restart_reenter			;	push restart_reenter
 	jmp	[esi + RETADR - P_STACKBASE]	;	return;
 						; }
+
+
+; ====================================================================================
+;                                 sys_call
+; ====================================================================================
+sys_call:
+	call	save
+
+	sti
+
+	call	[sys_call_table + eax * 4]
+	mov	[esi + EAXREG - P_STACKBASE], eax
+
+	cli
+
+	ret
 
 
 ; ====================================================================================
