@@ -12,6 +12,7 @@
 #include "proc.h"
 #include "global.h"
 
+int			ticks;
 int			disp_pos;
 t_8			gdt_ptr[6];	// 0~15:Limit  16~47:Base
 DESCRIPTOR		gdt[GDT_SIZE];

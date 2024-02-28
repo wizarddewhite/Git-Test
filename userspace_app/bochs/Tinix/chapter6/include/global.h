@@ -5,6 +5,7 @@
                                                     Forrest Yu, 2005
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+extern	int			ticks;
 extern	int			disp_pos;
 extern	t_8			gdt_ptr[6];	// 0~15:Limit  16~47:Base
 extern	DESCRIPTOR		gdt[GDT_SIZE];
