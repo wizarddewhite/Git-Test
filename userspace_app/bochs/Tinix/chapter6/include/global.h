@@ -20,3 +20,4 @@ extern	PROCESS		proc_table[];
 extern	char		task_stack[];
 extern	TASK		task_table[];
 extern	t_pf_irq_handler	irq_table[NR_IRQ];
+extern	t_sys_call		sys_call_table[];
