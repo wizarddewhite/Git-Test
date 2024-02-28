@@ -377,17 +377,17 @@ save:
 	mov	ds, dx
 	mov	es, dx
 
-	mov	eax, esp			; eax = 进程表起始地址
+	mov	esi, esp			; esi = 进程表起始地址
 
 	inc	dword [k_reenter]		; k_reenter++;
 	cmp	dword [k_reenter], 0		; if(k_reenter ==0)
 	jne	.1				; {
 	mov	esp, StackTop			;	mov esp, StackTop <-- 切换到内核栈
 	push	restart				;	push restart
-	jmp	[eax + RETADR - P_STACKBASE]	;	return;
+	jmp	[esi + RETADR - P_STACKBASE]	;	return;
 .1:						; } else { 已经在内核栈，不需要再切换
 	push	restart_reenter			;	push restart_reenter
-	jmp	[eax + RETADR - P_STACKBASE]	;	return;
+	jmp	[esi + RETADR - P_STACKBASE]	;	return;
 						; }
 
 
