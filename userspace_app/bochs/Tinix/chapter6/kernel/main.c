@@ -50,6 +50,9 @@ PUBLIC int tinix_main()
 		p_task++;
 		selector_ldt += 1 << 3;
 	}
+	proc_table[0].ticks = proc_table[0].priority = 15;
+	proc_table[1].ticks = proc_table[1].priority =  5;
+	proc_table[2].ticks = proc_table[2].priority =  3;
 
 	k_reenter	= 0;
 	ticks		= 0;
@@ -78,7 +81,7 @@ void TestA()
 {
 	while(1){
 		disp_str("A.");
-		milli_delay(300);
+		milli_delay(10);
 	}
 }
 
@@ -90,7 +93,7 @@ void TestB()
 {
 	while(1){
 		disp_str("B.");
-		milli_delay(900);
+		milli_delay(10);
 	}
 }
 
@@ -102,7 +105,7 @@ void TestC()
 {
 	while(1){
 		disp_str("C.");
-		milli_delay(1500);
+		milli_delay(10);
 	}
 }
 
