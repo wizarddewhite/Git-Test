@@ -78,10 +78,46 @@ PUBLIC void keyboard_read()
 
 		/* 下面开始解析扫描码 */
 		if (scan_code == 0xE1) {
-			/* 暂时不做任何操作 */
+			int i;
+			t_8 pausebreak_scan_code[] = {0xE1, 0x1D, 0x45, 0xE1, 0x9D, 0xC5};
+			t_bool is_pausebreak = TRUE;
+			for(i=1;i<6;i++){
+				if (get_byte_from_kb_buf() != pausebreak_scan_code[i]) {
+					is_pausebreak = FALSE;
+					break;
+				}
+			}
+			if (is_pausebreak) {
+				key = PAUSEBREAK;
+			}
 		}
 		else if (scan_code == 0xE0) {
-			/* 暂时不做任何操作 */
+			scan_code = get_byte_from_kb_buf();
+
+			/* PrintScreen 被按下 */
+			if (scan_code == 0x2A) {
+				if (get_byte_from_kb_buf() == 0xE0) {
+					if (get_byte_from_kb_buf() == 0x37) {
+						key = PRINTSCREEN;
+						make = TRUE;
+					}
+				}
+			}
+
+			/* PrintScreen 被释放 */
+			if (scan_code == 0xB7) {
+				if (get_byte_from_kb_buf() == 0xE0) {
+					if (get_byte_from_kb_buf() == 0xAA) {
+						key = PRINTSCREEN;
+						make = FALSE;
+					}
+				}
+			}
+
+			/* 不是 PrintScreen。此时 scan_code 为 0xE0 紧跟的那个值。 */
+			if (key == 0) {
+				code_with_E0 = TRUE;
+			}
 		}
 		if ((key != PAUSEBREAK) && (key != PRINTSCREEN)) {
 			/* 首先判断Make Code 还是 Break Code */
