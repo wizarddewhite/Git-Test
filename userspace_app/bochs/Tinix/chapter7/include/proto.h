@@ -9,6 +9,8 @@
 PUBLIC void	out_byte(t_port port, t_8 value);
 PUBLIC t_8	in_byte(t_port port);
 PUBLIC void	disp_int(int input);
+PUBLIC void	disable_int();
+PUBLIC void	enable_int();
 PUBLIC void	disp_str(char * info);
 PUBLIC void	disp_color_str(char * info, int color);
 PUBLIC void 	enable_irq(int irq);
@@ -46,6 +48,10 @@ PUBLIC void schedule();
 /* keyboard.c */
 PUBLIC void keyboard_handler(int irq);
 PUBLIC void init_keyboard();
+PUBLIC void keyboard_read();
+
+/* tty.c */
+PUBLIC void task_tty();
 
 /************************************************************************/
 /*                        以下是系统调用相关                            */
