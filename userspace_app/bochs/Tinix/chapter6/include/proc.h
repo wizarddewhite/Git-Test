@@ -45,6 +45,7 @@ typedef struct s_task {
 	t_pf_task	initial_eip;
 	int		stacksize;
 	char		name[32];
+	int		priority;
 }TASK;
 
 

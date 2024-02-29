@@ -29,6 +29,7 @@ PUBLIC int tinix_main()
 	for(i=0;i<NR_TASKS;i++){
 		strcpy(p_proc->p_name, p_task->name);	// name of the process
 		p_proc->pid	= i;			// pid
+		p_proc->ticks = p_proc->priority = p_task->priority;
 
 		p_proc->ldt_sel	= selector_ldt;
 		memcpy(&p_proc->ldts[0], &gdt[SELECTOR_KERNEL_CS >> 3], sizeof(DESCRIPTOR));
@@ -50,9 +51,6 @@ PUBLIC int tinix_main()
 		p_task++;
 		selector_ldt += 1 << 3;
 	}
-	proc_table[0].ticks = proc_table[0].priority = 15;
-	proc_table[1].ticks = proc_table[1].priority =  5;
-	proc_table[2].ticks = proc_table[2].priority =  3;
 
 	k_reenter	= 0;
 	ticks		= 0;
