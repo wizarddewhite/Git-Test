@@ -18,7 +18,8 @@
  *======================================================================*/
 PUBLIC void keyboard_handler(int irq)
 {
-	disp_str("*");
+	t_8 scan_code = in_byte(KB_DATA);
+	disp_int(scan_code);
 }
 
 
