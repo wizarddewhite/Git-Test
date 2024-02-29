@@ -16,6 +16,17 @@
 #include "keymap.h"
 
 PRIVATE	KB_INPUT	kb_in;
+PRIVATE	t_bool		code_with_E0;
+PRIVATE	t_bool		shift_l;		/* l shift state	*/
+PRIVATE	t_bool		shift_r;		/* r shift state	*/
+PRIVATE	t_bool		alt_l;			/* l alt state		*/
+PRIVATE	t_bool		alt_r;			/* r left state		*/
+PRIVATE	t_bool		ctrl_l;			/* l ctrl state		*/
+PRIVATE	t_bool		ctrl_r;			/* l ctrl state		*/
+PRIVATE	int		column		= 0;	/* keyrow[column] 将是 keymap 中某一个值 */
+
+/* 本文件内函数声明 */
+PRIVATE t_8 get_byte_from_kb_buf();
 
 /*======================================================================*
                             keyboard_handler
@@ -54,21 +65,16 @@ PUBLIC void init_keyboard()
 PUBLIC void keyboard_read()
 {
 	t_8	scan_code;
-	char	output[2];
 	t_bool	make;	/* TRUE : make  */
 			/* FALSE: break */
-
-	memset(output, 0, 2);
+	t_32	key = 0;/* 用一个整型来表示一个键。 */
+			/* 比如，如果 Home 被按下，则 key 值将为定义在 keyboard.h 中的 'HOME'。*/
+	t_32*	keyrow;	/* 指向 keymap[] 的某一行 */
 
 	if(kb_in.count > 0){
-		disable_int();
-		scan_code = *(kb_in.p_tail);
-		kb_in.p_tail++;
-		if (kb_in.p_tail == kb_in.buf + KB_IN_BYTES) {
-			kb_in.p_tail = kb_in.buf;
-		}
-		kb_in.count--;
-		enable_int();
+		code_with_E0 = FALSE;
+
+		scan_code = get_byte_from_kb_buf();
 
 		/* 下面开始解析扫描码 */
 		if (scan_code == 0xE1) {
@@ -77,18 +83,82 @@ PUBLIC void keyboard_read()
 		else if (scan_code == 0xE0) {
 			/* 暂时不做任何操作 */
 		}
-		else {	/* 下面处理可打印字符 */
-			
+		if ((key != PAUSEBREAK) && (key != PRINTSCREEN)) {
 			/* 首先判断Make Code 还是 Break Code */
 			make = (scan_code & FLAG_BREAK ? FALSE : TRUE);
+			
+			/* 先定位到 keymap 中的行 */
+			keyrow = &keymap[(scan_code & 0x7F) * MAP_COLS];
 
-			/* 如果是Make Code 就打印，是 Break Code 则不做处理 */
-			if(make){
-				output[0] = keymap[(scan_code & 0x7F) * MAP_COLS];
-				disp_str(output);
+			column = 0;
+
+			if (shift_l || shift_r) {
+				column = 1;
+			}
+
+			if (code_with_E0) {
+				column = 2;
+			}
+
+			key = keyrow[column];
+
+			switch(key) {
+			case SHIFT_L:
+				shift_l	= make;
+				break;
+			case SHIFT_R:
+				shift_r	= make;
+				break;
+			case CTRL_L:
+				ctrl_l	= make;
+				break;
+			case CTRL_R:
+				ctrl_r	= make;
+				break;
+			case ALT_L:
+				alt_l	= make;
+				break;
+			case ALT_R:
+				alt_l	= make;
+				break;
+			default:
+				break;
 			}
 		}
+
+		if(make){ /* 忽略 Break Code */
+			key |= shift_l	? FLAG_SHIFT_L	: 0;
+			key |= shift_r	? FLAG_SHIFT_R	: 0;
+			key |= ctrl_l	? FLAG_CTRL_L	: 0;
+			key |= ctrl_r	? FLAG_CTRL_R	: 0;
+			key |= alt_l	? FLAG_ALT_L	: 0;
+			key |= alt_r	? FLAG_ALT_R	: 0;
+
+			in_process(key);
+		}
 	}
+}
+
+
+/*======================================================================*
+                           get_byte_from_kb_buf
+*======================================================================*/
+PRIVATE t_8 get_byte_from_kb_buf()	/* 从键盘缓冲区中读取下一个字节 */
+{
+	t_8	scan_code;
+
+	while (kb_in.count <= 0) {}	/* 等待下一个字节到来 */
+
+	disable_int();
+	scan_code = *(kb_in.p_tail);
+	kb_in.p_tail++;
+	if (kb_in.p_tail == kb_in.buf + KB_IN_BYTES) {
+		kb_in.p_tail = kb_in.buf;
+	}
+	kb_in.count--;
+	enable_int();
+
+	return scan_code;
 }
 
 

@@ -52,6 +52,7 @@ PUBLIC void keyboard_read();
 
 /* tty.c */
 PUBLIC void task_tty();
+PUBLIC void in_process(t_32 key);
 
 /************************************************************************/
 /*                        以下是系统调用相关                            */
