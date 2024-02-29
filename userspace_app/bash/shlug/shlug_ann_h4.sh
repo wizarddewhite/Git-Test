@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# clone the repo
+# git clone git@github.com:shanghailug/shanghailug.github.io.git
+
 #WEB_REPO=$HOME/proj/doc/shanghailug.github.io
 WEB_REPO=$PWD/../shanghailug.github.io
 
