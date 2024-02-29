@@ -77,10 +77,8 @@ PUBLIC int tinix_main()
 void TestA()
 {
 	while(1){
-		disp_str("A");
-		disp_int(get_ticks());
-		disp_str(".");
-		milli_delay(1000);
+		disp_str("A.");
+		milli_delay(300);
 	}
 }
 
@@ -91,10 +89,8 @@ void TestA()
 void TestB()
 {
 	while(1){
-		disp_str("B");
-		disp_int(get_ticks());
-		disp_str(".");
-		milli_delay(1000);
+		disp_str("B.");
+		milli_delay(900);
 	}
 }
 
@@ -104,12 +100,9 @@ void TestB()
  *======================================================================*/
 void TestC()
 {
-	int i = 0x2000;
 	while(1){
-		disp_str("C");
-		disp_int(get_ticks());
-		disp_str(".");
-		milli_delay(1000);
+		disp_str("C.");
+		milli_delay(1500);
 	}
 }
 
