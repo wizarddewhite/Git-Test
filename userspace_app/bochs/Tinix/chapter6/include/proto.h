@@ -37,7 +37,7 @@ PUBLIC void spurious_irq(int irq);
 
 /* clock.c */
 PUBLIC void clock_handler(int irq);
-
+PUBLIC void milli_delay(int milli_sec);
 
 
 /************************************************************************/
