@@ -42,6 +42,8 @@ PUBLIC void milli_delay(int milli_sec);
 /* proc.c */
 PUBLIC void schedule();
 
+/* keyboard.c */
+PUBLIC void keyboard_handler(int irq);
 
 /************************************************************************/
 /*                        以下是系统调用相关                            */

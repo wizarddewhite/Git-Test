@@ -66,6 +66,9 @@ PUBLIC int tinix_main()
 	put_irq_handler(CLOCK_IRQ, clock_handler);	/* 设定时钟中断处理程序 */
 	enable_irq(CLOCK_IRQ);				/* 让8259A可以接收时钟中断 */
 
+	put_irq_handler(KEYBOARD_IRQ, keyboard_handler);	/* 设定键盘中断处理程序 */
+	enable_irq(KEYBOARD_IRQ);				/* 开键盘中断 */
+
 	restart();
 
 
@@ -78,7 +81,7 @@ PUBLIC int tinix_main()
 void TestA()
 {
 	while(1){
-		disp_str("A.");
+		// disp_str("A.");
 		milli_delay(10);
 	}
 }
@@ -90,7 +93,7 @@ void TestA()
 void TestB()
 {
 	while(1){
-		disp_str("B.");
+		// disp_str("B.");
 		milli_delay(10);
 	}
 }
@@ -102,7 +105,7 @@ void TestB()
 void TestC()
 {
 	while(1){
-		disp_str("C.");
+		// disp_str("C.");
 		milli_delay(10);
 	}
 }
