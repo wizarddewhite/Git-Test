@@ -38,12 +38,14 @@ PUBLIC void spurious_irq(int irq);
 /* clock.c */
 PUBLIC void clock_handler(int irq);
 PUBLIC void milli_delay(int milli_sec);
+PUBLIC void init_clock();
 
 /* proc.c */
 PUBLIC void schedule();
 
 /* keyboard.c */
 PUBLIC void keyboard_handler(int irq);
+PUBLIC void init_keyboard();
 
 /************************************************************************/
 /*                        以下是系统调用相关                            */
