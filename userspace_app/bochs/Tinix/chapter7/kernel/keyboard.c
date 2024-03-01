@@ -8,6 +8,8 @@
 #include "type.h"
 #include "const.h"
 #include "protect.h"
+#include "tty.h"
+#include "console.h"
 #include "proto.h"
 #include "string.h"
 #include "proc.h"
@@ -16,7 +18,7 @@
 #include "keymap.h"
 
 PRIVATE	KB_INPUT	kb_in;
-PRIVATE	t_bool		code_with_E0;
+PRIVATE	t_bool		code_with_E0	= FALSE;
 PRIVATE	t_bool		shift_l;		/* l shift state	*/
 PRIVATE	t_bool		shift_r;		/* r shift state	*/
 PRIVATE	t_bool		alt_l;			/* l alt state		*/
@@ -62,7 +64,7 @@ PUBLIC void init_keyboard()
 /*======================================================================*
                            keyboard_read
 *======================================================================*/
-PUBLIC void keyboard_read()
+PUBLIC void keyboard_read(TTY* p_tty)
 {
 	t_8	scan_code;
 	t_bool	make;	/* TRUE : make  */
@@ -170,7 +172,7 @@ PUBLIC void keyboard_read()
 			key |= alt_l	? FLAG_ALT_L	: 0;
 			key |= alt_r	? FLAG_ALT_R	: 0;
 
-			in_process(key);
+			in_process(p_tty, key);
 		}
 	}
 }

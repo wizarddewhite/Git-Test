@@ -48,11 +48,15 @@ PUBLIC void schedule();
 /* keyboard.c */
 PUBLIC void keyboard_handler(int irq);
 PUBLIC void init_keyboard();
-PUBLIC void keyboard_read();
+PUBLIC void keyboard_read(TTY* p_tty);
 
 /* tty.c */
 PUBLIC void task_tty();
-PUBLIC void in_process(t_32 key);
+PUBLIC void in_process(TTY* p_tty, t_32 key);
+
+/* console.c */
+PUBLIC void	out_char(CONSOLE* p_con, char ch);
+PUBLIC t_bool	is_current_console(CONSOLE* p_con);
 
 /************************************************************************/
 /*                        以下是系统调用相关                            */

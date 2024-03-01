@@ -16,9 +16,13 @@ extern	t_32			k_reenter;
 
 extern	TSS		tss;
 extern	PROCESS*	p_proc_ready;
+extern	int		nr_current_console;
 
 extern	PROCESS		proc_table[];
 extern	char		task_stack[];
 extern	TASK		task_table[];
+extern	TTY			tty_table[NR_CONSOLES];
+extern	CONSOLE			console_table[NR_CONSOLES];
+
 extern	t_pf_irq_handler	irq_table[NR_IRQ];
 extern	t_sys_call		sys_call_table[];
