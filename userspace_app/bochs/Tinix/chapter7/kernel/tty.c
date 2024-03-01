@@ -44,5 +44,32 @@ PUBLIC void in_process(t_32 key)
 		out_byte(CRTC_DATA_REG, (disp_pos/2) & 0xFF);
 		enable_int();
 	}
+	else {
+		int raw_code = key & MASK_RAW;
+		switch(raw_code) {
+		case UP:
+			if ((key & FLAG_SHIFT_L) || (key & FLAG_SHIFT_R)) {	/* Shift + Up */
+				disable_int();
+				out_byte(CRTC_ADDR_REG, CRTC_DATA_IDX_START_ADDR_H);
+				out_byte(CRTC_DATA_REG, ((80*15) >> 8) & 0xFF);
+				out_byte(CRTC_ADDR_REG, CRTC_DATA_IDX_START_ADDR_L);
+				out_byte(CRTC_DATA_REG, (80*15) & 0xFF);
+				enable_int();
+			}
+			break;
+		case DOWN:
+			if ((key & FLAG_SHIFT_L) || (key & FLAG_SHIFT_R)) {	/* Shift + Down */
+				disable_int();
+				out_byte(CRTC_ADDR_REG, CRTC_DATA_IDX_START_ADDR_H);
+				out_byte(CRTC_DATA_REG, ((80*0) >> 8) & 0xFF);
+				out_byte(CRTC_ADDR_REG, CRTC_DATA_IDX_START_ADDR_L);
+				out_byte(CRTC_DATA_REG, (80*0) & 0xFF);
+				enable_int();
+			}
+			break;
+		default:
+			break;
+		}
+	}
 }
 
