@@ -7,7 +7,7 @@ usage()
 	echo "Usage: embed subtitle to video"
 	echo "       $0 [-h] -b base_name"
 	echo 
-	echo "       Put video and subtitle in the same directory with same base name."
+	echo "       Put video and subtitle(en/chn) in the same directory with same base name."
 	echo "       Then execute the script."
 	exit
 }
@@ -38,12 +38,13 @@ if [ -z "${basename}" ] ; then
 fi
 
 video=${basename}.mp4
-subtitle=${basename}.srt
+subtitle_en=${basename}_en.srt
+subtitle_chn=${basename}_chn.srt
 final=${basename}_final.mp4
 subtitle_merge=${basename}_merge.srt
 
-if [[ ! -f "${video}" || ! -f "${subtitle}" ]]; then
-	echo [ERROR] ${video} or ${subtitle} not exist
+if [[ ! -f "${video}" || ! -f "${subtitle_en}" || ! -f "${subtitle_chn}" ]]; then
+	echo [ERROR] ${video} or ${subtitle_en} or ${subtitle_chn} not exist
 	echo
 	usage
 fi
@@ -55,8 +56,9 @@ cat > ${subtitle_merge} << EOF
 
 EOF
 
-cat ${subtitle} >> ${subtitle_merge}
+cat ${subtitle_en} >> ${subtitle_merge}
+cat ${subtitle_chn} >> ${subtitle_merge}
 
 rm -f ${final}
 ffmpeg -i ${video} -vf subtitles=${subtitle_merge} ${final}
-rm -f ${subtitle_merge}
+# rm -f ${subtitle_merge}
