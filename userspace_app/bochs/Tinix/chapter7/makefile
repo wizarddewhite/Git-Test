@@ -3,6 +3,7 @@ OBJS		= kernel/kernel.o kernel/start.o kernel/i8259.o \
 		  kernel/global.o kernel/protect.o kernel/main.o \
 		  kernel/clock.o kernel/syscall.o kernel/proc.o \
 		  kernel/keyboard.o kernel/tty.o kernel/console.o \
+		  kernel/printf.o kernel/vsprintf.o \
 		  lib/klib.o lib/klibc.o lib/string.o
 
 all: boot/boot.img

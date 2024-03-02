@@ -378,6 +378,7 @@ save:
 	mov	dx, ss
 	mov	ds, dx
 	mov	es, dx
+	mov	fs, dx
 
 	mov	esi, esp			; esi = 进程表起始地址
 
@@ -399,9 +400,15 @@ save:
 sys_call:
 	call	save
 
+	push	dword [p_proc_ready]
+
 	sti
 
+	push	ecx
+	push	ebx
 	call	[sys_call_table + eax * 4]
+	add	esp, 4 * 3
+
 	mov	[esi + EAXREG - P_STACKBASE], eax
 
 	cli

@@ -10,8 +10,8 @@
 #include "protect.h"
 #include "tty.h"
 #include "console.h"
-#include "proto.h"
 #include "proc.h"
+#include "proto.h"
 #include "string.h"
 #include "global.h"
 

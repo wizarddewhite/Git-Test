@@ -10,9 +10,9 @@
 #include "protect.h"
 #include "tty.h"
 #include "console.h"
-#include "proto.h"
 #include "string.h"
 #include "proc.h"
+#include "proto.h"
 #include "global.h"
 #include "keyboard.h"
 
@@ -154,6 +154,31 @@ PRIVATE void tty_do_write(TTY* p_tty)
 
 		out_char(p_tty->p_console, ch);
 	}
+}
+
+
+/*======================================================================*
+                              tty_write
+*======================================================================*/
+PUBLIC void tty_write(TTY* p_tty, char* buf, int len)
+{
+	char* p = buf;
+	int i = len;
+
+	while (i) {
+		out_char(p_tty->p_console, *p++);
+		i--;
+	}
+}
+
+
+/*======================================================================*
+                              sys_write
+*======================================================================*/
+PUBLIC int sys_write(char* buf, int len, PROCESS* p_proc)
+{
+	tty_write(&tty_table[p_proc->nr_tty], buf, len);
+	return 0;
 }
 
 

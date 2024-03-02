@@ -10,8 +10,8 @@
 #include "protect.h"
 #include "tty.h"
 #include "console.h"
-#include "proto.h"
 #include "proc.h"
+#include "proto.h"
 #include "global.h"
 
 int			ticks;
@@ -43,4 +43,4 @@ PUBLIC	CONSOLE			console_table[NR_CONSOLES];
 
 PUBLIC	t_pf_irq_handler	irq_table[NR_IRQ];
 
-PUBLIC	t_sys_call		sys_call_table[NR_SYS_CALL] = {sys_get_ticks};
+PUBLIC	t_sys_call		sys_call_table[NR_SYS_CALL] = {sys_get_ticks, sys_write};

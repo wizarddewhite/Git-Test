@@ -22,7 +22,9 @@ PUBLIC void	init_8259A();
 PUBLIC t_32	seg2phys(t_16 seg);
 
 /* klib.c */
+PUBLIC t_bool	is_alphanumeric(char ch);
 PUBLIC void	delay(int time);
+PUBLIC char *	itoa(char * str, int num);
 
 /* kernel.asm */
 void restart();
@@ -61,14 +63,34 @@ PUBLIC void	scroll_screen(CONSOLE* p_con, int direction);
 PUBLIC t_bool	is_current_console(CONSOLE* p_con);
 PUBLIC void	select_console(int nr_console);
 
+/* printf.c */
+PUBLIC	int	printf(const char *fmt, ...);
+
+/* vsprintf.c */
+PUBLIC	int	vsprintf(char *buf, const char *fmt, va_list args);
+
 /************************************************************************/
 /*                        以下是系统调用相关                            */
 /************************************************************************/
 
+
+/*------------*/
+/* 系统级部分 */
+/*------------*/
+
 /* proc.c */
-PUBLIC	int	sys_get_ticks();	/* t_sys_call */
+PUBLIC	int	sys_get_ticks	();
+PUBLIC	int	sys_write	(char* buf, int len, PROCESS* p_proc);
 
 /* syscall.asm */
-PUBLIC	void	sys_call();		/* t_pf_int_handler */
+PUBLIC	void	sys_call();	/* t_pf_int_handler */
+
+
+/*------------*/
+/* 用户级部分 */
+/*------------*/
+
+/* syscall.asm */
 PUBLIC	int	get_ticks();
+PUBLIC	void	write(char* buf, int len);
 
