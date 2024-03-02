@@ -27,14 +27,16 @@ TSS			tss;
 PROCESS*		p_proc_ready;
 int			nr_current_console;
 
-PUBLIC	PROCESS		proc_table[NR_TASKS];
-PUBLIC	char		task_stack[STACK_SIZE_TOTAL];
+PUBLIC	PROCESS		proc_table[NR_TASKS + NR_PROCS];
 
 PUBLIC	TASK		task_table[NR_TASKS] = {
-				{task_tty, STACK_SIZE_TTY, "tty",  15},
+				{task_tty, STACK_SIZE_TTY, "tty",  15}};
+PUBLIC	TASK		user_proc_table[NR_PROCS] = {
 				{TestA, STACK_SIZE_TESTA, "TestA", 15},
 				{TestB, STACK_SIZE_TESTB, "TestB",  5},
 				{TestC, STACK_SIZE_TESTC, "TestC",  3}};
+
+PUBLIC	char		task_stack[STACK_SIZE_TOTAL];
 
 PUBLIC	TTY			tty_table[NR_CONSOLES];
 PUBLIC	CONSOLE			console_table[NR_CONSOLES];

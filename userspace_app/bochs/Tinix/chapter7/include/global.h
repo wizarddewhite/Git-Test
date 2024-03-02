@@ -21,6 +21,7 @@ extern	int		nr_current_console;
 extern	PROCESS		proc_table[];
 extern	char		task_stack[];
 extern	TASK		task_table[];
+extern	TASK		user_proc_table[];
 extern	TTY			tty_table[NR_CONSOLES];
 extern	CONSOLE			console_table[NR_CONSOLES];
 
