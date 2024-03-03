@@ -93,6 +93,7 @@ void TestA()
 {
 	while(1){
 		// disp_str("A.");
+		printf("<Ticks:%x>", get_ticks());
 		milli_delay(10);
 	}
 }
