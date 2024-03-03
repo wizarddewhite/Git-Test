@@ -64,6 +64,8 @@ PUBLIC int tinix_main()
 		p_proc->regs.esp	= (t_32)p_task_stack;
 		p_proc->regs.eflags	= eflags;
 
+		p_proc->nr_tty		= 0;
+
 		p_task_stack -= p_task->stacksize;
 		p_proc++;
 		p_task++;
