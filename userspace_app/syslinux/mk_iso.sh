@@ -3,6 +3,7 @@
 rm -rf /var/tmp/Workspace/ISO/
 mkdir -p /var/tmp/Workspace/ISO/isolinux
 mkdir -p /var/tmp/Workspace/ISO/tools
+mkdir -p /var/tmp/Workspace/ISO/images
 
 #Get the files
 if [ ! -f /var/tmp/Workspace/syslinux-6.03.tar.gz ]; then
@@ -28,6 +29,13 @@ cp /var/tmp/Workspace/syslinux-6.03/bios/com32/lib/libcom32.c32 /var/tmp/Workspa
 #Create empty configuration file
 touch /var/tmp/Workspace/ISO/isolinux/isolinux.cfg
 
+# prepare a simple initrd
+gcc -static -o hello hello.c
+echo hello | cpio -o --format=newc > /var/tmp/Workspace/ISO/images/rootfs
+rm hello
+cp ~/git/linux/arch/x86/boot/bzImage /var/tmp/Workspace/ISO/images/
+
+
 #Set configuration file content
 cat <<EOF > /var/tmp/Workspace/ISO/isolinux/isolinux.cfg
 UI menu.c32
@@ -40,6 +48,15 @@ LABEL TEST
 	LOCALBOOT 0
 	TEXT HELP
 		Exit and continue normal boot
+	ENDTEXT
+
+LABEL RawKernel
+	MENU LABEL ^RawKernel
+	KERNEL /images/bzImage
+	INITRD /images/rootfs
+	APPEND root=/dev/ram rdinit=/hello
+	TEXT HELP
+		raw kenrel bootup
 	ENDTEXT
 
 LABEL Reboot
