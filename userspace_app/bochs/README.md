@@ -24,6 +24,12 @@ vim -b boot.bin
 hexdump -C boot.bin
 ```
 
+显示一段，比如之观察512(0x200)字节位置是否是0x55AA。
+
+```
+hexdump -C -s 0x180 -n 0x100 boot.bin
+```
+
 # 用bochs调试
 
 ## 查看帮助
