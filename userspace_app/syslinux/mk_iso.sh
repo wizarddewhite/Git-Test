@@ -1,7 +1,8 @@
 #!/bin/bash
 #Create the Workspace folder in /var/tmp
-rm -rf /var/tmp/Workspace/ISO/isolinux
+rm -rf /var/tmp/Workspace/ISO/
 mkdir -p /var/tmp/Workspace/ISO/isolinux
+mkdir -p /var/tmp/Workspace/ISO/tools
 
 #Get the files
 if [ ! -f /var/tmp/Workspace/syslinux-6.03.tar.gz ]; then
@@ -19,6 +20,11 @@ cp /var/tmp/Workspace/syslinux-6.03/bios/core/isolinux.bin /var/tmp/Workspace/IS
 cp /var/tmp/Workspace/syslinux-6.03/bios/com32/menu/menu.c32 /var/tmp/Workspace/ISO/isolinux/
 cp /var/tmp/Workspace/syslinux-6.03/bios/com32/libutil/libutil.c32 /var/tmp/Workspace/ISO/isolinux/
 cp /var/tmp/Workspace/syslinux-6.03/bios/com32/elflink/ldlinux/ldlinux.c32 /var/tmp/Workspace/ISO/isolinux/
+
+cp /var/tmp/Workspace/syslinux-6.03/bios/com32/modules/reboot.c32 /var/tmp/Workspace/ISO/tools/
+cp /var/tmp/Workspace/syslinux-6.03/bios/com32/modules/poweroff.c32 /var/tmp/Workspace/ISO/tools/
+cp /var/tmp/Workspace/syslinux-6.03/bios/com32/lib/libcom32.c32 /var/tmp/Workspace/ISO/isolinux/
+
 #Create empty configuration file
 touch /var/tmp/Workspace/ISO/isolinux/isolinux.cfg
 
@@ -34,6 +40,20 @@ LABEL TEST
 	LOCALBOOT 0
 	TEXT HELP
 		Exit and continue normal boot
+	ENDTEXT
+
+LABEL Reboot
+	MENU LABEL ^Reboot computer
+	KERNEL /tools/reboot.c32
+	TEXT HELP
+		Reboot the computer (you can use CTRL+ALT+SUPPR too)
+	ENDTEXT
+
+LABEL Shutdown
+	MENU LABEL ^Shutdown computer
+	KERNEL /tools/poweroff.c32
+	TEXT HELP
+		Shutdown the computer
 	ENDTEXT
 EOF
 
