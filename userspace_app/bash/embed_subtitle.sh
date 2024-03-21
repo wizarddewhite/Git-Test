@@ -58,7 +58,8 @@ EOF
 
 # cleanup the google translation result
 sed -i -E "s/第([0-9].*)章/\1/" ${subtitle_chn}
-sed -i -E "s/^([0-9].*)年$/\1/"  ${subtitle_chn}
+sed -i -E "s/^([0-9].*)年$/\1/" ${subtitle_chn}
+sed -i "s/$(echo -ne '\u200b')//g" ${subtitle_chn}
 
 cat ${subtitle_en} >> ${subtitle_merge}
 cat ${subtitle_chn} >> ${subtitle_merge}
