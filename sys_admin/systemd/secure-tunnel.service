@@ -1,0 +1,12 @@
+[Unit]
+Description=Run a Custom Script at Startup
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/ssh -NT -f -o ServerAliveInterval=60 -o ExitOnForwardFailure=yes -R 6666:localhost:22 proxy_server
+Type=forking
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
