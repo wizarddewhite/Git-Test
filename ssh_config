@@ -13,6 +13,11 @@ Host desktop
      User richard
      Port 22
 
+Host remote_desktop
+     Hostname 185.92.221.13
+     User richard
+     Port 6666
+
 Host proxy_server
      Hostname 185.92.221.13
      User root
