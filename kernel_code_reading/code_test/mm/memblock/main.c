@@ -118,6 +118,11 @@ void next_valid_test()
 
 int main()
 {
-	next_valid_test();
+	// add_test();
+	// search_test();
+	// remove_test();
+	// alloc_free_test();
+	isolate_test();
+	// next_valid_test();
 	return 0;
 }
