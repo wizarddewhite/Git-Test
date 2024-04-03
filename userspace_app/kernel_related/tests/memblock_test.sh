@@ -6,5 +6,7 @@ if [[ $? != 0 ]]; then
 	exit
 fi
 make
+echo === Run memblock test
 ./main
+echo === memblock test finish
 popd
