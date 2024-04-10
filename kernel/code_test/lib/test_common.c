@@ -74,6 +74,7 @@ void test_fail(void)
 {
 	if (verbose) {
 		// ksft_test_result_fail(": ");
+		printf("fail : ");
 		print_prefixes("failed\n");
 	}
 }
@@ -82,6 +83,7 @@ void test_pass(void)
 {
 	if (verbose) {
 		// ksft_test_result_pass(": ");
+		printf("ok : ");
 		print_prefixes("passed\n");
 	}
 }

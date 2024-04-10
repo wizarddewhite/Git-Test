@@ -47,13 +47,9 @@ void bitmap_fill_checks()
 	prefix_pop();
 }
 
-void bitmap_clear_checks()
+void bitmap_clear_one_check()
 {
 	int i;
-
-	prefix_reset();
-	prefix_push("bitmap_clear");
-	test_print("Running %s tests...\n", "bitmap_clear");
 
 	PREFIX_PUSH();
 
@@ -66,6 +62,36 @@ void bitmap_clear_checks()
 	}
 
 	test_pass_pop();
+
+}
+
+void bitmap_clear_two_check()
+{
+	int i;
+
+	PREFIX_PUSH();
+
+	bitmap_fill(bitmaps, TESTS_BITS);
+
+	for(i = 0; i < TESTS_BITS - 1; i +=2 ) {
+		ASSERT_TRUE(test_bit(i, bitmaps));
+		ASSERT_TRUE(test_bit(i + 1, bitmaps));
+		bitmap_clear(bitmaps, i, 2);
+		ASSERT_FALSE(test_bit(i, bitmaps));
+		ASSERT_FALSE(test_bit(i + 1, bitmaps));
+	}
+
+	test_pass_pop();
+}
+
+void bitmap_clear_checks()
+{
+	prefix_reset();
+	prefix_push("bitmap_clear");
+	test_print("Running %s tests...\n", "bitmap_clear");
+
+	bitmap_clear_one_check();
+	bitmap_clear_two_check();
 
 	prefix_pop();
 }
