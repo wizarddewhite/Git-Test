@@ -8,14 +8,15 @@ MIGRATE=""
 KERNEL=""
 IS_TRY=""
 SERIAL=""
-NUMA=""
+BACKEND="-object memory-backend-ram,id=mem1,size=3G -object memory-backend-ram,id=mem2,size=3G "
+NODE="-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2 "
+NUMA=${BACKEND}${NODE}
 
 usage()
 {
 	echo "Usage: run a guest"
-	echo "$0 [-hnvmkit]"
+	echo "$0 [-hvmkit]"
 	printf "\t-h this help message \n"
-	printf "\t-n enable 2 nodes numa \n"
 	printf "\t-v start vnc and \"change vnc password\" in monitor \n"
 	printf "\t-m start as migration target \n"
 	printf "\t-k \n"
@@ -24,15 +25,10 @@ usage()
 	exit
 }
 
-while getopts ":hnvmkit" opt; do
+while getopts ":hvmkit" opt; do
 	case "$opt" in
 	"h")
 		usage
-		;;
-	"n")
-		BACKEND="-object memory-backend-ram,id=mem1,size=3G -object memory-backend-ram,id=mem2,size=3G "
-		NODE="-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2 "
-		NUMA=${BACKEND}${NODE}
 		;;
 	"v")
 		NO_GRAPHIC="-vnc :0,password -monitor stdio"
@@ -56,9 +52,11 @@ while getopts ":hnvmkit" opt; do
 		;;
 	":")
 		echo "no argument for option: $OPTARG"
+		usage
 		;;
 	"?")
 		echo "not valid option: $OPTARG"
+		usage
 		;;
 	esac
 done
