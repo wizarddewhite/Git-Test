@@ -1,19 +1,21 @@
 #!/bin/bash
 QEMU=/home/richard/git/qemu/build/qemu-system-x86_64
 DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
-DEFAULT="-m 4G,slots=32,maxmem=32G -smp 8 --enable-kvm "
+DEFAULT="-m 6G,slots=32,maxmem=32G -smp 8 --enable-kvm "
 NO_GRAPHIC="-nographic "
 INSTALL=""
 MIGRATE=""
 KERNEL=""
 IS_TRY=""
 SERIAL=""
+NUMA=""
 
 usage()
 {
 	echo "Usage: run a guest"
-	echo "$0 [-hvmkit]"
+	echo "$0 [-hnvmkit]"
 	printf "\t-h this help message \n"
+	printf "\t-n enable 2 nodes numa \n"
 	printf "\t-v start vnc and \"change vnc password\" in monitor \n"
 	printf "\t-m start as migration target \n"
 	printf "\t-k \n"
@@ -22,10 +24,15 @@ usage()
 	exit
 }
 
-while getopts ":hvmkit" opt; do
+while getopts ":hnvmkit" opt; do
 	case "$opt" in
 	"h")
 		usage
+		;;
+	"n")
+		BACKEND="-object memory-backend-ram,id=mem1,size=3G -object memory-backend-ram,id=mem2,size=3G "
+		NODE="-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2 "
+		NUMA=${BACKEND}${NODE}
 		;;
 	"v")
 		NO_GRAPHIC="-vnc :0,password -monitor stdio"
@@ -72,8 +79,11 @@ if [ "$IS_TRY" == "true" ]; then
 	if [ -n "$SERIAL" ]; then
 		printf "\t%s \n" "$SERIAL"
 	fi
+	if [ -n "$NUMA" ]; then
+		printf "\t%s \n" "$NUMA"
+	fi
 else
 	echo Start quest...
-	echo $QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL > .qemu_command
-	$QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL
+	echo $QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL $NUMA > .qemu_command
+	$QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL $NUMA
 fi
