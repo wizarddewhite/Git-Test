@@ -7,18 +7,19 @@ INSTALL=""
 MIGRATE=""
 KERNEL=""
 IS_TRY=""
+SERIAL=""
 
 usage()
 {
 	echo "Usage: run a guest"
 	echo "$0 [-hsiuvmnkq]"
-	printf "\t-h this help message\n"
+	printf "\t-h this help message \n"
 	printf "\t-s open serial port \n"
-	printf "\t-v use vnc \n"
-	printf "\t-m \n"
+	printf "\t-v start vnc and \"change vnc password\" in monitor \n"
+	printf "\t-m start as migration target \n"
 	printf "\t-k \n"
 	printf "\t-i re-install guest \n"
-	printf "\t-t just print the qemu command line\n"
+	printf "\t-t just print the qemu command line \n"
 	exit
 }
 
@@ -28,7 +29,7 @@ while getopts ":hsvmkit" opt; do
 		usage
 		;;
 	"s")
-		SERIAL="-serial telnet:localhost:4321,server,nowait"
+		SERIAL="-serial telnet:localhost:4321,server,nowait "
 		;;
 	"i")
 		INSTALL="-drive file=Fedora-Live-Workstation-x86_64-23-10.iso,media=cdrom \
@@ -36,7 +37,7 @@ while getopts ":hsvmkit" opt; do
 		-kernel tmp/isolinux/vmlinuz0 -initrd tmp/isolinux/initrd0.img"
 		;;
 	"v")
-		NO_GRAPHIC=""
+		NO_GRAPHIC="-vnc :0,password -monitor stdio"
 		;;
 	"m")
 		MIGRATE="-incoming tcp:0:4444"
@@ -71,7 +72,10 @@ if [ "$IS_TRY" == "true" ]; then
 	if [ -n "$KERNEL" ]; then
 		printf "\t%s \n" "$KERNEL"
 	fi
+	if [ -n "$SERIAL" ]; then
+		printf "\t%s \n" "$SERIAL"
+	fi
 else
 	echo Start quest...
-	$QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL
+	$QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL
 fi
