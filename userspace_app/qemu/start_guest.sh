@@ -1,7 +1,7 @@
 #!/bin/bash
 QEMU=/home/richard/git/qemu/build/qemu-system-x86_64
 DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
-DEFAULT="-m 4096 -smp 8 --enable-kvm "
+DEFAULT="-m 4G,slots=32,maxmem=32G -smp 8 --enable-kvm "
 NO_GRAPHIC="-nographic "
 INSTALL=""
 MIGRATE=""
