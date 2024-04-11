@@ -12,9 +12,8 @@ SERIAL=""
 usage()
 {
 	echo "Usage: run a guest"
-	echo "$0 [-hsiuvmnkq]"
+	echo "$0 [-hvmkit]"
 	printf "\t-h this help message \n"
-	printf "\t-s open serial port \n"
 	printf "\t-v start vnc and \"change vnc password\" in monitor \n"
 	printf "\t-m start as migration target \n"
 	printf "\t-k \n"
@@ -23,21 +22,14 @@ usage()
 	exit
 }
 
-while getopts ":hsvmkit" opt; do
+while getopts ":hvmkit" opt; do
 	case "$opt" in
 	"h")
 		usage
 		;;
-	"s")
-		SERIAL="-serial telnet:localhost:4321,server,nowait "
-		;;
-	"i")
-		INSTALL="-drive file=Fedora-Live-Workstation-x86_64-23-10.iso,media=cdrom \
-		-append console=ttyS0 root=live:\
-		-kernel tmp/isolinux/vmlinuz0 -initrd tmp/isolinux/initrd0.img"
-		;;
 	"v")
 		NO_GRAPHIC="-vnc :0,password -monitor stdio"
+		SERIAL="-serial telnet:localhost:4321,server,nowait "
 		;;
 	"m")
 		MIGRATE="-incoming tcp:0:4444"
@@ -46,6 +38,11 @@ while getopts ":hsvmkit" opt; do
 		# boot guest with kernel/initrd on host
 		# append the kernel parameter in guest
 		KERNEL="-kernel /boot/vmlinuz-4.7.0+ -initrd /boot/initrd.img-4.7.0+ -append 'root=UUID=3a9c5ef1-bbee-4387-8390-c02380bd177c  ro  quiet splash'"
+		;;
+	"i")
+		INSTALL="-drive file=Fedora-Live-Workstation-x86_64-23-10.iso,media=cdrom \
+		-append console=ttyS0 root=live:\
+		-kernel tmp/isolinux/vmlinuz0 -initrd tmp/isolinux/initrd0.img"
 		;;
 	"t")
 		IS_TRY="true"
@@ -77,5 +74,6 @@ if [ "$IS_TRY" == "true" ]; then
 	fi
 else
 	echo Start quest...
+	echo $QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL > .qemu_command
 	$QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL $SERIAL
 fi
