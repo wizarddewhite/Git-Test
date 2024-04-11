@@ -84,6 +84,35 @@ void bitmap_clear_two_check()
 	test_pass_pop();
 }
 
+void bitmap_first_last_word_mask_check()
+{
+	int i;
+
+	prefix_reset();
+	prefix_push("bitmap_fist_last_word");
+	test_print("Running %s tests...\n", "bitmap_fist_last_word");
+
+	PREFIX_PUSH();
+
+	for (i = 0; i < BITS_PER_LONG * 2; i++) {
+		/* Special case for 0, which both mask are (~0UL) */
+		if ((i % BITS_PER_LONG) == 0) {
+			ASSERT_EQ((~0UL), BITMAP_FIRST_WORD_MASK(i));
+			ASSERT_EQ((~0UL), BITMAP_LAST_WORD_MASK(i));
+		} else {
+			/* Otherwise, FIRST and LAST word mask are MECE */
+			ASSERT_EQ((~0UL),
+				BITMAP_FIRST_WORD_MASK(i) | BITMAP_LAST_WORD_MASK(i));
+			ASSERT_EQ(0,
+				BITMAP_FIRST_WORD_MASK(i) & BITMAP_LAST_WORD_MASK(i));
+		}
+	}
+
+	test_pass_pop();
+
+	prefix_pop();
+}
+
 void bitmap_clear_checks()
 {
 	prefix_reset();
@@ -103,5 +132,6 @@ int main(int argc, char *argv[])
 	bitmap_zero_checks();
 	bitmap_fill_checks();
 	bitmap_clear_checks();
+	bitmap_first_last_word_mask_check();
 	return 0;
 }
