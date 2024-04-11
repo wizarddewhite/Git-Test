@@ -1,17 +1,53 @@
 #!/bin/bash
-QEMU=/home/richard/git/qemu/x86_64-softmmu/qemu-system-x86_64
-DISK="-drive file=/home/richard/guest/ubuntu.img"
-DEFAULT="-m 1024 -smp 2 --enable-kvm -nographic "
-INSTALL=
+QEMU=/home/richard/git/qemu/build/qemu-system-x86_64
+DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
+DEFAULT="-m 4096 -smp 8 --enable-kvm "
+NO_GRAPHIC="-nographic "
+INSTALL=""
+MIGRATE=""
+KERNEL=""
+IS_TRY=""
 
-while getopts ":si" opt; do
+usage()
+{
+	echo "Usage: run a guest"
+	echo "$0 [-hsiuvmnkq]"
+	printf "\t-h this help message\n"
+	printf "\t-s open serial port \n"
+	printf "\t-v use vnc \n"
+	printf "\t-m \n"
+	printf "\t-k \n"
+	printf "\t-i re-install guest \n"
+	printf "\t-t just print the qemu command line\n"
+	exit
+}
+
+while getopts ":hsvmkit" opt; do
 	case "$opt" in
+	"h")
+		usage
+		;;
 	"s")
-		QEMU=qemu-x86_64
+		SERIAL="-serial telnet:localhost:4321,server,nowait"
 		;;
 	"i")
-		INSTALL="-cdrom rhel-server-6.7-x86_64-dvd.iso -append console=ttyS0 \
-		-kernel tmp/isolinux/vmlinuz -initrd tmp/isolinux/initrd.img"
+		INSTALL="-drive file=Fedora-Live-Workstation-x86_64-23-10.iso,media=cdrom \
+		-append console=ttyS0 root=live:\
+		-kernel tmp/isolinux/vmlinuz0 -initrd tmp/isolinux/initrd0.img"
+		;;
+	"v")
+		NO_GRAPHIC=""
+		;;
+	"m")
+		MIGRATE="-incoming tcp:0:4444"
+		;;
+	"k")
+		# boot guest with kernel/initrd on host
+		# append the kernel parameter in guest
+		KERNEL="-kernel /boot/vmlinuz-4.7.0+ -initrd /boot/initrd.img-4.7.0+ -append 'root=UUID=3a9c5ef1-bbee-4387-8390-c02380bd177c  ro  quiet splash'"
+		;;
+	"t")
+		IS_TRY="true"
 		;;
 	":")
 		echo "no argument for option: $OPTARG"
@@ -22,5 +58,20 @@ while getopts ":si" opt; do
 	esac
 done
 
-echo "run with -- " $QEMU $DEFAULT $DISK $INSTALL
-$QEMU $DEFAULT $DISK $INSTALL
+if [ "$IS_TRY" == "true" ]; then
+	printf "%s \n" "$QEMU"
+	printf "\t%s %s \n" "$DEFAULT" "$NO_GRAPHIC"
+	printf "\t%s \n" "$DISK"
+	if [ -n "$INSTALL" ]; then
+		printf "aaa%sbbb \n" "$INSTALL"
+	fi
+	if [ -n "$MIGRATE" ]; then
+		printf "\t%s \n" "$MIGRATE"
+	fi
+	if [ -n "$KERNEL" ]; then
+		printf "\t%s \n" "$KERNEL"
+	fi
+else
+	echo Start quest...
+	$QEMU $DEFAULT $NO_GRAPHIC $DISK $INSTALL $MIGRATE $KERNEL
+fi
