@@ -1,14 +1,16 @@
 #!/bin/bash
 QEMU=/home/richard/git/qemu/build/qemu-system-x86_64
 DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
-DEFAULT="-m 6G,slots=32,maxmem=32G -smp 8 --enable-kvm "
+MEM_PER_NODE=3
+TOTAL_MEM=$(($MEM_PER_NODE * 2))
+DEFAULT="-m ${TOTAL_MEM}G,slots=32,maxmem=32G -smp 8 --enable-kvm "
 NO_GRAPHIC="-nographic "
 INSTALL=""
 MIGRATE=""
 KERNEL=""
 IS_TRY=""
 SERIAL=""
-BACKEND="-object memory-backend-ram,id=mem1,size=3G -object memory-backend-ram,id=mem2,size=3G "
+BACKEND="-object memory-backend-ram,id=mem1,size=${MEM_PER_NODE}G -object memory-backend-ram,id=mem2,size=${MEM_PER_NODE}G "
 NODE="-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2 "
 NUMA=${BACKEND}${NODE}
 
