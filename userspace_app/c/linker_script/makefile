@@ -9,7 +9,7 @@ main: main.c
 	@gcc -c main.c
 	ld -T default.lds -dynamic-linker ${LIBS} main.o -o main
 
-hello:
+hello: hello.asm
 	nasm -felf64 hello.asm
 	ld hello.o -o hello
 
