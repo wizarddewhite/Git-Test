@@ -1,0 +1,2 @@
+default.lds: from the output of "ld xxx --verbose"
+ld command line from the output of "gcc -v main.c"
