@@ -1,5 +1,9 @@
 
 	global _start
+	global print
+	global strlen
+
+	extern test_func
 
 	section .text
 _start:
@@ -10,6 +14,8 @@ _start:
 	mov	rdi, message
 	add	rdi, 14
 	call	print
+
+	call	test_func
 
 	; exit(0)
 	mov	eax, 60

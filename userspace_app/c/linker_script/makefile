@@ -9,10 +9,13 @@ main: main.c
 	@gcc -c main.c
 	ld -T default.lds -dynamic-linker ${LIBS} main.o -o main
 
+%.o: %.c
+	gcc -fno-builtin -m64 -c $^ -o $@
+
 %.o: %.asm
 	nasm -felf64 $^
 
-hello: hello.o
+hello: hello.o lib.o
 	ld -T hello.lds $^ -o hello
 
 dump: hello
@@ -20,4 +23,4 @@ dump: hello
 
 clean:
 	rm -f main main.o
-	rm -f hello.o hello
+	rm -f hello hello.o lib.o
