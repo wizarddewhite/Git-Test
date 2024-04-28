@@ -1,12 +1,12 @@
 
-	global _start
+	global main
 	global print
 	global strlen
 
 	extern test_func
 
 	section .text
-_start:
+main:
 	; print(message)
 	mov	rdi, message
 	call	print
