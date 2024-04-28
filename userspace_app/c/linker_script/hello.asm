@@ -3,21 +3,37 @@
 
 	section .text
 _start:
-	; strlen(message)
+	; print(message)
 	mov	rdi, message
-	call	strlen
-	mov	rdx, rax
+	call	print
 
-	; write(1, message, 13)
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, message
-	syscall
+	mov	rdi, message
+	add	rdi, 14
+	call	print
 
 	; exit(0)
 	mov	eax, 60
 	xor	rdi, rdi
 	syscall
+
+; ------------------------------------------------------------------------
+; int print(char* p_str);
+; ------------------------------------------------------------------------
+print:
+	push	rdi
+
+	; strlen(p_str)
+	call	strlen
+	mov	rdx, rax
+
+	; write(1, p_str, strlen(p_str))
+	mov	rax, 1
+	mov	rdi, 1
+	pop	rsi
+	syscall
+
+	ret
+; ------------------------------------------------------------------------
 
 ; ------------------------------------------------------------------------
 ; int strlen(char* p_str);
@@ -40,4 +56,5 @@ strlen:
 
 	section .data
 message:
-	db	"Hello, World", 10
+	db	"Hello, World", 10, 0
+	db	"This is a test for nasm", 10, 0
