@@ -8,6 +8,7 @@ SECTIONS
   . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
   .text         : { *(.text) }
   .data         : { *(.data) }
+  . = ALIGN(0x1000);
   .meminit.text : { *(.meminit.text) }
   .rodata       : { *(.rodata) }
 }
