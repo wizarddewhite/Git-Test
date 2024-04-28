@@ -1,6 +1,8 @@
+#include "lib.h"
+
 extern int print(char *msg);
 
-void test_func()
+void __section(".meminit.text") test_func()
 {
 	print("A test function\n");
 }
