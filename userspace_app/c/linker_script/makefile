@@ -10,7 +10,7 @@ main: main.c
 	ld -T default.lds -dynamic-linker ${LIBS} main.o -o main
 
 %.o: %.c
-	gcc -fno-builtin -m64 -c $^ -o $@
+	gcc -fno-builtin -fno-stack-protector -m64 -c $^ -o $@
 
 %.o: %.asm
 	nasm -felf64 $^

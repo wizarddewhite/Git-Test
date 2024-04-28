@@ -9,6 +9,9 @@ SECTIONS
   .text         : { *(.text) }
   .data         : { *(.data) }
   . = ALIGN(0x1000);
+  __init_begin = .;
   .meminit.text : { *(.meminit.text) }
+  . = ALIGN(0x1000);
+  __init_end = .;
   .rodata       : { *(.rodata) }
 }
