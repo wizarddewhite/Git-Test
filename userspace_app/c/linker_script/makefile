@@ -2,7 +2,7 @@ LIB_PATH=/usr/lib/x86_64-linux-gnu/
 DEF_LIBS=ld-linux-x86-64.so.2 crt1.o crti.o crtn.o libc.so
 LIBS=$(addprefix ${LIB_PATH}, ${DEF_LIBS})
 
-.PHONY: all clean
+.PHONY: all clean dump
 all: main hello
 
 main: main.c
@@ -14,6 +14,9 @@ main: main.c
 
 hello: hello.o
 	ld -T hello.lds $^ -o hello
+
+dump: hello
+	objdump -Dsx hello
 
 clean:
 	rm -f main main.o
