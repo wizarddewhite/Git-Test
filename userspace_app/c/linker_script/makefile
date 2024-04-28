@@ -13,7 +13,7 @@ main: main.c
 	nasm -felf64 $^
 
 hello: hello.o
-	ld $^ -o hello
+	ld -T hello.lds $^ -o hello
 
 clean:
 	rm -f main main.o
