@@ -191,6 +191,58 @@ void bitmap_ffs_checks()
 	prefix_pop();
 }
 
+/* return the value of the lowest set bit
+ *
+ * For example, 0x3204 lowest set bit is 0x4
+ */
+int lowest_bit_value(int x)
+{
+	/* could be 1<<(ffs(x)-1) too*/
+	return x & ~(x-1);
+}
+
+void lowest_bit_value_check()
+{
+
+	PREFIX_PUSH();
+
+	ASSERT_EQ(0x4, lowest_bit_value(0x3204));
+	ASSERT_EQ(0x1, lowest_bit_value(0x3205));
+
+	test_pass_pop();
+}
+
+/* could be optimized? */
+int highest_bit_value(int x)
+{
+	return 1 << (__fls(x) - 1);
+}
+
+void highest_bit_value_check()
+{
+
+	PREFIX_PUSH();
+
+	ASSERT_EQ(0x2000, highest_bit_value(0x3001));
+	ASSERT_EQ(0x2000, highest_bit_value(0x2001));
+	ASSERT_EQ(0x8000, highest_bit_value(0x8001));
+	ASSERT_EQ(0x8000, highest_bit_value(0xF001));
+
+	test_pass_pop();
+}
+
+void bitmap_lowest_highest_bit_value_check()
+{
+	prefix_reset();
+	prefix_push("bitmap_lowest_highest_bit_value_check");
+	test_print("Running %s tests...\n", "bitmap_lowest_highest_bit_value_check");
+
+	lowest_bit_value_check();
+	highest_bit_value_check();
+
+	prefix_pop();
+}
+
 int main(int argc, char *argv[])
 {
 	parse_args(argc, argv);
@@ -201,5 +253,6 @@ int main(int argc, char *argv[])
 	bitmap_first_last_word_mask_check();
 	maxstr1_check();
 	bitmap_ffs_checks();
+	bitmap_lowest_highest_bit_value_check();
 	return 0;
 }
