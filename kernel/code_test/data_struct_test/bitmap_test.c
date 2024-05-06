@@ -151,6 +151,31 @@ void maxstr1_check()
 	prefix_pop();
 }
 
+void bitmap_ffs_check()
+{
+	PREFIX_PUSH();
+
+	ASSERT_EQ(0, __ffs(1));
+	ASSERT_EQ(7, __ffs(0x80));
+	ASSERT_EQ(31, __ffs(0x80000000));
+	ASSERT_EQ(32, __ffs(0x100000000));
+	ASSERT_EQ(0, __ffs(0x8000000000000001));
+	ASSERT_EQ(63, __ffs(0x8000000000000000));
+
+	test_pass_pop();
+}
+
+void bitmap_ffs_checks()
+{
+	prefix_reset();
+	prefix_push("ffs");
+	test_print("Running %s tests...\n", "ffs");
+
+	bitmap_ffs_check();
+
+	prefix_pop();
+}
+
 int main(int argc, char *argv[])
 {
 	parse_args(argc, argv);
@@ -160,5 +185,6 @@ int main(int argc, char *argv[])
 	bitmap_clear_checks();
 	bitmap_first_last_word_mask_check();
 	maxstr1_check();
+	bitmap_ffs_checks();
 	return 0;
 }
