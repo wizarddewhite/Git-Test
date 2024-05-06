@@ -125,6 +125,32 @@ void bitmap_clear_checks()
 	prefix_pop();
 }
 
+/* calculate the maximum number of continuous 1 */
+int maxstr1(unsigned x)
+{
+	int k;
+
+	for (k = 0; x != 0; k++)
+		x = x & 2*x;
+	return k;
+}
+
+void maxstr1_check()
+{
+	prefix_reset();
+	prefix_push("maxstr1");
+	test_print("Running %s tests...\n", "maxstr1");
+
+	ASSERT_EQ(8, maxstr1(0xff0000ff));
+	ASSERT_EQ(8, maxstr1(0xff1000ff));
+	ASSERT_EQ(9, maxstr1(0xff8000ff));
+	ASSERT_EQ(9, maxstr1(0xff1001ff));
+
+	test_pass_pop();
+
+	prefix_pop();
+}
+
 int main(int argc, char *argv[])
 {
 	parse_args(argc, argv);
@@ -133,5 +159,6 @@ int main(int argc, char *argv[])
 	bitmap_fill_checks();
 	bitmap_clear_checks();
 	bitmap_first_last_word_mask_check();
+	maxstr1_check();
 	return 0;
 }
