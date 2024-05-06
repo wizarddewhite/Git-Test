@@ -3,6 +3,8 @@
 #include "bitmap.h"
 #include "bitops.h"
 #include "test_common.h"
+#include "__ffs.h"
+#include "__fls.h"
 
 #define TESTS_BITS 35
 DECLARE_BITMAP(bitmaps, TESTS_BITS);
@@ -165,6 +167,18 @@ void bitmap_ffs_check()
 	test_pass_pop();
 }
 
+void bitmap_fls_check()
+{
+	PREFIX_PUSH();
+
+	ASSERT_EQ(1, __fls(1));
+	ASSERT_EQ(32, __fls(0x80000000));
+	ASSERT_EQ(32, __fls(0x80000001));
+	ASSERT_EQ(64, __fls(0x8000000100000001));
+
+	test_pass_pop();
+}
+
 void bitmap_ffs_checks()
 {
 	prefix_reset();
@@ -172,6 +186,7 @@ void bitmap_ffs_checks()
 	test_print("Running %s tests...\n", "ffs");
 
 	bitmap_ffs_check();
+	bitmap_fls_check();
 
 	prefix_pop();
 }
