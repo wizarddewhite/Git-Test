@@ -243,6 +243,29 @@ void bitmap_lowest_highest_bit_value_check()
 	prefix_pop();
 }
 
+void bitmap_set_check()
+{
+	prefix_reset();
+	prefix_push("bitmap_set");
+	test_print("Running %s tests...\n", "bitmap_set");
+
+	PREFIX_PUSH();
+
+	bitmap_zero(bitmaps, TESTS_BITS);
+
+	bitmap_set(bitmaps, 2, 1);
+	ASSERT_TRUE(test_bit(2, bitmaps));
+	ASSERT_FALSE(test_bit(3, bitmaps));
+
+	bitmap_set(bitmaps, 2, 2);
+	ASSERT_TRUE(test_bit(3, bitmaps));
+	ASSERT_FALSE(test_bit(4, bitmaps));
+
+	test_pass_pop();
+
+	prefix_pop();
+}
+
 int main(int argc, char *argv[])
 {
 	parse_args(argc, argv);
@@ -254,5 +277,6 @@ int main(int argc, char *argv[])
 	maxstr1_check();
 	bitmap_ffs_checks();
 	bitmap_lowest_highest_bit_value_check();
+	bitmap_set_check();
 	return 0;
 }
