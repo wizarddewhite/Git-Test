@@ -210,8 +210,10 @@ A node must has a size larger than section size?
      |usage                        |
      |   (mem_section_usage *)     |
      |   +-------------------------+
-     |   |subsection_map           |
-     |   |    (bitmap)             |
+     |   |subsection_map           |   SUBSECTIONS_PER_SECTION = 
+     |   |    (bitmap)             |       (1UL << (SECTION_SIZE_BITS - SUBSECTION_SHIFT))
+     |   |                         |       = (1UL << (27 - 21))
+     |   |                         |
      |   |                         |
      |   |                         |    [(1UL << (PFN_SECTION_SHIFT - pageblock_order))]
      |   |                         |    each 4bits represents a pageblock type

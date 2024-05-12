@@ -693,101 +693,54 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 
 7. free_area_init()
 ================================================================================
-
-free_area_init()
-    pgdat = arch_alloc_nodedata()
-    free_area_init_memoryless_node()
-        free_area_init_node()
-    free_area_init_node(nid)
-        pgdat->per_cpu_nodestat = NULL
-        calculate_node_totalpages(pgdat, start_pfn, end_pfn)
-        free_area_init_core(pgdat)
-            pgdat_init_internals(pgdat)
-            pgdat->per_cpu_nodestats = &boot_nodestats;
-
-7.1 find_zone_movable_pfns_for_nodes()
+7.1 arch_zone_lowest_possible_pfn / arch_zone_highest_possible_pfn
 ================================================================================
-static void __init find_zone_movable_pfns_for_nodes(void)
-
-7.1.1 early_calculate_totalpages()
+7.2 zone_movable_pfn
 ================================================================================
-
-7.2 setup_nr_node_ids(), interesting, it stores the highest instead of the #
+7.3 subsection_map_init(), set mem_section->usage->subsection_map
 ================================================================================
-
-7.3 free_area_init_node(nid, NULL, min_pfn, NULL), setup pg_data for nid
+7.4 setup_nr_node_ids()
 ================================================================================
-
-7.3.1 calculate_node_totalpages(), pgdat->node_spanned/present_pages
+7.5 free_area_init_node(nid), iterate on each node
 ================================================================================
-
-7.3.1.1 zone_spanned_pages_in_node(), zone->spanned_pages
+7.5.1 get_pfn_range_for_nid(nid, &start_pfn, &end_pfn)
 ================================================================================
-
-7.3.1.2 zone_absent_pages_in_node(), zone->present_pages
+7.5.2 calculate_node_totalpages(pgdat, start_pfn, end_pfn)
 ================================================================================
-
-7.3.2 alloc_node_mem_map(), empty when using sparse_mem
+initialize
+zone->spanned_pages/present_pages
+pgdat->node_spanned_pages/node_present_pages
+7.5.2.1 spanned = zone_spanned_pages_in_node()
 ================================================================================
-
-7.3.3 free_area_init_core()
+7.5.2.2 absent = zone_absent_pages_in_node()
 ================================================================================
-
-7.3.3.1 calc_memmap_size() <- interesting
+7.5.3 free_area_init_core(pgdat)
 ================================================================================
-
-7.3.3.2 is_highmem_idx()
+7.5.3.1 pgdat_init_internals()
 ================================================================================
-
-7.3.3.3 zone_pcp_init()
+7.5.3.2 calc_memmap_size()
 ================================================================================
-
-7.3.3.4 set_pageblock_order()
+7.5.3.3 zone_init_internals(), setup zone->managed_pages, but will be reset later
 ================================================================================
-
-7.3.3.5 setup_usemap()
+7.5.3.4 setup_usemap(zone), used for non-sparse
 ================================================================================
-
-7.3.3.6 init_currently_empty_zone(), init zone->frea_area[].free_list[]
+7.5.3.5 init_currently_empty_zone(), init free_lists
 ================================================================================
-
-7.3.3.7 memmap_init() -> memmap_init_zone(, MIGRATE_MOVABLE), looks this is the core function
+7.5.4 lru_gen_init_pgdat()
 ================================================================================
-
-7.4 node_set_state(nid, N_MEMORY)
+7.6 node_set_state(nid, N_MEMORY)
 ================================================================================
-
-7.5 check_for_memory()
+7.7 memmap_init()
 ================================================================================
-
-8. memmap_init_zone()
+7.7.1 memmap_init_zone_range(zone, start_pfn, end_pfn, hole_pfn)
 ================================================================================
-
-8.1 __init_single_page()
+7.7.1.1 memmap_init_range(size, nid, zone, start_pfn, zone_end_pfn, context, altmap, migratetype)
 ================================================================================
-
-8.1.1 set_page_links()
+7.7.1.1.1 __init_single_page(page, pfn, zone, nid)
 ================================================================================
-
-8.1.1.1 set_page_zone()
+7.7.1.1.2 set_pageblock_migratetype(page, migratetype)
 ================================================================================
-
-8.1.1.2 set_page_node()
-================================================================================
-
-8.1.2 init_page_count(), set _refcount to 1
-================================================================================
-
-8.1.3 page_mapcount_reset(), set _mapcount to -1
-================================================================================
-
-8.1.4 page_cpuid_reset_last()
-================================================================================
-
-8.1.5 set_page_address(), set virtual to __va(pfn << PAGE_SHIFT)
-================================================================================
-
-8.2 set_pageblock_migratetype(page, migratetype), the initial migratetype is set here
+7.7.2 init_unavailable_range(hole_pfn, end_pfn, zone_id, nid)
 ================================================================================
 
 10. init_per_zone_wmark_min(), called from do_pre_smp_initcalls()
@@ -895,6 +848,32 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
                                 3G
    ^                             ^                                    ^
    |<---      Node0          --->|<---          Node1             --->|
+
+0.4.1 node/zone ranges
+================================================================================
+
+   node_data[0]                   
+   +-----------------------------+
+   |node_id                <-----|-----+
+   |   (int)                     |     |
+   |node_start_pfn               |     |
+   |node_spanned_pages           |     |
+   |node_present_pages           |     |
+   |   (unsigned long)           |     |
+   |                             |     |
+   +-----------------------------+     |
+   |node_zones[MAX_NR_ZONES]     |     |
+   |   (struct zone)             |     |
+   |   +-------------------------+     |
+   |   |zone_pgdat         ------|-----+
+   |   |                         |
+   |   |zone_start_pfn           |
+   |   |spanned_pages            |
+   |   |present_pages            |
+   |   |present_early_pages      |
+   |   |  (unsigned long)        |
+   |   |                         |
+   +---+-------------------------+
 
 
 0.4 representation
