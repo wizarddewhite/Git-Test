@@ -814,9 +814,13 @@ pgdat->node_spanned_pages/node_present_pages
 
 0. data structure
 ================================================================================
+http://wiki.osdev.org/Detecting_Memory_(x86)
 
 0.1 arch_zone_lowest/highest_possible_pfn[]
 ================================================================================
+static unsigned long arch_zone_lowest_possible_pfn[MAX_NR_ZONES];
+static unsigned long arch_zone_highest_possible_pfn[MAX_NR_ZONES];
+
 ; dmesg: "Zone ranges:"
 ; an example on x86_64
 
@@ -1003,3 +1007,408 @@ The is used to check the watermark in __zone_watermark_ok()
 ```
 
 If free_pages is less then this, watermark will alarm.
+
+0.5 vm_stat
+================================================================================
+__mod_zone_page_state()
+__mod_node_page_state()
+
+atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS] __cacheline_aligned_in_smp;
+atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS] __cacheline_aligned_in_smp;
+atomic_long_t vm_numa_event[NR_VM_NUMA_EVENT_ITEMS] __cacheline_aligned_in_smp;
+
+   node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t)
+   +-----------------------------------+
+   |node_id                            |
+   |   (int)                           |
+   +-----------------------------------+
+   |node_zones[MAX_NR_ZONES]           |
+   |   (struct zone)                   |
+   |   +-------------------------------+
+   |   |per_cpu_zonestats              |
+   |   |   +---------------------------+
+   |   |   |stat_threshold             |
+   |   |   |vm_stat_diff[]             |
+   |   |   +---------------------------+
+   |   |                               |
+   |   |vm_stat[NR_VM_ZONE_STAT_ITEMS] |
+   |   |vm_numa_event[]                |
+   |   |  (atomic_long_t)              |
+   +---+-------------------------------+
+   |per_cpu_nodestats                  |
+   |   +-------------------------------+
+   |   |stat_threshold                 |
+   |   |vm_node_stat_diff[]            |
+   |   +-------------------------------+
+   |                                   |
+   |vm_stat[NR_VM_NODE_STAT_ITEMS]     |
+   |   (atomic_long_t)                 |
+   |                                   |
+   +-----------------------------------+
+
+0.2 nodemask_t node_stats[NR_NODE_STATES]
+================================================================================
+
+typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
+
+/*
+ * Bitmasks that are kept for all the nodes.
+ */
+enum node_states {
+	N_POSSIBLE,		/* The node could become online at some point */
+	N_ONLINE,		/* The node is online */
+	N_NORMAL_MEMORY,	/* The node has regular memory */
+#ifdef CONFIG_HIGHMEM
+	N_HIGH_MEMORY,		/* The node has regular or high memory */
+#else
+	N_HIGH_MEMORY = N_NORMAL_MEMORY,
+#endif
+#ifdef CONFIG_MOVABLE_NODE
+	N_MEMORY,		/* The node has memory(regular, high, movable) */
+#else
+	N_MEMORY = N_HIGH_MEMORY,
+#endif
+	N_CPU,		/* The node has one or more cpus */
+	NR_NODE_STATES
+};
+
+0.3 node_data[], each node has one
+================================================================================
+; node_data[MAX_NUMNODES] is an array with pointers to pg_data_t.
+;
+; It is allocated in numa_register_memblks(). Each node with proper memory
+; would has one entry in node_data[].
+;
+; Then free_area_init_node() sets
+; * node_start_pfn/node_present_pages
+; * zone->start_pfn/spanned_pages
+;
+; The zonelist in each node_data is built by
+; build_zonelists()/build_zonelist_cache().  node_data->node_zonelists[] will
+; point to zones in all node_data.
+
+
+MAX_NR_ZONES is defined in kernel/bounds.c DEFINE(MAX_NR_ZONES, __MAX_NR_ZONES);
+MAX_ZONELISTS is defined to 1 or 2.
+#define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES)
+
+   node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t)
+   +-----------------------------+        
+   |node_id                <---+ |        
+   |   (int)                   | |        
+   +-----------------------------+        
+   |node_start_pfn             | |        
+   |   (unsigned long)         | |        
+   |node_present_pages         | |        
+   |node_spanned_pages         | |        
+   |   (unsigned long)         | |        
+   |                           | |        
+   +-----------------------------+        
+   |nr_zones                   | |        
+   |    (int)                  | |        
+   |                           | |        
+   +-----------------------------+    
+   |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
+   |   (struct zone)           | |    +---------------+    +---------------+    +---------------+
+   |   +-------------------------+    |               |    |               |    |               |
+   |   |                       | |    |               |    |               |    |               |
+   |   |zone_pgdat         ----+ |    +---------------+    +---------------+    +---------------+
+   |   |   (struct pglist_data*) |
+   |   +-------------------------+
+   |   |zone_start_pfn           |
+   |   |  (unsigned long)        |
+   |   |spanned_pages            |
+   |   |present_pages            |
+   |   |managed_pages            |
+   |   |  (unsigned long)        |
+   |   |                         |
+   +---+-------------------------+                                                                               
+   |node_zonelists[MAX_ZONELISTS]|
+   |   (struct zonelist)         |
+   |   +-------------------------+
+   |   |_zonerefs[]              | = MAX_NUMNODES * MAX_NR_ZONES + 1
+   |   | (struct zoneref)        | Node 0:
+   |   |  +----------------------+
+   |   |  |zone                  |    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
+   |   |  |   (struct zone*)     |    +---------------+    +---------------+    +---------------+
+   |   |  |zone_idx              |    |               |    |               |    |               |
+   |   |  |   (int)              |    |               |    |               |    |               |
+   |   |  |                      |    +---------------+    +---------------+    +---------------+
+   |   |  |                      |
+   |   |  |                      | Node 1:
+   |   |  |                      |
+   |   |  |                      |    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
+   |   |  |                      |    +---------------+    +---------------+    +---------------+
+   |   |  |                      |    |               |    |               |    |               |
+   |   |  |                      |    |               |    |               |    |               |
+   |   |  |                      |    +---------------+    +---------------+    +---------------+
+   |   |  |                      |
+   |   |  |                      |
+   +---+--+----------------------+
+   |reclaim_nodes                |
+   |    (nodemask_t)             |
+   +-----------------------------+
+   |kswapd_wait                  |
+   |    (wait_queue_head_t)      |
+   +-----------------------------+
+   |pfmemalloc_wait              |                                   
+   |    (wait_queue_head_t)      |
+   +-----------------------------+
+   |lru_lock                     |
+   |    (spinlock_t)             |
+   +-----------------------------+
+   |lruvec                       |
+   |    (struct lruvec)          |
+   |    +------------------------+
+   |    |lists[NR_LRU_LISTS]     |   5 lru lists
+   |    |reclaim_stat            |
+   |    |inactive_age            |
+   |    |refaults                |
+   |    +------------------------+
+   |                             |
+   |                             |
+   +-----------------------------+
+
+0.3.1 node_data/zone, real example
+================================================================================
+
+
+   node_data[0]                                                node_data[1]
+   +-----------------------------+                             +-----------------------------+        
+   |node_id                <---+ |                             |node_id                <---+ |        
+   |   (int)                   | |                             |   (int)                   | |        
+   +-----------------------------+                             +-----------------------------+    
+   |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]               |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]       
+   |   (struct zone)           | |    +---------------+        |   (struct zone)           | |    +---------------+
+   |   +-------------------------+    |0              |        |   +-------------------------+    |empty          |
+   |   |                       | |    |16M            |        |   |                       | |    |               |
+   |   |zone_pgdat         ----+ |    +---------------+        |   |zone_pgdat         ----+ |    +---------------+
+   |   |                         |                             |   |                         |        
+   |   |                         |    [ZONE_DMA32]             |   |                         |    [ZONE_DMA32]        
+   |   |                         |    +---------------+        |   |                         |    +---------------+   
+   |   |                         |    |16M            |        |   |                         |    |3G             |   
+   |   |                         |    |3G             |        |   |                         |    |4G             |   
+   |   |                         |    +---------------+        |   |                         |    +---------------+   
+   |   |                         |                             |   |                         |        
+   |   |                         |    [ZONE_NORMAL]            |   |                         |    [ZONE_NORMAL]       
+   |   |                         |    +---------------+        |   |                         |    +---------------+   
+   |   |                         |    |empty          |        |   |                         |    |4G             |   
+   |   |                         |    |               |        |   |                         |    |6G             |   
+   +---+-------------------------+    +---------------+        +---+-------------------------+    +---------------+
+
+0.3.2 node_data/zonelist
+================================================================================
+
+   node_data[]
+   +-----------------------------+
+   |node_zonelists[MAX_ZONELISTS]| = 2
+   |   (struct zonelist)         |
+   |   +-------------------------+
+   |   |_zonerefs[]              | = MAX_NUMNODES * MAX_NR_ZONES + 1
+   |   | (struct zoneref)        | Node 0:
+   |   |  +----------------------+    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
+   |   |  |zone                  |    +---------------+    +---------------+    +---------------+
+   |   |  |   (struct zone*)     |    |               |    |               |    |               |
+   |   |  |zone_idx              |    |               |    |               |    |               |
+   |   |  |   (int)              |    +---------------+    +---------------+    +---------------+
+   +---+--+----------------------+
+                                   Node 1:
+
+                                      [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
+                                      +---------------+    +---------------+    +---------------+
+                                      |               |    |               |    |               |
+                                      |               |    |               |    |               |
+                                      +---------------+    +---------------+    +---------------+
+
+0.4 zone
+================================================================================
+; zone->managed_pages
+;
+; calculated in free_area_init_core()
+; cleared at free_all_bootmem()
+; increased at __free_pages_boot_core()
+
+
+      struct zone
+      +------------------------------+
+      |watermark[NR_WMARK]           |
+      |   (unsigned long)            |
+      +------------------------------+
+      |zone_start_pfn                |
+      |   (unsigned long)            |
+      |spanned_pages                 |
+      |present_pages                 |
+      |managed_pages                 |
+      |   (unsigned long)            |
+      +------------------------------+
+      |percpu_drift_mark             |
+      |   (unsigned long)            |
+      +------------------------------+
+      |pageset                       |
+      |   (struct per_cpu_pageset *) |
+      |   +--------------------------+
+      |   |pcp                       |
+      |   |  (struct per_cpu_pages)  |
+      |   |  +-----------------------+
+      |   |  |count                  |
+      |   |  |high                   |
+      |   |  |batch                  |
+      |   |  |                       |
+      |   |  |lists[MIGRATE_PCPTYPES]|
+      +---+--+-----------------------+
+      |lowmem_reserve[MAX_NR_ZONES]  |
+      |   (unsigned long)            |
+      +------------------------------+
+      |dirty_balance_reserve         |
+      |   (unsigned long)            |
+      +------------------------------+
+      |vm_stat[NR_VM_ZONE_STAT_ITEMS]|
+      |   (atomic_long_t)            |
+      +------------------------------+
+      |inactive_ratio                |
+      |   (unsigned int)             |
+      +------------------------------+      The buddy system
+      |free_area[MAX_ORDER]  0...11  |
+      |   (struct free_area)         | 
+      |   +--------------------------+
+      |   |nr_free                   |  number of available pages
+      |   |(unsigned long)           |  in this free_area[] list
+      |   |                          |
+      |   +--------------------------+
+      |   |                          |           free_area[0]
+      |   |free_list[MIGRATE_TYPES]  |  Order0   +-----------------------+
+      |   |(struct list_head)        |  Pages    |free_list              |
+      |   |                          |           |  (struct list_head)   |
+      |   |                          |           +-----------------------+
+      |   |                          |
+      |   |                          |           free_area[1]
+      |   |                          |  Order1   +-----------------------+
+      |   |                          |  Pages    |free_list              |
+      |   |                          |           |  (struct list_head)   |
+      |   |                          |           +-----------------------+
+      |   |                          |
+      |   |                          |
+      |   |                          |
+      |   |                          |           free_area[10]
+      |   |                          |  Order10  +-----------------------+
+      |   |                          |  Pages    |free_list              |
+      |   |                          |           |  (struct list_head)   |
+      |   |                          |           +-----------------------+
+      |   |                          |
+      |   |                          |
+      |   |                          |           free_area[11]
+      |   |                          |  Order11  +-----------------------+
+      |   |                          |  Pages    |free_list              |
+      |   |                          |           |  (struct list_head)   |
+      |   |                          |           +-----------------------+
+      |   |                          |
+      +---+--------------------------+
+      |                              |
+      |                              |
+      |                              |
+      |                              |
+      |                              |
+      +------------------------------+
+           
+
+0.4.1 zone->pageset
+================================================================================
+
+per cpu variable, each zone maintains the status of each cpu
+
+      struct zone
+      +------------------------------------------------------------------------------------------------+
+      |pageset                                                                                         |
+      |   (struct per_cpu_pageset *)                                                                   |
+      |   cpu0                          cpu1                                cpuN                       |
+      |   +--------------------------+  +--------------------------+  ...   +--------------------------+
+      |   |pcp                       |  |pcp                       |        |pcp                       |
+      |   |  (struct per_cpu_pages)  |  |  (struct per_cpu_pages)  |        |  (struct per_cpu_pages)  |
+      |   |  +-----------------------+  |  +-----------------------+        |  +-----------------------+
+      |   |  |count                  |  |  |count                  |        |  |count                  |
+      |   |  |high                   |  |  |high                   |        |  |high                   |
+      |   |  |batch                  |  |  |batch                  |        |  |batch                  |
+      |   |  |                       |  |  |                       |        |  |                       |
+      |   |  |lists[MIGRATE_PCPTYPES]|  |  |lists[MIGRATE_PCPTYPES]|        |  |lists[MIGRATE_PCPTYPES]|
+      +---+--+-----------------------+--+--+-----------------------+--------+--+-----------------------+
+
+0.5 GFP_ZONE_TABLE lowest 4 bits gfp_t to zone index
+================================================================================
+
+The lowest 4 bits represent zone information in GFP.
+
+#define ___GFP_DMA		0x01u
+#define ___GFP_HIGHMEM		0x02u
+#define ___GFP_DMA32		0x04u
+#define ___GFP_MOVABLE		0x08u
+
+#define __GFP_DMA	((__force gfp_t)___GFP_DMA)
+#define __GFP_HIGHMEM	((__force gfp_t)___GFP_HIGHMEM)
+#define __GFP_DMA32	((__force gfp_t)___GFP_DMA32)
+#define __GFP_MOVABLE	((__force gfp_t)___GFP_MOVABLE)  /* ZONE_MOVABLE allowed */
+#define GFP_ZONEMASK	(__GFP_DMA|__GFP_HIGHMEM|__GFP_DMA32|__GFP_MOVABLE)
+
+A 4 bits could have 2^4 = 16 combinations.
+
+Since there are 8 BAD combinations,
+
+#define GFP_ZONE_BAD ( \
+	1 << (___GFP_DMA | ___GFP_HIGHMEM)				      \
+	| 1 << (___GFP_DMA | ___GFP_DMA32)				      \
+	| 1 << (___GFP_DMA32 | ___GFP_HIGHMEM)				      \
+	| 1 << (___GFP_DMA | ___GFP_DMA32 | ___GFP_HIGHMEM)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_HIGHMEM | ___GFP_DMA)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_DMA)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_HIGHMEM)		      \
+	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_DMA | ___GFP_HIGHMEM)  \
+)
+
+Totally there are 8 valid ones.
+
+#define GFP_ZONE_TABLE ( \
+	(ZONE_NORMAL << 0 * GFP_ZONES_SHIFT)				       \
+	| (OPT_ZONE_DMA << ___GFP_DMA * GFP_ZONES_SHIFT)		       \
+	| (OPT_ZONE_HIGHMEM << ___GFP_HIGHMEM * GFP_ZONES_SHIFT)	       \
+	| (OPT_ZONE_DMA32 << ___GFP_DMA32 * GFP_ZONES_SHIFT)		       \
+	| (ZONE_NORMAL << ___GFP_MOVABLE * GFP_ZONES_SHIFT)		       \
+	| (OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * GFP_ZONES_SHIFT)    \
+	| (ZONE_MOVABLE << (___GFP_MOVABLE | ___GFP_HIGHMEM) * GFP_ZONES_SHIFT)\
+	| (OPT_ZONE_DMA32 << (___GFP_MOVABLE | ___GFP_DMA32) * GFP_ZONES_SHIFT)\
+
+This macro encode zone information into GFP_ZONE_TABLE.
+
+         GFP_ZONE_TABLE
+         +------------+
+       0 |            |  => NORMAL
+         +------------+                                                           
+       1 |            |  => DMA or NORMAL
+         +------------+                                                           
+       2 |            |  => HIGHMEM or NORMAL
+         +------------+                                                           
+       3 |            |  => BAD (DMA+HIGHMEM)
+         +------------+                                                           
+       4 |            |  => DMA32 or NORMAL
+         +------------+                                                           
+       5 |            |  => BAD (DMA+DMA32)
+         +------------+                                                           
+       6 |            |  => BAD (HIGHMEM+DMA32)
+         +------------+                                                           
+       7 |            |  => BAD (HIGHMEM+DMA32+DMA)
+         +------------+                                                           
+       8 |            |  => NORMAL (MOVABLE+0)
+         +------------+                                                           
+       9 |            |  => DMA or NORMAL (MOVABLE+DMA)
+         +------------+                                                           
+       a |            |  => MOVABLE (Movable is valid only if HIGHMEM is set too)
+         +------------+                                                           
+       b |            |  => BAD (MOVABLE+HIGHMEM+DMA)
+         +------------+                                                           
+       c |            |  => DMA32 or NORMAL (MOVABLE+DMA32)
+         +------------+                                                           
+       d |            |  => BAD (MOVABLE+DMA32+DMA)
+         +------------+                                                           
+       e |            |  => BAD (MOVABLE+DMA32+HIGHMEM)
+         +------------+                                                           
+       f |            |  => BAD (MOVABLE+DMA32+HIGHMEM+DMA)
+         +------------+
+
