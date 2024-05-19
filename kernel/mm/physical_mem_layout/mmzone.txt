@@ -1,16 +1,3 @@
-1. build_all_zonelists(), called by start_kernel/online_pages/hotadd_new_pgdat
-================================================================================
-1.1 build_all_zonelists_init() / __build_all_zonelists(pgdat)
-================================================================================
-1.1.1 build_zonelists(pgdat), build zonelist for specific pgdat
-================================================================================
-1.1.1.1 node = find_next_best_node(), get node_order
-================================================================================
-1.1.1.2 build_zonelists_in_node_order(pgdat, node_order, nr_nodes), only managed_zone is added into list
-================================================================================
-1.1.1.3 build_zonelists_in_node_order(pgdat, node_order, nr_nodes)
-================================================================================
-
 2. page_alloc_init(), called by start_kernel()
 ================================================================================
 void __init page_alloc_init(void)
