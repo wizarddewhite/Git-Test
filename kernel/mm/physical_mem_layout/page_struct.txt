@@ -1,5 +1,0 @@
-1. lock
-
-__SetPageLocked()
-
-lock_page()
