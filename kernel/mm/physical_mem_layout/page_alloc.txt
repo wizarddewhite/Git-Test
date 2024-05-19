@@ -1008,44 +1008,6 @@ The is used to check the watermark in __zone_watermark_ok()
 
 If free_pages is less then this, watermark will alarm.
 
-0.5 vm_stat
-================================================================================
-__mod_zone_page_state()
-__mod_node_page_state()
-
-atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS] __cacheline_aligned_in_smp;
-atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS] __cacheline_aligned_in_smp;
-atomic_long_t vm_numa_event[NR_VM_NUMA_EVENT_ITEMS] __cacheline_aligned_in_smp;
-
-   node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t)
-   +-----------------------------------+
-   |node_id                            |
-   |   (int)                           |
-   +-----------------------------------+
-   |node_zones[MAX_NR_ZONES]           |
-   |   (struct zone)                   |
-   |   +-------------------------------+
-   |   |per_cpu_zonestats              |
-   |   |   +---------------------------+
-   |   |   |stat_threshold             |
-   |   |   |vm_stat_diff[]             |
-   |   |   +---------------------------+
-   |   |                               |
-   |   |vm_stat[NR_VM_ZONE_STAT_ITEMS] |
-   |   |vm_numa_event[]                |
-   |   |  (atomic_long_t)              |
-   +---+-------------------------------+
-   |per_cpu_nodestats                  |
-   |   +-------------------------------+
-   |   |stat_threshold                 |
-   |   |vm_node_stat_diff[]            |
-   |   +-------------------------------+
-   |                                   |
-   |vm_stat[NR_VM_NODE_STAT_ITEMS]     |
-   |   (atomic_long_t)                 |
-   |                                   |
-   +-----------------------------------+
-
 0.2 nodemask_t node_stats[NR_NODE_STATES]
 ================================================================================
 
