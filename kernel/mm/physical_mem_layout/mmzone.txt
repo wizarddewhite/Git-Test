@@ -1,304 +1,3 @@
-1. paging_init(), called from start_kernel()->setup_arch()
-================================================================================
-x86_init.paging.pagetable_init();
-	.pagetable_init		= native_pagetable_init,
-
-#define native_pagetable_init        paging_init
-
-void __init paging_init(void)
-{
-	sparse_memory_present_with_active_regions(MAX_NUMNODES);
-	sparse_init();
-
-	/*
-	 * clear the default setting with node 0
-	 * note: don't use nodes_clear here, that is really clearing when
-	 *	 numa support is not compiled in, and later node_set_state
-	 *	 will not set it back.
-	 */
-	node_clear_state(0, N_MEMORY);
-	if (N_MEMORY != N_NORMAL_MEMORY)
-		node_clear_state(0, N_NORMAL_MEMORY);
-
-	zone_sizes_init();
-}
-
-1.1 sparse_memory_present_with_active_regions(), Call memory_present for each memrange
-================================================================================
-; go through the memblock.memory
-
-void __init sparse_memory_present_with_active_regions(int nid)
-{
-	unsigned long start_pfn, end_pfn;
-	int i, this_nid;
-
-	for_each_mem_pfn_range(i, nid, &start_pfn, &end_pfn, &this_nid)
-		memory_present(this_nid, start_pfn, end_pfn);
-}
-
-1.1.1 memory_present()
-================================================================================
-#define for_each_mem_pfn_range(i, nid, p_start, p_end, p_nid)		\
-	for (i = -1, __next_mem_pfn_range(&i, nid, p_start, p_end, p_nid); \
-	     i >= 0; __next_mem_pfn_range(&i, nid, p_start, p_end, p_nid))
-
-void __init memory_present(int nid, unsigned long start, unsigned long end)
-{
-	unsigned long pfn;
-
-	start &= PAGE_SECTION_MASK;
-	mminit_validate_memmodel_limits(&start, &end);
-	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) {
-		unsigned long section = pfn_to_section_nr(pfn);
-		struct mem_section *ms;
-
-		sparse_index_init(section, nid);
-		set_section_nid(section, nid);
-
-		ms = __nr_to_section(section);
-		if (!ms->section_mem_map)
-			ms->section_mem_map = sparse_encode_early_nid(nid) |
-							SECTION_MARKED_PRESENT;
-	}
-}
-
-1.1.1.1 sparse_index_init(), init mem_section[]
-================================================================================
-static int __meminit sparse_index_init(unsigned long section_nr, int nid)
-{
-	unsigned long root = SECTION_NR_TO_ROOT(section_nr);
-	struct mem_section *section;
-
-	if (mem_section[root])
-		return -EEXIST;
-
-	section = sparse_index_alloc(nid);
-	if (!section)
-		return -ENOMEM;
-
-	mem_section[root] = section;
-
-	return 0;
-}
-
-1.1.1.2 set_section_nid()
-================================================================================
-static void set_section_nid(unsigned long section_nr, int nid)
-{
-	section_to_node_table[section_nr] = nid;
-}
-
-1.1.1.3 __nr_to_section()
-================================================================================
-static inline struct mem_section *__nr_to_section(unsigned long nr)
-{
-	if (!mem_section[SECTION_NR_TO_ROOT(nr)])
-		return NULL;
-	return &mem_section[SECTION_NR_TO_ROOT(nr)][nr & SECTION_ROOT_MASK];
-}
-
-1.1.1.4 sparse_encode_early_nid()
-================================================================================
-static inline unsigned long sparse_encode_early_nid(int nid)
-{
-	return (nid << SECTION_NID_SHIFT);
-}
-
-1.2 sparse_init()
-================================================================================
-void __init sparse_init(void)
-{
-	unsigned long pnum;
-	struct page *map;
-	unsigned long *usemap;
-	unsigned long **usemap_map;
-	int size;
-#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
-	int size2;
-	struct page **map_map;
-#endif
-
-	/* see include/linux/mmzone.h 'struct mem_section' definition */
-	BUILD_BUG_ON(!is_power_of_2(sizeof(struct mem_section)));
-
-	/* Setup pageblock_order for HUGETLB_PAGE_SIZE_VARIABLE */
-	set_pageblock_order();
-
-	/*
-	 * map is using big page (aka 2M in x86 64 bit)
-	 * usemap is less one page (aka 24 bytes)
-	 * so alloc 2M (with 2M align) and 24 bytes in turn will
-	 * make next 2M slip to one more 2M later.
-	 * then in big system, the memory will have a lot of holes...
-	 * here try to allocate 2M pages continuously.
-	 *
-	 * powerpc need to call sparse_init_one_section right after each
-	 * sparse_early_mem_map_alloc, so allocate usemap_map at first.
-	 */
-	size = sizeof(unsigned long *) * NR_MEM_SECTIONS;
-	usemap_map = memblock_virt_alloc(size, 0);
-	if (!usemap_map)
-		panic("can not allocate usemap_map\n");
-	alloc_usemap_and_memmap(sparse_early_usemaps_alloc_node,
-							(void *)usemap_map);
-
-#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
-	size2 = sizeof(struct page *) * NR_MEM_SECTIONS;
-	map_map = memblock_virt_alloc(size2, 0);
-	if (!map_map)
-		panic("can not allocate map_map\n");
-	alloc_usemap_and_memmap(sparse_early_mem_maps_alloc_node,
-							(void *)map_map);
-#endif
-
-	for (pnum = 0; pnum < NR_MEM_SECTIONS; pnum++) {
-		if (!present_section_nr(pnum))
-			continue;
-
-		usemap = usemap_map[pnum];
-		if (!usemap)
-			continue;
-
-#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
-		map = map_map[pnum];
-#else
-		map = sparse_early_mem_map_alloc(pnum);
-#endif
-		if (!map)
-			continue;
-
-		sparse_init_one_section(__nr_to_section(pnum), pnum, map,
-								usemap);
-	}
-
-	vmemmap_populate_print_last();
-
-#ifdef CONFIG_SPARSEMEM_ALLOC_MEM_MAP_TOGETHER
-	memblock_free_early(__pa(map_map), size2);
-#endif
-	memblock_free_early(__pa(usemap_map), size);
-}
-
-1.2.1 set_pageblock_order()
-================================================================================
-void __paginginit set_pageblock_order(void)
-{
-	unsigned int order;
-
-	/* Check that pageblock_nr_pages has not already been setup */
-	if (pageblock_order)
-		return;
-
-	if (HPAGE_SHIFT > PAGE_SHIFT)
-		order = HUGETLB_PAGE_ORDER;
-	else
-		order = MAX_ORDER - 1;
-
-	/*
-	 * Assume the largest contiguous order of interest is a huge page.
-	 * This value may be variable depending on boot parameters on IA64 and
-	 * powerpc.
-	 */
-	pageblock_order = order;
-}
-
-1.2.2 memblock_virt_alloc()
-================================================================================
-
-1.2.3 alloc_usemap_and_memmap()
-================================================================================
-static void __init alloc_usemap_and_memmap(void (*alloc_func)
-					(void *, unsigned long, unsigned long,
-					unsigned long, int), void *data)
-{
-	unsigned long pnum;
-	unsigned long map_count;
-	int nodeid_begin = 0;
-	unsigned long pnum_begin = 0;
-
-	for (pnum = 0; pnum < NR_MEM_SECTIONS; pnum++) {
-		struct mem_section *ms;
-
-		if (!present_section_nr(pnum))
-			continue;
-		ms = __nr_to_section(pnum);
-		nodeid_begin = sparse_early_nid(ms);
-		pnum_begin = pnum;
-		break;
-	}
-	map_count = 1;
-	for (pnum = pnum_begin + 1; pnum < NR_MEM_SECTIONS; pnum++) {
-		struct mem_section *ms;
-		int nodeid;
-
-		if (!present_section_nr(pnum))
-			continue;
-		ms = __nr_to_section(pnum);
-		nodeid = sparse_early_nid(ms);
-		if (nodeid == nodeid_begin) {
-			map_count++;
-			continue;
-		}
-		/* ok, we need to take cake of from pnum_begin to pnum - 1*/
-		alloc_func(data, pnum_begin, pnum,
-						map_count, nodeid_begin);
-		/* new start, update count etc*/
-		nodeid_begin = nodeid;
-		pnum_begin = pnum;
-		map_count = 1;
-	}
-	/* ok, last chunk */
-	alloc_func(data, pnum_begin, NR_MEM_SECTIONS,
-						map_count, nodeid_begin);
-}
-
-1.2.4 sparse_init_one_section()
-================================================================================
-
-1.2.5 vmemmap_populate_print_last()
-================================================================================
-
-1.3 node_clear_state(0, N_MEMORY)
-================================================================================
-static inline void node_clear_state(int node, enum node_states state)
-{
-	__node_clear(node, &node_states[state]);
-}
-
-1.3.1 __node_clear_state(0, N_MEMORY)
-================================================================================
-
-1.4 zone_sizes_init()
-================================================================================
-void __init zone_sizes_init(void)
-{
-	unsigned long max_zone_pfns[MAX_NR_ZONES];
-
-	memset(max_zone_pfns, 0, sizeof(max_zone_pfns));
-
-#ifdef CONFIG_ZONE_DMA
-	max_zone_pfns[ZONE_DMA]		= min(MAX_DMA_PFN, max_low_pfn);
-#endif
-#ifdef CONFIG_ZONE_DMA32
-	max_zone_pfns[ZONE_DMA32]	= min(MAX_DMA32_PFN, max_low_pfn);
-#endif
-	max_zone_pfns[ZONE_NORMAL]	= max_low_pfn;
-#ifdef CONFIG_HIGHMEM
-	max_zone_pfns[ZONE_HIGHMEM]	= max_pfn;
-#endif
-
-	free_area_init_nodes(max_zone_pfns);
-}
-
-1.4.1 free_area_init_nodes(), one thing confused me is zone across nodes?
-================================================================================
-; will print zone/node info
-; Zone ranges:
-; Movable zone start for each node
-; Early memory node ranges
-; ...
-
-
 1. build_all_zonelists(), called by start_kernel/online_pages/hotadd_new_pgdat
 ================================================================================
 1.1 build_all_zonelists_init() / __build_all_zonelists(pgdat)
@@ -667,7 +366,7 @@ This macro encode zone information into GFP_ZONE_TABLE.
       |   (struct free_area)         | 
       |   +--------------------------+
       |   |nr_free                   |  number of available pages
-      |   |(unsigned long)           |  in this zone
+      |   |(unsigned long)           |  in this free_area[] list
       |   |                          |
       |   +--------------------------+
       |   |                          |           free_area[0]
@@ -726,3 +425,41 @@ per cpu variable, each zone maintains the status of each cpu
       |   |  |                       |  |  |                       |        |  |                       |
       |   |  |lists[MIGRATE_PCPTYPES]|  |  |lists[MIGRATE_PCPTYPES]|        |  |lists[MIGRATE_PCPTYPES]|
       +---+--+-----------------------+--+--+-----------------------+--------+--+-----------------------+
+
+0.5 vm_stat
+================================================================================
+__mod_zone_page_state()
+__mod_node_page_state()
+
+atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS] __cacheline_aligned_in_smp;
+atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS] __cacheline_aligned_in_smp;
+atomic_long_t vm_numa_event[NR_VM_NUMA_EVENT_ITEMS] __cacheline_aligned_in_smp;
+
+   node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t)
+   +-----------------------------------+
+   |node_id                            |
+   |   (int)                           |
+   +-----------------------------------+
+   |node_zones[MAX_NR_ZONES]           |
+   |   (struct zone)                   |
+   |   +-------------------------------+
+   |   |per_cpu_zonestats              |
+   |   |   +---------------------------+
+   |   |   |stat_threshold             |
+   |   |   |vm_stat_diff[]             |
+   |   |   +---------------------------+
+   |   |                               |
+   |   |vm_stat[NR_VM_ZONE_STAT_ITEMS] |
+   |   |vm_numa_event[]                |
+   |   |  (atomic_long_t)              |
+   +---+-------------------------------+
+   |per_cpu_nodestats                  |
+   |   +-------------------------------+
+   |   |stat_threshold                 |
+   |   |vm_node_stat_diff[]            |
+   |   +-------------------------------+
+   |                                   |
+   |vm_stat[NR_VM_NODE_STAT_ITEMS]     |
+   |   (atomic_long_t)                 |
+   |                                   |
+   +-----------------------------------+
