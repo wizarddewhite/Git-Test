@@ -816,7 +816,10 @@ pgdat->node_spanned_pages/node_present_pages
 ================================================================================
 http://wiki.osdev.org/Detecting_Memory_(x86)
 
-0.1 arch_zone_lowest/highest_possible_pfn[]
+0.1 range of Zone and Node
+================================================================================
+
+0.1.1 zone range: arch_zone_lowest/highest_possible_pfn[]
 ================================================================================
 static unsigned long arch_zone_lowest_possible_pfn[MAX_NR_ZONES];
 static unsigned long arch_zone_highest_possible_pfn[MAX_NR_ZONES];
@@ -834,7 +837,7 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
                 lowest_pfn[1]        lowest_pfn[2]
 
 
-0.2 node
+0.1.2 node range
 ================================================================================
 
    Memory
@@ -842,7 +845,7 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
                                 3G                                   6G
    [           Node0             |                Node1               ]
 
-0.3 node/zone
+0.1.3 node/zone ranges in one
 ================================================================================
 
    Memory
@@ -853,7 +856,7 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
    ^                             ^                                    ^
    |<---      Node0          --->|<---          Node1             --->|
 
-0.4.1 node/zone ranges
+0.1.4 node/zone ranges in data struct
 ================================================================================
 
    node_data[0]                   
@@ -880,7 +883,7 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
    +---+-------------------------+
 
 
-0.4 representation
+0.1.5 node/zone ranges of 2 Nodes real example
 ================================================================================
 ; node_data[] allocated in alloc_node_data()
 
@@ -907,139 +910,13 @@ lowest_pfn[0]  highest_pfn[0]       highest_pfn[1]               highest_pfn[2]
    |   |                         |    |               |        |   |                         |    |6G             |   
    +---+-------------------------+    +---------------+        +---+-------------------------+    +---------------+
 
-
-0.5 alloc_pages() called by
-================================================================================
-
-    alloc_pages()
-
-	__get_free_pages()
-	alloc_pages_vma()
-	alloc_hugepage_vma()
-	alloc_slab_page()
-
-0.6 per_cpu_pages
-================================================================================
-
-0.7 compound page
-================================================================================
-
-prep_compound_page
-    __SetPageHead(page)
-    set_compound_head(p, page)
-
-free_tail_pages_check
-    clear_compound_head()
-
-
-NULL_COMPOUND_DTOR
-COMPOUND_PAGE_DTOR
-HUGETLB_PAGE_DTOR
-TRANSHUGE_PAGE_DTOR
-
-    page                  page                  page                  page
-    +----------------+    +----------------+    +----------------+    +----------------+
-    |PG_HEAD         |    |                |    |                |    |                |
-    |compound_order  |    |                |    |                |    |                |
-    |compound_dtor   |    |                |    |                |    |                |
-    |                |    |                |    |                |    |                |
-    |                |    |compound_head + |    |compound_head + |    |compound_head + |
-    +----------------+    +--------------|-+    +--------------|-+    +--------------|-+
-    ^                                    |                     |                     |
-    |                                    |                     |                     |
-    +------------------------------------+---------------------+---------------------+
-
-0.8 zone watermark
-================================================================================
-
-  lowmem_pages = total lowmem
-  zone->_watermark[min] = (current zone lowmem * pages_min) / total lowmem
-
-  =>  sum(zone->_watermark[WMARK_MIN]) = pages_min
-
-
-  tmp = (zone_managed_pages(z) * watermark_scale_factor) / 10000
-
-  zone->_watermark[WMARK_LOW]  = min_wmark_pages(zone) + tmp;
-  zone->_watermark[WMARK_HIGH] = min_wmark_pages(zone) + tmp * 2;
-
-  The bigger watermark_scale_factor, the bigger gap between MIN, LOW and HIGH.
-
-0.9 lowmem reserve
-================================================================================
-
-setup_per_zone_lowmem_reserve()
-
-abbreviation:
-mp[i]: managed pages of zone[i]
-ra[i]: sysctl_lowmem_reserve_ratio[i]
-lr[i]: lowmem_reserve[i]
-
-
-        +-------------+-------------+------------+------------+
-  lr[3] |mp[3] + mp[2]|mp[3] + mp[2]|mp[3]       |     0      |
-        |+ mp[1] /    |   /         |   /        |            |
-        |ra[0]        |ra[1]        |ra[2]       |            |
-        +-------------+-------------+------------+------------+
-  lr[2] |mp[2] + mp[1]|mp[2]        |     0      |   N/A      |
-        |   /         |   /         |            |            |
-        |ra[0]        |ra[1]        |            |            |
-        +-------------+-------------+------------+------------+
-  lr[1] |mp[1]        |     0       |   N/A      |   N/A      |
-        |   /         |             |            |            |
-        |ra[0]        |             |            |            |
-        +-------------+-------------+------------+------------+
-  lr[0] |     0       |   N/A       |   N/A      |   N/A      |
-        |             |             |            |            |
-        |             |             |            |            |
-        +-------------+-------------+------------+------------+
-        Zone[0]       Zone[1]      Zone[2]      Zone[3]
-
-The zone[i].lowmem_reserve[j] means if the allocation for zone[j] fall back to
-zone[i], the allocation would succeed if we have more than lowmem_reserve[j]
-memory.
-
-The is used to check the watermark in __zone_watermark_ok()
-
-```
-	if (free_pages <= min + z->lowmem_reserve[classzone_idx])
-		return false;
-```
-
-If free_pages is less then this, watermark will alarm.
-
-0.2 nodemask_t node_stats[NR_NODE_STATES]
-================================================================================
-
-typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
-
-/*
- * Bitmasks that are kept for all the nodes.
- */
-enum node_states {
-	N_POSSIBLE,		/* The node could become online at some point */
-	N_ONLINE,		/* The node is online */
-	N_NORMAL_MEMORY,	/* The node has regular memory */
-#ifdef CONFIG_HIGHMEM
-	N_HIGH_MEMORY,		/* The node has regular or high memory */
-#else
-	N_HIGH_MEMORY = N_NORMAL_MEMORY,
-#endif
-#ifdef CONFIG_MOVABLE_NODE
-	N_MEMORY,		/* The node has memory(regular, high, movable) */
-#else
-	N_MEMORY = N_HIGH_MEMORY,
-#endif
-	N_CPU,		/* The node has one or more cpus */
-	NR_NODE_STATES
-};
-
-0.3 node_data[], each node has one
+0.2 node_data[], each node has one
 ================================================================================
 ; node_data[MAX_NUMNODES] is an array with pointers to pg_data_t.
 ;
-; It is allocated in numa_register_memblks(). Each node with proper memory
-; would has one entry in node_data[].
+; On x86, it is allocated at two places: 
+; * numa_register_memblks() if this node has memory
+; * free_area_init() if it is a possible node
 ;
 ; Then free_area_init_node() sets
 ; * node_start_pfn/node_present_pages
@@ -1055,26 +932,26 @@ MAX_ZONELISTS is defined to 1 or 2.
 #define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES)
 
    node_data[MAX_NUMNODES] (struct pglist_data / pg_data_t)
-   +-----------------------------+        
-   |node_id                <---+ |        
-   |   (int)                   | |        
-   +-----------------------------+        
-   |node_start_pfn             | |        
-   |   (unsigned long)         | |        
-   |node_present_pages         | |        
-   |node_spanned_pages         | |        
-   |   (unsigned long)         | |        
-   |                           | |        
-   +-----------------------------+        
-   |nr_zones                   | |        
-   |    (int)                  | |        
-   |                           | |        
-   +-----------------------------+    
+   +-----------------------------+
+   |node_id                <---+ |
+   |   (int)                   | |
+   +-----------------------------+
+   |node_start_pfn             | |
+   |   (unsigned long)         | |
+   |node_present_pages         | |
+   |node_spanned_pages         | |
+   |   (unsigned long)         | |
+   |                           | |
+   +-----------------------------+
+   |nr_zones                   | | highest zone_idx on this node
+   |    (int)                  | | set in init_currently_empty_zone()
+   +-----------------------------+
    |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]           [ZONE_DMA32]         [ZONE_NORMAL]
    |   (struct zone)           | |    +---------------+    +---------------+    +---------------+
    |   +-------------------------+    |               |    |               |    |               |
-   |   |                       | |    |               |    |               |    |               |
-   |   |zone_pgdat         ----+ |    +---------------+    +---------------+    +---------------+
+   |   |initialized            | |    |               |    |               |    |               |
+   |   +-------------------------+    +---------------+    +---------------+    +---------------+
+   |   |zone_pgdat         ----+ |
    |   |   (struct pglist_data*) |
    |   +-------------------------+
    |   |zone_start_pfn           |
@@ -1084,28 +961,12 @@ MAX_ZONELISTS is defined to 1 or 2.
    |   |managed_pages            |
    |   |  (unsigned long)        |
    |   |                         |
-   +---+-------------------------+                                                                               
-   |node_zonelists[MAX_ZONELISTS]|
+   +---+-------------------------+
+   |node_zonelists[MAX_ZONELISTS]| = 2
    |   (struct zonelist)         |
    |   +-------------------------+
    |   |_zonerefs[]              | = MAX_NUMNODES * MAX_NR_ZONES + 1
-   |   | (struct zoneref)        | Node 0:
-   |   |  +----------------------+
-   |   |  |zone                  |    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
-   |   |  |   (struct zone*)     |    +---------------+    +---------------+    +---------------+
-   |   |  |zone_idx              |    |               |    |               |    |               |
-   |   |  |   (int)              |    |               |    |               |    |               |
-   |   |  |                      |    +---------------+    +---------------+    +---------------+
-   |   |  |                      |
-   |   |  |                      | Node 1:
-   |   |  |                      |
-   |   |  |                      |    [ZONE_NORMAL]        [ZONE_DMA32]         [ZONE_DMA]
-   |   |  |                      |    +---------------+    +---------------+    +---------------+
-   |   |  |                      |    |               |    |               |    |               |
-   |   |  |                      |    |               |    |               |    |               |
-   |   |  |                      |    +---------------+    +---------------+    +---------------+
-   |   |  |                      |
-   |   |  |                      |
+   |   | (struct zoneref)        |
    +---+--+----------------------+
    |reclaim_nodes                |
    |    (nodemask_t)             |
@@ -1113,7 +974,7 @@ MAX_ZONELISTS is defined to 1 or 2.
    |kswapd_wait                  |
    |    (wait_queue_head_t)      |
    +-----------------------------+
-   |pfmemalloc_wait              |                                   
+   |pfmemalloc_wait              |
    |    (wait_queue_head_t)      |
    +-----------------------------+
    |lru_lock                     |
@@ -1131,35 +992,9 @@ MAX_ZONELISTS is defined to 1 or 2.
    |                             |
    +-----------------------------+
 
-0.3.1 node_data/zone, real example
+0.2.1 zonelist
 ================================================================================
-
-
-   node_data[0]                                                node_data[1]
-   +-----------------------------+                             +-----------------------------+        
-   |node_id                <---+ |                             |node_id                <---+ |        
-   |   (int)                   | |                             |   (int)                   | |        
-   +-----------------------------+                             +-----------------------------+    
-   |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]               |node_zones[MAX_NR_ZONES]   | |    [ZONE_DMA]       
-   |   (struct zone)           | |    +---------------+        |   (struct zone)           | |    +---------------+
-   |   +-------------------------+    |0              |        |   +-------------------------+    |empty          |
-   |   |                       | |    |16M            |        |   |                       | |    |               |
-   |   |zone_pgdat         ----+ |    +---------------+        |   |zone_pgdat         ----+ |    +---------------+
-   |   |                         |                             |   |                         |        
-   |   |                         |    [ZONE_DMA32]             |   |                         |    [ZONE_DMA32]        
-   |   |                         |    +---------------+        |   |                         |    +---------------+   
-   |   |                         |    |16M            |        |   |                         |    |3G             |   
-   |   |                         |    |3G             |        |   |                         |    |4G             |   
-   |   |                         |    +---------------+        |   |                         |    +---------------+   
-   |   |                         |                             |   |                         |        
-   |   |                         |    [ZONE_NORMAL]            |   |                         |    [ZONE_NORMAL]       
-   |   |                         |    +---------------+        |   |                         |    +---------------+   
-   |   |                         |    |empty          |        |   |                         |    |4G             |   
-   |   |                         |    |               |        |   |                         |    |6G             |   
-   +---+-------------------------+    +---------------+        +---+-------------------------+    +---------------+
-
-0.3.2 node_data/zonelist
-================================================================================
+built by build_all_zonelists().
 
    node_data[]
    +-----------------------------+
@@ -1182,12 +1017,12 @@ MAX_ZONELISTS is defined to 1 or 2.
                                       |               |    |               |    |               |
                                       +---------------+    +---------------+    +---------------+
 
-0.4 zone
+0.2.2 zone
 ================================================================================
 ; zone->managed_pages
 ;
-; calculated in free_area_init_core()
-; cleared at free_all_bootmem()
+; calculated in free_area_init_core() for temporary use
+; then cleared at free_all_bootmem().
 ; increased at __free_pages_boot_core()
 
 
@@ -1265,15 +1100,8 @@ MAX_ZONELISTS is defined to 1 or 2.
       |   |                          |           +-----------------------+
       |   |                          |
       +---+--------------------------+
-      |                              |
-      |                              |
-      |                              |
-      |                              |
-      |                              |
-      +------------------------------+
-           
 
-0.4.1 zone->pageset
+0.2.2.1 zone->pageset
 ================================================================================
 
 per cpu variable, each zone maintains the status of each cpu
@@ -1294,7 +1122,124 @@ per cpu variable, each zone maintains the status of each cpu
       |   |  |lists[MIGRATE_PCPTYPES]|  |  |lists[MIGRATE_PCPTYPES]|        |  |lists[MIGRATE_PCPTYPES]|
       +---+--+-----------------------+--+--+-----------------------+--------+--+-----------------------+
 
-0.5 GFP_ZONE_TABLE lowest 4 bits gfp_t to zone index
+0.2.2.2 zone watermark
+================================================================================
+
+  lowmem_pages = total lowmem
+  zone->_watermark[min] = (current zone lowmem * pages_min) / total lowmem
+
+  =>  sum(zone->_watermark[WMARK_MIN]) = pages_min
+
+
+  tmp = (zone_managed_pages(z) * watermark_scale_factor) / 10000
+
+  zone->_watermark[WMARK_LOW]  = min_wmark_pages(zone) + tmp;
+  zone->_watermark[WMARK_HIGH] = min_wmark_pages(zone) + tmp * 2;
+
+  The bigger watermark_scale_factor, the bigger gap between MIN, LOW and HIGH.
+
+0.2.2.3 lowmem reserve
+================================================================================
+
+setup_per_zone_lowmem_reserve()
+
+abbreviation:
+mp[i]: managed pages of zone[i]
+ra[i]: sysctl_lowmem_reserve_ratio[i]
+lr[i]: lowmem_reserve[i]
+
+
+        +-------------+-------------+------------+------------+
+  lr[3] |mp[3] + mp[2]|mp[3] + mp[2]|mp[3]       |     0      |
+        |+ mp[1] /    |   /         |   /        |            |
+        |ra[0]        |ra[1]        |ra[2]       |            |
+        +-------------+-------------+------------+------------+
+  lr[2] |mp[2] + mp[1]|mp[2]        |     0      |   N/A      |
+        |   /         |   /         |            |            |
+        |ra[0]        |ra[1]        |            |            |
+        +-------------+-------------+------------+------------+
+  lr[1] |mp[1]        |     0       |   N/A      |   N/A      |
+        |   /         |             |            |            |
+        |ra[0]        |             |            |            |
+        +-------------+-------------+------------+------------+
+  lr[0] |     0       |   N/A       |   N/A      |   N/A      |
+        |             |             |            |            |
+        |             |             |            |            |
+        +-------------+-------------+------------+------------+
+        Zone[0]       Zone[1]      Zone[2]      Zone[3]
+
+The zone[i].lowmem_reserve[j] means if the allocation for zone[j] fall back to
+zone[i], the allocation would succeed if we have more than lowmem_reserve[j]
+memory.
+
+The is used to check the watermark in __zone_watermark_ok()
+
+```
+	if (free_pages <= min + z->lowmem_reserve[classzone_idx])
+		return false;
+```
+
+If free_pages is less then this, watermark will alarm.
+
+
+0.2.3 per_cpu_pages
+================================================================================
+
+0.2.4 compound page
+================================================================================
+
+prep_compound_page
+    __SetPageHead(page)
+    set_compound_head(p, page)
+
+free_tail_pages_check
+    clear_compound_head()
+
+
+NULL_COMPOUND_DTOR
+COMPOUND_PAGE_DTOR
+HUGETLB_PAGE_DTOR
+TRANSHUGE_PAGE_DTOR
+
+    page                  page                  page                  page
+    +----------------+    +----------------+    +----------------+    +----------------+
+    |PG_HEAD         |    |                |    |                |    |                |
+    |compound_order  |    |                |    |                |    |                |
+    |compound_dtor   |    |                |    |                |    |                |
+    |                |    |                |    |                |    |                |
+    |                |    |compound_head + |    |compound_head + |    |compound_head + |
+    +----------------+    +--------------|-+    +--------------|-+    +--------------|-+
+    ^                                    |                     |                     |
+    |                                    |                     |                     |
+    +------------------------------------+---------------------+---------------------+
+
+0.3 nodemask_t node_stats[NR_NODE_STATES]
+================================================================================
+
+typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
+
+/*
+ * Bitmasks that are kept for all the nodes.
+ */
+enum node_states {
+	N_POSSIBLE,		/* The node could become online at some point */
+	N_ONLINE,		/* The node is online */
+	N_NORMAL_MEMORY,	/* The node has regular memory */
+#ifdef CONFIG_HIGHMEM
+	N_HIGH_MEMORY,		/* The node has regular or high memory */
+#else
+	N_HIGH_MEMORY = N_NORMAL_MEMORY,
+#endif
+#ifdef CONFIG_MOVABLE_NODE
+	N_MEMORY,		/* The node has memory(regular, high, movable) */
+#else
+	N_MEMORY = N_HIGH_MEMORY,
+#endif
+	N_CPU,		/* The node has one or more cpus */
+	NR_NODE_STATES
+};
+
+0.4 GFP_ZONE_TABLE lowest 4 bits gfp_t to zone index
 ================================================================================
 
 The lowest 4 bits represent zone information in GFP.
