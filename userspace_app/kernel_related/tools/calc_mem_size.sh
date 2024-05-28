@@ -1,5 +1,28 @@
 #!/bin/bash
 
+usage()
+{
+	echo "Usage: print mem size from /proc/meminfo"
+	echo $0 [-h]
+	exit
+}
+
+while getopts "h" opt; do
+	case "$opt" in
+	"h")
+		usage
+		;;
+	":")
+		echo "no argument for option: $OPTARG"
+		;;
+	"?")
+		# this works when ":" is the first letter in optstring
+		echo "not valid option: $OPTARG"
+		;;
+	esac
+done
+
+
 total_mem=`cat /proc/meminfo | grep MemTotal | awk '{print $2}'`
 echo total_mem $total_mem
 # 10G = 10485760k
