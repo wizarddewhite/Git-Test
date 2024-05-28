@@ -6,6 +6,9 @@ uidx=1
 
 just_result=""
 
+o_uidx=-1
+o_unit=""
+
 is_int ()
 {
 	test "$@" -eq "$@" 2> /dev/null; 
@@ -14,14 +17,15 @@ is_int ()
 usage()
 {
 	echo "Usage: pass a size and return a more readable format"
-	echo "       Default unit is K"
-	echo "$0 [-j] [-u <B|K|M|G>] size"
+	echo "       Default input unit is K"
+	echo "$0 [-j] [-u <B|K|M|G>] [-o <B|K|M|G>] size"
 	echo "   -j just print result"
 	echo "   -u the unit of input value"
+	echo "   -o the unit of output value"
 	exit
 }
 
-while getopts "hju:" opt; do
+while getopts "hjo:u:" opt; do
 	case "$opt" in
 	"h")
 		usage
@@ -29,6 +33,20 @@ while getopts "hju:" opt; do
 	"j")
 		# just print result
 		just_result="y"
+		;;
+	"o")
+		# specify output unit
+		o_unit=${OPTARG}
+		for  (( o_uidx=0; o_uidx<${#UNIT[@]}; o_uidx++ ));
+		do
+			if [[ $o_unit == ${UNIT[$o_uidx]} ]]; then
+				break
+			fi
+		done
+		# exit if unit not supported
+		if [[ $o_uidx == ${#UNIT[@]} ]]; then
+			usage
+		fi
 		;;
 	"u")
 		unit=${OPTARG}
@@ -80,7 +98,7 @@ out=$input_size
 for ((i=0;i<${#UNIT[@]};i++));
 do
 	# return if this level size is less than 1024 or hit highest unit
-	if (( $size < 1024)) || [ $i == $(( ${#UNIT[@]} - 1 )) ]; then
+	if (( $size < 1024)) || [ $i == $o_uidx ] || [ $i == $(( ${#UNIT[@]} - 1 )) ]; then
 		if [ -z $just_result ]; then
 			echo raw:   $1 $unit
 			echo is : $out ${UNIT[$i]}
