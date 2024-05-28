@@ -67,17 +67,19 @@ if ! is_int $1 ; then
 	usage
 fi
 
-raw_size=$1
-for ((i=$uidx;i<${#UNIT[@]};i++));
+# convert input value to B
+input_size=$1
+for ((i=$uidx;i>0;i--));
 do
-	size=$raw_size
-	out=$raw_size
-	for ((j=$uidx;j<i;j++));
-	do
-		size=`echo "$size / 1024" | bc`
-		out=`echo "scale=3; $out / 1024" | bc`
-	done
+	input_size=`echo "$input_size * 1024" | bc`
+done
 
+size=$input_size
+out=$input_size
+
+for ((i=0;i<${#UNIT[@]};i++));
+do
+	# return if this level size is less than 1024 or hit highest unit
 	if (( $size < 1024)) || [ $i == $(( ${#UNIT[@]} - 1 )) ]; then
 		if [ -z $just_result ]; then
 			echo raw:   $1 $unit
@@ -87,6 +89,7 @@ do
 		fi
 		break
 	fi
+
+	size=`echo "$size / 1024" | bc`
+	out=`echo "scale=3; $out / 1024" | bc`
 done
-
-
