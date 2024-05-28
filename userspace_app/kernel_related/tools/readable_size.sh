@@ -1,8 +1,10 @@
 #!/bin/bash
 
 UNIT=('B' 'K' 'M' 'G' 'T')
-unit=''
+unit='K'
 uidx=1
+
+just_result=""
 
 is_int ()
 {
@@ -11,16 +13,22 @@ is_int ()
 
 usage()
 {
-	echo "Usage: make a size more readable"
+	echo "Usage: pass a size and return a more readable format"
 	echo "       Default unit is K"
-	echo "$0 [-u <B|K|M|G>] size"
+	echo "$0 [-j] [-u <B|K|M|G>] size"
+	echo "   -j just print result"
+	echo "   -u the unit of input value"
 	exit
 }
 
-while getopts "hu:" opt; do
+while getopts "hju:" opt; do
 	case "$opt" in
 	"h")
 		usage
+		;;
+	"j")
+		# just print result
+		just_result="y"
 		;;
 	"u")
 		unit=${OPTARG}
@@ -31,6 +39,7 @@ while getopts "hu:" opt; do
 				break
 			fi
 		done
+		# exit if unit not supported
 		if [[ $uidx == ${#UNIT[@]} ]]; then
 			usage
 		fi
@@ -70,8 +79,12 @@ do
 	done
 
 	if (( $size < 1024)) || [ $i == $(( ${#UNIT[@]} - 1 )) ]; then
-		echo raw:   $1 $unit
-		echo is : $out ${UNIT[$i]}
+		if [ -z $just_result ]; then
+			echo raw:   $1 $unit
+			echo is : $out ${UNIT[$i]}
+		else
+			echo $out ${UNIT[$i]}
+		fi
 		break
 	fi
 done
