@@ -19,11 +19,20 @@ Refer to mm_init_on_x86.txt section "page struct and defer init"
 ================================================================================
 2.6.1 job->thread_fn() -> deferred_init_memmap_chunk
 ================================================================================
-2.6.1.1 deferred_init_maxorder()
+2.6.1.1 deferred_init_maxorder(&i, zone, &spfn, &epfn, start_pfn)
 ================================================================================
 2.7 deferred_init_mem_pfn_range_in_zone(&i, zone, &spfn, &epfn, epfn_align)
 ================================================================================
 2.8 pgdat_init_report_one_done()
+================================================================================
+
+3. deferred_init_maxorder(&i, zone, &spfn, &epfn, start_pfn)
+================================================================================
+3.1 for_each_free_mem_pfn_range_in_zone_from()
+================================================================================
+3.2 deferred_init_pages(zone, *start_pfn, t), init page struct
+================================================================================
+3.3 deferred_free_pages(spfn, t), free page to buddy
 ================================================================================
 
 0. data struct
