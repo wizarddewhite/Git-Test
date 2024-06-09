@@ -812,6 +812,35 @@ pgdat->node_spanned_pages/node_present_pages
 11.6 undo_isolate_page_range(pfn_max_align_down(start), pfn_max_align_up(end), migratetype)
 ================================================================================
 
+0. alloc/free variants
+================================================================================
+
+0.1 free
+================================================================================
+most inner function:
+__free_one_page()      with zone->lock hold
+
+used by other subsys:
+__free_pages_core()    put page from memblock/hotplug to buddy
+
+used by mm:
+free_pcppages_bulk()
+free_one_page()
+__putback_isolated_page()
+put_page_back_buddy()
+
+free after refcount dec:
+__free_pages_ok()
+free_unref_page()
+free_unref_folios()
+
+free after refcount check:
+free_pages
+__free_pages
+
+0.2 alloc
+================================================================================
+
 0. data structure
 ================================================================================
 http://wiki.osdev.org/Detecting_Memory_(x86)
@@ -936,12 +965,17 @@ MAX_ZONELISTS is defined to 1 or 2.
    |node_id                <---+ |
    |   (int)                   | |
    +-----------------------------+
+   |node_size_lock             | |
+   |   (spinlock_t)            | |
+   |                           | |
    |node_start_pfn             | |
    |   (unsigned long)         | |
    |node_present_pages         | |
    |node_spanned_pages         | |
    |   (unsigned long)         | |
    |                           | |
+   |first_deferred_pfn         | |
+   |   (unsigned long)         | |
    +-----------------------------+
    |nr_zones                   | | highest zone_idx on this node
    |    (int)                  | | set in init_currently_empty_zone()
