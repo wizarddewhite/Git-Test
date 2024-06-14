@@ -1,0 +1,47 @@
+
+# 编译内核
+make defconfig ARCH=um
+make menuconfig ARCH=um
+make -j8 ARCH=um
+
+# Create Image
+
+## Get rootfs
+wget https://jenkins.linuxcontainers.org/job/image-fedora/architecture=amd64,release=40,variant=default/lastSuccessfulBuild/artifact/rootfs.tar.xz
+
+## Setup Image
+
+dd if=/dev/zero of=image.raw bs=1 count=0 seek=10G
+mkfs.ext4 image.raw
+mkdir mnt/
+sudo mount image.raw mnt/
+sudo tar xf rootfs.tar.xz -C mnt/ --numeric-owner
+
+## FSTAB
+
+sudo vi mnt/etc/fstab
+/dev/ubda / ext4 defaults 0 1
+
+## Setup Root password
+
+sudo chroot mnt/
+passwd
+exit
+
+## Install module
+
+sudo make modules_install INSTALL_MOD_PATH=../mnt ARCH=um
+
+## Umount 
+
+sudo umount mnt/
+
+
+# Start UML
+
+./linux mem=2G  ubd0=./image.raw  root=/dev/ubda con1=fd:0,fd:1 con=pts
+
+# Reference
+
+https://nicoconi.com/2020-04/user-mode-linux（uml）折腾笔记.html
+https://darkognu.eu/linux/tutorials/user_mode_linux_tutorial/
