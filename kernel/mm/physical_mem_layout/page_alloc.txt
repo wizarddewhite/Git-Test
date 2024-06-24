@@ -988,7 +988,7 @@ built by build_all_zonelists().
 
       struct zone
       +------------------------------+
-      |watermark[NR_WMARK]           |
+      |_watermark[NR_WMARK]          | MIN|LOW|HIGH|PROMO
       |   (unsigned long)            |
       +------------------------------+
       |zone_start_pfn                |
