@@ -24,14 +24,16 @@ double diff_time(struct timespec *time1, struct timespec *time2)
 	return time2->tv_sec - time1->tv_sec + result / 1000 / 1000 / 1000;
 }
 
-int usage(char opt)
-{
-	fprintf(stderr, "Option %c not known\n", opt);
-	return 1;
-}
-
 /* Number of pages in memmap */
 unsigned long count = 1000 * 1000;
+
+int usage()
+{
+	fprintf(stderr, "Compare scan physically and virtually\n");
+	fprintf(stderr, "  -c: times of %ld pages, default 1\n", count);
+	fprintf(stderr, "  -v: verbose level with number v\n");
+	return 1;
+}
 
 /*
  * struct page is about this big.  technically the linked list points
@@ -88,7 +90,7 @@ int main(int argc, char **argv)
 		else if (opt == 'v')
 			verbose++;
 		else
-			return usage(opt);
+			return usage();
         }
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
