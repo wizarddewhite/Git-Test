@@ -19,17 +19,28 @@
 #include <string.h>
 #include "rb_tree.h"
 
+#define NODES       15
+
 struct dummy_struct {
 	int idx;
 	struct rb_node rb;
 };
-
 #define rb_to_dummy(X) rb_entry((X), struct dummy_struct, rb)
-#define NODES       15
 
 static struct rb_root tree_root;
-
 struct dummy_struct tree_nodes[NODES];
+
+static void init(void)
+{
+	int i;
+	tree_root = RB_ROOT;
+	for(i = 0; i < NODES; i++) {
+		tree_nodes[i].idx = i;
+		tree_nodes[i].rb.rb_right = NULL;
+		tree_nodes[i].rb.rb_left = NULL;
+		tree_nodes[i].rb.__rb_parent_color = 0;
+	}
+}
 
 void dummy_print(struct rb_node *node, char *prefix, int level)
 {
@@ -66,16 +77,58 @@ static int insert_dummy_to_tree(struct dummy_struct *node)
 	return 0;
 }
 
-static void init(void)
+
+/* borrow from lib/rbtree_test.c */
+struct test_node {
+        int key;
+	struct rb_node rb;
+
+	/* following fields used for testing augmented rbtree functionality */
+	int val;
+	int augmented;
+};
+#define rb_to_test_node(X) rb_entry((X), struct test_node, rb)
+
+static struct rb_root_cached cached_root = RB_ROOT_CACHED;
+static struct test_node cached_nodes[NODES];
+
+static void init_cached(void)
 {
 	int i;
-	tree_root = RB_ROOT;
 	for(i = 0; i < NODES; i++) {
-		tree_nodes[i].idx = i;
-		tree_nodes[i].rb.rb_right = NULL;
-		tree_nodes[i].rb.rb_left = NULL;
-		tree_nodes[i].rb.__rb_parent_color = 0;
+		cached_nodes[i].key = i;
+		cached_nodes[i].val = i * 10;
 	}
+}
+
+void test_node_print(struct rb_node *node, char *prefix, int level)
+{
+	struct test_node *this;
+
+	this = rb_to_test_node(node);
+	printf("%02d %s -%02d(%c)\n",
+			level, prefix, this->key,
+			rb_is_red(node)?'r':'b');
+}
+
+void insert_cached(struct test_node *node, struct rb_root_cached *root)
+{
+	struct rb_node **new = &root->rb_root.rb_node, *parent = NULL;
+	int key = node->key;
+	bool leftmost = true;
+
+	while (*new) {
+		parent = *new;
+		if (key < rb_entry(parent, struct test_node, rb)->key)
+			new = &parent->rb_left;
+		else {
+			new = &parent->rb_right;
+			leftmost = false;
+		}
+	}
+
+	rb_link_node(&node->rb, parent, new);
+	rb_insert_color_cached(&node->rb, root, leftmost);
 }
 
 void insert_test()
@@ -169,12 +222,39 @@ void erase_test()
 	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
 }
 
+void insert_cached_test()
+{
+	int i;
+	struct rb_node *iter;
+	struct test_node *node;
+
+	init_cached();
+	for (i = 0; i < NODES; i++) {
+		insert_cached(&cached_nodes[i], &cached_root);
+	}
+
+	dump_rb_tree(cached_root.rb_root.rb_node, 0, root_node, test_node_print);
+
+	iter = rb_first(&cached_root.rb_root);
+	while (iter) {
+		node = rb_to_test_node(iter);
+		printf("%d ", node->key);
+		iter = rb_next(iter);
+	}
+	printf("\n");
+
+	node = rb_to_test_node(cached_root.rb_leftmost);
+	printf("The left most entry %d:%p\n", node->key, node);
+}
+
 int main()
 {
 	// insert_test();
-	insert_test2();
+	// insert_test2();
 	// case2_verify();
 	// erase_test();
+
+	insert_cached_test();
 
 	return 0;
 }
