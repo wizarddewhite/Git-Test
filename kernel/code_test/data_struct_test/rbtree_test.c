@@ -146,6 +146,8 @@ void erase_test()
 
 int main()
 {
+	// insert_test();
+	// case2_verify();
 	erase_test();
 
 	return 0;
