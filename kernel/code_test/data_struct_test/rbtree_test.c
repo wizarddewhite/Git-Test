@@ -25,7 +25,7 @@ struct dummy_struct {
 };
 
 #define rb_to_dummy(X) rb_entry((X), struct dummy_struct, rb)
-#define NODES       20
+#define NODES       15
 
 static struct rb_root tree_root;
 
@@ -94,7 +94,32 @@ void insert_test()
 	iter = rb_first(&tree_root);
 	while (iter) {
 		node = rb_to_dummy(iter);
-		printf("%d \n", node->idx);
+		printf("%d: %p\n", node->idx, node);
+		iter = rb_next(iter);
+	}
+}
+
+/* insert with same value */
+void insert_test2()
+{
+	int i;
+	struct rb_node *iter;
+	struct dummy_struct *node;
+	init();
+	/* init the tree nodes */
+	for(i = 0; i < NODES - 5; i++) {
+		/* force to have two 6 value */
+		if (i == 7)
+			tree_nodes[i].idx = 6;
+		insert_dummy_to_tree(&tree_nodes[i]);
+	}
+
+	dump_rb_tree(tree_root.rb_node, 0, root_node, dummy_print);
+
+	iter = rb_first(&tree_root);
+	while (iter) {
+		node = rb_to_dummy(iter);
+		printf("%d: %p\n", node->idx, node);
 		iter = rb_next(iter);
 	}
 }
@@ -147,8 +172,9 @@ void erase_test()
 int main()
 {
 	// insert_test();
+	insert_test2();
 	// case2_verify();
-	erase_test();
+	// erase_test();
 
 	return 0;
 }
