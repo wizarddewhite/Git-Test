@@ -35,12 +35,17 @@ static void init(void)
 void insert_test()
 {
 	int i;
+	struct interval_tree_node *node;
 
 	init();
 
 	for (i = 0; i < NODES; i++)
 		interval_tree_insert(&nodes[i], &root);
 	dump_rb_tree(root.rb_root.rb_node, 0, root_node, interval_node_print);
+
+	for (node = interval_tree_iter_first(&root, 900, 1400); node;
+	     node = interval_tree_iter_next(node, 900, 1400))
+		printf("[%lu, %lu]\n", node->start, node->last);
 }
 
 int main()
