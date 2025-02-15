@@ -148,15 +148,6 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 	return rebalance;
 }
 
-static void
-rb_erase_augmented(struct rb_node *node, struct rb_root *root,
-		   const struct rb_augment_callbacks *augment)
-{
-	struct rb_node *rebalance = __rb_erase_augmented(node, root, augment);
-	if (rebalance)
-		__rb_erase_color(rebalance, root, augment->rotate);
-}
-
 /*
  * Template for declaring augmented rbtree callbacks (generic case)
  *
@@ -254,4 +245,33 @@ rb_insert_augmented(struct rb_node *node, struct rb_root *root,
 {
 	__rb_insert_augmented(node, root, augment->rotate);
 }
+
+static inline void
+rb_insert_augmented_cached(struct rb_node *node,
+			   struct rb_root_cached *root, bool newleft,
+			   const struct rb_augment_callbacks *augment)
+{
+	if (newleft)
+		root->rb_leftmost = node;
+	rb_insert_augmented(node, &root->rb_root, augment);
+}
+
+static void
+rb_erase_augmented(struct rb_node *node, struct rb_root *root,
+		   const struct rb_augment_callbacks *augment)
+{
+	struct rb_node *rebalance = __rb_erase_augmented(node, root, augment);
+	if (rebalance)
+		__rb_erase_color(rebalance, root, augment->rotate);
+}
+
+static void
+rb_erase_augmented_cached(struct rb_node *node, struct rb_root_cached *root,
+			  const struct rb_augment_callbacks *augment)
+{
+	if (root->rb_leftmost == node)
+		root->rb_leftmost = rb_next(node);
+	rb_erase_augmented(node, &root->rb_root, augment);
+}
+
 #endif // _RBTREE_AUGMENTED_H 
