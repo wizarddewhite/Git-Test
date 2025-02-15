@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "rb_tree.h"
+#include "rbtree_augmented.h"
 
 #define NODES       15
 
@@ -111,6 +112,18 @@ void test_node_print(struct rb_node *node, char *prefix, int level)
 			rb_is_red(node)?'r':'b');
 }
 
+void test_node_print_augmented(struct rb_node *node, char *prefix, int level)
+{
+	struct test_node *this;
+
+	this = rb_to_test_node(node);
+	printf("%02d %s -%02d(%c) %d:%d\n",
+			level, prefix, this->key,
+			rb_is_red(node)?'r':'b',
+			this->val, this->augmented);
+}
+
+
 void insert_cached(struct test_node *node, struct rb_root_cached *root)
 {
 	struct rb_node **new = &root->rb_root.rb_node, *parent = NULL;
@@ -129,6 +142,35 @@ void insert_cached(struct test_node *node, struct rb_root_cached *root)
 
 	rb_link_node(&node->rb, parent, new);
 	rb_insert_color_cached(&node->rb, root, leftmost);
+}
+
+#define NODE_VAL(node) ((node)->val)
+
+RB_DECLARE_CALLBACKS_MAX(static, augment_callbacks,
+			 struct test_node, rb, int, augmented, NODE_VAL)
+
+static void insert_augmented(struct test_node *node,
+			     struct rb_root_cached *root)
+{
+	struct rb_node **new = &root->rb_root.rb_node, *rb_parent = NULL;
+	int key = node->key;
+	int val = node->val;
+	struct test_node *parent;
+
+	while (*new) {
+		rb_parent = *new;
+		parent = rb_entry(rb_parent, struct test_node, rb);
+		if (parent->augmented < val)
+			parent->augmented = val;
+		if (key < parent->key)
+			new = &parent->rb.rb_left;
+		else
+			new = &parent->rb.rb_right;
+	}
+
+	node->augmented = val;
+	rb_link_node(&node->rb, rb_parent, new);
+	rb_insert_augmented(&node->rb, &root->rb_root, &augment_callbacks);
 }
 
 void insert_test()
@@ -247,6 +289,20 @@ void insert_cached_test()
 	printf("The left most entry %d:%p\n", node->key, node);
 }
 
+void insert_augmented_test()
+{
+	int i;
+	struct rb_node *iter;
+	struct test_node *node;
+
+	init_cached();
+
+	for (i = 0; i < NODES; i++)
+		insert_augmented(&cached_nodes[i], &cached_root);
+	dump_rb_tree(cached_root.rb_root.rb_node, 0, root_node, test_node_print_augmented);
+
+}
+
 int main()
 {
 	// insert_test();
@@ -254,7 +310,8 @@ int main()
 	// case2_verify();
 	// erase_test();
 
-	insert_cached_test();
+	// insert_cached_test();
+	insert_augmented_test();
 
 	return 0;
 }
