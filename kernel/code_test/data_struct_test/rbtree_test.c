@@ -303,6 +303,24 @@ void insert_augmented_test()
 
 }
 
+void insert_augmented_duplicated_test()
+{
+	int i;
+	struct rb_node *iter;
+	struct test_node *node;
+
+	init_cached();
+
+	/* Force node[5] equals to node[4] */
+	cached_nodes[5].key = cached_nodes[4].key;
+	cached_nodes[5].val = cached_nodes[4].val;
+
+	for (i = 0; i < NODES; i++)
+		insert_augmented(&cached_nodes[i], &cached_root);
+	dump_rb_tree(cached_root.rb_root.rb_node, 0, root_node, test_node_print_augmented);
+
+}
+
 int main()
 {
 	// insert_test();
@@ -311,7 +329,7 @@ int main()
 	// erase_test();
 
 	// insert_cached_test();
-	insert_augmented_test();
+	insert_augmented_duplicated_test();
 
 	return 0;
 }
