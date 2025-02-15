@@ -48,9 +48,33 @@ void insert_test()
 		printf("[%lu, %lu]\n", node->start, node->last);
 }
 
+void insert_duplicate_test()
+{
+	int i;
+	struct interval_tree_node *node;
+
+	init();
+
+	/* we force nodes[4] has the same value as nodes[5] */
+	printf("[%lu, %lu] -> [%lu, %lu]\n",
+			nodes[4].start, nodes[4].last,
+			nodes[5].start, nodes[5].last);
+	nodes[4].start = nodes[5].start;
+	nodes[4].last = nodes[5].last;
+
+	for (i = 0; i < NODES; i++)
+		interval_tree_insert(&nodes[i], &root);
+	dump_rb_tree(root.rb_root.rb_node, 0, root_node, interval_node_print);
+
+	for (node = interval_tree_iter_first(&root, 300, 600); node;
+	     node = interval_tree_iter_next(node, 300, 600))
+		printf("[%lu, %lu]\n", node->start, node->last);
+}
+
 int main()
 {
-	insert_test();
+	// insert_test();
+	insert_duplicate_test();
 
 	return 0;
 }
