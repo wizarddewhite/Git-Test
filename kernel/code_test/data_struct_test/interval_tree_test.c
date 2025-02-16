@@ -4,7 +4,7 @@
 #include "rbtree_augmented.h"
 #include "interval_tree.h"
 
-#define NODES 15
+#define NODES 18
 
 static struct rb_root_cached root = RB_ROOT_CACHED;
 static struct interval_tree_node nodes[NODES];
@@ -61,6 +61,9 @@ void insert_duplicate_test()
 			nodes[5].start, nodes[5].last);
 	nodes[4].start = nodes[5].start;
 	nodes[4].last = nodes[5].last;
+
+	/* Now let's expand nodes[2].last to more than nodes[17].last*/
+	nodes[2].last = nodes[NODES-1].last + 1;
 
 	for (i = 0; i < NODES; i++)
 		interval_tree_insert(&nodes[i], &root);
