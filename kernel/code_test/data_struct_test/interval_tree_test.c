@@ -48,6 +48,31 @@ void insert_test()
 		printf("[%lu, %lu]\n", node->start, node->last);
 }
 
+void iterator_test()
+{
+	int i;
+	struct interval_tree_node *node;
+
+	init();
+
+	for (i = 0; i < NODES; i++)
+		interval_tree_insert(&nodes[i], &root);
+	dump_rb_tree(root.rb_root.rb_node, 0, root_node, interval_node_print);
+
+	/* Iterate between [900, 1400] */
+	printf("nodes overlap [900, 1400]\n");
+	for (node = interval_tree_iter_first(&root, 900, 1400); node;
+	     node = interval_tree_iter_next(node, 900, 1400))
+		printf("[%lu, %lu]\n", node->start, node->last);
+
+	printf("nodes overlap [1700, 1710]\n");
+	/* Iterate just last node [1700, 1710] */
+	for (node = interval_tree_iter_first(&root, 1700, 1710); node;
+	     node = interval_tree_iter_next(node, 1700, 1710))
+		printf("[%lu, %lu]\n", node->start, node->last);
+}
+
+
 void insert_duplicate_test()
 {
 	int i;
@@ -77,7 +102,8 @@ void insert_duplicate_test()
 int main()
 {
 	// insert_test();
-	insert_duplicate_test();
+	iterator_test();
+	// insert_duplicate_test();
 
 	return 0;
 }
