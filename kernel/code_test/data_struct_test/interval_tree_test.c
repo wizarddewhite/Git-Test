@@ -3,6 +3,7 @@
 #include "rb_tree.h"
 #include "rbtree_augmented.h"
 #include "interval_tree.h"
+#include "limits.h"
 
 #define NODES 18
 
@@ -99,11 +100,32 @@ void insert_duplicate_test()
 		printf("[%lu, %lu]\n", node->start, node->last);
 }
 
+void span_iterator()
+{
+	int i;
+	struct interval_tree_node *node;
+	struct interval_tree_span_iter allowed_span;
+
+	init();
+
+	for (i = 0; i < NODES; i++)
+		interval_tree_insert(&nodes[i], &root);
+	dump_rb_tree(root.rb_root.rb_node, 0, root_node, interval_node_print);
+
+	i = 0;
+	interval_tree_for_each_span(&allowed_span, &root, 0, ULONG_MAX) {
+		printf("[%d]: [%lu, %lu] %s\n", i++,
+				allowed_span.start_hole, allowed_span.last_hole,
+				allowed_span.is_hole ? "hole":"used");
+	}
+}
+
 int main()
 {
 	// insert_test();
-	iterator_test();
+	// iterator_test();
 	// insert_duplicate_test();
+	span_iterator();
 
 	return 0;
 }
