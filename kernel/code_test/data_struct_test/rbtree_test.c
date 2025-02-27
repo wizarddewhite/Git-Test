@@ -43,14 +43,12 @@ static void init(void)
 	}
 }
 
-void dummy_print(struct rb_node *node, char *prefix, int level)
+void dummy_print(struct rb_node *node, int level)
 {
 	struct dummy_struct *this;
 
 	this = rb_to_dummy(node);
-	printf("%02d %s -%02d(%c)\n",
-			level, prefix, this->idx,
-			rb_is_red(node)?'r':'b');
+	printf("-%02d(%c)\n", this->idx, rb_is_red(node)?'r':'b');
 }
 
 static int insert_dummy_to_tree(struct dummy_struct *node)
@@ -102,23 +100,20 @@ static void init_cached(void)
 	}
 }
 
-void test_node_print(struct rb_node *node, char *prefix, int level)
+void test_node_print(struct rb_node *node, int level)
 {
 	struct test_node *this;
 
 	this = rb_to_test_node(node);
-	printf("%02d %s -%02d(%c)\n",
-			level, prefix, this->key,
-			rb_is_red(node)?'r':'b');
+	printf("-%02d(%c)\n", this->key, rb_is_red(node)?'r':'b');
 }
 
-void test_node_print_augmented(struct rb_node *node, char *prefix, int level)
+void test_node_print_augmented(struct rb_node *node, int level)
 {
 	struct test_node *this;
 
 	this = rb_to_test_node(node);
-	printf("%02d %s -%02d(%c) %d:%d\n",
-			level, prefix, this->key,
+	printf("-%02d(%c) %d:%d\n", this->key,
 			rb_is_red(node)?'r':'b',
 			this->val, this->augmented);
 }

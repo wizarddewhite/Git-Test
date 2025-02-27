@@ -112,7 +112,7 @@ enum child_dir {
 	root_node
 };
 
-typedef void (*dp)(struct rb_node *node, char *prefix, int level);
+typedef void (*dp)(struct rb_node *node, int level);
 void dump_rb_tree(struct rb_node *node, int level,
 		enum child_dir state, dp print);
 

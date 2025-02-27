@@ -23,7 +23,7 @@
 void dump_rb_tree(struct rb_node *node, int level,
 		enum child_dir state, dp print)
 {
-	char prefix[40] = {0};
+	char prefix[40] = "                                        ";
 	int  i;
 
 	if (!node)
@@ -31,16 +31,14 @@ void dump_rb_tree(struct rb_node *node, int level,
 
 	dump_rb_tree(node->rb_right, level+1, right_child, print);
 
-	for (i = 0; i < level && i < 10; i++)
-		strcat(prefix, "   ");
-
 	if (state == left_child)
-		printf("   %s|\n", prefix);
+		printf("%.*s|\n", level * 2 + 2, prefix);
 
-	(*print)(node, prefix, level);
+	printf("%02d%.*s", level, level * 2, prefix);
+	(*print)(node, level);
 
 	if (state == right_child)
-		printf("   %s|\n", prefix);
+		printf("%.*s|\n", level * 2 + 2, prefix);
 
 	dump_rb_tree(node->rb_left, level+1, left_child, print);
 }

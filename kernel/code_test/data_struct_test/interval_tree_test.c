@@ -9,14 +9,14 @@ static struct rb_root_cached root = RB_ROOT_CACHED;
 static struct interval_tree_node nodes[NODES];
 
 #define rb_to_interval_node(X) rb_entry((X), struct interval_tree_node, rb)
-void interval_node_print(struct rb_node *node, char *prefix, int level)
+void interval_node_print(struct rb_node *node, int level)
 {
 	struct interval_tree_node *this;
 
 	this = rb_to_interval_node(node);
-	printf("%02d %s (%c) [%lu, %lu] %lu\n",
-			level, prefix,
-			rb_is_red(node)?'r':'b',
+
+	printf("(%c) [%lu, %lu] %lu\n",
+			rb_is_red(node) ? 'r':'b',
 			this->start, this->last, this->__subtree_last);
 }
 

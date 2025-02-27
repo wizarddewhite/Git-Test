@@ -5,13 +5,13 @@
 
 static struct iova_domain reserved_iova_list;
 
-void iova_print(struct rb_node *node, char *prefix, int level)
+void iova_print(struct rb_node *node, int level)
 {
 	struct iova *this;
 
 	this = container_of(node, struct iova, node);
-	printf("%02d %s -[%016lx, %016lx](%c)\n",
-			level, prefix, this->pfn_lo, this->pfn_hi,
+	printf("[%016lx, %016lx](%c)\n",
+			this->pfn_lo, this->pfn_hi,
 			rb_is_red(node)?'r':'b');
 }
 
