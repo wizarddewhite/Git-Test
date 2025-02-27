@@ -23,7 +23,6 @@
 void dump_rb_tree(struct rb_node *node, int level,
 		enum child_dir state, dp print)
 {
-	struct dummy_struct *this;
 	char prefix[40] = {0};
 	int  i;
 
