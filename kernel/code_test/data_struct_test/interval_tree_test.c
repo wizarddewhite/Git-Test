@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include "rb_tree.h"
-#include "rbtree_augmented.h"
 #include "interval_tree.h"
 #include "limits.h"
 
