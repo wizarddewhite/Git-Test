@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "kernel.h"
 #include "rbtree_augmented.h"
 
 void dump_rb_tree(struct rb_node *node, int level,
@@ -32,13 +33,13 @@ void dump_rb_tree(struct rb_node *node, int level,
 	dump_rb_tree(node->rb_right, level+1, right_child, print);
 
 	if (state == left_child)
-		printf("%.*s|\n", level * 2 + 2, prefix);
+		printf("%.*s|\n", min_t(int, level * 2 + 2, ARRAY_SIZE(prefix)), prefix);
 
-	printf("%02d%.*s", level, level * 2, prefix);
+	printf("%02d%.*s", level, min_t(int, level * 2, ARRAY_SIZE(prefix)), prefix);
 	(*print)(node, level);
 
 	if (state == right_child)
-		printf("%.*s|\n", level * 2 + 2, prefix);
+		printf("%.*s|\n", min_t(int, level * 2 + 2, ARRAY_SIZE(prefix)), prefix);
 
 	dump_rb_tree(node->rb_left, level+1, left_child, print);
 }

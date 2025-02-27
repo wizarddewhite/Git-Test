@@ -2,6 +2,8 @@
 #define _LINUX_KERNEL_
 #include "limits.h"
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 #define MAX_ERRNO	4095
 #define __force
 #define __GFP_BITS_SHIFT (27)
