@@ -25,7 +25,6 @@ void dump_rb_tree(struct rb_node *node, int level,
 		enum child_dir state, dp print)
 {
 	char prefix[40] = "                                        ";
-	int  i;
 
 	if (!node)
 		return;
