@@ -9,6 +9,6 @@ all: $(PROGRAM)
 	g++ -Wall -g $< -o $@ 
 
 %: %.c
-	gcc -Wall -g $< -o $@ -lnuma
+	gcc -Wall -g $< -o $@ -lnuma -lpthread
 clean:
 	rm -f $(PROGRAM)
