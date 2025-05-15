@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	int semid;
 	void *region;
+	int status = 0;
 	int ret = 0;
 	size_t mapsize = getpagesize();
 
@@ -144,26 +145,21 @@ int main(int argc, char *argv[])
 			semop(semid, &sem_signal, 1);
 		}
 	} else {
-		int status = 0;
-
 		semop(semid, &sem_wait, 1);
 
-		printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
-
 		ret = is_updated(region);
+	}
 
-		wait(&status);
-		if (WIFEXITED(status)) {
-			int exit_status;
-			exit_status = WEXITSTATUS(status);
-			printf("%d pid: %d 's child exit code %d\n", num_process, getpid(), exit_status);
+	printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
 
-			if (exit_status == FAIL_ON_MOVE)
-				ret = exit_status;
-		} else {
-			printf("%d pid: %d 's child not exit normally\n", num_process, getpid());
-		}
+	wait(&status);
+	if (WIFEXITED(status)) {
+		int exit_status;
+		exit_status = WEXITSTATUS(status);
+		printf("%d pid: %d 's child exit code %d\n", num_process, getpid(), exit_status);
 
+		if (exit_status == FAIL_ON_MOVE)
+			ret = exit_status;
 	}
 
 	printf("%d pid: %d finish %d\n", num_process, getpid(), ret);
