@@ -1,6 +1,7 @@
 #!/bin/bash
 QEMU=/home/richard/git/qemu/build/qemu-system-x86_64
-DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
+# DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
+DISK="-drive file=/home/richard/guest/ubuntu.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
 MEM_PER_NODE=3
 TOTAL_MEM=$(($MEM_PER_NODE * 2))
 DEFAULT="-m ${TOTAL_MEM}G,slots=32,maxmem=32G -smp 8 --enable-kvm "
@@ -33,7 +34,7 @@ while getopts ":hvmkit" opt; do
 		usage
 		;;
 	"v")
-		NO_GRAPHIC="-vnc :0,password -monitor stdio"
+		NO_GRAPHIC="-vnc :0,password=off -monitor stdio"
 		SERIAL="-serial telnet:localhost:4321,server,nowait "
 		;;
 	"m")
