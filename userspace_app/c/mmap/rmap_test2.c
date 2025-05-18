@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <numaif.h>
 #include <numa.h>
 
@@ -26,11 +27,12 @@
 
 #define TOTAL_LEVEL 5
 #define TOTAL_CHILDREN 5
-static int num_process = 1;
-static int chosen_process = 4;
-
+static unsigned int num_process = 1;
 static int num_level;
 static int num_child;
+
+static int chosen_level;
+static int chosen_child;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
@@ -96,12 +98,28 @@ int main(int argc, char *argv[])
 	int ret = 0;
 	size_t mapsize = getpagesize();
 
+
+	/* Prepare semaphore */
+	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
+	if (semid == -1) {
+		perror("segmet failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (semctl(semid, 0, SETVAL, 0) == -1) {
+		perror("semctl failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	root_pid = getpid();
+
 	rand_seed = time(NULL);
 	srand(rand_seed);
 	num_level = rand() % (TOTAL_LEVEL) + 1;
-
-	root_pid = getpid();
 	printf("%d root pid: %d, with level %d\n", num_process, root_pid, num_level);
+
+	chosen_level = rand() % num_level;
+	chosen_child = rand() % TOTAL_CHILDREN + 1;
 
 	/* Map a shared area and fault in */
 	region = mmap(0, mapsize, PROT_READ | PROT_WRITE,
@@ -119,6 +137,7 @@ repeat:
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
+
 			// printf("%d child %d of parent %d, %s\n", num_process, getpid(), getppid(), (char*)region);
 			if (++curr_level == num_level)
 				break;
