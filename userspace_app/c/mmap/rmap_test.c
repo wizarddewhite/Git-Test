@@ -27,10 +27,11 @@
 #define TOTAL_PROCESS 4
 static int num_process;
 static int chosen_process;
+static int unmap_process = -1;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
-static int semid, chosen_semid;
+static int semid, chosen_semid, unmap_semid;
 
 static char initial_data[] = "Hello, world 0!";
 static char updated_data[] = "Hello, World 0!";
@@ -87,8 +88,12 @@ int try_to_move_pages(void *page)
 
 int is_updated(void *page)
 {
+	if (page == MAP_FAILED)
+		return 0;
+
 	if (strncmp((char*)page, updated_data, strlen(updated_data)))
 		return FAIL_ON_CMP;
+
 	return 0;
 }
 
@@ -127,12 +132,15 @@ void init(int round)
 
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
 	chosen_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	if (semid == -1 || chosen_semid == -1) {
+	unmap_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
+	if (semid == -1 || chosen_semid == -1 || unmap_semid == -1) {
 		perror("segmet failed\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (semctl(semid, 0, SETVAL, 0) == -1 || semctl(chosen_semid, 0, SETVAL, 0) == -1) {
+	if (semctl(semid, 0, SETVAL, 0) == -1
+		|| semctl(chosen_semid, 0, SETVAL, 0) == -1
+		|| semctl(unmap_semid, 0, SETVAL, 0) == -1) {
 		perror("semctl failed\n");
 		exit(EXIT_FAILURE);
 	}
@@ -140,6 +148,13 @@ void init(int round)
 	rand_seed = time(NULL);
 	srand(rand_seed);
 	chosen_process = rand() % TOTAL_PROCESS + 1;
+	/* We should ummap grand parent, so at least 3 process is required */
+	if (TOTAL_PROCESS >= 3)
+		unmap_process = rand() % (TOTAL_PROCESS - 2) + 1;
+	/* We can't move page after unmap. So we don't unmap. */
+	if (unmap_process == chosen_process)
+		unmap_process = -1;
+	printf("chosen_process %d, unmap_process %d\n", chosen_process, unmap_process);
 
 	/* Map a shared area and fault in */
 	region = mmap(NULL, mapsize, PROT_READ | PROT_WRITE,
@@ -159,14 +174,19 @@ void init(int round)
 
 void cleanup()
 {
-	if (munmap(region, mapsize)) {
+	/* If we haven't unmap region, unmap it. */
+	if (region != MAP_FAILED && munmap(region, mapsize)) {
 		printf("Failed to unmap region\n");
 		exit(EXIT_FAILURE);
 	}
 
+	region = MAP_FAILED;
+
 	semctl(semid, 0, IPC_RMID);
 	semctl(chosen_semid, 0, IPC_RMID);
-	region = MAP_FAILED;
+	semctl(unmap_semid, 0, IPC_RMID);
+
+	semid = chosen_semid = unmap_semid = -1;
 }
 
 int child_process()
@@ -176,14 +196,21 @@ int child_process()
 	if (num_process == TOTAL_PROCESS) {
 		/* This is the leaf child */
 		/* tell chosen one to start */
-		printf("leaf child is running\n");
+		printf("leaf child is running, kick chosen_process\n");
 		semop(chosen_semid, &sem_signal, 1);
+	}
+
+	if (num_process == unmap_process) {
+		semop(unmap_semid, &sem_wait, 1);
+		munmap(region, mapsize);
+		region = MAP_FAILED;
+		semop(unmap_semid, &sem_signal, 1);
+		printf("\tummap process region unmapped...\n");
 	}
 
 	if (num_process == chosen_process) {
 		/* This is the chosen process, first wait leaf child created */
 		semop(chosen_semid, &sem_wait, 1);
-		sleep(2);
 		printf("chosen process %d to kick others\n", chosen_process);
 
 		/* do some job and kick others */
@@ -204,12 +231,22 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	int ret = 0;
 
-	for (int i = 0; i < 22; i++) {
+	for (int i = 0; i < 1; i++) {
 		init(i);
 
 		printf("%d root pid: %d\n", num_process, getpid());
 
 		while (num_process < TOTAL_PROCESS) {
+
+			/*
+			 * If this is the last process and we can do unmap,
+			 * continue after unmap the region.
+			 */
+			if (num_process == TOTAL_PROCESS - 1 && unmap_process != -1) {
+				semop(unmap_semid, &sem_signal, 1);
+				printf("before creating leaf child\n");
+				semop(unmap_semid, &sem_wait, 1);
+			}
 			pid = fork();
 
 			if (pid < 0) {
@@ -224,7 +261,8 @@ int main(int argc, char *argv[])
 
 		ret = child_process();
 
-		printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
+		printf("%d pid: %d continue %s\n", num_process, getpid(),
+			num_process == unmap_process ? "'Region Unmapped'" : (char*)region);
 
 		ret = wait_child(ret);
 
