@@ -25,15 +25,15 @@
 #define SIZE 1*1024*1024  // 1 MB
 
 #define TOTAL_PROCESS 4
-static int num_process = 1;
+static int num_process;
 static int chosen_process;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
 static int semid, chosen_semid;
 
-static char initial_data[] = "Hello, world!";
-static char updated_data[] = "Hello, World!";
+static char initial_data[] = "Hello, world 0!";
+static char updated_data[] = "Hello, World 0!";
 
 static unsigned int rand_seed;
 static size_t mapsize;
@@ -81,7 +81,7 @@ int try_to_move_pages(void *page)
 	if (ret < 0)
 		return FAIL_ON_MOVE;
 
-	strcpy(page, "Hello, World!");
+	strcpy(page, updated_data);
 	return 0;
 }
 
@@ -111,7 +111,7 @@ int wait_child(int ret)
 	return ret;
 }
 
-void init()
+void init(int round)
 {
 	mapsize = getpagesize();
 
@@ -142,11 +142,31 @@ void init()
 	chosen_process = rand() % TOTAL_PROCESS + 1;
 
 	/* Map a shared area and fault in */
-	region = mmap(0, mapsize, PROT_READ | PROT_WRITE,
+	region = mmap(NULL, mapsize, PROT_READ | PROT_WRITE,
 				MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (region == MAP_FAILED) {
+		printf("Map failed\n");
+		exit(EXIT_FAILURE);
+	}
 	printf("Map region: [%p - %p]\n", region, region + mapsize);
 	memset((void *)region, 1, mapsize);
+	initial_data[13] = '0' + round % 10;
+	updated_data[13] = '0' + round % 10;
 	strcpy(region, initial_data);
+
+	num_process = 1;
+}
+
+void cleanup()
+{
+	if (munmap(region, mapsize)) {
+		printf("Failed to unmap region\n");
+		exit(EXIT_FAILURE);
+	}
+
+	semctl(semid, 0, IPC_RMID);
+	semctl(chosen_semid, 0, IPC_RMID);
+	region = MAP_FAILED;
 }
 
 int child_process()
@@ -184,7 +204,9 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	int ret = 0;
 
-	init();
+	for (int i = 0; i < 2; i++) {
+
+	init(i);
 
 	printf("%d root pid: %d\n", num_process, getpid());
 
@@ -217,6 +239,17 @@ int main(int argc, char *argv[])
 			printf("Failed on moving page\n");
 		else
 			printf("One of our child doesn't see the update\n");
+
+		printf("\n\n");
+		cleanup();
+
+		// if (ret)
+		// 	break;
+	} else {
+		/* Only root process would go another round */
+		break;
+	}
+
 	}
 
 	return ret;
