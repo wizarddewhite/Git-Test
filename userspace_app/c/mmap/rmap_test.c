@@ -37,6 +37,12 @@ static char updated_data[] = "Hello, World!";
 #define FAIL_ON_MOVE (1)
 #define FAIL_ON_CMP  (2)
 
+static char* failure_reason[3] = {
+	"Normal exit",
+	"Failed to move page",
+	"Failed on comparing data",
+};
+
 int try_to_move_pages(void *page)
 {
 	int status;
@@ -91,7 +97,7 @@ int wait_child(int ret)
 	if (WIFEXITED(status)) {
 		int exit_status;
 		exit_status = WEXITSTATUS(status);
-		printf("%d pid: %d 's child exit code %d\n", num_process, getpid(), exit_status);
+		printf("%d pid: %d child exit '%s'\n", num_process, getpid(), failure_reason[exit_status]);
 
 		if (exit_status == FAIL_ON_MOVE)
 			return FAIL_ON_MOVE;
@@ -186,7 +192,7 @@ int main(int argc, char *argv[])
 
 	ret = wait_child(ret);
 
-	printf("%d pid: %d finish %d\n", num_process, getpid(), ret);
+	printf("%d pid: %d exit '%s'\n", num_process, getpid(), failure_reason[ret]);
 
 	/* root process check result */
 	if (num_process == 1) {
