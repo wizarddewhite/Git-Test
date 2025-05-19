@@ -26,7 +26,7 @@
 
 #define TOTAL_PROCESS 4
 static int num_process = 1;
-static int chosen_process = 4;
+static int chosen_process;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
@@ -84,10 +84,11 @@ int is_updated(void *page)
 int main(int argc, char *argv[])
 {
 	pid_t pid;
-	int semid;
+	int semid, chosen_semid;
 	void *region;
 	int status = 0;
 	int ret = 0;
+	unsigned int rand_seed;
 	size_t mapsize = getpagesize();
 
 	if (numa_available() < 0) {
@@ -101,15 +102,19 @@ int main(int argc, char *argv[])
 	}
 
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	if (semid == -1) {
+	chosen_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
+	if (semid == -1 || chosen_semid == -1) {
 		perror("segmet failed\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (semctl(semid, 0, SETVAL, 0) == -1) {
+	if (semctl(semid, 0, SETVAL, 0) == -1 || semctl(chosen_semid, 0, SETVAL, 0) == -1) {
 		perror("semctl failed\n");
 		exit(EXIT_FAILURE);
 	}
+
+	rand_seed = time(NULL);
+	srand(rand_seed);
 
 	printf("%d root pid: %d\n", num_process, getpid());
 
@@ -119,6 +124,8 @@ int main(int argc, char *argv[])
 	printf("Map region: [%p - %p]\n", region, region + mapsize);
 	memset((void *)region, 1, mapsize);
 	strcpy(region, initial_data);
+
+	chosen_process = rand() % TOTAL_PROCESS + 1;
 
 	while (num_process < TOTAL_PROCESS) {
 		pid = fork();
@@ -133,12 +140,20 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	/* This is the chosen process */
-	if (num_process == chosen_process) {
-		/* do some job and kick others */
-		printf("wait 10 sec to kick others\n");
-		sleep(4);
+	if (num_process == TOTAL_PROCESS) {
+		/* This is the leaf child */
+		/* tell chosen one to start */
+		printf("leaf child is running\n");
+		semop(chosen_semid, &sem_signal, 1);
+	}
 
+	if (num_process == chosen_process) {
+		/* This is the chosen process, first wait leaf child created */
+		semop(chosen_semid, &sem_wait, 1);
+		sleep(2);
+		printf("chosen process %d to kick others\n", chosen_process);
+
+		/* do some job and kick others */
 		ret = try_to_move_pages(region);
 
 		for (int i = 1; i < TOTAL_PROCESS; i++) {
@@ -146,7 +161,6 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		semop(semid, &sem_wait, 1);
-
 		ret = is_updated(region);
 	}
 
