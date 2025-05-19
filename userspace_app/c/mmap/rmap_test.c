@@ -81,12 +81,30 @@ int is_updated(void *page)
 	return 0;
 }
 
+int wait_child(int ret)
+{
+	int status = 0;
+
+	wait(&status);
+
+	/* If child failed to move, we report this to parent. */
+	if (WIFEXITED(status)) {
+		int exit_status;
+		exit_status = WEXITSTATUS(status);
+		printf("%d pid: %d 's child exit code %d\n", num_process, getpid(), exit_status);
+
+		if (exit_status == FAIL_ON_MOVE)
+			return FAIL_ON_MOVE;
+	}
+
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 	pid_t pid;
 	int semid, chosen_semid;
 	void *region;
-	int status = 0;
 	int ret = 0;
 	unsigned int rand_seed;
 	size_t mapsize = getpagesize();
@@ -166,15 +184,7 @@ int main(int argc, char *argv[])
 
 	printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
 
-	wait(&status);
-	if (WIFEXITED(status)) {
-		int exit_status;
-		exit_status = WEXITSTATUS(status);
-		printf("%d pid: %d 's child exit code %d\n", num_process, getpid(), exit_status);
-
-		if (exit_status == FAIL_ON_MOVE)
-			ret = exit_status;
-	}
+	ret = wait_child(ret);
 
 	printf("%d pid: %d finish %d\n", num_process, getpid(), ret);
 
