@@ -30,9 +30,14 @@ static int chosen_process;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
+static int semid, chosen_semid;
 
 static char initial_data[] = "Hello, world!";
 static char updated_data[] = "Hello, World!";
+
+static unsigned int rand_seed;
+static size_t mapsize;
+static void *region;
 
 #define FAIL_ON_MOVE (1)
 #define FAIL_ON_CMP  (2)
@@ -106,14 +111,9 @@ int wait_child(int ret)
 	return ret;
 }
 
-int main(int argc, char *argv[])
+void init()
 {
-	pid_t pid;
-	int semid, chosen_semid;
-	void *region;
-	int ret = 0;
-	unsigned int rand_seed;
-	size_t mapsize = getpagesize();
+	mapsize = getpagesize();
 
 	if (numa_available() < 0) {
 		printf("Numa not available, Quit\n");
@@ -139,8 +139,7 @@ int main(int argc, char *argv[])
 
 	rand_seed = time(NULL);
 	srand(rand_seed);
-
-	printf("%d root pid: %d\n", num_process, getpid());
+	chosen_process = rand() % TOTAL_PROCESS + 1;
 
 	/* Map a shared area and fault in */
 	region = mmap(0, mapsize, PROT_READ | PROT_WRITE,
@@ -148,8 +147,16 @@ int main(int argc, char *argv[])
 	printf("Map region: [%p - %p]\n", region, region + mapsize);
 	memset((void *)region, 1, mapsize);
 	strcpy(region, initial_data);
+}
 
-	chosen_process = rand() % TOTAL_PROCESS + 1;
+int main(int argc, char *argv[])
+{
+	pid_t pid;
+	int ret = 0;
+
+	init();
+
+	printf("%d root pid: %d\n", num_process, getpid());
 
 	while (num_process < TOTAL_PROCESS) {
 		pid = fork();
