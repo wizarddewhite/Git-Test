@@ -149,6 +149,36 @@ void init()
 	strcpy(region, initial_data);
 }
 
+int child_process()
+{
+	int ret = 0;
+
+	if (num_process == TOTAL_PROCESS) {
+		/* This is the leaf child */
+		/* tell chosen one to start */
+		printf("leaf child is running\n");
+		semop(chosen_semid, &sem_signal, 1);
+	}
+
+	if (num_process == chosen_process) {
+		/* This is the chosen process, first wait leaf child created */
+		semop(chosen_semid, &sem_wait, 1);
+		sleep(2);
+		printf("chosen process %d to kick others\n", chosen_process);
+
+		/* do some job and kick others */
+		ret = try_to_move_pages(region);
+
+		for (int i = 1; i < TOTAL_PROCESS; i++)
+			semop(semid, &sem_signal, 1);
+	} else {
+		semop(semid, &sem_wait, 1);
+		ret = is_updated(region);
+	}
+
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 	pid_t pid;
@@ -171,29 +201,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (num_process == TOTAL_PROCESS) {
-		/* This is the leaf child */
-		/* tell chosen one to start */
-		printf("leaf child is running\n");
-		semop(chosen_semid, &sem_signal, 1);
-	}
-
-	if (num_process == chosen_process) {
-		/* This is the chosen process, first wait leaf child created */
-		semop(chosen_semid, &sem_wait, 1);
-		sleep(2);
-		printf("chosen process %d to kick others\n", chosen_process);
-
-		/* do some job and kick others */
-		ret = try_to_move_pages(region);
-
-		for (int i = 1; i < TOTAL_PROCESS; i++) {
-			semop(semid, &sem_signal, 1);
-		}
-	} else {
-		semop(semid, &sem_wait, 1);
-		ret = is_updated(region);
-	}
+	ret = child_process();
 
 	printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
 
