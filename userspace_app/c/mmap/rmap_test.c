@@ -204,52 +204,50 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	int ret = 0;
 
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < 22; i++) {
+		init(i);
 
-	init(i);
+		printf("%d root pid: %d\n", num_process, getpid());
 
-	printf("%d root pid: %d\n", num_process, getpid());
+		while (num_process < TOTAL_PROCESS) {
+			pid = fork();
 
-	while (num_process < TOTAL_PROCESS) {
-		pid = fork();
+			if (pid < 0) {
+				perror("Error: fork\n");
+			} else if (pid == 0) {
+				++num_process;
+				printf("%d child %d of parent %d, %s\n", num_process, getpid(), getppid(), (char*)region);
+			} else {
+				break;
+			}
+		}
 
-		if (pid < 0) {
-			perror("Error: fork\n");
-		} else if (pid == 0) {
-			++num_process;
-			printf("%d child %d of parent %d, %s\n", num_process, getpid(), getppid(), (char*)region);
+		ret = child_process();
+
+		printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
+
+		ret = wait_child(ret);
+
+		printf("%d pid: %d exit '%s'\n", num_process, getpid(), failure_reason[ret]);
+
+		/* root process check result */
+		if (num_process == 1) {
+			if (!ret)
+				printf("Test pass\n");
+			else if (ret == FAIL_ON_MOVE)
+				printf("Failed on moving page\n");
+			else
+				printf("One of our child doesn't see the update\n");
+
+			printf("\n\n");
+			cleanup();
+
+			// if (ret)
+			// 	break;
 		} else {
+			/* Only root process would go another round */
 			break;
 		}
-	}
-
-	ret = child_process();
-
-	printf("%d pid: %d continue %s\n", num_process, getpid(), (char*)region);
-
-	ret = wait_child(ret);
-
-	printf("%d pid: %d exit '%s'\n", num_process, getpid(), failure_reason[ret]);
-
-	/* root process check result */
-	if (num_process == 1) {
-		if (!ret)
-			printf("Test pass\n");
-		else if (ret == FAIL_ON_MOVE)
-			printf("Failed on moving page\n");
-		else
-			printf("One of our child doesn't see the update\n");
-
-		printf("\n\n");
-		cleanup();
-
-		// if (ret)
-		// 	break;
-	} else {
-		/* Only root process would go another round */
-		break;
-	}
-
 	}
 
 	return ret;
