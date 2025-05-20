@@ -220,8 +220,7 @@ int child_process()
 
 		printf("chosen process %d has move page and now kick others...\n", chosen_process);
 		/* kick others */
-		for (int i = 1; i < TOTAL_PROCESS; i++)
-			semop(semid, &sem_signal, 1);
+		semctl(semid, 0, IPC_RMID);
 	} else {
 		/*
 		 * We are not the chosen_process, wait signal and check to see
