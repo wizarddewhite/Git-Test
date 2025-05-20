@@ -5,7 +5,7 @@
  *
  * could show the process tree
  *
- * # pstree -A -l -p root_pid | grep -o '[0-9]\+' | while read pid; do grep -H p /proc/$pid/maps || echo "not found"; done
+ * # pstree -A -l -p root_pid | grep -o '[0-9]\+' | while read pid; do grep -H range /proc/$pid/maps || echo "not found"; done
  *
  * could show we do map/unmap region in some process as expect
  */
@@ -27,7 +27,6 @@
 
 #define TOTAL_LEVEL 5
 #define TOTAL_CHILDREN 5
-static unsigned int num_process = 1;
 static int num_level;
 static int num_child;
 
@@ -36,12 +35,23 @@ static int chosen_child;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
+static int semid;
 
-static char initial_data[] = "Hello, world!";
-static char updated_data[] = "Hello, World!";
+static char initial_data[] = "Hello, world 0!";
+static char updated_data[] = "Hello, World 0!";
+
+static unsigned int rand_seed;
+static size_t mapsize;
+static void *region;
 
 #define FAIL_ON_MOVE (1)
 #define FAIL_ON_CMP  (2)
+
+static char* failure_reason[3] = {
+	"Normal exit",
+	"Failed to move page",
+	"Failed on comparing data",
+};
 
 int try_to_move_pages(void *page)
 {
@@ -82,22 +92,27 @@ int try_to_move_pages(void *page)
 
 int is_updated(void *page)
 {
+	if (page == MAP_FAILED)
+		return 0;
+
 	if (strncmp((char*)page, updated_data, strlen(updated_data)))
 		return FAIL_ON_CMP;
 	return 0;
 }
 
-int main(int argc, char *argv[])
+void init()
 {
-	pid_t root_pid, pid;
-	int semid;
-	void *region;
-	unsigned int rand_seed;
-	int i, curr_child, curr_level = 0;
-	int status = 0;
-	int ret = 0;
-	size_t mapsize = getpagesize();
+	mapsize = getpagesize();
 
+	if (numa_available() < 0) {
+		printf("Numa not available, Quit\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (numa_bitmask_weight(numa_all_nodes_ptr) <= 1) {
+		printf("Multiple numa nodes is required, Quit\n");
+		// exit(EXIT_FAILURE);
+	}
 
 	/* Prepare semaphore */
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
@@ -111,22 +126,51 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	root_pid = getpid();
-
 	rand_seed = time(NULL);
 	srand(rand_seed);
-	num_level = rand() % (TOTAL_LEVEL) + 1;
-	printf("%d root pid: %d, with level %d\n", num_process, root_pid, num_level);
 
+	num_level = rand() % (TOTAL_LEVEL) + 1;
 	chosen_level = rand() % num_level;
 	chosen_child = rand() % TOTAL_CHILDREN + 1;
 
 	/* Map a shared area and fault in */
 	region = mmap(0, mapsize, PROT_READ | PROT_WRITE,
 				MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	printf("Map region: [%p - %p]\n", region, region + mapsize);
+	if (region == MAP_FAILED) {
+		printf("Map failed\n");
+		exit(EXIT_FAILURE);
+	}
+	printf("Map region: [%lx-%lx]\n", (unsigned long)region, (unsigned long)(region + mapsize));
 	memset((void *)region, 1, mapsize);
 	strcpy(region, initial_data);
+}
+
+/* Tear down map region and semaphore. */
+void cleanup()
+{
+	/* If we haven't unmap region, unmap it. */
+	if (region != MAP_FAILED && munmap(region, mapsize)) {
+		printf("Failed to unmap region\n");
+		exit(EXIT_FAILURE);
+	}
+
+	region = MAP_FAILED;
+
+	semctl(semid, 0, IPC_RMID);
+	semid = -1;
+}
+
+
+int main(int argc, char *argv[])
+{
+	pid_t root_pid, pid;
+	int curr_child, curr_level = 0;
+	int status = 0;
+
+	init();
+
+	root_pid = getpid();
+	printf("root pid: %d, with level %d\n", root_pid, num_level);
 
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
@@ -137,8 +181,7 @@ repeat:
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
-
-			// printf("%d child %d of parent %d, %s\n", num_process, getpid(), getppid(), (char*)region);
+			// printf("child %d of parent %d, %s\n", getpid(), getppid(), (char*)region);
 			if (++curr_level == num_level)
 				break;
 			rand_seed += curr_child;
@@ -146,12 +189,15 @@ repeat:
 		}
 	}
 
-	sleep(13);
+	sleep(5);
 
 	/* Wait all child to quit */
 	while (wait(&status) > 0);
 
 	printf("%d quit \n", getpid());
 
-	return ret;
+	if (getpid() == root_pid)
+		cleanup();
+
+	return 0;
 }
