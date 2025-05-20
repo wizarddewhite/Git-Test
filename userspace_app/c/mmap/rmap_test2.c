@@ -25,8 +25,8 @@
 
 #define SIZE 1*1024*1024  // 1 MB
 
-#define TOTAL_LEVEL 5
-#define TOTAL_CHILDREN 5
+#define TOTAL_LEVEL 3
+#define TOTAL_CHILDREN 3
 static int num_level;
 static int num_child;
 
@@ -160,12 +160,29 @@ void cleanup()
 	semid = -1;
 }
 
+int child_process(bool is_last)
+{
+	if (is_last) {
+		/*
+		 * Generally we are the last, but maybe our sibling is still
+		 * creating, wait a while...
+		 */
+		sleep(5);
+		semctl(semid, 0, IPC_RMID);
+	} else {
+		/* Wait... */
+		semop(semid, &sem_wait, 1);
+	}
+
+	return 0;
+}
 
 int main(int argc, char *argv[])
 {
 	pid_t root_pid, pid;
 	int curr_child, curr_level = 0;
 	int status = 0;
+	bool is_last = true;
 
 	init();
 
@@ -174,22 +191,33 @@ int main(int argc, char *argv[])
 
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
-	printf("level %d child %d\n", curr_level, num_child);
+	printf("propagate level %d child %d\n", curr_level, num_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
 		pid = fork();
 
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
-			// printf("child %d of parent %d, %s\n", getpid(), getppid(), (char*)region);
+			if (is_last && curr_child == num_child - 1)
+				is_last = true;
+			else
+				is_last = false;
+
+			printf("  level %d %schild %d of parent %d, %s\n",
+				curr_level, is_last ? "last " : "",
+				getpid(), getppid(), (char*)region);
+
 			if (++curr_level == num_level)
 				break;
+
 			rand_seed += curr_child;
 			goto repeat;
+		} else if (curr_child == num_child - 1) {
+			is_last = false;
 		}
 	}
 
-	sleep(5);
+	child_process(is_last);
 
 	/* Wait all child to quit */
 	while (wait(&status) > 0);
