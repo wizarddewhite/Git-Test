@@ -35,7 +35,7 @@ static unsigned int worker_child;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
-static int semid;
+static int semid, worker_semid;
 
 static char initial_data[] = "Hello, world 0!";
 static char updated_data[] = "Hello, World 0!";
@@ -116,12 +116,14 @@ void init()
 
 	/* Prepare semaphore */
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	if (semid == -1) {
+	worker_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
+	if (semid == -1 || worker_semid == -1) {
 		perror("segmet failed\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (semctl(semid, 0, SETVAL, 0) == -1) {
+	if (semctl(semid, 0, SETVAL, 0) == -1
+		|| semctl(worker_semid, 0, SETVAL, 0) == -1) {
 		perror("semctl failed\n");
 		exit(EXIT_FAILURE);
 	}
@@ -164,21 +166,29 @@ void cleanup()
 	region = MAP_FAILED;
 
 	semctl(semid, 0, IPC_RMID);
-	semid = -1;
+	semctl(worker_semid, 0, IPC_RMID);
+	semid = worker_semid = -1;
 }
 
 int child_process(bool is_last, bool is_worker)
 {
-	if (is_worker)
-		printf("%d is worker\n", getpid());
-	
 	if (is_last) {
 		/*
 		 * Generally we are the last, but maybe our sibling is still
 		 * creating, wait a while...
 		 */
-		printf("%d is last\n", getpid());
+		printf("last process %d created, let's wake up worker\n", getpid());
 		sleep(5);
+		/* tell worker to do its job */
+		semop(worker_semid, &sem_signal, 1);
+	}
+
+	if (is_worker) {
+		/* This is the worker process, first wait last process created */
+		semop(worker_semid, &sem_wait, 1);
+
+		printf("worker %d has done its job and kick others...\n", getpid());
+		/* kick others */
 		semctl(semid, 0, IPC_RMID);
 	} else {
 		/* Wait... */
@@ -242,8 +252,6 @@ repeat:
 
 	child_process(is_last, is_worker);
 	
-	sleep(2);
-
 	/* Wait all child to quit */
 	while (wait(&status) > 0);
 
