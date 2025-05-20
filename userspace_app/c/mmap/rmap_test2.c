@@ -53,6 +53,11 @@ static char* failure_reason[3] = {
 	"Failed on comparing data",
 };
 
+struct process_state {
+	bool	is_last;
+	bool	is_worker;
+};
+
 int try_to_move_pages(void *page)
 {
 	int status;
@@ -170,9 +175,9 @@ void cleanup()
 	semid = worker_semid = -1;
 }
 
-int child_process(bool is_last, bool is_worker)
+int child_process(struct process_state *state)
 {
-	if (is_last) {
+	if (state->is_last) {
 		/*
 		 * Generally we are the last, but maybe our sibling is still
 		 * creating, wait a while...
@@ -183,7 +188,7 @@ int child_process(bool is_last, bool is_worker)
 		semop(worker_semid, &sem_signal, 1);
 	}
 
-	if (is_worker) {
+	if (state->is_worker) {
 		/* This is the worker process, first wait last process created */
 		semop(worker_semid, &sem_wait, 1);
 
@@ -203,8 +208,10 @@ int main(int argc, char *argv[])
 	pid_t root_pid, pid;
 	int curr_child, curr_level = 2;
 	int status = 0;
-	bool is_last = true;
-	bool is_worker = true;
+	struct process_state state = {
+		.is_last = true,
+		.is_worker = true,
+	};
 
 	init();
 
@@ -222,20 +229,20 @@ repeat:
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
-			if (is_last && curr_child == num_child - 1)
-				is_last = true;
+			if (state.is_last && curr_child == num_child - 1)
+				state.is_last = true;
 			else
-				is_last = false;
+				state.is_last = false;
 
-			if (is_worker && curr_child == worker_child 
+			if (state.is_worker && curr_child == worker_child
 				&& curr_level < worker_level)
-				is_worker = true;
+				state.is_worker = true;
 			else
-				is_worker = false;
+				state.is_worker = false;
 
 			printf("  level %d %s%schild %d of parent %d, %s\n",
-				curr_level, is_last ? "last " : "",
-				is_worker ? "worker " : "",
+				curr_level, state.is_last ? "last " : "",
+				state.is_worker ? "worker " : "",
 				getpid(), getppid(), (char*)region);
 
 			if (curr_level++ == num_level)
@@ -244,13 +251,13 @@ repeat:
 			rand_seed += curr_child;
 			goto repeat;
 		} else if (curr_child == num_child - 1) {
-			is_last = false;
+			state.is_last = false;
 			if (curr_level < worker_level)
-				is_worker = false;
+				state.is_worker = false;
 		}
 	}
 
-	child_process(is_last, is_worker);
+	child_process(&state);
 	
 	/* Wait all child to quit */
 	while (wait(&status) > 0);
