@@ -172,6 +172,7 @@ void init(int round)
 	num_process = 1;
 }
 
+/* Tear down map region and semaphore. */
 void cleanup()
 {
 	/* If we haven't unmap region, unmap it. */
@@ -201,6 +202,8 @@ int child_process()
 	}
 
 	if (num_process == unmap_process) {
+		/* This is the unmap process */
+		/* Wait signal and do unmap, and then tell them we are done. */
 		semop(unmap_semid, &sem_wait, 1);
 		munmap(region, mapsize);
 		region = MAP_FAILED;
@@ -211,18 +214,28 @@ int child_process()
 	if (num_process == chosen_process) {
 		/* This is the chosen process, first wait leaf child created */
 		semop(chosen_semid, &sem_wait, 1);
-		printf("chosen process %d to kick others\n", chosen_process);
 
-		/* do some job and kick others */
+		/* Move page here. */
 		ret = try_to_move_pages(region);
 
+		printf("chosen process %d has move page and now kick others...\n", chosen_process);
+		/* kick others */
 		for (int i = 1; i < TOTAL_PROCESS; i++)
 			semop(semid, &sem_signal, 1);
 	} else {
+		/*
+		 * We are not the chosen_process, wait signal and check to see
+		 * the update or not.
+		 */
 		semop(semid, &sem_wait, 1);
 		ret = is_updated(region);
 	}
 
+	/*
+	 * No mater what kind of process it is, we return the result of:
+	 *   * try_to_move_pages(region)
+	 *   * is_updated(region)
+	 */
 	return ret;
 }
 
@@ -237,16 +250,16 @@ int main(int argc, char *argv[])
 		printf("%d root pid: %d\n", num_process, getpid());
 
 		while (num_process < TOTAL_PROCESS) {
-
 			/*
-			 * If this is the last process and we can do unmap,
-			 * continue after unmap the region.
+			 * Before creating the leaf process and we can do unmap,
+			 * wait until unmap process did its job.
 			 */
 			if (num_process == TOTAL_PROCESS - 1 && unmap_process != -1) {
 				semop(unmap_semid, &sem_signal, 1);
 				printf("before creating leaf child\n");
 				semop(unmap_semid, &sem_wait, 1);
 			}
+
 			pid = fork();
 
 			if (pid < 0) {
