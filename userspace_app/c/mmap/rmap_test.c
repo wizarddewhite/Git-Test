@@ -5,7 +5,7 @@
  *
  * could show the process tree
  *
- * # pstree -A -l -p root_pid | grep -o '[0-9]\+' | while read pid; do grep -H p /proc/$pid/maps || echo "not found"; done
+ * # pstree -A -l -p root_pid | grep -o '[0-9]\+' | while read pid; do grep -H range /proc/$pid/maps || echo "not found"; done
  *
  * could show we do map/unmap region in some process as expect
  */
@@ -163,7 +163,7 @@ void init(int round)
 		printf("Map failed\n");
 		exit(EXIT_FAILURE);
 	}
-	printf("Map region: [%p - %p]\n", region, region + mapsize);
+	printf("Map region: [%lx-%lx]\n", (unsigned long)region, (unsigned long)(region + mapsize));
 	memset((void *)region, 1, mapsize);
 	initial_data[13] = '0' + round % 10;
 	updated_data[13] = '0' + round % 10;
@@ -207,8 +207,8 @@ int child_process()
 		semop(unmap_semid, &sem_wait, 1);
 		munmap(region, mapsize);
 		region = MAP_FAILED;
-		semop(unmap_semid, &sem_signal, 1);
 		printf("\tummap process region unmapped...\n");
+		semop(unmap_semid, &sem_signal, 1);
 	}
 
 	if (num_process == chosen_process) {
