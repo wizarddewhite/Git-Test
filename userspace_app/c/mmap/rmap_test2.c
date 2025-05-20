@@ -25,13 +25,13 @@
 
 #define SIZE 1*1024*1024  // 1 MB
 
-#define TOTAL_LEVEL 3
+#define TOTAL_LEVEL 5
 #define TOTAL_CHILDREN 3
-static int num_level;
-static int num_child;
+static unsigned int num_level;
+static unsigned int num_child;
 
-static int chosen_level;
-static int chosen_child;
+static unsigned int worker_level;
+static unsigned int worker_child;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
@@ -130,8 +130,15 @@ void init()
 	srand(rand_seed);
 
 	num_level = rand() % (TOTAL_LEVEL) + 1;
-	chosen_level = rand() % num_level;
-	chosen_child = rand() % TOTAL_CHILDREN + 1;
+	worker_level = rand() % num_level + 1;
+
+	if (num_level <= 1) {
+		printf("A process tree with more than 1 level is required\n");
+		num_level = 2;
+	}
+
+	printf("Expect to create tree with %d levels and worker at %d level\n",
+			num_level, worker_level);
 
 	/* Map a shared area and fault in */
 	region = mmap(0, mapsize, PROT_READ | PROT_WRITE,
@@ -160,13 +167,17 @@ void cleanup()
 	semid = -1;
 }
 
-int child_process(bool is_last)
+int child_process(bool is_last, bool is_worker)
 {
+	if (is_worker)
+		printf("%d is worker\n", getpid());
+	
 	if (is_last) {
 		/*
 		 * Generally we are the last, but maybe our sibling is still
 		 * creating, wait a while...
 		 */
+		printf("%d is last\n", getpid());
 		sleep(5);
 		semctl(semid, 0, IPC_RMID);
 	} else {
@@ -180,9 +191,10 @@ int child_process(bool is_last)
 int main(int argc, char *argv[])
 {
 	pid_t root_pid, pid;
-	int curr_child, curr_level = 0;
+	int curr_child, curr_level = 2;
 	int status = 0;
 	bool is_last = true;
+	bool is_worker = true;
 
 	init();
 
@@ -191,7 +203,9 @@ int main(int argc, char *argv[])
 
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
-	printf("propagate level %d child %d\n", curr_level, num_child);
+	worker_child = rand_r(&rand_seed) % num_child;
+	printf("propagate level %d child %d worker_child %d\n",
+			curr_level, num_child, worker_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
 		pid = fork();
 
@@ -203,21 +217,32 @@ repeat:
 			else
 				is_last = false;
 
-			printf("  level %d %schild %d of parent %d, %s\n",
+			if (is_worker && curr_child == worker_child 
+				&& curr_level < worker_level)
+				is_worker = true;
+			else
+				is_worker = false;
+
+			printf("  level %d %s%schild %d of parent %d, %s\n",
 				curr_level, is_last ? "last " : "",
+				is_worker ? "worker " : "",
 				getpid(), getppid(), (char*)region);
 
-			if (++curr_level == num_level)
+			if (curr_level++ == num_level)
 				break;
 
 			rand_seed += curr_child;
 			goto repeat;
 		} else if (curr_child == num_child - 1) {
 			is_last = false;
+			if (curr_level < worker_level)
+				is_worker = false;
 		}
 	}
 
-	child_process(is_last);
+	child_process(is_last, is_worker);
+	
+	sleep(2);
 
 	/* Wait all child to quit */
 	while (wait(&status) > 0);
