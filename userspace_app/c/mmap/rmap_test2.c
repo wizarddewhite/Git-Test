@@ -23,6 +23,11 @@
 #include <numaif.h>
 #include <numa.h>
 
+int test_verbose;
+#define printv(verbosity_level, fmt, ...) \
+	if(test_verbose >= verbosity_level) \
+		printf(fmt, ##__VA_ARGS__)
+
 #define SIZE 1*1024*1024  // 1 MB
 
 #define TOTAL_LEVEL 5
@@ -208,12 +213,18 @@ int child_process(struct process_state *state)
 int main(int argc, char *argv[])
 {
 	pid_t root_pid, pid;
+	int opt;
 	int curr_child, curr_level = 1;
 	int status = 0;
 	int ret = 0;
 	struct process_state state = {
 		.is_worker = true,
 	};
+
+	while ((opt = getopt(argc, argv, "v")) != -1) {
+		if (opt == 'v')
+			test_verbose++;
+	}
 
 	init();
 
@@ -223,7 +234,7 @@ int main(int argc, char *argv[])
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
 	worker_child = rand_r(&rand_seed) % num_child;
-	printf("propagate %d's level %d child %d worker_child %d\n",
+	printv(1, "propagate %d's level %d child %d worker_child %d\n",
 			getpid(), curr_level + 1, num_child, worker_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
 		pid = fork();
@@ -239,7 +250,7 @@ repeat:
 			else
 				state.is_worker = false;
 
-			printf("  level %d %schild %d of parent %d, %s\n",
+			printv(2, "  level %d %schild %d of parent %d, %s\n",
 				curr_level, state.is_worker ? "worker " : "",
 				getpid(), getppid(), (char*)region);
 
@@ -255,7 +266,7 @@ repeat:
 	}
 
 	ret = child_process(&state);
-	printf("pid: %d continue %s\n", getpid(), (char*)region);
+	printv(2, "pid: %d continue %s\n", getpid(), (char*)region);
 	
 	/* Wait all child to quit */
 	while (wait(&status) > 0) {
@@ -263,14 +274,14 @@ repeat:
 		if (WIFEXITED(status)) {
 			int exit_status;
 			exit_status = WEXITSTATUS(status);
-			printf("pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
+			printv(1, "pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
 
 			if (exit_status == FAIL_ON_MOVE)
 				ret = FAIL_ON_MOVE;
 		}
 	}
 
-	printf("%d quit \n", getpid());
+	printv(2, "%d quit \n", getpid());
 
 	if (getpid() == root_pid) {
 		if (!ret)
