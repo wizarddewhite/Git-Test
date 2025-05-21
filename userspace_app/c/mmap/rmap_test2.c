@@ -76,6 +76,8 @@ int try_to_move_pages(void *page)
 		return FAIL_ON_MOVE;
 
 	printf("current node %d\n", status);
+	if (status < 0)
+		return FAIL_ON_MOVE;
 
 	for (node = 0; node <= numa_max_node(); node++) {
 		if (numa_bitmask_isbitset(numa_all_nodes_ptr, node) && node != status) {
