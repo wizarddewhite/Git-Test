@@ -99,7 +99,7 @@ int try_to_move_pages(void *page)
 	if (ret < 0)
 		return FAIL_ON_MOVE;
 
-	strcpy(page, "Hello, World!");
+	strcpy(page, updated_data);
 	return 0;
 }
 
