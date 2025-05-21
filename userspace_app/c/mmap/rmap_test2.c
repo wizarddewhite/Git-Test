@@ -203,7 +203,7 @@ int child_process(struct process_state *state)
 int main(int argc, char *argv[])
 {
 	pid_t root_pid, pid;
-	int curr_child, curr_level = 2;
+	int curr_child, curr_level = 1;
 	int status = 0;
 	struct process_state state = {
 		.is_worker = true,
@@ -217,16 +217,18 @@ int main(int argc, char *argv[])
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
 	worker_child = rand_r(&rand_seed) % num_child;
-	printf("propagate level %d child %d worker_child %d\n",
-			curr_level, num_child, worker_child);
+	printf("propagate %d's level %d child %d worker_child %d\n",
+			getpid(), curr_level + 1, num_child, worker_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
 		pid = fork();
 
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
+			curr_level++;
+
 			if (state.is_worker && curr_child == worker_child
-				&& curr_level < worker_level)
+				&& curr_level <= worker_level)
 				state.is_worker = true;
 			else
 				state.is_worker = false;
@@ -235,7 +237,7 @@ repeat:
 				curr_level, state.is_worker ? "worker " : "",
 				getpid(), getppid(), (char*)region);
 
-			if (curr_level++ == num_level)
+			if (curr_level == num_level)
 				break;
 
 			rand_seed += curr_child;
