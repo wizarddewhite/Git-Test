@@ -69,7 +69,9 @@ int try_to_move_pages()
 	int ret;
 	int node;
 	int status = 0;
+	int repeats = 10;
 
+repeat:
 	ret = move_pages(0, 1, (void **)&region, NULL, &status, MPOL_MF_MOVE_ALL);
 
 	if (ret != 0) {
@@ -80,8 +82,14 @@ int try_to_move_pages()
 
 	printf("pid %d move_pages ret %d on node %d: %s\n",
 		getpid(), ret, status, (char *)region);
-	if (status < 0)
+
+	if (status < 0) {
+		if (repeats--) {
+			goto repeat;
+		}
+		printf("move page failed too many times\n");
 		return FAIL_ON_MOVE;
+	}
 
 	for (node = 0; node <= numa_max_node(); node++) {
 		if (numa_bitmask_isbitset(numa_all_nodes_ptr, node) && node != status) {
