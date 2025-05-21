@@ -182,6 +182,8 @@ void cleanup()
 
 int child_process(struct process_state *state)
 {
+	int ret = 0;
+
 	close(pipefd[1]);
 
 	if (state->is_worker) {
@@ -189,15 +191,18 @@ int child_process(struct process_state *state)
 		char buf;
 		while (read(pipefd[0], &buf, 1) > 0) ;
 
+		ret = try_to_move_pages(region);
+
 		printf("worker %d has done its job and kick others...\n", getpid());
 		/* kick others */
 		semctl(semid, 0, IPC_RMID);
 	} else {
 		/* Wait... */
 		semop(semid, &sem_wait, 1);
+		ret = is_updated(region);
 	}
 
-	return 0;
+	return ret;
 }
 
 int main(int argc, char *argv[])
@@ -205,6 +210,7 @@ int main(int argc, char *argv[])
 	pid_t root_pid, pid;
 	int curr_child, curr_level = 1;
 	int status = 0;
+	int ret = 0;
 	struct process_state state = {
 		.is_worker = true,
 	};
@@ -248,15 +254,35 @@ repeat:
 		}
 	}
 
-	child_process(&state);
+	ret = child_process(&state);
+	printf("pid: %d continue %s\n", getpid(), (char*)region);
 	
 	/* Wait all child to quit */
-	while (wait(&status) > 0);
+	while (wait(&status) > 0) {
+		/* If child failed to move, we report this to parent. */
+		if (WIFEXITED(status)) {
+			int exit_status;
+			exit_status = WEXITSTATUS(status);
+			printf("pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
+
+			if (exit_status == FAIL_ON_MOVE)
+				ret = FAIL_ON_MOVE;
+		}
+	}
 
 	printf("%d quit \n", getpid());
 
-	if (getpid() == root_pid)
-		cleanup();
+	if (getpid() == root_pid) {
+		if (!ret)
+			printf("Test pass\n");
+		else if (ret == FAIL_ON_MOVE)
+			printf("Failed on moving page\n");
+		else
+			printf("One of our child doesn't see the update\n");
 
-	return 0;
+		printf("\n\n");
+		cleanup();
+	}
+
+	return ret;
 }
