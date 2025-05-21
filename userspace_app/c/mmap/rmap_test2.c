@@ -64,18 +64,22 @@ struct process_state {
 	bool	is_worker;
 };
 
-int try_to_move_pages(void *page)
+int try_to_move_pages()
 {
-	int status;
-	int node;
 	int ret;
+	int node;
+	int status = 0;
 
-	ret = move_pages(0, 1, &page, NULL, &status, MPOL_MF_MOVE);
+	ret = move_pages(0, 1, (void **)&region, NULL, &status, MPOL_MF_MOVE_ALL);
 
-	if (ret < 0)
+	if (ret != 0) {
+		printf("pid %d move_pages ret %d:%d\n", getpid(), ret, status);
+		perror("move pages");
 		return FAIL_ON_MOVE;
+	}
 
-	printf("current node %d\n", status);
+	printf("pid %d move_pages ret %d on node %d: %s\n",
+		getpid(), ret, status, (char *)region);
 	if (status < 0)
 		return FAIL_ON_MOVE;
 
@@ -91,15 +95,15 @@ int try_to_move_pages(void *page)
 		return FAIL_ON_MOVE;
 	}
 
-	printf("Move page %p from Node %d to Node %d\n", page, status, node);
+	printf("Move region %p from Node %d to Node %d\n", region, status, node);
 
-	ret = move_pages(0, 1, &page, &node, &status, MPOL_MF_MOVE);
+	ret = move_pages(0, 1, (void **)region, &node, &status, MPOL_MF_MOVE_ALL);
 
 	printf("Page move result: %d, status is %d\n", ret, status);
-	if (ret < 0)
+	if (ret != 0)
 		return FAIL_ON_MOVE;
 
-	strcpy(page, updated_data);
+	strcpy(region, updated_data);
 	return 0;
 }
 
@@ -198,7 +202,7 @@ int child_process(struct process_state *state)
 		char buf;
 		while (read(pipefd[0], &buf, 1) > 0) ;
 
-		ret = try_to_move_pages(region);
+		ret = try_to_move_pages();
 
 		printf("worker %d has done its job and kick others...\n", getpid());
 		/* kick others */
@@ -268,7 +272,7 @@ repeat:
 	}
 
 	ret = child_process(&state);
-	printv(2, "pid: %d continue %s\n", getpid(), (char*)region);
+	printv(1, "pid: %d continue %s\n", getpid(), (char*)region);
 	
 	/* Wait all child to quit */
 	while (wait(&status) > 0) {
