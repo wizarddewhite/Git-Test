@@ -35,7 +35,9 @@ static unsigned int worker_child;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
-static int semid, worker_semid;
+static int semid;
+
+static int pipefd[2];
 
 static char initial_data[] = "Hello, world 0!";
 static char updated_data[] = "Hello, World 0!";
@@ -54,7 +56,6 @@ static char* failure_reason[3] = {
 };
 
 struct process_state {
-	bool	is_last;
 	bool	is_worker;
 };
 
@@ -121,15 +122,18 @@ void init()
 
 	/* Prepare semaphore */
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	worker_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	if (semid == -1 || worker_semid == -1) {
+	if (semid == -1) {
 		perror("segmet failed\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (semctl(semid, 0, SETVAL, 0) == -1
-		|| semctl(worker_semid, 0, SETVAL, 0) == -1) {
+	if (semctl(semid, 0, SETVAL, 0) == -1) {
 		perror("semctl failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (pipe(pipefd) == -1) {
+		perror("pipe failed\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -171,26 +175,19 @@ void cleanup()
 	region = MAP_FAILED;
 
 	semctl(semid, 0, IPC_RMID);
-	semctl(worker_semid, 0, IPC_RMID);
-	semid = worker_semid = -1;
+	semid = -1;
+
+	close(pipefd[0]);
 }
 
 int child_process(struct process_state *state)
 {
-	if (state->is_last) {
-		/*
-		 * Generally we are the last, but maybe our sibling is still
-		 * creating, wait a while...
-		 */
-		printf("last process %d created, let's wake up worker\n", getpid());
-		sleep(5);
-		/* tell worker to do its job */
-		semop(worker_semid, &sem_signal, 1);
-	}
+	close(pipefd[1]);
 
 	if (state->is_worker) {
 		/* This is the worker process, first wait last process created */
-		semop(worker_semid, &sem_wait, 1);
+		char buf;
+		while (read(pipefd[0], &buf, 1) > 0) ;
 
 		printf("worker %d has done its job and kick others...\n", getpid());
 		/* kick others */
@@ -209,7 +206,6 @@ int main(int argc, char *argv[])
 	int curr_child, curr_level = 2;
 	int status = 0;
 	struct process_state state = {
-		.is_last = true,
 		.is_worker = true,
 	};
 
@@ -229,20 +225,14 @@ repeat:
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
-			if (state.is_last && curr_child == num_child - 1)
-				state.is_last = true;
-			else
-				state.is_last = false;
-
 			if (state.is_worker && curr_child == worker_child
 				&& curr_level < worker_level)
 				state.is_worker = true;
 			else
 				state.is_worker = false;
 
-			printf("  level %d %s%schild %d of parent %d, %s\n",
-				curr_level, state.is_last ? "last " : "",
-				state.is_worker ? "worker " : "",
+			printf("  level %d %schild %d of parent %d, %s\n",
+				curr_level, state.is_worker ? "worker " : "",
 				getpid(), getppid(), (char*)region);
 
 			if (curr_level++ == num_level)
@@ -251,7 +241,6 @@ repeat:
 			rand_seed += curr_child;
 			goto repeat;
 		} else if (curr_child == num_child - 1) {
-			state.is_last = false;
 			if (curr_level < worker_level)
 				state.is_worker = false;
 		}
