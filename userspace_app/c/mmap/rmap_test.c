@@ -31,7 +31,9 @@ static int unmap_process = -1;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
-static int semid, chosen_semid, unmap_semid;
+static int semid, unmap_semid;
+
+int pipefd[2];
 
 static char initial_data[] = "Hello, world 0!";
 static char updated_data[] = "Hello, World 0!";
@@ -131,17 +133,20 @@ void init(int round)
 	}
 
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	chosen_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
 	unmap_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	if (semid == -1 || chosen_semid == -1 || unmap_semid == -1) {
+	if (semid == -1 || unmap_semid == -1) {
 		perror("segmet failed\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (semctl(semid, 0, SETVAL, 0) == -1
-		|| semctl(chosen_semid, 0, SETVAL, 0) == -1
 		|| semctl(unmap_semid, 0, SETVAL, 0) == -1) {
 		perror("semctl failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (pipe(pipefd) == -1) {
+		perror("pipe failed\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -184,22 +189,16 @@ void cleanup()
 	region = MAP_FAILED;
 
 	semctl(semid, 0, IPC_RMID);
-	semctl(chosen_semid, 0, IPC_RMID);
 	semctl(unmap_semid, 0, IPC_RMID);
 
-	semid = chosen_semid = unmap_semid = -1;
+	semid = unmap_semid = -1;
+
+	close(pipefd[0]);
 }
 
 int child_process()
 {
 	int ret = 0;
-
-	if (num_process == TOTAL_PROCESS) {
-		/* This is the leaf child */
-		/* tell chosen one to start */
-		printf("leaf child is running, kick chosen_process\n");
-		semop(chosen_semid, &sem_signal, 1);
-	}
 
 	if (num_process == unmap_process) {
 		/* This is the unmap process */
@@ -211,9 +210,15 @@ int child_process()
 		semop(unmap_semid, &sem_signal, 1);
 	}
 
+	close(pipefd[1]);
+
 	if (num_process == chosen_process) {
 		/* This is the chosen process, first wait leaf child created */
-		semop(chosen_semid, &sem_wait, 1);
+		char buf;
+		/* After all process close(pipefd[1]), it will return 0. */
+		while (read(pipefd[0], &buf, 1) > 0) {
+			printf("\tchild ready\n");
+		}
 
 		/* Move page here. */
 		ret = try_to_move_pages(region);
