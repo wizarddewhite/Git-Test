@@ -70,8 +70,10 @@ int try_to_move_pages()
 	int node;
 	int status = 0;
 	int repeats = 10;
+	char __attribute__((unused)) c;
 
 repeat:
+	c = *(char*)region;
 	ret = move_pages(0, 1, (void **)&region, NULL, &status, MPOL_MF_MOVE_ALL);
 
 	if (ret != 0) {
