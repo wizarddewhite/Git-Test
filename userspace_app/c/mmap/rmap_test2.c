@@ -80,7 +80,7 @@ repeat:
 		return FAIL_ON_MOVE;
 	}
 
-	printf("pid %d move_pages ret %d on node %d: %s\n",
+	printv(1, "pid %d move_pages ret %d on node %d: %s\n",
 		getpid(), ret, status, (char *)region);
 
 	if (status < 0) {
@@ -103,11 +103,11 @@ repeat:
 		return FAIL_ON_MOVE;
 	}
 
-	printf("Move region %p from Node %d to Node %d\n", region, status, node);
+	printv(1, "Move region %p from Node %d to Node %d\n", region, status, node);
 
 	ret = move_pages(0, 1, (void **)region, &node, &status, MPOL_MF_MOVE_ALL);
 
-	printf("Page move result: %d, status is %d\n", ret, status);
+	printv(1, "Page move result: %d, status is %d\n", ret, status);
 	if (ret != 0)
 		return FAIL_ON_MOVE;
 
@@ -167,7 +167,7 @@ void init()
 		num_level = 2;
 	}
 
-	printf("Expect to create tree with %d levels and worker at %d level\n",
+	printv(1, "Expect to create tree with %d levels and worker at %d level\n",
 			num_level, worker_level);
 
 	/* Map a shared area and fault in */
@@ -177,7 +177,7 @@ void init()
 		printf("Map failed\n");
 		exit(EXIT_FAILURE);
 	}
-	printf("Map region: [%lx-%lx]\n", (unsigned long)region, (unsigned long)(region + mapsize));
+	printv(1, "Map region: [%lx-%lx]\n", (unsigned long)region, (unsigned long)(region + mapsize));
 	memset((void *)region, 1, mapsize);
 	strcpy(region, initial_data);
 }
@@ -212,7 +212,7 @@ int child_process(struct process_state *state)
 
 		ret = try_to_move_pages();
 
-		printf("worker %d has done its job and kick others...\n", getpid());
+		printv(1, "worker %d has done its job and kick others...\n", getpid());
 		/* kick others */
 		semctl(semid, 0, IPC_RMID);
 	} else {
@@ -243,12 +243,12 @@ int main(int argc, char *argv[])
 	init();
 
 	root_pid = getpid();
-	printf("root pid: %d, with level %d\n", root_pid, num_level);
+	printv(1, "root pid: %d, with level %d\n", root_pid, num_level);
 
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
 	worker_child = rand_r(&rand_seed) % num_child;
-	printv(1, "propagate %d's level %d child %d worker_child %d\n",
+	printv(2, "propagate %d's level %d child %d worker_child %d\n",
 			getpid(), curr_level + 1, num_child, worker_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
 		pid = fork();
@@ -280,7 +280,7 @@ repeat:
 	}
 
 	ret = child_process(&state);
-	printv(1, "pid: %d continue %s\n", getpid(), (char*)region);
+	printv(2, "pid: %d continue %s\n", getpid(), (char*)region);
 	
 	/* Wait all child to quit */
 	while (wait(&status) > 0) {
@@ -288,7 +288,7 @@ repeat:
 		if (WIFEXITED(status)) {
 			int exit_status;
 			exit_status = WEXITSTATUS(status);
-			printv(1, "pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
+			printv(2, "pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
 
 			if (exit_status == FAIL_ON_MOVE)
 				ret = FAIL_ON_MOVE;
