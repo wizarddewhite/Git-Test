@@ -77,12 +77,12 @@ repeat:
 	ret = move_pages(0, 1, (void **)&region, NULL, &status, MPOL_MF_MOVE_ALL);
 
 	if (ret != 0) {
-		printf("pid %d move_pages ret %d:%d\n", getpid(), ret, status);
+		printf("worker %d move_pages ret %d:%d\n", getpid(), ret, status);
 		perror("move pages");
 		return FAIL_ON_MOVE;
 	}
 
-	printv(1, "pid %d move_pages ret %d on node %d: %s\n",
+	printv(1, "worker %d move_pages ret %d on node %d: %s\n",
 		getpid(), ret, status, (char *)region);
 
 	if (status < 0) {
@@ -282,7 +282,7 @@ repeat:
 	}
 
 	ret = child_process(&state);
-	printv(2, "pid: %d continue %s\n", getpid(), (char*)region);
+	printv(2, "  pid %d continue %s\n", getpid(), (char*)region);
 	
 	/* Wait all child to quit */
 	while (wait(&status) > 0) {
@@ -290,15 +290,16 @@ repeat:
 		if (WIFEXITED(status)) {
 			int exit_status;
 			exit_status = WEXITSTATUS(status);
-			printv(2, "pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
+			printv(2, "    pid: %d child exit '%s'\n", getpid(), failure_reason[exit_status]);
 
 			if (exit_status == FAIL_ON_MOVE)
 				ret = FAIL_ON_MOVE;
 		}
 	}
 
-	printv(2, "%d quit \n", getpid());
+	printv(2, "  %d quit \n", getpid());
 
+	/* root process handle the final result */
 	if (getpid() == root_pid) {
 		if (!ret)
 			printf("Test pass\n");
