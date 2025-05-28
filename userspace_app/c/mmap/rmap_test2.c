@@ -244,11 +244,12 @@ int main(int argc, char *argv[])
 {
 	pid_t root_pid, pid;
 	int opt;
-	int curr_child, curr_level = 1;
+	int curr_child;
 	int status = 0;
 	int ret = 0;
 	struct process_state state = {
 		.is_worker = true,
+		.curr_level = 1,
 	};
 
 	while ((opt = getopt(argc, argv, "v")) != -1) {
@@ -272,13 +273,13 @@ repeat:
 		unmap_child = -1;
 	}
 	printv(2, "propagate %d's level %d child %d worker_child %d unmap_child %d\n",
-			getpid(), curr_level + 1, num_child, worker_child, unmap_child);
+			getpid(), state.curr_level + 1, num_child, worker_child, unmap_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
 		/*
 		 * Before creating the leaf process, we should do unmap.
 		 * Wait until unmap process did its job.
 		 */
-		if (curr_level == num_level - 1 && unmap_level != -1) {
+		if (state.curr_level == num_level - 1 && unmap_level != -1) {
 			// printf("before creating leaf child\n");
 			// semop(unmap_semid, &sem_wait, 1);
 		}
@@ -288,33 +289,33 @@ repeat:
 		if (pid < 0) {
 			perror("Error: fork\n");
 		} else if (pid == 0) {
-			curr_level++;
+			state.curr_level++;
 
-			if (curr_child == worker_child && curr_level <= worker_level)
+			if (curr_child == worker_child && state.curr_level <= worker_level)
 				state.is_worker = true;
 			else
 				state.is_worker = false;
 
-			if (curr_child == unmap_child && curr_level <= unmap_level)
+			if (curr_child == unmap_child && state.curr_level <= unmap_level)
 				state.is_unmap = true;
 			else
 				state.is_unmap = false;
 
 			printv(2, "  level %d %d of parent %d, %s is %s %s\n",
-				curr_level, getpid(), getppid(), (char*)region,
+				state.curr_level, getpid(), getppid(), (char*)region,
 				state.is_worker ? "worker " : "",
 				state.is_unmap ? "unmap " : "");
 
-			if (curr_level == num_level)
+			if (state.curr_level == num_level)
 				break;
 
 			rand_seed += curr_child;
 			goto repeat;
 		} else if (curr_child == num_child - 1) {
-			if (curr_level < worker_level) {
+			if (state.curr_level < worker_level) {
 				state.is_worker = false;
 			}
-			if (curr_level < unmap_level) {
+			if (state.curr_level < unmap_level) {
 				state.is_unmap = false;
 			}
 		}
