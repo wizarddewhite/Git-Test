@@ -37,10 +37,12 @@ static unsigned int num_child;
 
 static unsigned int worker_level;
 static unsigned int worker_child;
+static unsigned int unmap_level = -1;
+static unsigned int unmap_child;
 
 struct sembuf sem_wait = {0, -1, 0};
 struct sembuf sem_signal = {0, 1, 0};
-static int semid;
+static int semid, unmap_semid;
 
 static int pipefd[2];
 
@@ -62,6 +64,8 @@ static char* failure_reason[3] = {
 
 struct process_state {
 	bool	is_worker;
+	bool	is_unmap;
+	int	curr_level;
 };
 
 int try_to_move_pages()
@@ -143,12 +147,14 @@ void init()
 
 	/* Prepare semaphore */
 	semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-	if (semid == -1) {
+	unmap_semid = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
+	if (semid == -1 || unmap_semid == -1) {
 		perror("segmet failed\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (semctl(semid, 0, SETVAL, 0) == -1) {
+	if (semctl(semid, 0, SETVAL, 0) == -1 ||
+		semctl(unmap_semid, 0, SETVAL, 0) == -1) {
 		perror("semctl failed\n");
 		exit(EXIT_FAILURE);
 	}
@@ -163,14 +169,17 @@ void init()
 
 	num_level = rand() % (TOTAL_LEVEL) + 1;
 	worker_level = rand() % num_level + 1;
+	/* We should ummap grand parent, so at least 3 process is required */
+	if (num_level >= 3)
+		unmap_level = rand() % (num_level - 2) + 1;
 
 	if (num_level <= 1) {
 		printf("A process tree with more than 1 level is required\n");
 		num_level = 2;
 	}
 
-	printv(1, "Expect to create tree with %d levels and worker at %d level\n",
-			num_level, worker_level);
+	printv(1, "Expect to create tree with %d levels and worker at %d level, unmap at %d level\n",
+			num_level, worker_level, unmap_level);
 
 	/* Map a shared area and fault in */
 	region = mmap(0, mapsize, PROT_READ | PROT_WRITE,
@@ -196,7 +205,8 @@ void cleanup()
 	region = MAP_FAILED;
 
 	semctl(semid, 0, IPC_RMID);
-	semid = -1;
+	semctl(unmap_semid, 0, IPC_RMID);
+	semid = unmap_semid = -1;
 
 	close(pipefd[0]);
 }
@@ -206,6 +216,10 @@ int child_process(struct process_state *state)
 	int ret = 0;
 
 	close(pipefd[1]);
+
+	if (state->is_unmap) {
+		printv(1, "unmap process %d \n", getpid());
+	}
 
 	if (state->is_worker) {
 		/* This is the worker process, first wait last process created */
@@ -243,16 +257,32 @@ int main(int argc, char *argv[])
 	}
 
 	init();
+	state.is_unmap = (unmap_level != -1);
 
 	root_pid = getpid();
-	printv(1, "root pid: %d, with level %d\n", root_pid, num_level);
+	printv(1, "root pid: %d, with level %d is%s unmap\n",
+		root_pid, num_level, state.is_unmap ? "":"n't");
 
 repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
 	worker_child = state.is_worker ? rand_r(&rand_seed) % num_child : -1;
-	printv(2, "propagate %d's level %d child %d worker_child %d\n",
-			getpid(), curr_level + 1, num_child, worker_child);
+	unmap_child = state.is_unmap ? rand_r(&rand_seed) % num_child : -1;
+	/* We can't move page after unmap */
+	if (worker_level == unmap_level && worker_child == unmap_child) {
+		unmap_child = -1;
+	}
+	printv(2, "propagate %d's level %d child %d worker_child %d unmap_child %d\n",
+			getpid(), curr_level + 1, num_child, worker_child, unmap_child);
 	for (curr_child = 0; curr_child < num_child; curr_child++) {
+		/*
+		 * Before creating the leaf process, we should do unmap.
+		 * Wait until unmap process did its job.
+		 */
+		if (curr_level == num_level - 1 && unmap_level != -1) {
+			// printf("before creating leaf child\n");
+			// semop(unmap_semid, &sem_wait, 1);
+		}
+
 		pid = fork();
 
 		if (pid < 0) {
@@ -265,9 +295,15 @@ repeat:
 			else
 				state.is_worker = false;
 
-			printv(2, "  level %d %schild %d of parent %d, %s\n",
-				curr_level, state.is_worker ? "worker " : "",
-				getpid(), getppid(), (char*)region);
+			if (curr_child == unmap_child && curr_level <= unmap_level)
+				state.is_unmap = true;
+			else
+				state.is_unmap = false;
+
+			printv(2, "  level %d %d of parent %d, %s is %s %s\n",
+				curr_level, getpid(), getppid(), (char*)region,
+				state.is_worker ? "worker " : "",
+				state.is_unmap ? "unmap " : "");
 
 			if (curr_level == num_level)
 				break;
@@ -275,8 +311,12 @@ repeat:
 			rand_seed += curr_child;
 			goto repeat;
 		} else if (curr_child == num_child - 1) {
-			if (curr_level < worker_level)
+			if (curr_level < worker_level) {
 				state.is_worker = false;
+			}
+			if (curr_level < unmap_level) {
+				state.is_unmap = false;
+			}
 		}
 	}
 
