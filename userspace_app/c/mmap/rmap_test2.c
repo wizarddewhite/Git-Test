@@ -5,7 +5,7 @@
  *
  * could show the process tree
  *
- * # pstree -A -l -p root_pid | grep -o '[0-9]\+' | while read pid; do grep -H range /proc/$pid/maps || echo "not found"; done
+ * # pstree -A -l -p root_pid | grep -oP '\(\K\d+(?=\))' | while read pid; do grep -H range /proc/$pid/maps || echo "not found"; done
  *
  * could show we do map/unmap region in some process as expect
  */
@@ -215,11 +215,19 @@ int child_process(struct process_state *state)
 {
 	int ret = 0;
 
-	close(pipefd[1]);
-
-	if (state->is_unmap) {
-		printv(1, "unmap process %d \n", getpid());
+	/* The is_unmap one on exact unmap_level is the one we want. */
+	if (state->is_unmap && state->curr_level == unmap_level) {
+		/* This is the unmap process */
+		/* Wait signal and do unmap, and then tell them we are done. */
+		semop(unmap_semid, &sem_wait, 1);
+		printv(1, "unmap process %d try to region....\n", getpid());
+		munmap(region, mapsize);
+		printv(1, "unmap process %d unmapped region\n", getpid());
+		region = MAP_FAILED;
+		semop(unmap_semid, &sem_signal, 1);
 	}
+
+	close(pipefd[1]);
 
 	if (state->is_worker) {
 		/* This is the worker process, first wait last process created */
@@ -229,6 +237,7 @@ int child_process(struct process_state *state)
 		ret = try_to_move_pages();
 
 		printv(1, "worker %d has done its job and kick others...\n", getpid());
+
 		/* kick others */
 		semctl(semid, 0, IPC_RMID);
 	} else {
@@ -268,7 +277,10 @@ repeat:
 	num_child = rand_r(&rand_seed) % TOTAL_CHILDREN + 1;
 	worker_child = state.is_worker ? rand_r(&rand_seed) % num_child : -1;
 	unmap_child = state.is_unmap ? rand_r(&rand_seed) % num_child : -1;
-	/* We can't move page after unmap */
+	/*
+	 * We can't move page after unmap, so if they are the same, we don't
+	 * do unmap.
+	 */
 	if (worker_level == unmap_level && worker_child == unmap_child) {
 		unmap_child = -1;
 	}
@@ -279,9 +291,10 @@ repeat:
 		 * Before creating the leaf process, we should do unmap.
 		 * Wait until unmap process did its job.
 		 */
-		if (state.curr_level == num_level - 1 && unmap_level != -1) {
-			// printf("before creating leaf child\n");
-			// semop(unmap_semid, &sem_wait, 1);
+		if (state.curr_level == num_level - 1 && unmap_child == curr_child) {
+			semop(unmap_semid, &sem_signal, 1);
+			printf("before creating leaf child\n");
+			semop(unmap_semid, &sem_wait, 1);
 		}
 
 		pid = fork();
@@ -296,8 +309,8 @@ repeat:
 			else
 				state.is_worker = false;
 
-			if (curr_child == unmap_child && state.curr_level <= unmap_level)
-				state.is_unmap = true;
+			if (curr_child == unmap_child)
+				state.is_unmap = state.is_unmap;
 			else
 				state.is_unmap = false;
 
@@ -315,14 +328,12 @@ repeat:
 			if (state.curr_level < worker_level) {
 				state.is_worker = false;
 			}
-			if (state.curr_level < unmap_level) {
-				state.is_unmap = false;
-			}
 		}
 	}
 
 	ret = child_process(&state);
-	printv(2, "  pid %d continue %s\n", getpid(), (char*)region);
+	printv(2, "  pid %d continue %s\n", getpid(),
+			region == MAP_FAILED ? "UNMAPPED":(char*)region);
 	
 	/* Wait all child to quit */
 	while (wait(&status) > 0) {
