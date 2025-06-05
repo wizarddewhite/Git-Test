@@ -48,8 +48,8 @@ int main(void)
 	ret = move_pages(0, 1, (void **)&pages, NULL, status, MPOL_MF_MOVE);
 
 	if (!ret) {
-	  cur_node = status[0];
-	  printf("Current numa node is : %d\n", cur_node);
+		cur_node = status[0];
+		printf("Current numa node is : %d\n", cur_node);
 	}
 
 	printf("Max numa node: %d\n", numa_max_node());
