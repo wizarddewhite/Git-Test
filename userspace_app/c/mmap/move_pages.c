@@ -8,7 +8,7 @@
 #include <numaif.h>
 #include <numa.h>
 
-int main(void)
+int move_to_different_node()
 {
 	size_t pagesize = getpagesize();
 	size_t mapsize = pagesize;
@@ -72,6 +72,13 @@ int main(void)
 	ret = move_pages(0, 1, (void **)&pages, nodes, status, MPOL_MF_MOVE);
 
 	printf("Page move result: %d, status is %d\n", ret, status[0]);
+
+	return 0;
+}
+
+int main(void)
+{
+	move_to_different_node();
 
 	return 0;
 }
