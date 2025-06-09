@@ -11,3 +11,4 @@
 
 
 uint64_t pagemap_get_entry(int fd, char *start);
+unsigned long pagemap_get_pfn(int fd, char *start);
