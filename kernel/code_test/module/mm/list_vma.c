@@ -73,3 +73,4 @@ static void list_vma_exit(void)
 module_init(list_vma_init);
 module_exit(list_vma_exit);
 
+MODULE_DESCRIPTION ("ywtest");

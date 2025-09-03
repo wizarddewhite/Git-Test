@@ -51,3 +51,5 @@ static void mempool_test_exit(void)
 
 module_init(mempool_test_init);
 module_exit(mempool_test_exit);
+
+MODULE_DESCRIPTION ("ywtest");

@@ -149,3 +149,4 @@ static void show_pmd_exit(void)
 module_init(show_pmd_init);
 module_exit(show_pmd_exit);
 
+MODULE_DESCRIPTION ("ywtest");

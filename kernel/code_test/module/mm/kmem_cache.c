@@ -55,3 +55,5 @@ static void kmem_cache_test_exit(void)
 }
 module_init(kmem_cache_test_init);
 module_exit(kmem_cache_test_exit);
+
+MODULE_DESCRIPTION ("ywtest");
