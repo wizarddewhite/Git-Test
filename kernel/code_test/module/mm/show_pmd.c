@@ -78,8 +78,8 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	if (pmd_trans_huge(pmde)) {
 		printk(KERN_ERR "This is a trans huge pmd\n");
 		printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
-		printk(KERN_ERR "\tmap  count: %d\n", page_mapcount(page));
-		printk(KERN_ERR "\tcom mapcnt: %d\n", compound_mapcount(page));
+		printk(KERN_ERR "\tmap  count: %d\n", folio_mapcount(page_folio(page)));
+		printk(KERN_ERR "\tcom mapcnt: %d\n", folio_mapcount(page_folio(page)));
 		ret = memory_failure(page_to_pfn(page), 0);
 		printk(KERN_ERR "ret %d\n", ret);
 		return;
@@ -100,7 +100,7 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	for (i = 0; i < 512; i++)
 		ret += atomic_read(&page[i]._mapcount) + 1;
 	printk(KERN_ERR "\tmap  count: %d\n", ret);
-	printk(KERN_ERR "\tcom mapcnt: %d\n", compound_mapcount(page));
+	printk(KERN_ERR "\tcom mapcnt: %d\n", folio_mapcount(page_folio(page)));
 
 	//ret = split_huge_page(page);
 	ret = memory_failure(pfn, 0);
@@ -117,7 +117,7 @@ void show_pmd(struct task_struct *task)
 		return;
 	}
 
-	down_read(&mm->mmap_sem);
+	mmap_read_lock(mm);
 
 	vma = find_vma(mm, address);
 	printk(KERN_ERR "Find vma for address: %08lx [%08lx - %08lx]\n",
@@ -129,7 +129,7 @@ void show_pmd(struct task_struct *task)
 
 	_show_pmd(mm, address);
 
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	mmput(mm);
 }
 
