@@ -4,6 +4,7 @@
 #include <linux/sched.h>
 #include <linux/sched/task.h>
 #include <linux/sched/mm.h>
+#include <linux/mm.h>
 MODULE_LICENSE("Dual BSD/GPL");
 
 int pid = 1;
@@ -42,17 +43,16 @@ void list_vma(struct task_struct *task)
 {
 	struct mm_struct *mm = get_task_mm(task);
 	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, mm, 0);
 
 	if (!mm) {
 		printk(KERN_ERR "No mm\n");
 		return;
 	}
 	
-	down_read(&mm->mmap_sem);
-	for (vma = mm->mmap ; vma ; vma = vma->vm_next) {
+	for_each_vma(vmi, vma) {
 		printk(KERN_ERR "%08lx - %08lx\n", vma->vm_start, vma->vm_end);
 	}
-	up_read(&mm->mmap_sem);
 
 	mmput(mm);
 }
