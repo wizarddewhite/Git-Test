@@ -15,7 +15,7 @@ module_param(address, ulong, 0);
 struct pid *p;
 struct task_struct *task;
 
-struct task_struct *get_task(void)
+static struct task_struct *get_task(void)
 {
 
 	p = find_get_pid(pid);
@@ -34,14 +34,14 @@ struct task_struct *get_task(void)
 	return task;
 }
 
-void put_task(void)
+static void put_task(void)
 {
 	put_task_struct(task);
 	put_pid(p);
 	return;
 }
 
-void _show_pmd(struct mm_struct *mm, unsigned long address)
+static void _show_pmd(struct mm_struct *mm, unsigned long address)
 {
 	int i, ret;
 	struct page *page;
@@ -85,6 +85,9 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 		return;
 	}
 
+	/*
+	 * Need to EXPORT_SYMBOL(___pte_offset_map);
+	 */
 	pte = pte_offset_map(pmd, address);
 	if (!pte_present(*pte)) {
 		printk(KERN_ERR "pte not present\n");
@@ -107,7 +110,7 @@ void _show_pmd(struct mm_struct *mm, unsigned long address)
 	printk(KERN_ERR "ret %d\n", ret);
 }
 
-void show_pmd(struct task_struct *task)
+static void show_pmd(struct task_struct *task)
 {
 	struct mm_struct *mm = get_task_mm(task);
 	struct vm_area_struct *vma;
