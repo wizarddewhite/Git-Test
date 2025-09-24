@@ -45,36 +45,36 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 {
 	struct page *page;
 	pgd_t *pgd;
-	p4d_t *p4d;
-	pud_t *pud;
-	pmd_t *pmd;
-	pmd_t pmde;
-	pte_t *pte;
+	p4d_t *p4dp;
+	pud_t *pudp;
+	pmd_t *pmdp;
+	pmd_t pmd;
+	pte_t *ptep;
 	unsigned long pfn;
 	pgd = pgd_offset(mm, address);
 
 	if (!pgd_present(*pgd))
 		return;
-	p4d = p4d_offset(pgd, address);
-	if (!p4d_present(*p4d))
+	p4dp = p4d_offset(pgd, address);
+	if (!p4d_present(*p4dp))
 		return;
-	pud = pud_offset(p4d, address);
-	if (!pud_present(*pud))
+	pudp = pud_offset(p4dp, address);
+	if (!pud_present(*pudp))
 		return;
 
-	pmd = pmd_offset(pud, address);
-	pmde = READ_ONCE(*pmd);
+	pmdp = pmd_offset(pudp, address);
+	pmd = READ_ONCE(*pmdp);
 
-	if (!pmd_present(pmde)) {
+	if (!pmd_present(pmd)) {
 		printk(KERN_ERR "pmd not present\n");
 		return;
 	}
 
-	page = pmd_page(pmde);
+	page = pmd_page(pmd);
 	printk(KERN_ERR "pmd page at %lx is %s compound\n",
 			page_to_pfn(page), PageCompound(page)?"":"not");
 
-	if (pmd_trans_huge(pmde)) {
+	if (pmd_trans_huge(pmd)) {
 		printk(KERN_ERR "This is a trans huge pmd\n");
 		printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
 		printk(KERN_ERR "\tmap  count: %d\n", folio_mapcount(page_folio(page)));
@@ -87,13 +87,13 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 	/*
 	 * Need to EXPORT_SYMBOL(___pte_offset_map);
 	 */
-	pte = pte_offset_map(pmd, address);
-	if (!pte_present(*pte)) {
+	ptep = pte_offset_map(pmdp, address);
+	if (!pte_present(*ptep)) {
 		printk(KERN_ERR "pte not present\n");
 		return;
 	}
 
-	pfn = pte_pfn(*pte);
+	pfn = pte_pfn(*ptep);
 	page = pfn_to_page(pfn);
 	printk(KERN_ERR "pte page at %lx is %s compound\n",
 			pfn, PageCompound(pfn_to_page(pfn))?"":"not");
@@ -102,7 +102,7 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 
 	// ret = split_huge_page(page);
 	// ret = memory_failure(pfn, 0);
-	pte_unmap(pte);
+	pte_unmap(ptep);
 }
 
 static void show_pmd(struct task_struct *task)
