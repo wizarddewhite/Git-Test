@@ -86,8 +86,10 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 
 	/* pmd_page() is different from pmd_pgtable_page() */
 	page = pmd_page(pmd);
-	printk(KERN_ERR "pmd page at %lx is %s compound\n",
+	printk(KERN_ERR "pmd_pfn(pmd) is  %lx\n", pmd_pfn(pmd));
+	printk(KERN_ERR "pmd_page(pmd) is %lx is %s compound\n",
 			page_to_pfn(page), PageCompound(page)?"":"not");
+	printk(KERN_ERR " => pmd_page() != pmd_pgtable_page()\n");
 
 	if (pmd_trans_huge(pmd)) {
 		printk(KERN_ERR "This is a trans huge pmd\n");
@@ -108,9 +110,20 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 		return;
 	}
 
-	printk(KERN_ERR "pmdp %lx ptep %lx, pte_index %lx(%lx)\n",
+	printk(KERN_ERR "pmd_page_vaddr %lx ptep %lx, pte_index %lx(%lx)\n",
 			(unsigned long)pmd_page_vaddr(*pmdp), (unsigned long)ptep,
 			pte_index(address), pte_index(address) * sizeof(pte_t *));
+	printk(KERN_ERR " => ptep = pmd_page_vaddr(*pmdp) + pte_index()\n");
+
+	printk(KERN_ERR "pmd_pfn(*pmdp) %lx\n", pmd_pfn(*pmdp));
+	printk(KERN_ERR "pte_lockptr page's pfn %lx\n",
+			page_to_pfn(pmd_page(pmd)));
+	printk(KERN_ERR "ptep_lockptr page's pfn %lx\n",
+			page_to_pfn(virt_to_page(ptep)));
+	printk(KERN_ERR " => pte_lockptr/ptep_lockptr page is both pmd_pfn() page\n");
+
+	printk(KERN_ERR "pmd_page_vaddr %lx pa %lx\n",
+			(unsigned long)pmd_page_vaddr(*pmdp), __pa((unsigned long)pmd_page_vaddr(*pmdp)));
 
 	pfn = pte_pfn(*ptep);
 	page = pfn_to_page(pfn);
