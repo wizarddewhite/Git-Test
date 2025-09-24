@@ -30,7 +30,7 @@ static struct task_struct *get_task(void)
 		put_pid(p);
 		return NULL;
 	}
-	printk(KERN_ERR "task: %s\n", task->comm);
+	printk(KERN_ERR "task: %d:%s\n", pid, task->comm);
 	return task;
 }
 
@@ -43,7 +43,6 @@ static void put_task(void)
 
 static void _show_pmd(struct mm_struct *mm, unsigned long address)
 {
-	int i, ret;
 	struct page *page;
 	pgd_t *pgd;
 	p4d_t *p4d;
@@ -80,8 +79,8 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 		printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
 		printk(KERN_ERR "\tmap  count: %d\n", folio_mapcount(page_folio(page)));
 		printk(KERN_ERR "\tcom mapcnt: %d\n", folio_mapcount(page_folio(page)));
-		ret = memory_failure(page_to_pfn(page), 0);
-		printk(KERN_ERR "ret %d\n", ret);
+		// ret = memory_failure(page_to_pfn(page), 0);
+		// printk(KERN_ERR "ret %d\n", ret);
 		return;
 	}
 
@@ -99,15 +98,11 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 	printk(KERN_ERR "pte page at %lx is %s compound\n",
 			pfn, PageCompound(pfn_to_page(pfn))?"":"not");
 	printk(KERN_ERR "\tpage_count: %d\n", page_count(page));
-	ret = 0;
-	for (i = 0; i < 512; i++)
-		ret += atomic_read(&page[i]._mapcount) + 1;
-	printk(KERN_ERR "\tmap  count: %d\n", ret);
 	printk(KERN_ERR "\tcom mapcnt: %d\n", folio_mapcount(page_folio(page)));
 
-	//ret = split_huge_page(page);
-	ret = memory_failure(pfn, 0);
-	printk(KERN_ERR "ret %d\n", ret);
+	// ret = split_huge_page(page);
+	// ret = memory_failure(pfn, 0);
+	pte_unmap(pte);
 }
 
 static void show_pmd(struct task_struct *task)
@@ -130,7 +125,7 @@ static void show_pmd(struct task_struct *task)
 			vma->vm_start == (vma->vm_pgoff << PAGE_SHIFT) ?
 			"" : "not");
 
-	_show_pmd(mm, address);
+	_show_pmd(mm, vma->vm_start);
 
 	mmap_read_unlock(mm);
 	mmput(mm);
