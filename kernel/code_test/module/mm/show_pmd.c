@@ -44,18 +44,18 @@ static void put_task(void)
 static void _show_pmd(struct mm_struct *mm, unsigned long address)
 {
 	struct page *page;
-	pgd_t *pgd;
+	pgd_t *pgdp;
 	p4d_t *p4dp;
 	pud_t *pudp;
 	pmd_t *pmdp;
 	pmd_t pmd;
 	pte_t *ptep;
 	unsigned long pfn;
-	pgd = pgd_offset(mm, address);
+	pgdp = pgd_offset(mm, address);
 
-	if (!pgd_present(*pgd))
+	if (!pgd_present(*pgdp))
 		return;
-	p4dp = p4d_offset(pgd, address);
+	p4dp = p4d_offset(pgdp, address);
 	if (!p4d_present(*p4dp))
 		return;
 	pudp = pud_offset(p4dp, address);
@@ -70,6 +70,21 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 		return;
 	}
 
+	printk(KERN_ERR "pmd_index(%lx) is %lx(%lx)\n", address,
+			pmd_index(address), pmd_index(address) * sizeof(pmd_t *));
+	/* pmdp = pud_pgtable() + pmd_index() */
+	printk(KERN_ERR "pud_pgtable %lx pmdp %lx\n",
+			(unsigned long)pud_pgtable(*pudp), (unsigned long)pmdp);
+	printk(KERN_ERR " => pmdp = pud_pgtable() + pmd_index()\n");
+	printk(KERN_ERR "pud_pgtable()'s pfn %lx\n", page_to_pfn(virt_to_page((void *)pud_pgtable(*pudp))));
+	printk(KERN_ERR "pud encodes pfn %lx\n",
+			pud_val(*pudp) & pud_pfn_mask(*pudp));
+	printk(KERN_ERR " => pud_pgtable(*pudp) get the vaddr and paddr is encoded\n");
+	printk(KERN_ERR "pmd_pgtable_page(pmdp)'s pfn %lx\n",
+			page_to_pfn(pmd_pgtable_page(pmdp)));
+	printk(KERN_ERR " => pud_pgtable()'s pfn and pmd_pgtable_page(pmdp)'s pfn are the same\n");
+
+	/* pmd_page() is different from pmd_pgtable_page() */
 	page = pmd_page(pmd);
 	printk(KERN_ERR "pmd page at %lx is %s compound\n",
 			page_to_pfn(page), PageCompound(page)?"":"not");
@@ -92,6 +107,10 @@ static void _show_pmd(struct mm_struct *mm, unsigned long address)
 		printk(KERN_ERR "pte not present\n");
 		return;
 	}
+
+	printk(KERN_ERR "pmdp %lx ptep %lx, pte_index %lx(%lx)\n",
+			(unsigned long)pmd_page_vaddr(*pmdp), (unsigned long)ptep,
+			pte_index(address), pte_index(address) * sizeof(pte_t *));
 
 	pfn = pte_pfn(*ptep);
 	page = pfn_to_page(pfn);
