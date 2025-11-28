@@ -203,10 +203,79 @@ void map_shm()
 	// 该文件在/dev/shm/shm_example
 	shm_unlink(name);
 }
+
+void map_file_private_shared()
+{
+	int fd = open("test.dat", O_RDWR | O_CREAT, 0666);
+	if (fd < 0) {
+		perror("open");
+		return;
+	}
+
+	// 准备测试文件内容
+	const char *initial_content = "Hello, World!";
+	ftruncate(fd, strlen(initial_content) + 1);
+	write(fd, initial_content, strlen(initial_content) + 1);
+
+	// 映射文件
+	char *shared_map = mmap(NULL, 100, PROT_READ | PROT_WRITE,
+			       MAP_SHARED, fd, 0);
+	char *private_map = mmap(NULL, 100, PROT_READ | PROT_WRITE,
+				MAP_PRIVATE, fd, 0);
+
+	if (shared_map == MAP_FAILED || private_map == MAP_FAILED) {
+	    perror("mmap");
+	    return;
+	}
+
+	printf("Initial content:\n");
+	printf("shared map: %s\n", shared_map);
+	printf("privat map: %s\n", private_map);
+
+	// 测试写操作的影响
+	printf("\n=== test shared map write ===\n");
+	strcpy(shared_map, "SHARED modify");
+	printf("after - shared map: %s\n", shared_map);
+	printf("after - privat map: %s\n", private_map);  // 私有映射应该不变
+
+	// 重置内容
+	lseek(fd, 0, SEEK_SET);
+	write(fd, initial_content, strlen(initial_content) + 1);
+
+	printf("\nReset content:\n");
+	printf("shared map: %s\n", shared_map);
+	printf("privat map: %s\n", private_map);
+
+
+	printf("\n=== test private map write ===\n");
+	strcpy(private_map, "PRIVATE modify");
+	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
+	printf("after - privat map: %s\n", private_map);
+
+	printf("\n=== test private map after cow ===\n");
+	strcpy(shared_map, "Shared modify after cow");
+	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
+	printf("after - privat map: %s\n", private_map);
+
+	// 验证COW：检查物理页面是否分离
+	printf("\n=== verify cow ===\n");
+	printf("shared map addr: %p\n", (void*)shared_map);
+	printf("privat map addr: %p\n", (void*)private_map);
+
+	// 通过/proc/self/pagemap查看物理页面信息
+	printf(" 'sudo cat /proc/%d/pagemap' check physical page info\n", getpid());
+	printf("to see whether they point to the same page\n");
+
+	munmap(shared_map, 100);
+	munmap(private_map, 100);
+	close(fd);
+	unlink("test.dat");
+}
  
 int main(void) {
 	// map_unmap_move();
 	// map_file();
-	map_shm();
+	// map_shm();
+	map_file_private_shared();
 	return 0;
 }
