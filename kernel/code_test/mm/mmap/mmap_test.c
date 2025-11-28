@@ -171,9 +171,42 @@ void map_file()
 	printf("File '%s' has been deleted.\n", FILE_PATH);
 
 }
+
+void map_shm()
+{
+	const char *name = "shm_example";
+	const size_t SIZE = 4096;
+
+	int shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666); // 打开共享内存对象
+	if (shm_fd == -1) {
+		perror("shm_open");
+		return ;
+	}
+
+	ftruncate(shm_fd, SIZE);
+
+	// 和文件打开参数一样，这里要用MAP_SHARED，否则内容不会真实写到文件里
+	// 也就是说如果用shm做进程间数据传输，用MAP_PRIVATE会没有效果
+	void *ptr = mmap(0, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0); // 映射到进程地址空间
+	if (ptr == MAP_FAILED) {
+		perror("mmap");
+		return ;
+	}
+
+	sprintf((char*) ptr, "Hello from shared memory!");
+
+	printf("Data read from shared memory: %s\n",(char*)ptr);
+
+	munmap(ptr, SIZE); // 解除映射
+
+	// 移除共享内存对象
+	// 该文件在/dev/shm/shm_example
+	shm_unlink(name);
+}
  
 int main(void) {
 	// map_unmap_move();
-	map_file();
+	// map_file();
+	map_shm();
 	return 0;
 }
