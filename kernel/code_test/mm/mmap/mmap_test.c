@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include "vm_util.h"
 
 void read_mmap()
 {
@@ -206,6 +207,11 @@ void map_shm()
 
 void map_file_private_shared()
 {
+	if (geteuid() != 0) {
+		printf("Please run as root\n");
+		return;
+	}
+
 	int fd = open("test.dat", O_RDWR | O_CREAT, 0666);
 	if (fd < 0) {
 		perror("open");
@@ -237,6 +243,10 @@ void map_file_private_shared()
 	strcpy(shared_map, "SHARED modify");
 	printf("after - shared map: %s\n", shared_map);
 	printf("after - privat map: %s\n", private_map);  // 私有映射应该不变
+	// 这里可以看到，shared_map和private_map背后的页面是一致的，
+	// 所以对共享页面的改动，能够反映到私有页面上
+	printf("pfn behined shared %lx\n", pagemap_get_pfn(shared_map));
+	printf("pfn behined privat %lx\n", pagemap_get_pfn(private_map));
 
 	// 重置内容
 	lseek(fd, 0, SEEK_SET);
@@ -251,6 +261,9 @@ void map_file_private_shared()
 	strcpy(private_map, "PRIVATE modify");
 	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
 	printf("after - privat map: %s\n", private_map);
+	// 这里看到shared_map和private_map背后的页面已经不一样了
+	printf("pfn behined shared %lx\n", pagemap_get_pfn(shared_map));
+	printf("pfn behined privat %lx\n", pagemap_get_pfn(private_map));
 
 	printf("\n=== test private map after cow ===\n");
 	strcpy(shared_map, "Shared modify after cow");
