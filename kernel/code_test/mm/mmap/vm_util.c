@@ -41,3 +41,14 @@ unsigned long pagemap_get_pfn(char *start)
 		return entry & 0x007fffffffffffffull;
 	return -1ul;
 }
+
+void pagemap_get_info(struct pagemap_info *info)
+{
+	uint64_t entry = pagemap_get_entry(info->addr);
+
+	/* If present (63th bit), PFN is at bit 0 -- 54. */
+	if (entry & PM_PRESENT)
+		info->pfn = entry & 0x007fffffffffffffull;
+
+	info->is_file = !!(entry & PM_FILE);
+}

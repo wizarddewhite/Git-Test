@@ -207,6 +207,7 @@ void map_shm()
 
 void map_file_private_shared()
 {
+	struct pagemap_info shared_info, private_info;
 	if (geteuid() != 0) {
 		printf("Please run as root\n");
 		return;
@@ -234,6 +235,9 @@ void map_file_private_shared()
 	    return;
 	}
 
+	shared_info.addr = shared_map;
+	private_info.addr = private_map;
+
 	printf("Initial content:\n");
 	printf("shared map: %s\n", shared_map);
 	printf("privat map: %s\n", private_map);
@@ -245,8 +249,10 @@ void map_file_private_shared()
 	printf("after - privat map: %s\n", private_map);  // 私有映射应该不变
 	// 这里可以看到，shared_map和private_map背后的页面是一致的，
 	// 所以对共享页面的改动，能够反映到私有页面上
-	printf("pfn behined shared %lx\n", pagemap_get_pfn(shared_map));
-	printf("pfn behined privat %lx\n", pagemap_get_pfn(private_map));
+	pagemap_get_info(&shared_info);
+	pagemap_get_info(&private_info);
+	printf("pfn behined shared %lx is %s\n", shared_info.pfn, shared_info.is_file ? "file":"anon");
+	printf("pfn behined privat %lx is %s\n", private_info.pfn, private_info.is_file ? "file":"anon");
 
 	// 重置内容
 	lseek(fd, 0, SEEK_SET);
@@ -262,8 +268,10 @@ void map_file_private_shared()
 	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
 	printf("after - privat map: %s\n", private_map);
 	// 这里看到shared_map和private_map背后的页面已经不一样了
-	printf("pfn behined shared %lx\n", pagemap_get_pfn(shared_map));
-	printf("pfn behined privat %lx\n", pagemap_get_pfn(private_map));
+	pagemap_get_info(&shared_info);
+	pagemap_get_info(&private_info);
+	printf("pfn behined shared %lx is %s\n", shared_info.pfn, shared_info.is_file ? "file":"anon");
+	printf("pfn behined privat %lx is %s\n", private_info.pfn, private_info.is_file ? "file":"anon");
 
 	printf("\n=== test private map after cow ===\n");
 	strcpy(shared_map, "Shared modify after cow");
@@ -274,10 +282,6 @@ void map_file_private_shared()
 	printf("\n=== verify cow ===\n");
 	printf("shared map addr: %p\n", (void*)shared_map);
 	printf("privat map addr: %p\n", (void*)private_map);
-
-	// 通过/proc/self/pagemap查看物理页面信息
-	printf(" 'sudo cat /proc/%d/pagemap' check physical page info\n", getpid());
-	printf("to see whether they point to the same page\n");
 
 	munmap(shared_map, 100);
 	munmap(private_map, 100);
