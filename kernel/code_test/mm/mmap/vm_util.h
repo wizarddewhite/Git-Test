@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 
 #define BIT_ULL(nr)                   (1ULL << (nr))
@@ -10,5 +11,5 @@
 #define PM_PRESENT                    BIT_ULL(63)
 
 
-uint64_t pagemap_get_entry(int fd, char *start);
-unsigned long pagemap_get_pfn(int fd, char *start);
+uint64_t pagemap_get_entry(char *start);
+unsigned long pagemap_get_pfn(char *start);

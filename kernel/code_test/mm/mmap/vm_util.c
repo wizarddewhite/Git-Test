@@ -14,21 +14,27 @@
 #include <unistd.h>
 #include "vm_util.h"
 
-uint64_t pagemap_get_entry(int fd, char *start)
+uint64_t pagemap_get_entry(char *start)
 {
 	const unsigned long pfn = (unsigned long)start / getpagesize();
 	uint64_t entry;
 	int ret;
+	int pagemap_fd;
 
-	ret = pread(fd, &entry, sizeof(entry), pfn * sizeof(entry));
+	pagemap_fd = open("/proc/self/pagemap", O_RDONLY);
+	if (pagemap_fd == -1)
+		return 0;
+
+	ret = pread(pagemap_fd, &entry, sizeof(entry), pfn * sizeof(entry));
+	close(pagemap_fd);
 	if (ret != sizeof(entry))
 		printf("reading pagemap failed\n");
 	return entry;
 }
 
-unsigned long pagemap_get_pfn(int fd, char *start)
+unsigned long pagemap_get_pfn(char *start)
 {
-	uint64_t entry = pagemap_get_entry(fd, start);
+	uint64_t entry = pagemap_get_entry(start);
 
 	/* If present (63th bit), PFN is at bit 0 -- 54. */
 	if (entry & PM_PRESENT)
