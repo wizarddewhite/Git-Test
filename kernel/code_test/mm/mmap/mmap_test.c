@@ -288,11 +288,47 @@ void map_file_private_shared()
 	close(fd);
 	unlink("test.dat");
 }
+
+void map_anon_private_shared()
+{
+	struct pagemap_info shared_info, private_info;
+	char *shared_map, *private_map;
+
+	if (geteuid() != 0) {
+		printf("Please run as root\n");
+		return;
+	}
+
+	shared_map = mmap(NULL, 1 << 12, PROT_READ | PROT_WRITE,
+			       MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	private_map = mmap(NULL, 1 << 12, PROT_READ | PROT_WRITE,
+				MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+	if (shared_map == MAP_FAILED || private_map == MAP_FAILED) {
+	    perror("mmap");
+	    return;
+	}
+	shared_info.addr = shared_map;
+	private_info.addr = private_map;
+
+	// fault in
+	strcpy(shared_map, "shared write");
+	strcpy(private_map, "private write");
+	printf("Initial content:\n");
+	printf("shared map: %s\n", shared_map);
+	printf("privat map: %s\n", private_map);
+
+	pagemap_get_info(&shared_info);
+	pagemap_get_info(&private_info);
+	printf("pfn behined shared %lx is %s\n", shared_info.pfn, shared_info.is_file ? "file":"anon");
+	printf("pfn behined privat %lx is %s\n", private_info.pfn, private_info.is_file ? "file":"anon");
+}
  
 int main(void) {
 	// map_unmap_move();
 	// map_file();
 	// map_shm();
-	map_file_private_shared();
+	// map_file_private_shared();
+	map_anon_private_shared();
 	return 0;
 }
