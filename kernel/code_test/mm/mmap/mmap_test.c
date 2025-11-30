@@ -278,10 +278,16 @@ void map_file_private_shared()
 	printf("after - shared map: %s\n", shared_map);
 	printf("after - privat map: %s\n", private_map);
 
-	// 验证COW：检查物理页面是否分离
-	printf("\n=== verify cow ===\n");
-	printf("shared map addr: %p\n", (void*)shared_map);
-	printf("privat map addr: %p\n", (void*)private_map);
+	// 私有映射页面第二次写入，最后呈现的内容在上一次写的结果上
+	printf("\n=== test private map 2nd write ===\n");
+	memcpy(private_map, "2nd write", strlen("2nd write"));
+	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
+	printf("after - privat map: %s\n", private_map);
+	// 这里看到shared_map和private_map背后的页面已经不一样了
+	pagemap_get_info(&shared_info);
+	pagemap_get_info(&private_info);
+	printf("pfn behined shared %lx is %s\n", shared_info.pfn, shared_info.is_file ? "file":"anon");
+	printf("pfn behined privat %lx is %s\n", private_info.pfn, private_info.is_file ? "file":"anon");
 
 	munmap(shared_map, 100);
 	munmap(private_map, 100);
