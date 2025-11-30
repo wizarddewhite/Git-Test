@@ -220,7 +220,7 @@ void map_file_private_shared()
 	}
 
 	// 准备测试文件内容
-	const char *initial_content = "Hello, World!";
+	const char *initial_content = "Hello, World!This is init data";
 	ftruncate(fd, strlen(initial_content) + 1);
 	write(fd, initial_content, strlen(initial_content) + 1);
 
@@ -244,7 +244,7 @@ void map_file_private_shared()
 
 	// 测试写操作的影响
 	printf("\n=== test shared map write ===\n");
-	strcpy(shared_map, "SHARED modify");
+	memcpy(shared_map, "SHARED modify", strlen("SHARED modify"));
 	printf("after - shared map: %s\n", shared_map);
 	printf("after - privat map: %s\n", private_map);  // 私有映射应该不变
 	// 这里可以看到，shared_map和private_map背后的页面是一致的，
@@ -264,7 +264,7 @@ void map_file_private_shared()
 
 
 	printf("\n=== test private map write ===\n");
-	strcpy(private_map, "PRIVATE modify");
+	memcpy(private_map, "PRIVATE modify", strlen("PRIVATE modify"));
 	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
 	printf("after - privat map: %s\n", private_map);
 	// 这里看到shared_map和private_map背后的页面已经不一样了
@@ -273,9 +273,9 @@ void map_file_private_shared()
 	printf("pfn behined shared %lx is %s\n", shared_info.pfn, shared_info.is_file ? "file":"anon");
 	printf("pfn behined privat %lx is %s\n", private_info.pfn, private_info.is_file ? "file":"anon");
 
-	printf("\n=== test private map after cow ===\n");
+	printf("\n=== test shared map write after cow ===\n");
 	strcpy(shared_map, "Shared modify after cow");
-	printf("after - shared map: %s\n", shared_map);  // 应该还是初始内容
+	printf("after - shared map: %s\n", shared_map);
 	printf("after - privat map: %s\n", private_map);
 
 	// 验证COW：检查物理页面是否分离
@@ -328,7 +328,7 @@ int main(void) {
 	// map_unmap_move();
 	// map_file();
 	// map_shm();
-	// map_file_private_shared();
-	map_anon_private_shared();
+	map_file_private_shared();
+	// map_anon_private_shared();
 	return 0;
 }
