@@ -11,6 +11,10 @@
 #define PM_SWAP                       BIT_ULL(62)
 #define PM_PRESENT                    BIT_ULL(63)
 
+#define KPF_COMPOUND_HEAD             BIT_ULL(15)
+#define KPF_COMPOUND_TAIL             BIT_ULL(16)
+#define KPF_THP                       BIT_ULL(22)
+
 struct pagemap_info {
 	char *addr;
 	unsigned long pfn;
@@ -20,3 +24,6 @@ struct pagemap_info {
 uint64_t pagemap_get_entry(char *start);
 unsigned long pagemap_get_pfn(char *start);
 void pagemap_get_info(struct pagemap_info *info);
+uint64_t read_pmd_pagesize(void);
+bool check_huge_anon(void *addr, int nr_hpages, uint64_t hpage_size);
+int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags);

@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <malloc.h>
 #include "vm_util.h"
 
 void read_mmap()
@@ -329,12 +330,68 @@ void map_anon_private_shared()
 	printf("pfn behined shared %lx is %s\n", shared_info.pfn, shared_info.is_file ? "file":"anon");
 	printf("pfn behined privat %lx is %s\n", private_info.pfn, private_info.is_file ? "file":"anon");
 }
+
+void map_anon_thp()
+{
+	const uint64_t folio_head_flags = KPF_THP | KPF_COMPOUND_HEAD;
+	const uint64_t folio_tail_flags = KPF_THP | KPF_COMPOUND_TAIL;
+	const char *kpageflags_proc = "/proc/kpageflags";
+	char *one_page;
+	uint64_t pmd_pagesize;
+	uint64_t pagesize;
+	unsigned long pfn;
+	int kpageflags_fd;
+	uint64_t pfn_flags;
+
+	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
+	if (kpageflags_fd == -1)
+		exit(-1);
+
+	pagesize = getpagesize();
+	pmd_pagesize = read_pmd_pagesize();
+
+	one_page = memalign(pmd_pagesize, 2 * pmd_pagesize);
+	madvise(one_page, 2 * pmd_pagesize, MADV_HUGEPAGE);
+
+	if (!check_huge_anon(one_page, 0, pmd_pagesize)) {
+		printf("We don't expect huge anon page, but have\n");
+	} else {
+		printf("===After madvise, there is no huge anon yet\n");
+	}
+
+	/* fault in page */
+	one_page[0] = 0;
+	one_page[pmd_pagesize] = 1;
+
+	if (!check_huge_anon(one_page, 2, pmd_pagesize)) {
+		printf("We expect huge anon page, but not\n");
+	} else {
+		printf("===After fault in, there is huge anon yet\n");
+	}
+
+	pfn = pagemap_get_pfn(one_page);
+	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+
+	if ((pfn_flags & folio_head_flags) == folio_head_flags)
+		printf("vaddr(%lx) at pfn(%lx) is Head\n",
+				(unsigned long)one_page, pfn);
+
+	pfn = pagemap_get_pfn(one_page + pagesize);
+	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+
+	if ((pfn_flags & folio_tail_flags) == folio_tail_flags)
+		printf("vaddr(%lx) at pfn(%lx) is Tail\n",
+				(unsigned long)one_page + pagesize, pfn);
+
+	close(kpageflags_fd);
+}
  
 int main(void) {
 	// map_unmap_move();
 	// map_file();
 	// map_shm();
-	map_file_private_shared();
+	// map_file_private_shared();
 	// map_anon_private_shared();
+	map_anon_thp();
 	return 0;
 }
