@@ -17,7 +17,7 @@ h4_date=`next_thursday "%Y-%-m-%-d"`
 while IFS= read -r line; do
     #echo "Text read from file: $line"
     if [ `date -d "$line" '+%Y-%-m-%-d'` = "$h4_date" ]; then
-        echo 1
+        echo $h4_date is in cancel list
         exit 1
     fi
 done < cancel_list
@@ -28,8 +28,8 @@ url="$url$h4_month&key=$JUHE_APPKEY"
 json=`curl -s $url | jq -rf jq_filter.jq 2>/dev/null`
 if [ $? -ne 0 ]
 then
-	echo 0
-	exit
+	echo Failed to get data from juhe
+	exit 0
 fi
 
 echo $json | grep -w $h4_date &> /dev/null

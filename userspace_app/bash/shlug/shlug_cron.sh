@@ -7,7 +7,7 @@ touch /root/shlug_notify
 date >> /root/shlug_notify
 cd /home/weiyang/go/shlug/script/
 export JUHE_APPKEY="your_key"
-./check.sh
+./check.sh >> /root/shlug_notify
 result=$?
 echo "result is $?" >> /root/shlug_notify
 go run email.go $result
