@@ -493,6 +493,29 @@ void unmap_partial_anon_thp()
 		printf("===child quit\n");
 		printf("\tparent range has huge anon %lukb, anon %lukb\n",
 			get_huge_anon(one_page), get_anon(one_page));
+
+		show_pfn_thp("\tparent ", one_page, kpageflags_fd);
+		show_pfn_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+
+		// unmap a part of the thp
+		ret = munmap(one_page + pagesize, pagesize);
+		if (ret) {
+			perror("munmap\n");
+			exit(0);
+		}
+
+		// check the folio is still thp
+		printf("===After unmap part range\n");
+		show_pfn_thp("\tparent ", one_page, kpageflags_fd);
+		show_pfn_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+
+		// first range just contain small folio
+		printf("\tparent first range has huge anon %lukb, anon %lukb\n",
+			get_huge_anon(one_page), get_anon(one_page));
+		// second range contain small folio and one thp
+		printf("\tparent second range has huge anon %lukb, anon %lukb\n",
+			get_huge_anon(one_page + 2 * pagesize),
+			get_anon(one_page + 2 * pagesize));
 	}
 
 	close(kpageflags_fd);
