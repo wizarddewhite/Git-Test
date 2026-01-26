@@ -88,6 +88,9 @@ bool check_for_pattern(FILE *fp, const char *pattern, char *buf, size_t len)
 	return false;
 }
 
+/*
+ * addr must equals to the vma->vm_start
+ */
 char *__get_smap_entry(void *addr, const char *pattern, char *buf, size_t len)
 {
 	int ret;
@@ -123,27 +126,59 @@ err_out:
 	return entry;
 }
 
-bool __check_huge(void *addr, char *pattern, int nr_hpages,
+bool __check_range(void *addr, char *pattern, int nr_hpages,
 		  uint64_t hpage_size)
 {
 	char buffer[MAX_LINE_LENGTH];
-	uint64_t thp = -1;
+	uint64_t val = -1;
 	char *entry;
 
 	entry = __get_smap_entry(addr, pattern, buffer, sizeof(buffer));
 	if (!entry)
 		goto err_out;
 
-	if (sscanf(entry, "%9" SCNu64 " kB", &thp) != 1)
+	if (sscanf(entry, "%9" SCNu64 " kB", &val) != 1)
 		exit(-1);
 
 err_out:
-	return thp == (nr_hpages * (hpage_size >> 10));
+	return val == (nr_hpages * (hpage_size >> 10));
 }
 
 bool check_huge_anon(void *addr, int nr_hpages, uint64_t hpage_size)
 {
-	return __check_huge(addr, "AnonHugePages: ", nr_hpages, hpage_size);
+	return __check_range(addr, "AnonHugePages: ", nr_hpages, hpage_size);
+}
+
+bool check_anon(void *addr, int nr_hpages, uint64_t page_size)
+{
+	return __check_range(addr, "Anonymous: ", nr_hpages, page_size);
+}
+
+uint64_t __get_range(void *addr, char *pattern)
+{
+	char buffer[MAX_LINE_LENGTH];
+	uint64_t val = 0;
+	char *entry;
+
+	entry = __get_smap_entry(addr, pattern, buffer, sizeof(buffer));
+	if (!entry)
+		goto err_out;
+
+	if (sscanf(entry, "%9" SCNu64 " kB", &val) != 1)
+		exit(-1);
+
+err_out:
+	return val;
+}
+
+uint64_t get_huge_anon(void *addr)
+{
+	return __get_range(addr, "AnonHugePages: ");
+}
+
+uint64_t get_anon(void *addr)
+{
+	return __get_range(addr, "Anonymous: ");
 }
 
 int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags)

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <malloc.h>
@@ -385,6 +386,117 @@ void map_anon_thp()
 
 	close(kpageflags_fd);
 }
+
+void show_pfn_thp(char *prefix, char *addr, int kpageflags_fd)
+{
+	const uint64_t folio_head_flags = KPF_THP | KPF_COMPOUND_HEAD;
+	const uint64_t folio_tail_flags = KPF_THP | KPF_COMPOUND_TAIL;
+	unsigned long pfn;
+	uint64_t pfn_flags;
+
+	pfn = pagemap_get_pfn(addr);
+	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+
+	if (!(pfn_flags & KPF_THP))
+		printf("%svaddr(%lx) at pfn(%lx) isn't THP\n",
+			prefix, (unsigned long)addr, pfn);
+
+	if ((pfn_flags & folio_head_flags) == folio_head_flags)
+		printf("%svaddr(%lx) at pfn(%lx) is Head\n",
+			prefix, (unsigned long)addr, pfn);
+	else if ((pfn_flags & folio_tail_flags) == folio_tail_flags)
+		printf("%svaddr(%lx) at pfn(%lx) is Tail\n",
+			prefix, (unsigned long)addr, pfn);
+	else // not expected
+		printf("%svaddr(%lx) at pfn(%lx) is UNKNOWN\n",
+			prefix, (unsigned long)addr, pfn);
+}
+
+void unmap_partial_anon_thp()
+{
+	const char *kpageflags_proc = "/proc/kpageflags";
+	char *one_page;
+	uint64_t pmd_pagesize;
+	uint64_t pagesize;
+	int kpageflags_fd;
+	pid_t pid;
+	int ret;
+
+	printf("parent %d\n", getpid());
+	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
+	if (kpageflags_fd == -1)
+		exit(-1);
+
+	pagesize = getpagesize();
+	pmd_pagesize = read_pmd_pagesize();
+
+	one_page = memalign(pmd_pagesize, 2 * pmd_pagesize);
+	madvise(one_page, 2 * pmd_pagesize, MADV_HUGEPAGE);
+
+	if (!check_huge_anon(one_page, 0, pmd_pagesize)) {
+		printf("We don't expect huge anon page, but have\n");
+	} else {
+		printf("===After madvise, there is no huge anon yet\n");
+	}
+
+	/* fault in page */
+	one_page[0] = 3;
+	one_page[pmd_pagesize] = 1;
+
+	show_pfn_thp("\tparent ", one_page, kpageflags_fd);
+	show_pfn_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+
+	pid = fork();
+	if (pid < 0) {
+		perror("fork\n");
+	} else if (pid == 0) {
+		printf("..in child %d\n", getpid());
+
+		// check the content is the same
+		if (one_page[0] != 3) {
+			printf("content in one_page[0] is changed\n");
+			exit(0);
+		}
+
+		if (!check_huge_anon(one_page, 2, pmd_pagesize)) {
+			printf("We expect huge anon page, but not\n");
+		} else {
+			printf("===After fork, there is still huge anon %lukb\n",
+				(2 * (pmd_pagesize >> 10)));
+		}
+
+		// check the range is still thp
+		show_pfn_thp("\tchild ", one_page, kpageflags_fd);
+		show_pfn_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+
+		// unmap a part of the thp
+		ret = munmap(one_page + pagesize, pagesize);
+		if (ret) {
+			perror("munmap\n");
+			exit(0);
+		}
+
+		// check the folio is still thp
+		printf("===After unmap part range\n");
+		show_pfn_thp("\tchild ", one_page, kpageflags_fd);
+		show_pfn_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+
+		// first range just contain small folio
+		printf("\tchild first range has huge anon %lukb, anon %lukb\n",
+			get_huge_anon(one_page), get_anon(one_page));
+		// second range contain small folio and one thp
+		printf("\tchild second range has huge anon %lukb, anon %lukb\n",
+			get_huge_anon(one_page + 2 * pagesize),
+			get_anon(one_page + 2 * pagesize));
+	} else {
+		wait(NULL);
+		printf("===child quit\n");
+		printf("\tparent range has huge anon %lukb, anon %lukb\n",
+			get_huge_anon(one_page), get_anon(one_page));
+	}
+
+	close(kpageflags_fd);
+}
  
 int main(void) {
 	// map_unmap_move();
@@ -392,6 +504,7 @@ int main(void) {
 	// map_shm();
 	// map_file_private_shared();
 	// map_anon_private_shared();
-	map_anon_thp();
+	// map_anon_thp();
+	unmap_partial_anon_thp();
 	return 0;
 }
