@@ -181,6 +181,12 @@ uint64_t get_anon(void *addr)
 	return __get_range(addr, "Anonymous: ");
 }
 
+void show_vma_anon_stat(char *prefix, void *addr)
+{
+	printf("\t%s huge anon %lukb, anon %lukb\n", prefix,
+		get_huge_anon(addr), get_anon(addr));
+}
+
 int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags)
 {
 	size_t count;
@@ -192,5 +198,30 @@ int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags)
 		return -1;
 
 	return 0;
+}
+
+void is_addr_thp(char *prefix, char *addr, int kpageflags_fd)
+{
+	const uint64_t folio_head_flags = KPF_THP | KPF_COMPOUND_HEAD;
+	const uint64_t folio_tail_flags = KPF_THP | KPF_COMPOUND_TAIL;
+	unsigned long pfn;
+	uint64_t pfn_flags;
+
+	pfn = pagemap_get_pfn(addr);
+	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+
+	if (!(pfn_flags & KPF_THP))
+		printf("%svaddr(%lx) at pfn(%lx) isn't THP\n",
+			prefix, (unsigned long)addr, pfn);
+
+	if ((pfn_flags & folio_head_flags) == folio_head_flags)
+		printf("%svaddr(%lx) at pfn(%lx) is Head\n",
+			prefix, (unsigned long)addr, pfn);
+	else if ((pfn_flags & folio_tail_flags) == folio_tail_flags)
+		printf("%svaddr(%lx) at pfn(%lx) is Tail\n",
+			prefix, (unsigned long)addr, pfn);
+	else // not expected
+		printf("%svaddr(%lx) at pfn(%lx) is UNKNOWN\n",
+			prefix, (unsigned long)addr, pfn);
 }
 

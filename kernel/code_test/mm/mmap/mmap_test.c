@@ -387,31 +387,6 @@ void map_anon_thp()
 	close(kpageflags_fd);
 }
 
-void show_pfn_thp(char *prefix, char *addr, int kpageflags_fd)
-{
-	const uint64_t folio_head_flags = KPF_THP | KPF_COMPOUND_HEAD;
-	const uint64_t folio_tail_flags = KPF_THP | KPF_COMPOUND_TAIL;
-	unsigned long pfn;
-	uint64_t pfn_flags;
-
-	pfn = pagemap_get_pfn(addr);
-	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
-
-	if (!(pfn_flags & KPF_THP))
-		printf("%svaddr(%lx) at pfn(%lx) isn't THP\n",
-			prefix, (unsigned long)addr, pfn);
-
-	if ((pfn_flags & folio_head_flags) == folio_head_flags)
-		printf("%svaddr(%lx) at pfn(%lx) is Head\n",
-			prefix, (unsigned long)addr, pfn);
-	else if ((pfn_flags & folio_tail_flags) == folio_tail_flags)
-		printf("%svaddr(%lx) at pfn(%lx) is Tail\n",
-			prefix, (unsigned long)addr, pfn);
-	else // not expected
-		printf("%svaddr(%lx) at pfn(%lx) is UNKNOWN\n",
-			prefix, (unsigned long)addr, pfn);
-}
-
 void unmap_partial_anon_thp()
 {
 	const char *kpageflags_proc = "/proc/kpageflags";
@@ -443,8 +418,8 @@ void unmap_partial_anon_thp()
 	one_page[0] = 3;
 	one_page[pmd_pagesize] = 1;
 
-	show_pfn_thp("\tparent ", one_page, kpageflags_fd);
-	show_pfn_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+	is_addr_thp("\tparent ", one_page, kpageflags_fd);
+	is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
 
 	pid = fork();
 	if (pid < 0) {
@@ -466,8 +441,8 @@ void unmap_partial_anon_thp()
 		}
 
 		// check the range is still thp
-		show_pfn_thp("\tchild ", one_page, kpageflags_fd);
-		show_pfn_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
 
 		// unmap a part of the thp
 		ret = munmap(one_page + pagesize, pagesize);
@@ -478,24 +453,20 @@ void unmap_partial_anon_thp()
 
 		// check the folio is still thp
 		printf("===After unmap part range\n");
-		show_pfn_thp("\tchild ", one_page, kpageflags_fd);
-		show_pfn_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
 
 		// first range just contain small folio
-		printf("\tchild first range has huge anon %lukb, anon %lukb\n",
-			get_huge_anon(one_page), get_anon(one_page));
+		show_vma_anon_stat("child first range:", one_page);
 		// second range contain small folio and one thp
-		printf("\tchild second range has huge anon %lukb, anon %lukb\n",
-			get_huge_anon(one_page + 2 * pagesize),
-			get_anon(one_page + 2 * pagesize));
+		show_vma_anon_stat("child second range:", one_page + 2 * pagesize);
 	} else {
 		wait(NULL);
 		printf("===child quit\n");
-		printf("\tparent range has huge anon %lukb, anon %lukb\n",
-			get_huge_anon(one_page), get_anon(one_page));
+		show_vma_anon_stat("parent range:", one_page);
 
-		show_pfn_thp("\tparent ", one_page, kpageflags_fd);
-		show_pfn_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tparent ", one_page, kpageflags_fd);
+		is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
 
 		// unmap a part of the thp
 		ret = munmap(one_page + pagesize, pagesize);
@@ -506,16 +477,13 @@ void unmap_partial_anon_thp()
 
 		// check the folio is still thp
 		printf("===After unmap part range\n");
-		show_pfn_thp("\tparent ", one_page, kpageflags_fd);
-		show_pfn_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tparent ", one_page, kpageflags_fd);
+		is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
 
 		// first range just contain small folio
-		printf("\tparent first range has huge anon %lukb, anon %lukb\n",
-			get_huge_anon(one_page), get_anon(one_page));
+		show_vma_anon_stat("parent first range:", one_page);
 		// second range contain small folio and one thp
-		printf("\tparent second range has huge anon %lukb, anon %lukb\n",
-			get_huge_anon(one_page + 2 * pagesize),
-			get_anon(one_page + 2 * pagesize));
+		show_vma_anon_stat("parent second range:", one_page + 2 * pagesize);
 	}
 
 	close(kpageflags_fd);
