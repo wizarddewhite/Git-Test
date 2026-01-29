@@ -210,9 +210,11 @@ void is_addr_thp(char *prefix, char *addr, int kpageflags_fd)
 	pfn = pagemap_get_pfn(addr);
 	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
 
-	if (!(pfn_flags & KPF_THP))
+	if (!(pfn_flags & KPF_THP)) {
 		printf("%svaddr(%lx) at pfn(%lx) isn't THP\n",
 			prefix, (unsigned long)addr, pfn);
+		return;
+	}
 
 	if ((pfn_flags & folio_head_flags) == folio_head_flags)
 		printf("%svaddr(%lx) at pfn(%lx) is Head\n",
