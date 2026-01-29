@@ -144,11 +144,88 @@ void split_huge_anon_page(void)
 	return;
 }
 
+// let fork 3 process and do split in grand child
+void split_multi_mapped_huge_anon_page()
+{
+	char *one_page;
+	int nr_pmds = 1;
+	size_t len = nr_pmds * pmd_pagesize;
+	size_t i;
+	pid_t pid;
+
+	one_page = memalign(pmd_pagesize, len);
+	if (!one_page) {
+		printf("Fail to allocate memory: %s\n", strerror(errno));
+		return;
+	}
+
+	madvise(one_page, len, MADV_HUGEPAGE);
+
+	// fault in to alloc huge page and for further data check
+	for (i = 0; i < len; i++)
+		one_page[i] = (char)i;
+
+	if (!check_huge_anon(one_page, nr_pmds, pmd_pagesize)) {
+		printf("No THP is allocated\n");
+		return;
+	}
+	is_addr_thp("\t", one_page, kpageflags_fd);
+	show_vma_anon_stat("expect huge:", one_page);
+
+	pid = fork();
+	if (pid < 0) {
+		perror("fork child\n");
+	} else if (pid == 0) {
+		printf("..in child %d\n", getpid());
+
+		pid = fork();
+		if (pid < 0) {
+			perror("fork grand child\n");
+		} else if (pid == 0) {
+			printf("..in grand child %d\n", getpid());
+
+			printf("Before split...\n");
+			is_addr_thp("\t", one_page, kpageflags_fd);
+			show_vma_anon_stat("expect huge:", one_page);
+
+			write_debugfs(PID_FMT, getpid(), (uint64_t)one_page,
+				(uint64_t)one_page + len, 0);
+
+			printf("After split...\n");
+			// check data integrity
+			for (i = 0; i < len; i++) {
+				if (one_page[i] != (char)i) {
+					printf("%ld byte corrupted\n", i);
+					return;
+				}
+			}
+
+			is_addr_thp("\t", one_page, kpageflags_fd);
+			show_vma_anon_stat("expect no huge:", one_page);
+
+			free(one_page);
+			sleep(5);
+		} else {
+			wait(NULL);
+			printf("===grand child quit\n");
+			is_addr_thp("\t", one_page, kpageflags_fd);
+			show_vma_anon_stat("expect no huge:", one_page);
+		}
+	} else {
+		wait(NULL);
+		printf("===child quit\n");
+		is_addr_thp("\t", one_page, kpageflags_fd);
+		show_vma_anon_stat("expect no huge:", one_page);
+	}
+}
+
 int main(void)
 {
 	// don't move around this
 	init();
 
-	split_huge_anon_page();
+	// split_huge_anon_page();
+	split_multi_mapped_huge_anon_page();
+
 	return 0;
 }
