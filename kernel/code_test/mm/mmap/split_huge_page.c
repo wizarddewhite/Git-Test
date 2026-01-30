@@ -152,6 +152,7 @@ void split_multi_mapped_huge_anon_page()
 	size_t len = nr_pmds * pmd_pagesize;
 	size_t i;
 	pid_t pid;
+	int level = 0;
 
 	one_page = memalign(pmd_pagesize, len);
 	if (!one_page) {
@@ -172,51 +173,56 @@ void split_multi_mapped_huge_anon_page()
 	is_addr_thp("\t", one_page, kpageflags_fd);
 	show_vma_anon_stat("expect huge:", one_page);
 
-	pid = fork();
-	if (pid < 0) {
-		perror("fork child\n");
-	} else if (pid == 0) {
-		printf("..in child %d\n", getpid());
-
+	for (;;) {
 		pid = fork();
+
 		if (pid < 0) {
-			perror("fork grand child\n");
-		} else if (pid == 0) {
-			printf("..in grand child %d\n", getpid());
-
-			printf("Before split...\n");
-			is_addr_thp("\t", one_page, kpageflags_fd);
-			show_vma_anon_stat("expect huge:", one_page);
-
-			write_debugfs(PID_FMT, getpid(), (uint64_t)one_page,
-				(uint64_t)one_page + len, 0);
-
-			printf("After split...\n");
-			// check data integrity
-			for (i = 0; i < len; i++) {
-				if (one_page[i] != (char)i) {
-					printf("%ld byte corrupted\n", i);
-					return;
-				}
-			}
-
-			is_addr_thp("\t", one_page, kpageflags_fd);
-			show_vma_anon_stat("expect no huge:", one_page);
-
-			free(one_page);
-			sleep(5);
-		} else {
-			wait(NULL);
-			printf("===grand child quit\n");
-			is_addr_thp("\t", one_page, kpageflags_fd);
-			show_vma_anon_stat("expect no huge:", one_page);
+			perror("fork \n");
+			exit(1);
 		}
-	} else {
-		wait(NULL);
-		printf("===child quit\n");
-		is_addr_thp("\t", one_page, kpageflags_fd);
-		show_vma_anon_stat("expect no huge:", one_page);
+
+		if (pid == 0) {
+			level++;
+			// printf("child %02d\n", level);
+
+			// determine the number of child
+			if (level == 10) {
+				printf("Before split...\n");
+				is_addr_thp("\t", one_page, kpageflags_fd);
+				show_vma_anon_stat("expect huge:", one_page);
+
+				write_debugfs(PID_FMT, getpid(), (uint64_t)one_page,
+					(uint64_t)one_page + len, 0);
+
+				printf("After split...\n");
+				// check data integrity
+				for (i = 0; i < len; i++) {
+					if (one_page[i] != (char)i) {
+						printf("%ld byte corrupted\n", i);
+						return;
+					}
+				}
+
+				is_addr_thp("\t", one_page, kpageflags_fd);
+				show_vma_anon_stat("expect no huge:", one_page);
+
+				free(one_page);
+				return;
+			}
+		} else {
+			// parent break the loop
+			break;
+		}
 	}
+
+	// wait for child
+	wait(NULL);
+
+	printf("===child quit\n");
+	is_addr_thp("\t", one_page, kpageflags_fd);
+	show_vma_anon_stat("expect no huge:", one_page);
+
+	free(one_page);
 }
 
 int main(void)
