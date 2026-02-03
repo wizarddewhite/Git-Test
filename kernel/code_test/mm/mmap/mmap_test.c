@@ -396,6 +396,7 @@ void unmap_partial_anon_thp()
 	int kpageflags_fd;
 	pid_t pid;
 	int ret;
+	uint64_t mapcount;
 
 	printf("parent %d\n", getpid());
 	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
@@ -419,7 +420,11 @@ void unmap_partial_anon_thp()
 	one_page[pmd_pagesize] = 1;
 
 	is_addr_thp("\tparent ", one_page, kpageflags_fd);
+	if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
+		printf("\t\t mapcount: %lu\n", mapcount);
 	is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+	if (!pagemapcount_get(pagemap_get_pfn(one_page + pmd_pagesize), &mapcount))
+		printf("\t\t mapcount: %lu\n", mapcount);
 
 	pid = fork();
 	if (pid < 0) {
@@ -442,7 +447,11 @@ void unmap_partial_anon_thp()
 
 		// check the range is still thp
 		is_addr_thp("\tchild ", one_page, kpageflags_fd);
+		if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
+			printf("\t\t mapcount: %lu\n", mapcount);
 		is_addr_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+		if (!pagemapcount_get(pagemap_get_pfn(one_page + pmd_pagesize), &mapcount))
+			printf("\t\t mapcount: %lu\n", mapcount);
 
 		// unmap a part of the thp
 		ret = munmap(one_page + pagesize, pagesize);
@@ -454,7 +463,11 @@ void unmap_partial_anon_thp()
 		// check the folio is still thp
 		printf("===After unmap part range\n");
 		is_addr_thp("\tchild ", one_page, kpageflags_fd);
+		if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
+			printf("\t\t mapcount: %lu\n", mapcount);
 		is_addr_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+		if (!pagemapcount_get(pagemap_get_pfn(one_page + pmd_pagesize), &mapcount))
+			printf("\t\t mapcount: %lu\n", mapcount);
 
 		// first range just contain small folio
 		show_vma_anon_stat("child first range:", one_page);
