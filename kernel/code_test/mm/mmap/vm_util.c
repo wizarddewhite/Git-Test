@@ -17,6 +17,7 @@
 
 #define PMD_SIZE_FILE_PATH "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size"
 #define SMAP_FILE_PATH "/proc/self/smaps"
+#define KPAGECOUNT_FILE_PATH "/proc/kpagecount"
 #define MAX_LINE_LENGTH 500
 
 uint64_t pagemap_get_entry(char *start)
@@ -227,3 +228,22 @@ void is_addr_thp(char *prefix, char *addr, int kpageflags_fd)
 			prefix, (unsigned long)addr, pfn);
 }
 
+int pagemapcount_get(unsigned long pfn, uint64_t *mapcount)
+{
+	size_t count;
+	int kpageflags_fd;
+
+	kpageflags_fd = open(KPAGECOUNT_FILE_PATH, O_RDONLY);
+	if (kpageflags_fd == -1) {
+		printf("read kpagecount: %s\n", strerror(errno));
+		return -1;
+	}
+
+	count = pread(kpageflags_fd, mapcount, sizeof(*mapcount),
+		      pfn * sizeof(*mapcount));
+
+	if (count != sizeof(*mapcount))
+		return -1;
+
+	return 0;
+}

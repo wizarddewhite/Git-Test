@@ -265,6 +265,8 @@ void split_huge_anon_page(void)
 	int nr_pmds = 1;
 	size_t len = nr_pmds * pmd_pagesize;
 	size_t i;
+	unsigned long pfn;
+	uint64_t mapcount;
 
 	one_page = memalign(pmd_pagesize, len);
 	if (!one_page) {
@@ -282,6 +284,14 @@ void split_huge_anon_page(void)
 		printf("No THP is allocated\n");
 		return;
 	}
+
+	pfn = pagemap_get_pfn(one_page);
+	if (pfn == -1ul) {
+		printf("Failed to get pfn of the range\n");
+		return;
+	}
+	if (!pagemapcount_get(pfn, &mapcount))
+		printf("\tmapcount of before split: %lu\n", mapcount);
 	is_addr_thp("\t", one_page, kpageflags_fd);
 	show_vma_anon_stat("expect huge:", one_page);
 
@@ -296,6 +306,8 @@ void split_huge_anon_page(void)
 		}
 	}
 
+	if (!pagemapcount_get(pfn, &mapcount))
+		printf("\tmapcount of after split: %lu\n", mapcount);
 	is_addr_thp("\t", one_page, kpageflags_fd);
 	show_vma_anon_stat("expect no huge:", one_page);
 
@@ -400,8 +412,8 @@ int main(void)
 	// don't move around this
 	init();
 
-	// split_huge_anon_page();
-	split_multi_mapped_huge_anon_page();
+	split_huge_anon_page();
+	// split_multi_mapped_huge_anon_page();
 
 	return 0;
 }

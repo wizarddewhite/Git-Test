@@ -32,6 +32,7 @@ uint64_t get_anon(void *addr);
 void show_vma_anon_stat(char *prefix, void *addr);
 int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags);
 void is_addr_thp(char *prefix, char *addr, int kpageflags_fd);
+int pagemapcount_get(unsigned long pfn, uint64_t *mapcount);
 
 static inline int sz2ord(size_t size, size_t pagesize)
 {
