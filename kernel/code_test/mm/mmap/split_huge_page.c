@@ -355,10 +355,10 @@ void split_multi_mapped_huge_anon_page()
 
 		if (pid == 0) {
 			level++;
-			// printf("child %02d\n", level);
+			// printf("child %d %02d\n", getpid(), level);
 
 			// determine the number of child
-			if (level == 10) {
+			if (level == 5) {
 				printf("Before split...\n");
 				is_addr_thp("\t", one_page, kpageflags_fd);
 				show_vma_anon_stat("expect huge:", one_page);
@@ -389,7 +389,7 @@ void split_multi_mapped_huge_anon_page()
 					printf("###Folio split to order 0\n");
 
 				free(one_page);
-				return;
+				exit(0);
 			}
 		} else {
 			// parent break the loop
@@ -403,8 +403,10 @@ void split_multi_mapped_huge_anon_page()
 	// printf("===child quit\n");
 	// is_addr_thp("\t", one_page, kpageflags_fd);
 	// show_vma_anon_stat("expect no huge:", one_page);
-
 	free(one_page);
+
+	if (level != 0)
+		exit(0);
 }
 
 int main(void)
@@ -412,8 +414,9 @@ int main(void)
 	// don't move around this
 	init();
 
-	split_huge_anon_page();
-	// split_multi_mapped_huge_anon_page();
+	// split_huge_anon_page();
+	split_multi_mapped_huge_anon_page();
+	printf("test continue %d\n",  getpid());
 
 	return 0;
 }
