@@ -344,6 +344,11 @@ void map_anon_thp()
 	int kpageflags_fd;
 	uint64_t pfn_flags;
 
+	if (geteuid() != 0) {
+		printf("Please run as root\n");
+		return;
+	}
+
 	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
 	if (kpageflags_fd == -1)
 		exit(-1);
@@ -398,6 +403,11 @@ void unmap_partial_anon_thp()
 	int ret;
 	uint64_t mapcount;
 
+	if (geteuid() != 0) {
+		printf("Please run as root\n");
+		return;
+	}
+
 	printf("parent %d\n", getpid());
 	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
 	if (kpageflags_fd == -1)
@@ -419,6 +429,7 @@ void unmap_partial_anon_thp()
 	one_page[0] = 3;
 	one_page[pmd_pagesize] = 1;
 
+	printf("===After page fault\n");
 	is_addr_thp("\tparent ", one_page, kpageflags_fd);
 	if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
 		printf("\t\t mapcount: %lu\n", mapcount);
@@ -528,6 +539,68 @@ void mremap_simple(void)
         munmap(new_addr, SIZE);
     }
 }
+
+void mremap_thp(void)
+{
+	const char *kpageflags_proc = "/proc/kpageflags";
+	char *one_page, *new_addr;
+	uint64_t pmd_pagesize;
+	uint64_t pagesize;
+	int kpageflags_fd;
+
+	if (geteuid() != 0) {
+		printf("Please run as root\n");
+		return;
+	}
+
+	printf("parent %d\n", getpid());
+	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
+	if (kpageflags_fd == -1)
+		exit(-1);
+
+	pagesize = getpagesize();
+	pmd_pagesize = read_pmd_pagesize();
+
+	one_page = memalign(pmd_pagesize, pmd_pagesize);
+	madvise(one_page, pmd_pagesize, MADV_HUGEPAGE);
+
+	if (!check_huge_anon(one_page, 0, pmd_pagesize)) {
+		printf("We don't expect huge anon page, but have\n");
+	} else {
+		printf("===After madvise, there is no huge anon yet\n");
+	}
+
+	/* fault in page */
+	one_page[0] = 3;
+
+	printf("===After page fault\n");
+	is_addr_thp("\t", one_page, kpageflags_fd);
+	if (!check_huge_anon(one_page, 1, pmd_pagesize)) {
+		printf("We expect huge anon page, but not\n");
+	} else {
+		printf("\tthere is huge anon %lukb\n", pmd_pagesize >> 10);
+	}
+
+	/*
+	 * now we have a pmd mapped thp, now let's mremap it to non-pmd
+	 * aligned address
+	 */
+	new_addr = mremap(one_page, pmd_pagesize, pmd_pagesize,
+			MREMAP_MAYMOVE | MREMAP_FIXED,
+			/* move to next pmd + pagesize */
+			one_page + pmd_pagesize + pagesize);
+	printf("===After mremap\n");
+	if (new_addr != one_page + pmd_pagesize + pagesize) {
+		printf("\tmremap failed to move to dedicated address\n");
+		return;
+	}
+	/*
+	 * Even mremap to non-pmd aligned address, we keep THP folio.
+	 */
+	is_addr_thp("\t", new_addr, kpageflags_fd);
+	show_vma_anon_stat("", new_addr);
+	
+}
  
 int main(void) {
 	// map_unmap_move();
@@ -537,6 +610,7 @@ int main(void) {
 	// map_anon_private_shared();
 	// map_anon_thp();
 	// unmap_partial_anon_thp();
-	mremap_simple();
+	// mremap_simple();
+	mremap_thp();
 	return 0;
 }
