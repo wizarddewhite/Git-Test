@@ -582,15 +582,15 @@ void mremap_thp(void)
 	}
 
 	/*
-	 * now we have a pmd mapped thp, now let's mremap it to non-pmd
+	 * now we have a pmd mapped thp, now let's mremap it to pmd
 	 * aligned address
 	 */
 	new_addr = mremap(one_page, pmd_pagesize, pmd_pagesize,
 			MREMAP_MAYMOVE | MREMAP_FIXED,
-			/* move to next pmd + pagesize */
-			one_page + pmd_pagesize + pagesize);
-	printf("===After mremap\n");
-	if (new_addr != one_page + pmd_pagesize + pagesize) {
+			/* move to previous pmd + pmd_pagesize */
+			one_page - pmd_pagesize);
+	printf("===After mremap to previous pmd address\n");
+	if (new_addr != one_page - pmd_pagesize) {
 		printf("\tmremap failed to move to dedicated address\n");
 		return;
 	}
@@ -599,7 +599,27 @@ void mremap_thp(void)
 	 */
 	is_addr_thp("\t", new_addr, kpageflags_fd);
 	show_vma_anon_stat("", new_addr);
-	
+
+	/*
+	 * now we have a pmd mapped thp, now let's mremap it to non-pmd
+	 * aligned address
+	 */
+	one_page = mremap(new_addr, pmd_pagesize, pmd_pagesize,
+			MREMAP_MAYMOVE | MREMAP_FIXED,
+			/* move to +pagesize */
+			new_addr - pmd_pagesize * 2 + pagesize);
+	printf("===After mremap to non-pmd aligned address\n");
+	if (one_page != new_addr - pmd_pagesize * 2 + pagesize) {
+		printf("\tmremap failed to move to dedicated address, %p\n", one_page);
+		return;
+	}
+	/*
+	 * Even mremap to non-pmd aligned address, we keep THP folio.
+	 */
+	is_addr_thp("\t", one_page, kpageflags_fd);
+	show_vma_anon_stat("", one_page);
+
+	munmap(one_page, pmd_pagesize);
 }
  
 int main(void) {
