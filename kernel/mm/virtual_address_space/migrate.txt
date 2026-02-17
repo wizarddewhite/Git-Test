@@ -1,133 +1,131 @@
-1. move_pages, syscall
-================================================================================
-1.1 kernel_move_pages()
-================================================================================
-1.1.1 task = find_task_by_vpid()
-================================================================================
-1.1.2 get_task_struct(stask)
-================================================================================
-1.1.3 mm = get_task_mm(task)
-================================================================================
-1.1.4 put_task_struct(task)
-================================================================================
-1.1.5 do_pages_move, move page
-================================================================================
-1.1.6 do_pages_stat, get status
-================================================================================
-1.1.7 mmput(mm)
-================================================================================
+1 do_pages_move
+1.1 lru_cache_disable
+而且在isolate前，还要进行lru_cache_disable(),这样保真cache中没有folio.因为在lru
+cache中，PG_lru不会被设置。
 
-2. do_pages_stat -> do_pages_stat_array()
-================================================================================
-2.1 vma = find_vma()
-================================================================================
-2.2 page = follow_page(, FOLL_DUMP)
-================================================================================
-2.3 page_to_nid
-================================================================================
+1.2 add_folio_for_migration(&pagelist) -> __add_folio_for_migration
+1.2.1 folio_isolate_lru -> folio_get
+从lru链表中删除，并增加refcount
 
-3. do_pages_move
-================================================================================
-3.1 add_page_for_migration(pagelist)
-================================================================================
-3.1.1 vma = find_vma(addr)
-================================================================================
-3.1.2 page = follow_page(vma, addr)
-================================================================================
-3.1.3 head = compound_head(page)
-================================================================================
-3.1.4 isolate_lru_page(head), remove the page from lru list
-================================================================================
-3.1.5 list_add_tail(&head->lru, pagelist)
-================================================================================
-3.2 do_move_pages_to_node(pagelist, current_node)
-================================================================================
-3.2.1 migrate_pages(pagelist, alloc_new_node_page, NULL, node, )
-================================================================================
-3.2.1.1 list_for_each_entry_safe(page, page2, from, lru)
-================================================================================
-3.2.1.2 unmap_and_move_huge_page(alloc_new_node_page, NULL, page, ), one page
-================================================================================
-3.2.1.3 unmap_and_move(alloc_new_node_page, NULL, page, ), one page
-================================================================================
-3.2.2 putback_movable_pages(pagelist)
-================================================================================
-3.3 store_status(status, i, current_node, nr), save status to user space
-================================================================================
+1.3 move_pages_and_store_status(&pagelist)
+1.3.1 do_move_pages_to_node(&pagelist)
+1.3.1.1 migrate_pages(&pagelist), 没有成功迁移的folio还是放回pagelist
+1.3.1.2 putback_movable_pages(&pagelist), 然后放回lru list
+和上面的add_folio_for_migration对应
+
+2.migrate_pages(from, get_new_folio, put_new_folio, private, mode, reason, ret_succeeded)
+2.1 migrate_pages_batch(, ret_folios, split_folios)
+2.2 migrate_pages_sync(, ret_folios, split_folios)
+2.2.1 migrate_pages_batch(, ret_folios, split_folios)
+2.3 !list_empty(&split_folios) -> migrate_pages_batch()
 
 
-4. unmap_and_move(get_new_page, put_new_page, page, ), handle non-PageHuge
-================================================================================
-4.1 newpage = get_new_page(page, ), get newpage based on page's node
-================================================================================
-4.2 __unmap_and_move(page, newpage, force, mode), real work
-================================================================================
-4.2.0 bool is_lru = !__PageMovable(page);
-================================================================================
-4.2.1 trylock_page(page) / lock_page(page)
-================================================================================
-4.2.2 wait_on_page_writeback(page) if PageWriteback(page)
-================================================================================
-4.2.3 trylock_page(newpage)
-================================================================================
-4.2.1 try_to_unmap(page, TTU_MIGRATION), set PTE to migration entry
-================================================================================
-4.2.2 move_to_new_page(newpage, page, mode), move meta data & data to newpage
-================================================================================
-4.2.2.1 rc = migrate_page(mapping, newpage, page, mode)
-================================================================================
-4.2.2.2 rc = mapping->a_ops->migratepage(mapping, newpage, page, mode)
-================================================================================
-4.2.3 remove_migration_ptes(page, newpage), restore PTE with newpage
-================================================================================
-4.2.4 unlock_page(newpage)
-================================================================================
-4.2.5 unlock_page(page), notify put_and_wait_on_page_locked()
-================================================================================
+3. migrate_pages_batch(from, get, put, private, mode, reason, ret_folios, split_folios, stats, nr_pass)
+返回：
+ < 0: 内存分配失败
+ > 0: 没有迁移成功的数量
+ = 0: 成功
+
+先unmap，再去除unmapped folio
+unmap_folios: 保存unmap了的folio
+dst_folios:   保存unmap的folio对应的新folio
+
+3.1 migrate_folio_unmap(), first unmap
+3.1.1 try_to_migrate()
+
+3.1.2 migrate_folio_undo_src(src, )
+3.1.2.1 remove_migration_ptes(src, ), restore src folio pte
+3.1.2.2 list_move_tail(&src->lru, ret), move src to proper list
+
+3.1.3 migrate_folio_undo_dst(dst, )
+3.1.3.1 folio_put(dst), release dst
+
+3.2 try_to_unmap_flush()
 
 
-5. migrate_page(mapping, newpage, page, mode)
-================================================================================
-5.1 migrate_page_move_mapping(mapping, newpage, page, 0)
-================================================================================
-5.1.1 expected_count = expected_page_refs(mapping, page) + extra_count;
-================================================================================
-5.1.2 newpage->index = page->index
-================================================================================
-5.1.3 newpage->mapping = page->mapping
-================================================================================
-5.2 migrate_page_copy(), copy content and metadata
-================================================================================
-5.2.1 copy_huge_page()
-================================================================================
-5.2.2 copy_highpage()
-================================================================================
-5.2.3 migrate_page_states()
-================================================================================
+3.3 migrate_folios_move(unmap_folios, dst_folios), then move
+3.3.1 migrate_folio_move(folio, dst)
+3.3.1.1 move_to_new_folio(dst, src, )
+3.3.1.1.1 migrate_folio(mapping, dst, src, )
+3.3.1.2 folio_add_lru(dst)
+3.3.1.3 remove_migration_ptes(dst)
+3.3.1.4 folio_put(dst)
+3.3.1.5 list_del(src->lru)
+3.3.1.6 folio_unlock(src)
+3.3.1.7 migrate_folio_done(src)
+3.3.1.7.1 folio_put(src)
 
-6. migration_entry_wait(mm, pmd, address)
-================================================================================
-6.1 ptl = pte_lockptr(mm, pmd)
-================================================================================
-6.2 ptep = pte_offset_map(pmd, address)
-================================================================================
-6.3 __migration_entry_wait(mm, ptep, ptl)
-================================================================================
-6.3.1 spin_lock(ptl)
-================================================================================
-6.3.2 pte = *ptep
-================================================================================
-6.3.3 !is_swap_pte(pte)
-================================================================================
-6.3.4 entry = pte_to_swp_entry(pte)
-================================================================================
-6.3.5 !is_migration_entry(entry)
-================================================================================
-6.3.6 page = migration_entry_to_page(entry)
-================================================================================
-6.3.7 get_page_unless_zero(page)
-================================================================================
-6.3.8 pte_unmap_unlock(ptep, ptl)
-================================================================================
-6.3.9 put_and_wait_on_page_locked(page), page locked in __unmap_and_move()
-================================================================================
+如果迁移失败
+3.3.1.8 migrate_folio_undo_src(src, )
+3.3.1.9 migrate_folio_undo_dst(dst, )
+
+3.4 migrate_folios_undo(unmap_folios, dst_folios, )
+3.4.1 migrate_folio_undo_src(src, )
+3.4.2 migrate_folio_undo_dst(dst, )
+
+
+4. migrate_folio -> __migrate_folio(mapping, dst, src, NULL, mode)
+4.1 folio_mc_copy(dst, src)
+4.2 __folio_migrate_mapping(mapping, dst, src, expected_count), replace folio in the mapping
+4.3 folio_migrate_flags(dst, src)
+
+
+5. remove_migration_ptes(src, dst, flags)
+
+0. lock/refcount/mapcount/lru change
+
+```
+do_pages_move
+    add_folio_for_migration() -> __add_folio_for_migration(folio, pagelist)
+        folio_isolate_lru(folio)
+            folio_test_clear_lru(folio)
+            folio_get(folio)                                            src ref_count++
+            lruvec_del_folio(folio)                                     src removed from lru
+    move_pages_and_store_status() -> do_move_pages_to_node()
+        migrate_pages(pagelist) -> migrate_pages_batch()
+
+            try_split_folio(folio, split_folios, )
+                folio_lock(folio)
+                split_folio_to_list(folio, split_folios)
+                folio_unlock(folio)
+                list_move_tail(&folio->lru, split_folios), if success
+
+            migrate_folio_unmap()
+                dst = get_new_folio(src, private)                       dst ref_count = 1
+                folio_trylock()/folio_lock(src)                         src locked
+                folio_trylock(dst)                                      dst locked
+                try_to_migrate(src)                                     src unmapped
+            migrate_folios_move() -> migrate_folio_move(src, dst)
+                move_to_new_folio(dst, src, ) -> migrate_folio()
+                    __folio_migrate_mapping()
+                        folio_ref_add(dst, nr)                          dst ref_count += nr, = nr + 1
+                        folio_ref_unfreeze(src, )                       src ref_count -= nr, = 1
+                    folio_attach_private(dst, )                         dst ref_count += 1, if private
+                folio_add_lru(dst)                                      dst added to lru
+                remove_migration_ptes(src, dst)                         dst mapped
+                folio_unlock(dst)                                       dst unlock
+                folio_put(dst)                                          dst ref_count -= 1, = nr + maps
+                list_del(&src->lru)
+                folio_unlock(src)                                       src unlocked
+                migrate_folio_done(src, )
+                    folio_put(src)                                      src ref_count--, = 0
+
+        putback_movable_pages(pagelist)                                 此时pagelist中包含的是没有迁移成功的链表，对应前面的folio_isolate_lru
+            folio_putback_lru(folio)
+            folio_add_lru(folio)                                        putback to lru
+            folio_put(folio)                                            ref_count--
+```
+
+0. data struct
+
+0.1 migrate_pages_stats
+
+    +-------------------------------------+
+    |nr_succeeded                         |
+    |nr_failed_pages                      |
+    |nr_split                             |   包含thp拆分
+    |                                     |
+    |nr_thp_succeeded                     |
+    |nr_thp_failed                        |
+    |nr_thp_split                         |
+    +-------------------------------------+
