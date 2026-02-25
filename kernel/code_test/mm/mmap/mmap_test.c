@@ -392,6 +392,51 @@ void map_anon_thp()
 	close(kpageflags_fd);
 }
 
+void map_anon_base(void)
+{
+	const char *kpageflags_proc = "/proc/kpageflags";
+	char *region;
+	uint64_t pmd_pagesize;
+	uint64_t pagesize;
+	int i, nr_pages = 256 * 1024;
+	int kpageflags_fd;
+
+	if (geteuid() != 0) {
+		printf("Please run as root\n");
+		return;
+	}
+
+	printf("pid %d\n", getpid());
+	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
+	if (kpageflags_fd == -1)
+		exit(-1);
+
+	pagesize = getpagesize();
+	pmd_pagesize = read_pmd_pagesize();
+
+	region = mmap(NULL, nr_pages * pagesize, PROT_READ|PROT_WRITE|PROT_EXEC,
+			MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	if (region == MAP_FAILED) {
+		perror("mmap failed");
+		return;
+	}
+	printf("### After mmap: [%p - %p]\n", region, region + nr_pages * pagesize);
+	/* ensure it is not huge page */
+	madvise(region, 2 * pmd_pagesize, MADV_NOHUGEPAGE);
+
+	/* fault in page */
+	for (i = 0; i < nr_pages; i++)
+		region[i * pagesize] = i;
+
+	if (check_huge_anon(region, 0, pmd_pagesize)) {
+		printf("\tNo huge anon page as we expect\n");
+	} else {
+		printf("\tWe don't expect huge anon with MADV_NOHUGEPAGE\n");
+	}
+
+	munmap(region, nr_pages * pagesize);
+}
+
 void unmap_partial_anon_thp()
 {
 	const char *kpageflags_proc = "/proc/kpageflags";
@@ -628,9 +673,10 @@ int main(void) {
 	// map_shm();
 	// map_file_private_shared();
 	// map_anon_private_shared();
+	map_anon_base();
 	// map_anon_thp();
 	// unmap_partial_anon_thp();
 	// mremap_simple();
-	mremap_thp();
+	// mremap_thp();
 	return 0;
 }
