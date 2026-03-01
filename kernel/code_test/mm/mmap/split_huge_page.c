@@ -311,6 +311,13 @@ void split_huge_anon_page(void)
 	is_addr_thp("\t", one_page, kpageflags_fd);
 	show_vma_anon_stat("expect no huge:", one_page);
 
+
+	memset(expected_orders, 0, sizeof(int) * (pmd_order + 1));
+	expected_orders[0] = 1 << pmd_order;
+	check_after_split_folio_orders(one_page, len, pagemap_fd,
+			kpageflags_fd, expected_orders,
+			pmd_order + 1);
+
 	free(one_page);
 
 	return;
@@ -414,8 +421,8 @@ int main(void)
 	// don't move around this
 	init();
 
-	// split_huge_anon_page();
-	split_multi_mapped_huge_anon_page();
+	split_huge_anon_page();
+	// split_multi_mapped_huge_anon_page();
 	printf("test continue %d\n",  getpid());
 
 	return 0;
