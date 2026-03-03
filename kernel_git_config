@@ -1,0 +1,32 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[remote "myown"]
+	url = git@github.com:wizarddewhite/linux.git
+	fetch = +refs/heads/*:refs/remotes/myown/*
+[remote "myown_https"]
+	url = https://github.com/wizarddewhite/linux.git
+	fetch = +refs/heads/*:refs/remotes/myown_https/*
+[remote "remote_desktop"]
+	url = ssh://remote_desktop/home/richard/git/linux
+	fetch = +refs/heads/*:refs/remotes/remote_desktop/*
+[branch "study"]
+	remote = myown
+	merge = refs/heads/study
+[remote "origion"]
+	url = https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+	fetch = +refs/heads/*:refs/remotes/origion/*
+[remote "akpm"]
+	url = https://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm.git
+	fetch = +refs/heads/*:refs/remotes/akpm/*
+[branch "master"]
+	remote = origion
+	merge = refs/heads/master
+[remote "desktop"]
+	url = ssh://richard@desktop/home/richard/git/linux
+	fetch = +refs/heads/*:refs/remotes/desktop/*
+[branch "mm-new"]
+	remote = akpm
+	merge = refs/heads/mm-new
