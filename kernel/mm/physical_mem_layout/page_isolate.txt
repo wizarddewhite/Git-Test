@@ -1,0 +1,49 @@
+1. start_isolate_page_range(start_pfn, end_pfn, mode)
+================================================================================
+start_pfn可以不对齐pageblock，但在函数中需要对齐处理, isolate是以pageblock为单位的
+1.1 isolate_single_pageblock(isolate_start, false, )
+================================================================================
+1.2 isolate_single_pageblock(isolate_end, true, )
+================================================================================
+1.3 set_migratetype_isolate(, start_pfn, end_pfn)
+================================================================================
+1.4 undo_isolate_page_range(), 撤销原先isolate的
+================================================================================
+1.5 unset_migratetype_isolate(), 撤销最后的那个pageblock
+================================================================================
+
+2. isolate_single_pageblock(boundary_pfn, mode, isolate_before, skip_isolate)
+================================================================================
+隔离单个block
+  * 如果free，则会split。在set_migratetype_isolate()中
+  * 如果in-use, 
+2.1 start_pfn  = max(ALIGN_DOWN(isolate_pageblock, MAX_ORDER_NR_PAGES), zone->zone_start_pfn);
+================================================================================
+2.2 set_migratetype_isolate(page, isolate_pageblock, isolate_pageblock + pageblock_nr_pages)
+================================================================================
+
+
+3. set_migratetype_isolate(page, mode, start_pfn, end_pfn), 这里start_pfn/end_pfn好像可以和page不在一个block，但要覆盖page所在范围
+================================================================================
+3.1 unmovable = has_unmovable_pages(  ),只check单个pageblock的情况
+================================================================================
+3.2 pageblock_isolate_and_move_free_pages(zone, page)
+================================================================================
+设置成isolate，并把里面free的page移动到isolate链表
+3.2.1 __move_freepages_block_isolate()
+================================================================================
+
+4. __move_freepages_block_isolate(zone, page, isolate)
+================================================================================
+4.1 prep_move_freepages_block(zone, page, &start_pfn, )
+================================================================================
+4.2 pfn = find_large_buddy(start_pfn)
+================================================================================
+4.3 __move_freepages_block(zone, start_pfn, )
+================================================================================
+有意思的是如果对应的page不在buddy，就不会move
+那就是等后面释放的时候再move进来？好像是的，因为free的时候，是按照pageblock粒度来free的。
+4.4 toggle_pageblock_isolate()
+================================================================================
+
+
