@@ -1,6 +1,6 @@
 1. shmem_get_inode(sb, dir, mode, dev, flags)
 ================================================================================
-vma->vm_ops = &shmem_vm_ops;
+vma->vm_ops = &shmem_anon_vm_ops;
 inode->i_mapping->a_ops = &shmem_aops;
 inode->i_fop = &shmem_file_operations;
 inode->i_op = &shmem_inode_operations;
@@ -8,6 +8,8 @@ inode->i_op = &shmem_dir_inode_operations;
 
 2. how a shared anonymous vma link to shmem
 ================================================================================
+
+2.1 !CONFIG_SHMEM, shmem is based on ramfs
 
 mmap(0, len, prot, MAP_SHARED, fd, offset)
 do_mmap()
@@ -19,31 +21,17 @@ do_mmap()
     mmap_region()
         shmem_zero_setup(vma)
             file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
-                inode = shmem_get_inode()
-                    inode->i_mapping->a_ops = &shmem_aops;
-                    inode->i_op = &shmem_inode_operations;
-                    inode->i_fop = &shmem_file_operations;
+                __shmem_file_setup(shm_mnt, name, size, flags, S_PRIVATE)
+                    inode = shmem_get_inode(&nop_mnt_idmap, mnt->mnt_sb)
+                        inode->i_mapping->a_ops = &ram_aops;
+                        inode->i_op = &shmem_inode_operations;
+                        inode->i_fop = &shmem_file_operations;
+                    res = alloc_file_pseudo(inode, mnt, name, &shmem_file_operations)
+                        file->f_op = shmem_file_operations
+                    return res
             vma->vm_file = file;
-            vma->vm_ops = &shmem_vm_ops;
+            vma->vm_ops = &shmem_anon_vm_ops;
 
-3. shmem_zero_setup(vma), called by mmap
-================================================================================
-3.1 file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
-================================================================================
-3.1.1 inode = shmem_get_inode()
-================================================================================
-3.1.1.1 inode->i_mapping->a_ops = &shmem_aops;
-================================================================================
-3.1.1.2 inode->i_op = &shmem_inode_operations;
-================================================================================
-3.1.1.3 inode->i_fop = &shmem_file_operations;
-================================================================================
-3.1.2 file = alloc_file_pseudo(inode, mnt, name, O_RDWR, &shmem_file_operations)
-================================================================================
-3.2 vma->vm_file = file;
-================================================================================
-3.3 vma->vm_ops = &shmem_vm_ops;
-================================================================================
 
 4. shmem_fault, fault in a shared anonymous page
 ================================================================================
