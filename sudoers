@@ -1,1 +1,2 @@
+# put into /etc/sudoers
 richard ALL=(ALL)       NOPASSWD: ALL
