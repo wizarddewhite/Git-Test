@@ -121,15 +121,32 @@ void check_multi_order2()
 	void *old;
 
 	DEFINE_XARRAY(array);
+	XA_STATE(xas, &array, 0);
 	old = xa_store_order(&array, 2, 1, xa_mk_value(0), 0);
 	printf("The old value %p\n", old);
+	printf("--- store 0 to index 2 with order 1\n");
 	xa_dump(&array, false);
 	old = xa_store_order(&array, 2, 2, xa_mk_value(0), 0);
 	printf("The old value %p\n", old);
+	printf("--- store 0 to index 2 with order 2\n");
 	xa_dump(&array, false);
+	printf("--- iterate array\n");
+	// xas_for_each(&xas, old, 4)
+	// 	printf("\told: %p\n", old);
+
+	printf("--- store 0 to index 4/8/12 with order 2\n");
+	xa_store_order(&array, 4, 2, xa_mk_value(0), 0);
+	xa_store_order(&array, 8, 2, xa_mk_value(0), 0);
+	xa_store_order(&array, 12, 2, xa_mk_value(0), 0);
+	xa_dump(&array, false);
+	printf("--- iterate array, siblings is squashed\n");
+	xas_reset(&xas);
+	xas_for_each(&xas, old, 16)
+		printf("\told: %p\n", old);
 
 	old = xa_store_order(&array, 2, 8, xa_mk_value(0), 0);
 	printf("The old value %p\n", old);
+	printf("--- store 0 to index 2 with order 8\n");
 	xa_dump(&array, false);
 }
 
@@ -932,11 +949,11 @@ int main()
 	// xas_movement();
 	// check_xa_store();
 	// check_multi_order();
-	// check_multi_order2();
+	check_multi_order2();
 	// check_xas_max();
 	// check_store_range();
 	// check_set_range();
-	check_xas_split();
+	// check_xas_split();
 	// check_create_range();
 	// check_create_range_multi_order();
 	// check_align_1();
