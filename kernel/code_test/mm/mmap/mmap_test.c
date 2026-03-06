@@ -606,6 +606,13 @@ void mremap_thp(void)
 	pagesize = getpagesize();
 	pmd_pagesize = read_pmd_pagesize();
 
+	/*
+	 *                                     first mapped
+	 *                                     +---------+
+	 *                                     |         |
+	 *                                     +---------+
+	 *                                     2M-aligned
+	 */
 	one_page = memalign(pmd_pagesize, pmd_pagesize);
 	madvise(one_page, pmd_pagesize, MADV_HUGEPAGE);
 
@@ -618,43 +625,65 @@ void mremap_thp(void)
 	/* fault in page */
 	one_page[0] = 3;
 
-	printf("===After page fault\n");
+	printf("===After page fault: a PMD-mapped THP\n");
 	is_addr_thp("\t", one_page, kpageflags_fd);
-	if (!check_huge_anon(one_page, 1, pmd_pagesize)) {
-		printf("We expect huge anon page, but not\n");
-	} else {
-		printf("\tthere is huge anon %lukb\n", pmd_pagesize >> 10);
-	}
+	show_vma_anon_stat("", one_page);
 
 	/*
 	 * now we have a pmd mapped thp, now let's mremap it to pmd
 	 * aligned address
+	 *
+	 *                                     first mapped
+	 *                                     +.........+
+	 *                           |<- 2M  ->|         |
+	 *                                     +.........+
+	 *                                     2M-aligned
+	 *                           moved here
+	 *                           +---------+
+	 *                           |         |
+	 *                           +---------+
+	 *                           2M-aligned
 	 */
 	new_addr = mremap(one_page, pmd_pagesize, pmd_pagesize,
 			MREMAP_MAYMOVE | MREMAP_FIXED,
 			/* move to previous pmd + pmd_pagesize */
 			one_page - pmd_pagesize);
-	printf("===After mremap to previous pmd address\n");
+	printf("===After mremap to previous pmd address: a PMD-mapped THP\n");
 	if (new_addr != one_page - pmd_pagesize) {
 		printf("\tmremap failed to move to dedicated address\n");
 		return;
 	}
 	/*
-	 * Even mremap to non-pmd aligned address, we keep THP folio.
+	 * mremap to pmd aligned address,
+	 * we keep THP folio and pmd-mapped
 	 */
 	is_addr_thp("\t", new_addr, kpageflags_fd);
 	show_vma_anon_stat("", new_addr);
 
 	/*
-	 * now we have a pmd mapped thp, now let's mremap it to non-pmd
+	 * now we still have a pmd mapped thp, now let's mremap it to non-pmd
 	 * aligned address
+	 *
+	 *                                     first mapped
+	 *                                     +.........+
+	 *                           |<- 2M  ->|         |
+	 *                                     +.........+
+	 *                                     2M-aligned
+	 *                           +.........+
+	 *              |<- 2M+4K  ->|         |
+	 *                           +.........+
+	 *                           2M-aligned
+	 *              +---------+
+	 *              |         |
+	 *              +---------+
+	 *              2M-non-aligned
 	 */
 	one_page = mremap(new_addr, pmd_pagesize, pmd_pagesize,
 			MREMAP_MAYMOVE | MREMAP_FIXED,
 			/* move to +pagesize */
-			new_addr - pmd_pagesize * 2 + pagesize);
-	printf("===After mremap to non-pmd aligned address\n");
-	if (one_page != new_addr - pmd_pagesize * 2 + pagesize) {
+			new_addr - pmd_pagesize - pagesize);
+	printf("===After mremap to non-pmd aligned address: a PTE-mapped THP\n");
+	if (one_page != new_addr - pmd_pagesize - pagesize) {
 		printf("\tmremap failed to move to dedicated address, %p\n", one_page);
 		return;
 	}
@@ -673,10 +702,10 @@ int main(void) {
 	// map_shm();
 	// map_file_private_shared();
 	// map_anon_private_shared();
-	map_anon_base();
+	// map_anon_base();
 	// map_anon_thp();
 	// unmap_partial_anon_thp();
 	// mremap_simple();
-	// mremap_thp();
+	mremap_thp();
 	return 0;
 }
