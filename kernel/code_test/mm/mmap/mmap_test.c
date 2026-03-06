@@ -693,7 +693,44 @@ void mremap_thp(void)
 	is_addr_thp("\t", one_page, kpageflags_fd);
 	show_vma_anon_stat("", one_page);
 
-	munmap(one_page, pmd_pagesize);
+	/*
+	 * now we have a pte mapped thp, now let's mremap it to pmd
+	 * aligned address
+	 *
+	 *                                            first mapped
+	 *                                            +.........+
+	 *                                  |<- 2M  ->|         |
+	 *                                            +.........+
+	 *                                            2M-aligned
+	 *    |<   2M   |   2M    |  2M    >+.........+
+	 *                     |<- 2M+4K  ->|         |
+	 *                                  +.........+
+	 *                                  2M-aligned
+	 *                     +.........+
+	 *                     |         |
+	 *                     +.........+
+	 *                     2M-non-aligned
+	 *    +---------+
+	 *    |         |
+	 *    +---------+
+	 *    2M-aligned
+	 */
+	new_addr = mremap(one_page, pmd_pagesize, pmd_pagesize,
+			MREMAP_MAYMOVE | MREMAP_FIXED,
+			/* move to +pagesize */
+			one_page - pmd_pagesize * 2 + pagesize);
+	printf("===After mremap back to pmd aligned address: a PTE-mapped THP\n");
+	if (new_addr != one_page - pmd_pagesize * 2 + pagesize) {
+		printf("\tmremap failed to move to dedicated address, %p\n", new_addr);
+		return;
+	}
+	/*
+	 * After mremap back to pmd aligned address, it is still PTE-mapped THP.
+	 */
+	is_addr_thp("\t", new_addr, kpageflags_fd);
+	show_vma_anon_stat("", new_addr);
+
+	munmap(new_addr, pmd_pagesize);
 }
  
 int main(void) {
