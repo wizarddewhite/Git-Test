@@ -18,7 +18,7 @@ do_mmap()
         addr = get_area(file, addr, len, pgoff, flags);
         return addr
     vm_flags |= VM_SHARED | VM_MAYSHARE;
-    mmap_region()
+    mmap_region() -> __mmap_new_vma()
         shmem_zero_setup(vma)
             file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
                 __shmem_file_setup(shm_mnt, name, size, flags, S_PRIVATE)
@@ -29,8 +29,34 @@ do_mmap()
                     res = alloc_file_pseudo(inode, mnt, name, &shmem_file_operations)
                         file->f_op = shmem_file_operations
                     return res
-            vma->vm_file = file;
-            vma->vm_ops = &shmem_anon_vm_ops;
+        vma->vm_file = file;
+        vma->vm_ops = &shmem_anon_vm_ops;
+
+
+```
+     vma
+     +--------------------------------------+
+     |vm_ops                                |  = &shmem_anon_vm_ops
+     |       (struct vm_operation_struct*)  |
+     |vm_file                               |    file
+     |       (struct file*)                 |--->+--------------------------------------+
+     +--------------------------------------+    |f_op                                  |  = &shmem_file_operations
+                                                 |       (struct file_operations*)      |
+                                                 |                                      |
+                                                 |                                      |
+                                                 +--------------------------------------+
+
+						 然后通过path关联到inode，目前有三种实现
+
+                                                 inode
+                                                 +--------------------------------------+
+                                                 |i_op                                  |  = &shmem_inode_operations
+                                                 |       (struct inode_operations*)     |
+                                                 |i_fop                                 |  = &shmem_file_operations
+                                                 |       (struct file_operations *)     |
+                                                 +--------------------------------------+
+```
+
 
 
 4. shmem_fault, fault in a shared anonymous page
@@ -137,7 +163,7 @@ http://www.cs.kent.edu/~ruttan/sysprog/lectures/shmem/shared-mem-with-semaphore.
 ================================================================================
 0.1 shmem_vm_ops
 ================================================================================
-static const struct vm_operations_struct shmem_vm_ops = {
+static const struct vm_operations_struct shmem_anon_vm_ops = {
 	.fault		= shmem_fault,
 	.map_pages	= filemap_map_pages,
 #ifdef CONFIG_NUMA
@@ -148,16 +174,18 @@ static const struct vm_operations_struct shmem_vm_ops = {
 0.2 shmem_vm_ops
 ================================================================================
 static const struct file_operations shmem_file_operations = {
-	.mmap		= shmem_mmap,
+	.mmap_prepare	= shmem_mmap_prepare,
+	.open		= shmem_file_open,
 	.get_unmapped_area = shmem_get_unmapped_area,
 #ifdef CONFIG_TMPFS
 	.llseek		= shmem_file_llseek,
 	.read_iter	= shmem_file_read_iter,
-	.write_iter	= generic_file_write_iter,
+	.write_iter	= shmem_file_write_iter,
 	.fsync		= noop_fsync,
-	.splice_read	= generic_file_splice_read,
+	.splice_read	= shmem_file_splice_read,
 	.splice_write	= iter_file_splice_write,
 	.fallocate	= shmem_fallocate,
+	.setlease	= generic_setlease,
 #endif
 };
 
