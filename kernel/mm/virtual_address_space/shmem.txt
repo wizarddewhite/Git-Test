@@ -6,7 +6,7 @@ inode->i_fop = &shmem_file_operations;
 inode->i_op = &shmem_inode_operations;
 inode->i_op = &shmem_dir_inode_operations;
 
-2. how a shared anonymous vma link to shmem
+2. mmap: shared anonymous backed by shmem
 ================================================================================
 
 2.1 !CONFIG_SHMEM, shmem is based on ramfs
@@ -18,19 +18,20 @@ do_mmap()
         addr = get_area(file, addr, len, pgoff, flags);
         return addr
     vm_flags |= VM_SHARED | VM_MAYSHARE;
-    mmap_region() -> __mmap_new_vma()
-        shmem_zero_setup(vma)
-            file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
-                __shmem_file_setup(shm_mnt, name, size, flags, S_PRIVATE)
-                    inode = shmem_get_inode(&nop_mnt_idmap, mnt->mnt_sb)
-                        inode->i_mapping->a_ops = &ram_aops;
-                        inode->i_op = &shmem_inode_operations;
-                        inode->i_fop = &shmem_file_operations;
-                    res = alloc_file_pseudo(inode, mnt, name, &shmem_file_operations)
-                        file->f_op = shmem_file_operations
-                    return res
-        vma->vm_file = file;
-        vma->vm_ops = &shmem_anon_vm_ops;
+    mmap_region() 
+        __mmap_new_vma()
+            shmem_zero_setup(vma)
+                file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
+                    __shmem_file_setup(shm_mnt, name, size, flags, S_PRIVATE)
+                        inode = shmem_get_inode(&nop_mnt_idmap, mnt->mnt_sb)
+                            inode->i_mapping->a_ops = &ram_aops;
+                            inode->i_op = &shmem_inode_operations;
+                            inode->i_fop = &shmem_file_operations;
+                        res = alloc_file_pseudo(inode, mnt, name, &shmem_file_operations)
+                            file->f_op = shmem_file_operations
+                        return res
+                vma->vm_file = file;
+                vma->vm_ops = &shmem_anon_vm_ops;
 
 
 ```
@@ -54,43 +55,63 @@ do_mmap()
                                                  |       (struct inode_operations*)     |
                                                  |i_fop                                 |  = &shmem_file_operations
                                                  |       (struct file_operations *)     |
-                                                 +--------------------------------------+
+                                                 |i_mapping                             |
+                                                 |       (struct address_space*)        |
+                                                 |       +------------------------------+
+                                                 |       |a_ops                         |  = &shmem_aops
+                                                 |       | (address_space_operation*)   |
+                                                 +-------+------------------------------+
 ```
 
 
 
-4. shmem_fault, fault in a shared anonymous page
+3. fault in: shmem_fault
 ================================================================================
-4.1 err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp, gfp, vma, vmf, &ret);
+
+3.1 do_read_fault()
 ================================================================================
-4.1.1 mapping = inode->i_mapping;
+__do_fault(vmf)
+    vma->vm_ops->fault(vmf) -> shmem_fault()
+        shmem_get_folio_gfp(inode, vmf->pgoff, 0, &folio, SGP_CACHE, gfp, vmf, &ret)
+        // 这时候返回的folio, refcount = nr_pages + 1
+
+finish_fault()
+    folio_ref_add(folio, nr_pages - 1)      // 这时候refounct 为 nr_pages * 2
+    set_pte_range()
+
+3.2 do_shared_fault()
 ================================================================================
-4.1.2 info = SHMEM_I(inode)
+
+4. shmem_get_folio_gfp(), find page in cache, get from swap or allocate
 ================================================================================
-4.1.3 sbinfo = SHMEM_SB(inode->i_sb)
-================================================================================
-4.1.4 page = find_lock_entry(mapping, pgoff)
-================================================================================
-4.1.4.1 page = find_get_entry(mapping, pgoff)
-================================================================================
-4.1.4.2 lock_page(page)
-================================================================================
-4.1.5 shmem_swapin_page(inode, pgoff, &page, ), if in swap
-================================================================================
-4.1.6 page = shmem_alloc_and_acct_page(gfp, inode, pgoff, true/false), alloc new
-================================================================================
-4.1.6.1 page = shmem_alloc_page(gfp, info, index)
-================================================================================
-4.1.6.2 __SetPageLocked(page)
-================================================================================
-4.1.6.3 __SetPageSwapBacked(page)
-================================================================================
-4.1.7 shmem_add_to_page_cache(page, inode->i_mapping, ), add to shmem cache
-================================================================================
-4.1.7.1 page->mapping = mapping
-================================================================================
-4.1.8 lru_cache_add_anon(page)
-================================================================================
+page cache和swap中只能存在一个
+
+shmem_get_folio_gfp(inode, index, write_end, foliop, sgp, gfp, vmf, fault_type)
+    folio = filemap_get_entry(inode->i_mapping, index)
+	error = shmem_swapin_folio(inode, index, &folio, sgp, gfp, vma, fault_type)
+	*foliop = folio;
+
+    Fast cache lookup and swap lookup did not find: allocate
+    orders = shmem_allowable_huge_orders()
+
+    folio = shmem_alloc_and_add_folio(vmf, gfp, inode, index, fault_mm, 0)
+        folio = shmem_alloc_folio(gfp, 0, info, index)
+            set_page_refcounted()                                    <-- refcount = 1
+
+        __folio_set_locked(folio)
+        __folio_set_swapbacked(folio)
+
+        shmem_add_to_page_cache(folio, mapping, index, NULL, gfp)
+            folio_ref_add(folio, nr)                                 <-- refcount += nr = nr + 1
+            folio->mapping = mapping
+            folio->index = index
+            xas_store(&xas, folio)
+
+        folio_add_lru(folio)
+        return folio
+
+    clear_highpage(folio_page())
+    *foliop = folio;
 
 5. shmem_swapin_page(inode, pgoff, &page, ), if in swap
 ================================================================================
@@ -161,7 +182,7 @@ http://www.cs.kent.edu/~ruttan/sysprog/lectures/shmem/shared-mem-with-semaphore.
 
 0. data struct
 ================================================================================
-0.1 shmem_vm_ops
+0.1 shmem_anon_vm_ops / shmem_vm_ops 这俩一模一样阿
 ================================================================================
 static const struct vm_operations_struct shmem_anon_vm_ops = {
 	.fault		= shmem_fault,
@@ -170,7 +191,23 @@ static const struct vm_operations_struct shmem_anon_vm_ops = {
 	.set_policy     = shmem_set_policy,
 	.get_policy     = shmem_get_policy,
 #endif
+#ifdef CONFIG_USERFAULTFD
+	.uffd_ops	= &shmem_uffd_ops,
+#endif
 };
+
+static const struct vm_operations_struct shmem_vm_ops = {
+	.fault		= shmem_fault,
+	.map_pages	= filemap_map_pages,
+#ifdef CONFIG_NUMA
+	.set_policy     = shmem_set_policy,
+	.get_policy     = shmem_get_policy,
+#endif
+#ifdef CONFIG_USERFAULTFD
+	.uffd_ops	= &shmem_uffd_ops,
+#endif
+};
+
 0.2 shmem_vm_ops
 ================================================================================
 static const struct file_operations shmem_file_operations = {
