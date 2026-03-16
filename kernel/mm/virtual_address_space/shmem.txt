@@ -94,34 +94,45 @@ finish_fault()
 
 4. shmem_get_folio_gfp(), find page in cache, get from swap or allocate
 ================================================================================
-page cache和swap中只能存在一个
+注释中说page cache和swap中只能存在一个，swapin后，会在swap cache中删除
 
 shmem_get_folio_gfp(inode, index, write_end, foliop, sgp, gfp, vmf, fault_type)
+    // 从pagecache中找
     folio = filemap_get_entry(inode->i_mapping, index)
+    // 发现在swap cache中，就返回swap cache中的
+    if (xa_is_value(folio))
 	error = shmem_swapin_folio(inode, index, &folio, sgp, gfp, vma, fault_type)
 	*foliop = folio;
+        return error;
+    // 如果从page cache中找到的是最新的，则返回。
 
-    Fast cache lookup and swap lookup did not find: allocate
+    // 如果是读，找不到就返回了。如果是写，则需要分配一个，存到page cache中
+    // Fast cache lookup and swap lookup did not find: allocate
     orders = shmem_allowable_huge_orders()
 
+    // 对于新分配加入到page cache的，refcount = nr + 1
     folio = shmem_alloc_and_add_folio(vmf, gfp, inode, index, fault_mm, 0)
-        folio = shmem_alloc_folio(gfp, 0, info, index)
-            set_page_refcounted()                                    <-- refcount = 1
-
-        __folio_set_locked(folio)
-        __folio_set_swapbacked(folio)
-
-        shmem_add_to_page_cache(folio, mapping, index, NULL, gfp)
-            folio_ref_add(folio, nr)                                 <-- refcount += nr = nr + 1
-            folio->mapping = mapping
-            folio->index = index
-            xas_store(&xas, folio)
-
-        folio_add_lru(folio)
-        return folio
 
     clear_highpage(folio_page())
     *foliop = folio;
+
+4.1 shmem_alloc_and_add_folio 分配并添加到pagecache
+shmem_alloc_and_add_folio
+    folio = shmem_alloc_folio(gfp, 0, info, index)
+        set_page_refcounted()                                    <-- refcount = 1
+
+    __folio_set_locked(folio)
+    __folio_set_swapbacked(folio)                                // 标记swapbacked
+
+    // 添加到page cache
+    shmem_add_to_page_cache(folio, mapping, index, NULL, gfp)
+        folio_ref_add(folio, nr)                                 <-- refcount += nr = nr + 1
+        folio->mapping = mapping
+        folio->index = index
+        xas_store(&xas, folio)
+
+    folio_add_lru(folio)
+    return folio
 
 5. swapin/pageout
 
@@ -132,9 +143,13 @@ shmem_get_folio_gfp(inode, index, write_end, foliop, sgp, gfp, vmf, fault_type)
 
     si = get_swap_device(index_entry)
     order = shmem_confirm_swap(mapping, index, index_entry)
+    // index_entry中的offset是order对齐的，swap中的offset是真实的
+    // 当时swapout的时候的order可能和swapin的order会不一样
     swap = swp_entry(swp_type(swap), swp_offset(swap) + offset)
 
-    folio = swap_cache_get_folio(swap)                           // 现在swap cache中找
+    // 现在swap cache中找，有意思的是用swap找，不是用index_entry找。
+    // 难道在swap cache中，存放的时候不是order对齐的？
+    folio = swap_cache_get_folio(swap)
     // 找到了
         swap_update_readahead(folio, NULL, 0)
     // 没找到
@@ -146,7 +161,7 @@ shmem_get_folio_gfp(inode, index, write_end, foliop, sgp, gfp, vmf, fault_type)
                     __folio_set_swapbacked
                     swap_cache_add_folio
                         __swap_cache_add_folio
-                            folio_ref_add(folio, nr_pages)       // refcount += nr_pages = 1 + nr_pages
+                            folio_ref_add(folio, nr_pages)       // refcount += nr_pages = nr_pages + 1
                             folio_set_swapcache()
 
                     folio_add_lru()
@@ -154,22 +169,28 @@ shmem_get_folio_gfp(inode, index, write_end, foliop, sgp, gfp, vmf, fault_type)
         or
         shmem_swapin_cluster(swap, gfp, info, index)
 
+    // 这个时候得到的folio是在swapcache中的，此时的folio
+    // order可能和pagecache中保存的order不一致，所以需要重新计算一下index
+    nr_pages = folio_nr_pages(folio)
+    index = round_down(index, nr_pages)
 
 
-
-    if (shmem_should_replace_folio())
-        shmem_replace_folio(&folio, gfp, info, index, vma)
-
+    // 添加到pagecache
     shmem_add_to_page_cache(folio, mapping, index, swp_to_radix_entry(swap), gfp)
-        folio_ref_add(folio, nr)                                 // refcount += nr_pages = 2 * nr_pages
+        folio_ref_add(folio, nr)                                 // refcount += nr_pages = 2 * nr_pages + 1
     shmem_recalc_inode(inode, 0, -nr_pages)
 
+    // 这里是从swapcache中删除？
     folio_put_swap(folio, NULL)
     swap_cache_del_folio(folio)
+        folio_clear_swapcache(folio)
+        folio_ref_sub(folio, folio_nr_pages)                     // refcount -= nr_pages = nr_pages + 1
     folio_mark_dirty(follio)
     put_swap_device(si)
     *foliop = folio
     return 0
+
+5.2 shmem_writeout
 
 
 6. shmem_writepage(), called by pageout by mapping->a_ops->writepage(page, )
