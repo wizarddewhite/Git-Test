@@ -76,11 +76,21 @@ __do_fault(vmf)
         // 这时候返回的folio, refcount = nr_pages + 1
 
 finish_fault()
-    folio_ref_add(folio, nr_pages - 1)      // 这时候refounct 为 nr_pages * 2
-    set_pte_range()
+    folio_ref_add(folio, nr_pages - 1)      // 这时候refounct 为 nr_pages * 2,
+                                            // 一半表示在pagecache，一半表示mapping
+    set_pte_range(vmf, folio, page, nr_pages, addr)
 
 3.2 do_shared_fault()
 ================================================================================
+__do_fault(vmf)
+    vma->vm_ops->fault(vmf) -> shmem_fault()
+        shmem_get_folio_gfp(inode, vmf->pgoff, 0, &folio, SGP_CACHE, gfp, vmf, &ret)
+        // 这时候返回的folio, refcount = nr_pages + 1
+
+finish_fault()
+    folio_ref_add(folio, nr_pages - 1)      // 这时候refounct 为 nr_pages * 2,
+                                            // 一半表示在pagecache，一半表示mapping
+    set_pte_range(vmf, folio, page, nr_pages, addr)
 
 4. shmem_get_folio_gfp(), find page in cache, get from swap or allocate
 ================================================================================
@@ -113,36 +123,54 @@ shmem_get_folio_gfp(inode, index, write_end, foliop, sgp, gfp, vmf, fault_type)
     clear_highpage(folio_page())
     *foliop = folio;
 
-5. shmem_swapin_page(inode, pgoff, &page, ), if in swap
-================================================================================
-5.1 swap = radix_to_swp_entry(*pagep)
-================================================================================
-5.2 page = lookup_swap_cache(swap, NULL, 0), try swap cache
-================================================================================
-5.3 page = shmem_swapin(swap, gfn, info, ), read from disk
-================================================================================
-5.3.1 page = swap_cluster_readahead(swap, gfp, &vmf) -> read_swap_cache_async()
-================================================================================
-5.3.1.1 new_page = alloc_page_vma()
-================================================================================
-5.3.1.2 swapcache_prepare(swap), mark SWAP_HAS_CACHE
-================================================================================
-5.3.1.3 __SetPageLocked(new_page);
-================================================================================
-5.3.1.4 __SetPageSwapBacked(new_page);
-================================================================================
-5.3.1.5 add_to_swap_cache(new_page, entry, gfp_mask & GFP_KERNEL);
-================================================================================
-5.3.1.6 lru_cache_add_anon(new_page)
-================================================================================
-5.4 shmem_add_to_page_cache(page, inode->i_mapping), add to shmem cache
-================================================================================
-5.5 delete_from_swap_cache(page), remove from swap cache
-================================================================================
-5.5.1 put_swap_page(page, entry)
-================================================================================
-5.6 swap_free(swap)
-================================================================================
+5. swapin/pageout
+
+5.1 shmem_swapin_folio(inode, index, &folio, sgp, gfp, vma, fault_type)
+
+    swap = index_entry = radix_to_swp_entry(&foliop)
+    *foliop = NULL
+
+    si = get_swap_device(index_entry)
+    order = shmem_confirm_swap(mapping, index, index_entry)
+    swap = swp_entry(swp_type(swap), swp_offset(swap) + offset)
+
+    folio = swap_cache_get_folio(swap)                           // 现在swap cache中找
+    // 找到了
+        swap_update_readahead(folio, NULL, 0)
+    // 没找到
+        folio = shmem_swap_alloc_folio(inode, vma, index, index_entry, order, gfp)
+            new = shmem_alloc_folio(, order, info, index)        // refcount = 1
+            swapcache = swapin_folio(entry, new)
+                __swap_cache_prepare_and_add(entry, folio, 0, true)
+                    __folio_set_locked
+                    __folio_set_swapbacked
+                    swap_cache_add_folio
+                        __swap_cache_add_folio
+                            folio_ref_add(folio, nr_pages)       // refcount += nr_pages = 1 + nr_pages
+                            folio_set_swapcache()
+
+                    folio_add_lru()
+                swap_read_folio(folio, NULL)
+        or
+        shmem_swapin_cluster(swap, gfp, info, index)
+
+
+
+
+    if (shmem_should_replace_folio())
+        shmem_replace_folio(&folio, gfp, info, index, vma)
+
+    shmem_add_to_page_cache(folio, mapping, index, swp_to_radix_entry(swap), gfp)
+        folio_ref_add(folio, nr)                                 // refcount += nr_pages = 2 * nr_pages
+    shmem_recalc_inode(inode, 0, -nr_pages)
+
+    folio_put_swap(folio, NULL)
+    swap_cache_del_folio(folio)
+    folio_mark_dirty(follio)
+    put_swap_device(si)
+    *foliop = folio
+    return 0
+
 
 6. shmem_writepage(), called by pageout by mapping->a_ops->writepage(page, )
 ================================================================================
@@ -253,49 +281,4 @@ static const struct file_operations shmem_file_operations = {
                ClearPageSwapCache(page)                          --- clear PageSwapCache
            put_swap_page(page, entry)                            --- clear SWAP_HAS_CACHE
            page_ref_sub(page, nr)
-
-
-do_shared_fault
-   __do_fault -> vma->vm_ops->fault:
-   shmem_fault
-       err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp, gfp, vma, vmf, &ret);
-           mapping = inode->i_mapping;
-           info = SHMEM_I(inode)
-           sbinfo = SHMEM_SB(inode->i_sb)
-           page = find_lock_entry(mapping, pgoff)
-               page = find_get_entry(mapping, pgoff)
-               lock_page(page)
-           shmem_swapin_page(inode, pgoff, &page, ), if in swap
-               swap = radix_to_swp_entry(*pagep)
-               page = lookup_swap_cache(swap, NULL, 0), try swap cache
-               page = shmem_swapin(swap, gfn, info, ), read from disk
-                   page = swap_cluster_readahead(swap, gfp, &vmf)
-                       __read_swap_cache_async()
-                           new_page = alloc_page_vma()
-                           swapcache_prepare(swap),                      --- set SWAP_HAS_CACHE
-                           __SetPageLocked(new_page);
-                           __SetPageSwapBacked(new_page);
-                           add_to_swap_cache(new_page, entry, gfp_mask & GFP_KERNEL);
-                               page_ref_add(page, nr);
-                               SetPageSwapCache(page)                    --- set PageSwapCache
-                           lru_cache_add_anon(new_page)
-               shmem_add_to_page_cache(page, inode->i_mapping), add to shmem cache
-               delete_from_swap_cache(page), remove from swap cache
-                   ClearPageSwapCache(page)                              --- clear PageSwapCache
-                   put_swap_page(page, entry)
-                       __swap_entry_free_locked(, , SWAP_HAS_CACHE)      --- clear SWAP_HAS_CACHE
-               swap_free(swap)
-                   __swap_entry_free(p, swap)
-                       usage = __swap_entry_free_locked(p, offset, 1)    --- clear SWAP_MAP_SHMEM
-                       free_swap_slot(entry), if (!usage)
-           page = shmem_alloc_and_acct_page(gfp, inode, pgoff, true/false), alloc new
-               page = shmem_alloc_page(gfp, info, index)
-               __SetPageLocked(page)
-               __SetPageSwapBacked(page)
-           shmem_add_to_page_cache(page, inode->i_mapping, ), add to shmem cache
-               page->mapping = mapping
-           lru_cache_add_anon(page)
-   finish_fault(vmf)
-       alloc_set_pte(vmf, vmf->memcg, vmf->page)
-           set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
 
