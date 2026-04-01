@@ -1,3 +1,10 @@
+0. shmem_init()
+================================================================================
+
+register_filesystem(&shmem_fs_type)
+shm_mnt = kern_mount(&shmem_fs_type)
+
+
 1. shmem_get_inode(sb, dir, mode, dev, flags)
 ================================================================================
 vma->vm_ops = &shmem_anon_vm_ops;
@@ -20,9 +27,9 @@ do_mmap()
     vm_flags |= VM_SHARED | VM_MAYSHARE;
     mmap_region() 
         __mmap_new_vma()
-            shmem_zero_setup(vma)
+            shmem_zero_setup(vma) -> __shmem_zero_setup(vma->vm_start, vma->vm_end, vma->flags)
                 file = shmem_kernel_file_setup("dev/zero", size, vma->vm_flags);
-                    __shmem_file_setup(shm_mnt, name, size, flags, S_PRIVATE)
+                    __shmem_file_setup(shm_mnt, name /*= "dev/zero" */, size, flags, S_PRIVATE)
                         inode = shmem_get_inode(&nop_mnt_idmap, mnt->mnt_sb)
                             inode->i_mapping->a_ops = &ram_aops;
                             inode->i_op = &shmem_inode_operations;
@@ -170,7 +177,10 @@ shmem_alloc_and_add_folio
         shmem_swapin_cluster(swap, gfp, info, index)
 
     // 这个时候得到的folio是在swapcache中的，此时的folio
-    // order可能和pagecache中保存的order不一致，所以需要重新计算一下index
+    // order可能和pagecache中保存的order不一致, 所以需要:
+    // 1. 拆分pagecache中的slot
+    // 2. 重新计算一下index
+    shmem_split_large_entry(inode, index, index_entry, gfp)
     nr_pages = folio_nr_pages(folio)
     index = round_down(index, nr_pages)
 
@@ -277,6 +287,26 @@ static const struct file_operations shmem_file_operations = {
 
 0.3 shmem_inode_info
 ================================================================================
+
+0.4 shmem_sb_info, 挂在super_block->s_fs_info上
+================================================================================
+
+    struct shmem_sb_info
+    +----------------------------------------+
+    |max_blocks                              |
+    |    (unsigned long)                     |
+    |huge                                    |
+    |    (unsigned char)                     |
+    |                                        |
+    |                                        |
+    |                                        |
+    |                                        |
+    |                                        |
+    +----------------------------------------+
+
+
+
+
 
 0.4 the process of how shmem pageout
 ================================================================================
