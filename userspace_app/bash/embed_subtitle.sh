@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# get video: en1.savefrom.net
+# get subtitle: downsub.com
+
 path=""
 
 usage()
