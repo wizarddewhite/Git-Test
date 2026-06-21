@@ -18,17 +18,18 @@ NUMA=${BACKEND}${NODE}
 usage()
 {
 	echo "Usage: run a guest"
-	echo "$0 [-hvmkit]"
+	echo "$0 [-hvmukit]"
 	printf "\t-h this help message \n"
 	printf "\t-v start vnc and \"change vnc password\" in monitor \n"
 	printf "\t-m start as migration target \n"
+	printf "\t-u one numa node \n"
 	printf "\t-k \n"
 	printf "\t-i re-install guest \n"
 	printf "\t-t just print the qemu command line \n"
 	exit
 }
 
-while getopts ":hvmkit" opt; do
+while getopts ":hvmukit" opt; do
 	case "$opt" in
 	"h")
 		usage
@@ -39,6 +40,9 @@ while getopts ":hvmkit" opt; do
 		;;
 	"m")
 		MIGRATE="-incoming tcp:0:4444"
+		;;
+	"u")
+		NUMA=""
 		;;
 	"k")
 		# boot guest with kernel/initrd on host
