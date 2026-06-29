@@ -2,8 +2,7 @@
 QEMU=/home/richard/git/qemu/build/qemu-system-x86_64
 # DISK="-drive file=/home/richard/guest/fedora.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
 DISK="-drive file=/home/richard/guest/ubuntu.img,format=raw -drive file=/home/richard/guest/project.img,format=qcow2 "
-MEM_PER_NODE=3
-TOTAL_MEM=$(($MEM_PER_NODE * 2))
+TOTAL_MEM=6
 DEFAULT="-m ${TOTAL_MEM}G,slots=32,maxmem=32G -smp 8 --enable-kvm "
 NO_GRAPHIC="-nographic "
 INSTALL=""
@@ -11,25 +10,23 @@ MIGRATE=""
 KERNEL=""
 IS_TRY=""
 SERIAL=""
-BACKEND="-object memory-backend-ram,id=mem1,size=${MEM_PER_NODE}G -object memory-backend-ram,id=mem2,size=${MEM_PER_NODE}G "
-NODE="-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2 "
-NUMA=${BACKEND}${NODE}
+nodes=1
 
 usage()
 {
 	echo "Usage: run a guest"
-	echo "$0 [-hvmukit]"
+	echo "$0 [-hvmnkit]"
 	printf "\t-h this help message \n"
 	printf "\t-v start vnc and \"change vnc password\" in monitor \n"
 	printf "\t-m start as migration target \n"
-	printf "\t-u one numa node \n"
+	printf "\t-n number of numa node, only support 1 or 2 \n"
 	printf "\t-k \n"
 	printf "\t-i re-install guest \n"
 	printf "\t-t just print the qemu command line \n"
 	exit
 }
 
-while getopts ":hvmukit" opt; do
+while getopts ":hvmn:kit" opt; do
 	case "$opt" in
 	"h")
 		usage
@@ -41,8 +38,8 @@ while getopts ":hvmukit" opt; do
 	"m")
 		MIGRATE="-incoming tcp:0:4444"
 		;;
-	"u")
-		NUMA=""
+	"n")
+		nodes="$OPTARG"
 		;;
 	"k")
 		# boot guest with kernel/initrd on host
@@ -67,6 +64,23 @@ while getopts ":hvmukit" opt; do
 		;;
 	esac
 done
+
+case "$nodes" in
+	1)
+		MEM_PER_NODE=$(( TOTAL_MEM / nodes))
+		BACKEND="-object memory-backend-ram,id=mem1,size=${MEM_PER_NODE}G "
+		NODE="-numa node,nodeid=0,memdev=mem1 "
+		;;
+	2)
+		MEM_PER_NODE=$(( TOTAL_MEM / nodes))
+		BACKEND="-object memory-backend-ram,id=mem1,size=${MEM_PER_NODE}G -object memory-backend-ram,id=mem2,size=${MEM_PER_NODE}G "
+		NODE="-numa node,nodeid=0,memdev=mem1 -numa node,nodeid=1,memdev=mem2 "
+		;;
+	*)
+		usage
+		;;
+esac
+NUMA=${BACKEND}${NODE}
 
 if [ "$IS_TRY" == "true" ]; then
 	printf "%s \n" "$QEMU"
