@@ -104,6 +104,11 @@ int main()
 	char* ptr;
 	
 	printf("=== Userfaultfd example ===\n");
+
+	if (geteuid() != 0) {
+		printf("Run it as root!\n");
+		exit(1);
+	}
 	
 	// 1. create userfaultfd
 	uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
