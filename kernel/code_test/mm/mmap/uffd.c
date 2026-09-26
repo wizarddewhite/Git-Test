@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,10 +13,53 @@
 #include <linux/userfaultfd.h>
 #include <errno.h>
 
+#define SYSFS_THP "/sys/kernel/mm/transparent_hugepage"
+
 static size_t page_size;
+static size_t pmd_size;
+static volatile int stop_handler;
 
 #define GREEN   "\033[32m"
 #define RESET   "\033[0m"
+
+static unsigned long read_sysfs_ul(const char *path)
+{
+	int fd = open(path, O_RDONLY);
+	char buf[64] = "0";
+	ssize_t n;
+
+	if (fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n > 0)
+		buf[n] = '\0';
+	return strtoul(buf, NULL, 0);
+}
+
+/* get value in [] from "always [madvise] never" */
+static int read_sysfs_cur(const char *path, char *out, size_t len)
+{
+	int fd = open(path, O_RDONLY);
+	char raw[512];
+	char *l, *r;
+	ssize_t n;
+
+	if (fd < 0)
+		return -1;
+	n = read(fd, raw, sizeof(raw) - 1);
+	close(fd);
+	if (n <= 0)
+		return -1;
+	raw[n] = '\0';
+	l = strchr(raw, '[');
+	r = strchr(raw, ']');
+	if (!l || !r || r < l)
+		return -1;
+	*r = '\0';
+	snprintf(out, len, "%s", l + 1);
+	return 0;
+}
 
 // userfault handler
 static void* simple_handler(void* arg)
@@ -93,7 +137,7 @@ static void* simple_handler(void* arg)
 	return NULL;
 }
 
-int simple_uffd()
+int anon_uffd()
 {
 	const size_t size = 4 * page_size;
 	int uffd;
@@ -207,6 +251,180 @@ close:
 	return ret;
 }
 
+
+static void *memfd_handler(void *arg)
+{
+	char *src = NULL;
+	int uffd = *(int*)arg;
+
+		src = aligned_alloc(page_size, page_size);
+		if (!src) {
+			perror("aligned_alloc");
+			return NULL;
+		}
+
+	for (;;) {
+		struct pollfd pfd = { .fd = uffd, .events = POLLIN };
+		struct uffd_msg msg;
+		struct uffdio_copy copy;
+		// struct uffdio_zeropage zp;
+		unsigned long addr;
+		ssize_t n;
+		int ret;
+
+		/* poll with timeout */
+		ret = poll(&pfd, 1, 100);
+		if (ret == 0) {
+			if (stop_handler)
+				break;
+			continue;
+		}
+		if (ret < 0) {
+			if (errno == EINTR)
+				continue;
+			perror("poll");
+			break;
+		}
+		if (pfd.revents & POLLERR) {
+			fprintf(stderr, "uffd POLLERR\n");
+			break;
+		}
+
+		n = read(uffd, &msg, sizeof(msg));
+		if (n <= 0) {
+			if (n < 0 && errno == EAGAIN)
+				continue;
+			break;
+		}
+		if (msg.event != UFFD_EVENT_PAGEFAULT)
+			continue;
+
+		/* get fault addr */
+		addr = msg.arg.pagefault.address & ~(unsigned long)(page_size - 1);
+
+
+			snprintf(src, page_size, " memfd uffd fault at %lu", addr);
+			copy.dst  = addr;
+			copy.src  = (unsigned long)src;
+			copy.len  = page_size;
+			copy.mode = 0;
+			if (ioctl(uffd, UFFDIO_COPY, &copy)) {
+				fprintf(stderr, "UFFDIO_COPY failed: %s\n", strerror(errno));
+				break;
+			}
+	}
+
+	free(src);
+
+	return NULL;
+}
+
+int memfd_uffd()
+{
+	struct uffdio_api api = { 0 };
+	struct uffdio_register reg = { 0 };
+	size_t region_len = 4UL << 20;
+	char *region;
+	unsigned long nr_pages;
+	int uffd, memfd;
+	char buf[256];
+	pthread_t thr;
+
+	nr_pages = region_len / page_size;
+
+	printf("page size %zu, PMD %zu, region_len %zu (%lu pages)\n",
+	       page_size, pmd_size, region_len, nr_pages);
+	if (read_sysfs_cur(SYSFS_THP "/shmem_enabled", buf, sizeof(buf)) == 0) {
+		printf("shmem_enabled: %s\n", buf);
+		if (!strcmp(buf, "deny") || !strcmp(buf, "never")) {
+			printf("\n\tshmem_enabled should not be deny/never\n");
+			return -1;
+		}
+	} else {
+		printf("shmem_enabled not exist\n");
+		return -1;
+	}
+
+	/* 1. memfd */
+	memfd = memfd_create("uffd_test", MFD_CLOEXEC);
+	if (memfd < 0) {
+		perror("memfd_create");
+		return -1;
+	}
+	if (ftruncate(memfd, region_len)) {
+		perror("ftruncate");
+		return -1;
+	}
+
+	/* 1.1. map with PMD aligned*/
+	{
+		void *res = mmap(NULL, region_len + pmd_size, PROT_NONE,
+				 MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+		if (res == MAP_FAILED) {
+			perror("mmap reserve");
+			return -1;
+		}
+		uintptr_t aligned = ((uintptr_t)res + pmd_size - 1) & ~(uintptr_t)(pmd_size - 1);
+		region = mmap((void *)aligned, region_len, PROT_READ | PROT_WRITE,
+			      MAP_SHARED | MAP_FIXED, memfd, 0);
+		if (region == MAP_FAILED) {
+			perror("mmap memfd");
+			return -1;
+		}
+	}
+	printf("map memfd at %p (PMD aligned)\n", region);
+
+	/* 2. userfaultfd */
+	uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+	if (uffd < 0) {
+		perror("userfaultfd");
+		return -1;
+	}
+
+	api.api = UFFD_API;
+	api.features = UFFD_FEATURE_MISSING_SHMEM;
+	if (ioctl(uffd, UFFDIO_API, &api)) {
+		perror("UFFDIO_API");
+		return -1;
+	}
+	if (!(api.features & UFFD_FEATURE_MISSING_SHMEM)) {
+		fprintf(stderr, "MISSING_SHMEM not supported\n");
+		return -1;
+	}
+
+	reg.range.start = (unsigned long)region;
+	reg.range.len   = region_len;
+	reg.mode        = UFFDIO_REGISTER_MODE_MISSING;
+	if (ioctl(uffd, UFFDIO_REGISTER, &reg)) {
+		perror("UFFDIO_REGISTER");
+		fprintf(stderr, "  (EINVAL: VMA is not MISSING compatible?)\n");
+		return -1;
+	}
+	printf("\n=== uffd registered ===\n");
+	printf("available ioctl: COPY=%d ZEROPAGE=%d CONTINUE=%d WAKE=%d\n",
+	       !!(reg.ioctls & (1ULL << _UFFDIO_COPY)),
+	       !!(reg.ioctls & (1ULL << _UFFDIO_ZEROPAGE)),
+	       !!(reg.ioctls & (1ULL << _UFFDIO_CONTINUE)),
+	       !!(reg.ioctls & (1ULL << _UFFDIO_WAKE)));
+	printf("Note: CONTINUE=%d -- CONTINUE is meaningful under MINOR mode\n",
+	       !!(reg.ioctls & (1ULL << _UFFDIO_CONTINUE)));
+
+	/* 3. start uffd handler */
+	if (pthread_create(&thr, NULL, memfd_handler, &uffd)) {
+		perror("pthread_create");
+		return -1;
+	}
+
+	/* 4. trigger fault */
+	region[0] = 'A';
+	stop_handler = 1;
+	pthread_join(thr, NULL);
+
+	printf("content: %s\n", region);
+
+	return 0;
+}
+
 int main()
 {
 	if (geteuid() != 0) {
@@ -215,8 +433,14 @@ int main()
 	}
 
 	page_size = sysconf(_SC_PAGESIZE);
+	pmd_size = read_sysfs_ul(SYSFS_THP "/hpage_pmd_size");
+	if (!pmd_size) {
+		printf("Reading PMD pagesize failed");
+		return -1;
+	}
 
-	simple_uffd();
+	// anon_uffd();
+	memfd_uffd();
 
 	return 0;
 }
