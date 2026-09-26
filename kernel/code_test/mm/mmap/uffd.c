@@ -12,8 +12,7 @@
 #include <linux/userfaultfd.h>
 #include <errno.h>
 
-#define PAGE_SIZE 4096
-#define REGION_SIZE (4 * PAGE_SIZE)
+static size_t page_size;
 
 #define GREEN   "\033[32m"
 #define RESET   "\033[0m"
@@ -54,22 +53,22 @@ static void* simple_handler(void* arg)
 		
 		// 3. parse info
 		unsigned long fault_addr = msg.arg.pagefault.address;
-		unsigned long fault_page = fault_addr & ~(PAGE_SIZE - 1);
+		unsigned long fault_page = fault_addr & ~(page_size - 1);
 		int is_write = (msg.arg.pagefault.flags & UFFD_PAGEFAULT_FLAG_WRITE) ? 1 : 0;
-		// int page_index = (fault_addr - (unsigned long)region_start) / PAGE_SIZE;
+		// int page_index = (fault_addr - (unsigned long)region_start) / page_size;
 		
 		printf(GREEN "\thandle page fault: fault_addr=0x%lx, fault_page=x%lx, reason=%s\n" RESET,
 		       fault_addr, fault_page, is_write ? "WRITE" : "READ");
 		
 		// 4. prepare page content
 		// here we emulate some data
-		void* page_data = malloc(PAGE_SIZE);
+		void* page_data = malloc(page_size);
 		if (!page_data) {
 			perror("malloc page_data");
 			break;
 		}
 		
-		memset(page_data, 0, PAGE_SIZE);
+		memset(page_data, 0, page_size);
 		char* info = (char*)page_data;
 		snprintf(info, 100, "page addr: 0x%lx, fault addr: 0x%lx", 
 			fault_page, fault_addr);
@@ -77,7 +76,7 @@ static void* simple_handler(void* arg)
 		// 5. UFFDIO_COPY
 		copy.dst = fault_page;
 		copy.src = (unsigned long)page_data;
-		copy.len = PAGE_SIZE;
+		copy.len = page_size;
 		copy.mode = 0;
 		copy.copy = 0;
 		
@@ -96,6 +95,7 @@ static void* simple_handler(void* arg)
 
 int simple_uffd()
 {
+	const size_t size = 4 * page_size;
 	int uffd;
 	pthread_t handler_thread;
 	struct uffdio_api uffdio_api;
@@ -124,19 +124,19 @@ int simple_uffd()
 	printf("API version: %llu\n", uffdio_api.api);
 	
 	// 3. alloc memory region
-	region = mmap(NULL, REGION_SIZE, PROT_READ | PROT_WRITE,
+	region = mmap(NULL, size, PROT_READ | PROT_WRITE,
 	              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (region == MAP_FAILED) {
 		perror("mmap");
 		ret = -1;
 		goto close;
 	}
-	printf("alloc memory region: addr=0x%lx, size=0x%x\n", 
-	       (unsigned long)region, REGION_SIZE);
+	printf("alloc memory region: addr=0x%lx, size=0x%lx\n", 
+	       (unsigned long)region, size);
 	
 	// 4. register to userfaultfd
 	uffdio_register.range.start = (unsigned long)region;
-	uffdio_register.range.len = REGION_SIZE;
+	uffdio_register.range.len = size;
 	uffdio_register.mode = UFFDIO_REGISTER_MODE_MISSING;
 	
 	if (ioctl(uffd, UFFDIO_REGISTER, &uffdio_register) < 0) {
@@ -168,22 +168,22 @@ int simple_uffd()
 	
 	// write on 2nd page
 	printf("2. write on 2nd page: \n");
-	ptr[PAGE_SIZE + 4] = 'X';
-	printf("write 'X' on offset %d \n", PAGE_SIZE + 4);
-	printf("val='%c' (ASCII=%d)\n", ptr[PAGE_SIZE + 4], ptr[PAGE_SIZE + 4]);
-	printf("val=%s\n", &ptr[PAGE_SIZE]);
+	ptr[page_size + 4] = 'X';
+	printf("write 'X' on offset %ld \n", page_size + 4);
+	printf("val='%c' (ASCII=%d)\n", ptr[page_size + 4], ptr[page_size + 4]);
+	printf("val=%s\n", &ptr[page_size]);
 	printf("        ^--- changed to X\n");
 	sleep(1);
 	
 	// write on 3rd/4th page (across page)
 	printf("3. access page 3-4: \n");
-	memset(ptr + 2 * PAGE_SIZE, 'A', 2 * PAGE_SIZE);
-	printf("write %d bytes 'A'\n", 2 * PAGE_SIZE);
+	memset(ptr + 2 * page_size, 'A', 2 * page_size);
+	printf("write %ld bytes 'A'\n", 2 * page_size);
 	sleep(1);
 	
 	// verify written data
 	printf("4. verify: page 3-4 are all 'A'\n");
-	for (i = 2 * PAGE_SIZE; i < 4 * PAGE_SIZE; i++) {
+	for (i = 2 * page_size; i < 4 * page_size; i++) {
 		if (ptr[i] != 'A') {
 			printf("Is not A\n");
 			break;
@@ -201,7 +201,7 @@ int simple_uffd()
 unregister:
 	ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range);
 unmap:
-	munmap(region, REGION_SIZE);
+	munmap(region, size);
 close:
 	close(uffd);
 	return ret;
@@ -213,6 +213,8 @@ int main()
 		printf("Run it as root!\n");
 		exit(1);
 	}
+
+	page_size = sysconf(_SC_PAGESIZE);
 
 	simple_uffd();
 
