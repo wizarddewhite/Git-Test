@@ -34,22 +34,22 @@ static void* fault_handler_thread(void* arg)
 		
 		int poll_result = poll(&pollfd, 1, -1);
 		if (poll_result < 0) {
-		    perror("poll");
-		    break;
+			perror("poll");
+			break;
 		}
 		
 		// 2. get page fault info
 		nread = read(uffd, &msg, sizeof(msg));
 		if (nread < 0) {
-		    if (errno == EAGAIN)
-			continue;
-		    perror("read uffd_msg");
-		    break;
+			if (errno == EAGAIN)
+				continue;
+			perror("read uffd_msg");
+			break;
 		}
 		
 		if (msg.event != UFFD_EVENT_PAGEFAULT) {
-		    fprintf(stderr, "exception: %d\n", msg.event);
-		    continue;
+			fprintf(stderr, "exception: %d\n", msg.event);
+			continue;
 		}
 		
 		// 3. parse info
@@ -65,8 +65,8 @@ static void* fault_handler_thread(void* arg)
 		// here we emulate some data
 		void* page_data = malloc(PAGE_SIZE);
 		if (!page_data) {
-		    perror("malloc page_data");
-		    break;
+			perror("malloc page_data");
+			break;
 		}
 		
 		memset(page_data, 0, PAGE_SIZE);
@@ -82,9 +82,9 @@ static void* fault_handler_thread(void* arg)
 		copy.copy = 0;
 		
 		if (ioctl(uffd, UFFDIO_COPY, &copy) < 0) {
-		    perror("UFFDIO_COPY");
-		    free(page_data);
-		    break;
+			perror("UFFDIO_COPY");
+			free(page_data);
+			break;
 		}
 		
 		printf(GREEN "userfault resolved: page 0x%lx\n" RESET, fault_page);
@@ -108,8 +108,8 @@ int main()
 	// 1. create userfaultfd
 	uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
 	if (uffd < 0) {
-	    perror("userfaultfd");
-	    exit(1);
+		perror("userfaultfd");
+		exit(1);
 	}
 	printf("userfaultfd: fd=%d\n", uffd);
 	
@@ -117,9 +117,9 @@ int main()
 	uffdio_api.api = UFFD_API;
 	uffdio_api.features = 0;
 	if (ioctl(uffd, UFFDIO_API, &uffdio_api) < 0) {
-	    perror("UFFDIO_API");
-	    close(uffd);
-	    exit(1);
+		perror("UFFDIO_API");
+		close(uffd);
+		exit(1);
 	}
 	printf("API version: %llu\n", uffdio_api.api);
 	
@@ -127,9 +127,9 @@ int main()
 	region = mmap(NULL, REGION_SIZE, PROT_READ | PROT_WRITE,
 	              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (region == MAP_FAILED) {
-	    perror("mmap");
-	    close(uffd);
-	    exit(1);
+		perror("mmap");
+		close(uffd);
+		exit(1);
 	}
 	printf("alloc memory region: addr=0x%lx, size=0x%x\n", 
 	       (unsigned long)region, REGION_SIZE);
@@ -140,20 +140,20 @@ int main()
 	uffdio_register.mode = UFFDIO_REGISTER_MODE_MISSING;
 	
 	if (ioctl(uffd, UFFDIO_REGISTER, &uffdio_register) < 0) {
-	    perror("UFFDIO_REGISTER");
-	    munmap(region, REGION_SIZE);
-	    close(uffd);
-	    exit(1);
+		perror("UFFDIO_REGISTER");
+		munmap(region, REGION_SIZE);
+		close(uffd);
+		exit(1);
 	}
 	printf("successfully registered userfaultfd\n");
 	
 	// 5. start userfault handle thread
 	if (pthread_create(&handler_thread, NULL, fault_handler_thread, &uffd) != 0) {
-	    perror("pthread_create");
-	    ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range);
-	    munmap(region, REGION_SIZE);
-	    close(uffd);
-	    exit(1);
+		perror("pthread_create");
+		ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range);
+		munmap(region, REGION_SIZE);
+		close(uffd);
+		exit(1);
 	}
 	
 	// 6. main thread: access and trigger fault
@@ -189,9 +189,9 @@ int main()
 	
 	// È¡Ïû×¢²á
 	if (ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range) < 0) {
-	    perror("UFFDIO_UNREGISTER");
+		perror("UFFDIO_UNREGISTER");
 	} else {
-	    printf("unregister uffd area\n");
+		printf("unregister uffd area\n");
 	}
 	
 	// wait for fault handler thread
