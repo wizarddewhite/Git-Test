@@ -58,7 +58,7 @@ static void* fault_handler_thread(void* arg)
 		int is_write = (msg.arg.pagefault.flags & UFFD_PAGEFAULT_FLAG_WRITE) ? 1 : 0;
 		// int page_index = (fault_addr - (unsigned long)region_start) / PAGE_SIZE;
 		
-		printf(GREEN "handle page fault: fault_addr=0x%lx, fault_page=x%lx, reason=%s\n" RESET,
+		printf(GREEN "\thandle page fault: fault_addr=0x%lx, fault_page=x%lx, reason=%s\n" RESET,
 		       fault_addr, fault_page, is_write ? "WRITE" : "READ");
 		
 		// 4. prepare page content
@@ -87,7 +87,7 @@ static void* fault_handler_thread(void* arg)
 			break;
 		}
 		
-		printf(GREEN "userfault resolved: page 0x%lx\n" RESET, fault_page);
+		printf(GREEN "\tuserfault resolved: page 0x%lx\n" RESET, fault_page);
 		free(page_data);
 	}
 
@@ -168,19 +168,19 @@ int main()
 	ptr = (char*)region;
 	
 	// read on first page
-	printf("1. read 1st byte of 1st page: ");
+	printf("1. read 1st byte of 1st page: \n");
 	char value1 = ptr[0];
 	printf("val='%c' (ASCII=%d)\n", value1, value1);
 	sleep(1);
 	
 	// write on 2nd page
-	printf("2. write on 2nd page: ");
+	printf("2. write on 2nd page: \n");
 	ptr[PAGE_SIZE + 100] = 'X';
 	printf("write 'X' on offset %d \n", PAGE_SIZE + 100);
 	sleep(1);
 	
-	// 触发第3个页面（跨页面访问）
-	printf("3. access page 3-4: ");
+	// write on 3rd/4th page (across page)
+	printf("3. access page 3-4: \n");
 	memset(ptr + 2 * PAGE_SIZE, 'A', 2 * PAGE_SIZE);
 	printf("write %d bytes 'A'\n", 2 * PAGE_SIZE);
 	sleep(1);
@@ -192,7 +192,7 @@ int main()
 	printf("\n=== cleanup ===\n");
 	sleep(2);
 	
-	// 取消注册
+	// unregister
 	if (ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range) < 0) {
 		perror("UFFDIO_UNREGISTER");
 	} else {
