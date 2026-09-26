@@ -19,7 +19,7 @@
 #define RESET   "\033[0m"
 
 // userfault handler
-static void* fault_handler_thread(void* arg)
+static void* simple_handler(void* arg)
 {
 	int uffd = *(int*)arg;
 	struct uffd_msg msg;
@@ -94,7 +94,7 @@ static void* fault_handler_thread(void* arg)
 	return NULL;
 }
 
-int main()
+int simple_uffd()
 {
 	int uffd;
 	pthread_t handler_thread;
@@ -104,18 +104,13 @@ int main()
 	char* ptr;
 	int i, ret = 0;
 	
-	printf("=== Userfaultfd example ===\n");
+	printf("=== Userfaultfd simple example ===\n");
 
-	if (geteuid() != 0) {
-		printf("Run it as root!\n");
-		exit(1);
-	}
-	
 	// 1. create userfaultfd
 	uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
 	if (uffd < 0) {
 		perror("userfaultfd");
-		exit(1);
+		return -1;
 	}
 	printf("userfaultfd: fd=%d\n", uffd);
 	
@@ -124,7 +119,7 @@ int main()
 	uffdio_api.features = 0;
 	if (ioctl(uffd, UFFDIO_API, &uffdio_api) < 0) {
 		perror("UFFDIO_API");
-		return 1;
+		return -1;
 	}
 	printf("API version: %llu\n", uffdio_api.api);
 	
@@ -133,7 +128,7 @@ int main()
 	              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (region == MAP_FAILED) {
 		perror("mmap");
-		ret = 1;
+		ret = -1;
 		goto close;
 	}
 	printf("alloc memory region: addr=0x%lx, size=0x%x\n", 
@@ -146,15 +141,15 @@ int main()
 	
 	if (ioctl(uffd, UFFDIO_REGISTER, &uffdio_register) < 0) {
 		perror("UFFDIO_REGISTER");
-		ret = 1;
+		ret = -1;
 		goto unmap;
 	}
 	printf("successfully registered userfaultfd\n");
 	
 	// 5. start userfault handle thread
-	if (pthread_create(&handler_thread, NULL, fault_handler_thread, &uffd) != 0) {
+	if (pthread_create(&handler_thread, NULL, simple_handler, &uffd) != 0) {
 		perror("pthread_create");
-		ret = 1;
+		ret = -1;
 		goto unregister;
 	}
 	
@@ -210,4 +205,16 @@ unmap:
 close:
 	close(uffd);
 	return ret;
+}
+
+int main()
+{
+	if (geteuid() != 0) {
+		printf("Run it as root!\n");
+		exit(1);
+	}
+
+	simple_uffd();
+
+	return 0;
 }
