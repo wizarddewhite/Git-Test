@@ -48,7 +48,7 @@ static void* fault_handler_thread(void* arg)
 		}
 		
 		if (msg.event != UFFD_EVENT_PAGEFAULT) {
-			fprintf(stderr, "exception: %d\n", msg.event);
+			fprintf(stderr, "event exception: %d\n", msg.event);
 			continue;
 		}
 		
@@ -168,6 +168,7 @@ int main()
 	printf("1. read 1st byte of 1st page: \n");
 	char value1 = ptr[0];
 	printf("val='%c' (ASCII=%d)\n", value1, value1);
+	printf("val=%s\n", ptr);
 	sleep(1);
 	
 	// write on 2nd page
