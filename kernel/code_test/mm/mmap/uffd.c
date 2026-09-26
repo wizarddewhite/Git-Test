@@ -102,6 +102,7 @@ int main()
 	struct uffdio_api uffdio_api;
 	struct uffdio_register uffdio_register;
 	char* ptr;
+	int ret = 0;
 	
 	printf("=== Userfaultfd example ===\n");
 
@@ -123,8 +124,7 @@ int main()
 	uffdio_api.features = 0;
 	if (ioctl(uffd, UFFDIO_API, &uffdio_api) < 0) {
 		perror("UFFDIO_API");
-		close(uffd);
-		exit(1);
+		return 1;
 	}
 	printf("API version: %llu\n", uffdio_api.api);
 	
@@ -133,8 +133,8 @@ int main()
 	              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (region == MAP_FAILED) {
 		perror("mmap");
-		close(uffd);
-		exit(1);
+		ret = 1;
+		goto close;
 	}
 	printf("alloc memory region: addr=0x%lx, size=0x%x\n", 
 	       (unsigned long)region, REGION_SIZE);
@@ -146,19 +146,16 @@ int main()
 	
 	if (ioctl(uffd, UFFDIO_REGISTER, &uffdio_register) < 0) {
 		perror("UFFDIO_REGISTER");
-		munmap(region, REGION_SIZE);
-		close(uffd);
-		exit(1);
+		ret = 1;
+		goto unmap;
 	}
 	printf("successfully registered userfaultfd\n");
 	
 	// 5. start userfault handle thread
 	if (pthread_create(&handler_thread, NULL, fault_handler_thread, &uffd) != 0) {
 		perror("pthread_create");
-		ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range);
-		munmap(region, REGION_SIZE);
-		close(uffd);
-		exit(1);
+		ret = 1;
+		goto unregister;
 	}
 	
 	// 6. main thread: access and trigger fault
@@ -192,20 +189,15 @@ int main()
 	printf("\n=== cleanup ===\n");
 	sleep(2);
 	
-	// unregister
-	if (ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range) < 0) {
-		perror("UFFDIO_UNREGISTER");
-	} else {
-		printf("unregister uffd area\n");
-	}
-	
 	// wait for fault handler thread
 	pthread_cancel(handler_thread);
 	pthread_join(handler_thread, NULL);
 	
-	// cleanup
+unregister:
+	ioctl(uffd, UFFDIO_UNREGISTER, &uffdio_register.range);
+unmap:
 	munmap(region, REGION_SIZE);
+close:
 	close(uffd);
-	
-	return 0;
+	return ret;
 }
