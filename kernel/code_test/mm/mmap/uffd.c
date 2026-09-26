@@ -98,11 +98,11 @@ int main()
 {
 	int uffd;
 	pthread_t handler_thread;
-	void* region;
 	struct uffdio_api uffdio_api;
 	struct uffdio_register uffdio_register;
+	void* region;
 	char* ptr;
-	int ret = 0;
+	int i, ret = 0;
 	
 	printf("=== Userfaultfd example ===\n");
 
@@ -173,8 +173,11 @@ int main()
 	
 	// write on 2nd page
 	printf("2. write on 2nd page: \n");
-	ptr[PAGE_SIZE + 100] = 'X';
-	printf("write 'X' on offset %d \n", PAGE_SIZE + 100);
+	ptr[PAGE_SIZE + 4] = 'X';
+	printf("write 'X' on offset %d \n", PAGE_SIZE + 4);
+	printf("val='%c' (ASCII=%d)\n", ptr[PAGE_SIZE + 4], ptr[PAGE_SIZE + 4]);
+	printf("val=%s\n", &ptr[PAGE_SIZE]);
+	printf("        ^--- changed to X\n");
 	sleep(1);
 	
 	// write on 3rd/4th page (across page)
@@ -184,7 +187,13 @@ int main()
 	sleep(1);
 	
 	// verify written data
-	printf("4. verify: offset %d ='%c'\n", PAGE_SIZE + 100, ptr[PAGE_SIZE + 100]);
+	printf("4. verify: page 3-4 are all 'A'\n");
+	for (i = 2 * PAGE_SIZE; i < 4 * PAGE_SIZE; i++) {
+		if (ptr[i] != 'A') {
+			printf("Is not A\n");
+			break;
+		}
+	}
 	
 	// 7. cleanup
 	printf("\n=== cleanup ===\n");
