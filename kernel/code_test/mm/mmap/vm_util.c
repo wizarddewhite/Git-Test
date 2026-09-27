@@ -16,47 +16,19 @@
 #include "vm_util.h"
 
 #define PMD_SIZE_FILE_PATH "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size"
-#define SMAP_FILE_PATH "/proc/self/smaps"
 #define KPAGECOUNT_FILE_PATH "/proc/kpagecount"
 #define MAX_LINE_LENGTH 500
 
-uint64_t pagemap_get_entry(char *start)
+/*
+ * Read fp to buf, until it find pattern.
+ */
+static bool check_for_pattern(FILE *fp, const char *pattern, char *buf, size_t len)
 {
-	const unsigned long pfn = (unsigned long)start / getpagesize();
-	uint64_t entry;
-	int ret;
-	int pagemap_fd;
-
-	pagemap_fd = open("/proc/self/pagemap", O_RDONLY);
-	if (pagemap_fd == -1)
-		return 0;
-
-	ret = pread(pagemap_fd, &entry, sizeof(entry), pfn * sizeof(entry));
-	close(pagemap_fd);
-	if (ret != sizeof(entry))
-		printf("reading pagemap failed\n");
-	return entry;
-}
-
-unsigned long pagemap_get_pfn(char *start)
-{
-	uint64_t entry = pagemap_get_entry(start);
-
-	/* If present (63th bit), PFN is at bit 0 -- 54. */
-	if (entry & PM_PRESENT)
-		return entry & 0x007fffffffffffffull;
-	return -1ul;
-}
-
-void pagemap_get_info(struct pagemap_info *info)
-{
-	uint64_t entry = pagemap_get_entry(info->addr);
-
-	/* If present (63th bit), PFN is at bit 0 -- 54. */
-	if (entry & PM_PRESENT)
-		info->pfn = entry & 0x007fffffffffffffull;
-
-	info->is_file = !!(entry & PM_FILE);
+	while (fgets(buf, len, fp)) {
+		if (!strncmp(buf, pattern, strlen(pattern)))
+			return true;
+	}
+	return false;
 }
 
 uint64_t read_pmd_pagesize(void)
@@ -80,17 +52,89 @@ uint64_t read_pmd_pagesize(void)
 	return strtoul(buf, NULL, 10);
 }
 
-bool check_for_pattern(FILE *fp, const char *pattern, char *buf, size_t len)
+/*
+ * /proc/self/pagemap -- vaddr based file.
+ *
+ * Each vaddr has an entry.
+ * Each entry contain its pfn, present bit, swap type, etc.
+ *
+ * @addr: the virtual address to query
+ * Return the raw data of the entry at @addr
+ */
+uint64_t pagemap_get_entry(char *addr)
 {
-	while (fgets(buf, len, fp)) {
-		if (!strncmp(buf, pattern, strlen(pattern)))
-			return true;
-	}
-	return false;
+	const unsigned long pfn = (unsigned long)addr / getpagesize();
+	uint64_t entry;
+	int ret;
+	int pagemap_fd;
+
+	pagemap_fd = open("/proc/self/pagemap", O_RDONLY);
+	if (pagemap_fd == -1)
+		return 0;
+
+	ret = pread(pagemap_fd, &entry, sizeof(entry), pfn * sizeof(entry));
+	close(pagemap_fd);
+	if (ret != sizeof(entry))
+		printf("reading pagemap failed\n");
+	return entry;
+}
+
+unsigned long pagemap_get_pfn(char *addr)
+{
+	uint64_t entry = pagemap_get_entry(addr);
+
+	/* If present (63th bit), PFN is at bit 0 -- 54. */
+	if (entry & PM_PRESENT)
+		return entry & 0x007fffffffffffffull;
+	return -1ul;
+}
+
+void pagemap_get_info(struct pagemap_info *info)
+{
+	uint64_t entry = pagemap_get_entry(info->addr);
+
+	/* If present (63th bit), PFN is at bit 0 -- 54. */
+	if (entry & PM_PRESENT)
+		info->pfn = entry & 0x007fffffffffffffull;
+
+	info->is_file = !!(entry & PM_FILE);
 }
 
 /*
- * addr must equals to the vma->vm_start
+ * /proc/self/smaps -- vma based file
+ *
+ * Each vma has an entry. Each entry contains its status.
+ *
+ * 7f1234000000-7f1234001000 rw-p 00000000 00:00 0          [heap]
+ * Size:                  4 kB
+ * Rss:                   4 kB
+ * Pss:                   4 kB
+ * Shared_Clean:          0 kB
+ * Shared_Dirty:          0 kB
+ * Private_Clean:         0 kB
+ * Private_Dirty:         4 kB
+ * Referenced:            4 kB
+ * Anonymous:             4 kB
+ * LazyFree:              0 kB
+ * AnonHugePages:         0 kB
+ * ShmemPmdMapped:        0 kB
+ * FilePmdMapped:         0 kB
+ * Shared_Hugetlb:        0 kB
+ * Private_Hugetlb:       0 kB
+ * Swap:                  0 kB
+ * SwapPss:               0 kB
+ * Locked:                0 kB
+ * THPeligible:           0
+ * VmFlags: rd wr mr mw me ac sd
+ *
+ * @addr: virtual address in query, must equals to the vma->vm_start
+ * @pattern: data to match, e.g. AnonHugePages
+ * @buf, @len: specify a buffer to read data
+ *
+ * This function search /proc/self/smaps for a vma whose vm_start is @addr.
+ * Then it looks for @pattern for it.
+ *
+ * Return pointer into buf if found pattern, NULL if not.
  */
 char *__get_smap_entry(void *addr, const char *pattern, char *buf, size_t len)
 {
@@ -104,7 +148,7 @@ char *__get_smap_entry(void *addr, const char *pattern, char *buf, size_t len)
 	if (ret >= MAX_LINE_LENGTH)
 		exit(-1);
 
-	fp = fopen(SMAP_FILE_PATH, "r");
+	fp = fopen("/proc/self/smaps", "r");
 	if (!fp)
 		exit(-1);
 
@@ -127,6 +171,14 @@ err_out:
 	return entry;
 }
 
+/*
+ * Check in range start at @addr
+ *
+ * @addr: vma->vm_start
+ * @pattern: status in smaps
+ *
+ * Check if the status specified by @pattern equals to (nr_hpages * hpage_size)
+ */
 bool __check_range(void *addr, char *pattern, int nr_hpages,
 		  uint64_t hpage_size)
 {
@@ -155,6 +207,12 @@ bool check_anon(void *addr, int nr_hpages, uint64_t page_size)
 	return __check_range(addr, "Anonymous: ", nr_hpages, page_size);
 }
 
+/*
+ * Return the value specified by @pattern in vma start at @addr.
+ *
+ * @addr: vma->vm_start
+ * @pattern: status in smaps
+ */
 uint64_t __get_range(void *addr, char *pattern)
 {
 	char buffer[MAX_LINE_LENGTH];
