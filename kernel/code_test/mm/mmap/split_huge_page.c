@@ -43,7 +43,7 @@ static int vaddr_pageflags_get(char *vaddr, int pagemap_fd, int kpageflags_fd,
 	if (pfn == -1UL)
 		return 1;
 
-	if (pageflags_get(pfn, kpageflags_fd, flags))
+	if (pageflags_get(pfn, flags))
 		return -1;
 
 	return 0;
@@ -292,7 +292,7 @@ void split_huge_anon_page(void)
 	}
 	if (!pagemapcount_get(pfn, &mapcount))
 		printf("\tmapcount of before split: %lu\n", mapcount);
-	is_addr_thp("\t", one_page, kpageflags_fd);
+	is_addr_thp("\t", one_page);
 	show_vma_anon_stat("expect huge:", one_page);
 
 	write_debugfs(PID_FMT, getpid(), (uint64_t)one_page,
@@ -308,7 +308,7 @@ void split_huge_anon_page(void)
 
 	if (!pagemapcount_get(pfn, &mapcount))
 		printf("\tmapcount of after split: %lu\n", mapcount);
-	is_addr_thp("\t", one_page, kpageflags_fd);
+	is_addr_thp("\t", one_page);
 	show_vma_anon_stat("expect no huge:", one_page);
 
 
@@ -349,7 +349,7 @@ void split_multi_mapped_huge_anon_page()
 		printf("No THP is allocated\n");
 		return;
 	}
-	is_addr_thp("\t", one_page, kpageflags_fd);
+	is_addr_thp("\t", one_page);
 	show_vma_anon_stat("expect huge:", one_page);
 
 	for (;;) {
@@ -367,7 +367,7 @@ void split_multi_mapped_huge_anon_page()
 			// determine the number of child
 			if (level == 5) {
 				printf("Before split...\n");
-				is_addr_thp("\t", one_page, kpageflags_fd);
+				is_addr_thp("\t", one_page);
 				show_vma_anon_stat("expect huge:", one_page);
 
 				write_debugfs(PID_FMT, getpid(), (uint64_t)one_page,
@@ -382,7 +382,7 @@ void split_multi_mapped_huge_anon_page()
 					}
 				}
 
-				is_addr_thp("\t", one_page, kpageflags_fd);
+				is_addr_thp("\t", one_page);
 				show_vma_anon_stat("expect no huge:", one_page);
 
 				memset(expected_orders, 0, sizeof(int) * (pmd_order + 1));
@@ -408,7 +408,7 @@ void split_multi_mapped_huge_anon_page()
 	wait(NULL);
 
 	// printf("===child quit\n");
-	// is_addr_thp("\t", one_page, kpageflags_fd);
+	// is_addr_thp("\t", one_page);
 	// show_vma_anon_stat("expect no huge:", one_page);
 	free(one_page);
 

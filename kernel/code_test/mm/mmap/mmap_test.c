@@ -376,14 +376,14 @@ void map_anon_thp()
 	}
 
 	pfn = pagemap_get_pfn(one_page);
-	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+	pageflags_get(pfn, &pfn_flags);
 
 	if ((pfn_flags & folio_head_flags) == folio_head_flags)
 		printf("vaddr(%lx) at pfn(%lx) is Head\n",
 				(unsigned long)one_page, pfn);
 
 	pfn = pagemap_get_pfn(one_page + pagesize);
-	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+	pageflags_get(pfn, &pfn_flags);
 
 	if ((pfn_flags & folio_tail_flags) == folio_tail_flags)
 		printf("vaddr(%lx) at pfn(%lx) is Tail\n",
@@ -475,10 +475,10 @@ void unmap_partial_anon_thp()
 	one_page[pmd_pagesize] = 1;
 
 	printf("===After page fault\n");
-	is_addr_thp("\tparent ", one_page, kpageflags_fd);
+	is_addr_thp("\tparent ", one_page);
 	if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
 		printf("\t\t mapcount: %lu\n", mapcount);
-	is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+	is_addr_thp("\tparent ", one_page + pmd_pagesize);
 	if (!pagemapcount_get(pagemap_get_pfn(one_page + pmd_pagesize), &mapcount))
 		printf("\t\t mapcount: %lu\n", mapcount);
 
@@ -502,10 +502,10 @@ void unmap_partial_anon_thp()
 		}
 
 		// check the range is still thp
-		is_addr_thp("\tchild ", one_page, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page);
 		if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
 			printf("\t\t mapcount: %lu\n", mapcount);
-		is_addr_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page + pmd_pagesize);
 		if (!pagemapcount_get(pagemap_get_pfn(one_page + pmd_pagesize), &mapcount))
 			printf("\t\t mapcount: %lu\n", mapcount);
 
@@ -518,10 +518,10 @@ void unmap_partial_anon_thp()
 
 		// check the folio is still thp
 		printf("===After unmap part range\n");
-		is_addr_thp("\tchild ", one_page, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page);
 		if (!pagemapcount_get(pagemap_get_pfn(one_page), &mapcount))
 			printf("\t\t mapcount: %lu\n", mapcount);
-		is_addr_thp("\tchild ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tchild ", one_page + pmd_pagesize);
 		if (!pagemapcount_get(pagemap_get_pfn(one_page + pmd_pagesize), &mapcount))
 			printf("\t\t mapcount: %lu\n", mapcount);
 
@@ -534,8 +534,8 @@ void unmap_partial_anon_thp()
 		printf("===child quit\n");
 		show_vma_anon_stat("parent range:", one_page);
 
-		is_addr_thp("\tparent ", one_page, kpageflags_fd);
-		is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tparent ", one_page);
+		is_addr_thp("\tparent ", one_page + pmd_pagesize);
 
 		// unmap a part of the thp
 		ret = munmap(one_page + pagesize, pagesize);
@@ -546,8 +546,8 @@ void unmap_partial_anon_thp()
 
 		// check the folio is still thp
 		printf("===After unmap part range\n");
-		is_addr_thp("\tparent ", one_page, kpageflags_fd);
-		is_addr_thp("\tparent ", one_page + pmd_pagesize, kpageflags_fd);
+		is_addr_thp("\tparent ", one_page);
+		is_addr_thp("\tparent ", one_page + pmd_pagesize);
 
 		// first range just contain small folio
 		show_vma_anon_stat("parent first range:", one_page);
@@ -626,7 +626,7 @@ void mremap_thp(void)
 	one_page[0] = 3;
 
 	printf("===After page fault: a PMD-mapped THP\n");
-	is_addr_thp("\t", one_page, kpageflags_fd);
+	is_addr_thp("\t", one_page);
 	show_vma_anon_stat("", one_page);
 
 	/*
@@ -657,7 +657,7 @@ void mremap_thp(void)
 	 * mremap to pmd aligned address,
 	 * we keep THP folio and pmd-mapped
 	 */
-	is_addr_thp("\t", new_addr, kpageflags_fd);
+	is_addr_thp("\t", new_addr);
 	show_vma_anon_stat("", new_addr);
 
 	/*
@@ -690,7 +690,7 @@ void mremap_thp(void)
 	/*
 	 * Even mremap to non-pmd aligned address, we keep THP folio.
 	 */
-	is_addr_thp("\t", one_page, kpageflags_fd);
+	is_addr_thp("\t", one_page);
 	show_vma_anon_stat("", one_page);
 
 	/*
@@ -727,7 +727,7 @@ void mremap_thp(void)
 	/*
 	 * After mremap back to pmd aligned address, it is still PTE-mapped THP.
 	 */
-	is_addr_thp("\t", new_addr, kpageflags_fd);
+	is_addr_thp("\t", new_addr);
 	show_vma_anon_stat("", new_addr);
 
 	munmap(new_addr, pmd_pagesize);

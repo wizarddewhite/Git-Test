@@ -246,11 +246,25 @@ void show_vma_anon_stat(char *prefix, void *addr)
 		get_huge_anon(addr), get_anon(addr));
 }
 
-int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags)
+/*
+ * /proc/kpageflags -- pfn based file.
+ *
+ * Each pfn has an entry, specifying page status, e.g. Dirty, LRU, Buddy,
+ * anon, etc.
+ *
+ * @pfn: the pfn to query
+ * @flags: pfn's flags
+ */
+int pageflags_get(unsigned long pfn, uint64_t *flags)
 {
 	size_t count;
+	int fd;
 
-	count = pread(kpageflags_fd, flags, sizeof(*flags),
+	fd = open("/proc/kpageflags", O_RDONLY);
+	if (fd == -1)
+		return -1;
+
+	count = pread(fd, flags, sizeof(*flags),
 		      pfn * sizeof(*flags));
 
 	if (count != sizeof(*flags))
@@ -259,7 +273,13 @@ int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags)
 	return 0;
 }
 
-void is_addr_thp(char *prefix, char *addr, int kpageflags_fd)
+/*
+ * Check if @addr is backed by THP.
+ *
+ * @prefix: for output
+ * @addr: the virtual add to query
+ */
+void is_addr_thp(char *prefix, char *addr)
 {
 	const uint64_t folio_head_flags = KPF_THP | KPF_COMPOUND_HEAD;
 	const uint64_t folio_tail_flags = KPF_THP | KPF_COMPOUND_TAIL;
@@ -267,7 +287,7 @@ void is_addr_thp(char *prefix, char *addr, int kpageflags_fd)
 	uint64_t pfn_flags;
 
 	pfn = pagemap_get_pfn(addr);
-	pageflags_get(pfn, kpageflags_fd, &pfn_flags);
+	pageflags_get(pfn, &pfn_flags);
 
 	if (!(pfn_flags & KPF_THP)) {
 		printf("%svaddr(%lx) at pfn(%lx) isn't THP\n",
