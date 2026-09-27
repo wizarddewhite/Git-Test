@@ -336,22 +336,16 @@ void map_anon_thp()
 {
 	const uint64_t folio_head_flags = KPF_THP | KPF_COMPOUND_HEAD;
 	const uint64_t folio_tail_flags = KPF_THP | KPF_COMPOUND_TAIL;
-	const char *kpageflags_proc = "/proc/kpageflags";
 	char *one_page;
 	uint64_t pmd_pagesize;
 	uint64_t pagesize;
 	unsigned long pfn;
-	int kpageflags_fd;
 	uint64_t pfn_flags;
 
 	if (geteuid() != 0) {
 		printf("Please run as root\n");
 		return;
 	}
-
-	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
-	if (kpageflags_fd == -1)
-		exit(-1);
 
 	pagesize = getpagesize();
 	pmd_pagesize = read_pmd_pagesize();
@@ -388,18 +382,14 @@ void map_anon_thp()
 	if ((pfn_flags & folio_tail_flags) == folio_tail_flags)
 		printf("vaddr(%lx) at pfn(%lx) is Tail\n",
 				(unsigned long)one_page + pagesize, pfn);
-
-	close(kpageflags_fd);
 }
 
 void map_anon_base(void)
 {
-	const char *kpageflags_proc = "/proc/kpageflags";
 	char *region;
 	uint64_t pmd_pagesize;
 	uint64_t pagesize;
 	int i, nr_pages = 256 * 1024;
-	int kpageflags_fd;
 
 	if (geteuid() != 0) {
 		printf("Please run as root\n");
@@ -407,9 +397,6 @@ void map_anon_base(void)
 	}
 
 	printf("pid %d\n", getpid());
-	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
-	if (kpageflags_fd == -1)
-		exit(-1);
 
 	pagesize = getpagesize();
 	pmd_pagesize = read_pmd_pagesize();
@@ -439,11 +426,9 @@ void map_anon_base(void)
 
 void unmap_partial_anon_thp()
 {
-	const char *kpageflags_proc = "/proc/kpageflags";
 	char *one_page;
 	uint64_t pmd_pagesize;
 	uint64_t pagesize;
-	int kpageflags_fd;
 	pid_t pid;
 	int ret;
 	uint64_t mapcount;
@@ -454,9 +439,6 @@ void unmap_partial_anon_thp()
 	}
 
 	printf("parent %d\n", getpid());
-	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
-	if (kpageflags_fd == -1)
-		exit(-1);
 
 	pagesize = getpagesize();
 	pmd_pagesize = read_pmd_pagesize();
@@ -555,7 +537,6 @@ void unmap_partial_anon_thp()
 		show_vma_anon_stat("parent second range:", one_page + 2 * pagesize);
 	}
 
-	close(kpageflags_fd);
 }
 
 /*
@@ -587,11 +568,9 @@ void mremap_simple(void)
 
 void mremap_thp(void)
 {
-	const char *kpageflags_proc = "/proc/kpageflags";
 	char *one_page, *new_addr;
 	uint64_t pmd_pagesize;
 	uint64_t pagesize;
-	int kpageflags_fd;
 
 	if (geteuid() != 0) {
 		printf("Please run as root\n");
@@ -599,9 +578,6 @@ void mremap_thp(void)
 	}
 
 	printf("parent %d\n", getpid());
-	kpageflags_fd = open(kpageflags_proc, O_RDONLY);
-	if (kpageflags_fd == -1)
-		exit(-1);
 
 	pagesize = getpagesize();
 	pmd_pagesize = read_pmd_pagesize();
@@ -740,9 +716,9 @@ int main(void) {
 	// map_file_private_shared();
 	// map_anon_private_shared();
 	// map_anon_base();
-	// map_anon_thp();
+	map_anon_thp();
 	// unmap_partial_anon_thp();
 	// mremap_simple();
-	mremap_thp();
+	// mremap_thp();
 	return 0;
 }
