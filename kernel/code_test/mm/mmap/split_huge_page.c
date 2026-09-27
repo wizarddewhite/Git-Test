@@ -27,10 +27,7 @@ unsigned int pmd_order;
 unsigned int pmd_order;
 int *expected_orders;
 
-const char *pagemap_proc = "/proc/self/pagemap";
-int pagemap_fd;
-
-static int vaddr_pageflags_get(char *vaddr, int pagemap_fd, uint64_t *flags)
+static int vaddr_pageflags_get(char *vaddr, uint64_t *flags)
 {
 	unsigned long pfn;
 
@@ -52,7 +49,6 @@ static int vaddr_pageflags_get(char *vaddr, int pagemap_fd, uint64_t *flags)
  *
  * @vaddr_start: start vaddr
  * @len: range length
- * @pagemap_fd: file descriptor to /proc/<pid>/pagemap
  * @orders: output folio order array
  * @nr_orders: folio order array size
  *
@@ -67,14 +63,12 @@ static int vaddr_pageflags_get(char *vaddr, int pagemap_fd, uint64_t *flags)
  * Return: 0 - no error, -1 - unhandled cases
  */
 static int gather_after_split_folio_orders(char *vaddr_start, size_t len,
-		int pagemap_fd, int orders[], int nr_orders)
+					   int orders[], int nr_orders)
 {
 	uint64_t page_flags = 0;
 	int cur_order = -1;
 	char *vaddr;
 
-	if (pagemap_fd == -1)
-		return -1;
 	if (!orders)
 		return -1;
 	if (nr_orders <= 0)
@@ -84,7 +78,7 @@ static int gather_after_split_folio_orders(char *vaddr_start, size_t len,
 		char *next_folio_vaddr;
 		int status;
 
-		status = vaddr_pageflags_get(vaddr, pagemap_fd, &page_flags);
+		status = vaddr_pageflags_get(vaddr, &page_flags);
 		if (status < 0)
 			return -1;
 
@@ -120,8 +114,7 @@ static int gather_after_split_folio_orders(char *vaddr_start, size_t len,
 		if (next_folio_vaddr >= vaddr_start + len)
 			break;
 
-		while ((status = vaddr_pageflags_get(next_folio_vaddr, pagemap_fd,
-							&page_flags)) >= 0) {
+		while ((status = vaddr_pageflags_get(next_folio_vaddr, &page_flags)) >= 0) {
 			/*
 			 * non present vaddr, next compound head page, or
 			 * order-0 page
@@ -150,7 +143,7 @@ static int gather_after_split_folio_orders(char *vaddr_start, size_t len,
 }
 
 static int check_after_split_folio_orders(char *vaddr_start, size_t len,
-		int pagemap_fd, int orders[], int nr_orders)
+					  int orders[], int nr_orders)
 {
 	int *vaddr_orders;
 	int status;
@@ -164,7 +157,7 @@ static int check_after_split_folio_orders(char *vaddr_start, size_t len,
 	}
 
 	memset(vaddr_orders, 0, sizeof(int) * nr_orders);
-	status = gather_after_split_folio_orders(vaddr_start, len, pagemap_fd,
+	status = gather_after_split_folio_orders(vaddr_start, len,
 				     vaddr_orders, nr_orders);
 	if (status)
 		printf("gather folio info failed\n");
@@ -240,12 +233,6 @@ void init(void)
 		exit(0);
 	}
 
-	pagemap_fd = open(pagemap_proc, O_RDONLY);
-	if (pagemap_fd == -1) {
-		printf("read pagemap: %s\n", strerror(errno));
-		exit(0);
-	}
-
 }
 
 void split_huge_anon_page(void)
@@ -303,8 +290,7 @@ void split_huge_anon_page(void)
 
 	memset(expected_orders, 0, sizeof(int) * (pmd_order + 1));
 	expected_orders[0] = 1 << pmd_order;
-	check_after_split_folio_orders(one_page, len, pagemap_fd,
-			expected_orders, pmd_order + 1);
+	check_after_split_folio_orders(one_page, len, expected_orders, pmd_order + 1);
 
 	free(one_page);
 
@@ -376,7 +362,7 @@ void split_multi_mapped_huge_anon_page()
 				memset(expected_orders, 0, sizeof(int) * (pmd_order + 1));
 				expected_orders[0] = 1 << pmd_order;
 
-				if (check_after_split_folio_orders(one_page, len, pagemap_fd,
+				if (check_after_split_folio_orders(one_page, len,
 								   expected_orders, (pmd_order + 1)))
 					printf("!!!Unexpected THP split\n");
 				else
