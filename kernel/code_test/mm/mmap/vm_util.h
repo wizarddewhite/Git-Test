@@ -21,15 +21,20 @@ struct pagemap_info {
 	bool is_file;
 };
 
-uint64_t pagemap_get_entry(char *start);
-unsigned long pagemap_get_pfn(char *start);
-void pagemap_get_info(struct pagemap_info *info);
 uint64_t read_pmd_pagesize(void);
+
+/* /proc/self/pagemap */
+uint64_t pagemap_get_entry(char *addr);
+unsigned long pagemap_get_pfn(char *addr);
+void pagemap_get_info(struct pagemap_info *info);
+
+/* /proc/self/smaps */
 bool check_huge_anon(void *addr, int nr_hpages, uint64_t hpage_size);
 bool check_anon(void *addr, int nr_hpages, uint64_t page_size);
 uint64_t get_huge_anon(void *addr);
 uint64_t get_anon(void *addr);
 void show_vma_anon_stat(char *prefix, void *addr);
+
 int pageflags_get(unsigned long pfn, int kpageflags_fd, uint64_t *flags);
 void is_addr_thp(char *prefix, char *addr, int kpageflags_fd);
 int pagemapcount_get(unsigned long pfn, uint64_t *mapcount);
