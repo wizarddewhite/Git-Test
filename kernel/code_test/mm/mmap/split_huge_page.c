@@ -244,6 +244,7 @@ void split_huge_anon_page(void)
 		printf("No THP is allocated\n");
 		return;
 	}
+	printf("nr_pages %d\n", vaddr_page_number(one_page, pagesize));
 
 	pfn = pagemap_get_pfn(one_page);
 	if (pfn == -1ul) {
@@ -270,6 +271,7 @@ void split_huge_anon_page(void)
 		printf("\tmapcount of after split: %lu\n", mapcount);
 	is_addr_thp("\t", one_page);
 	show_vma_anon_stat("expect no huge:", one_page);
+	printf("nr_pages %d\n", vaddr_page_number(one_page, pagesize));
 
 
 	memset(expected_orders, 0, sizeof(int) * (pmd_order + 1));
