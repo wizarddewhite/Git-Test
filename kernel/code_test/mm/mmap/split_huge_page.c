@@ -27,22 +27,6 @@ unsigned int pmd_order;
 unsigned int pmd_order;
 int *expected_orders;
 
-static int vaddr_pageflags_get(char *vaddr, uint64_t *flags)
-{
-	unsigned long pfn;
-
-	pfn = pagemap_get_pfn(vaddr);
-
-	/* non-present PFN */
-	if (pfn == -1UL)
-		return 1;
-
-	if (pageflags_get(pfn, flags))
-		return -1;
-
-	return 0;
-}
-
 /*
  * gather_after_split_folio_orders - scan through [vaddr_start, len) and record
  * folio orders
@@ -88,7 +72,7 @@ static int gather_after_split_folio_orders(char *vaddr_start, size_t len,
 			continue;
 		}
 
-		/* all order-0 pages with possible false postive (non folio) */
+		/* all order-0 pages with possible false positive (non folio) */
 		if (!(page_flags & (KPF_COMPOUND_HEAD | KPF_COMPOUND_TAIL))) {
 			orders[0]++;
 			vaddr += pagesize;
