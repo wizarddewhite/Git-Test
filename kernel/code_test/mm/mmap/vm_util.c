@@ -327,6 +327,57 @@ void is_addr_thp(char *prefix, char *addr)
 }
 
 /*
+ * get page number mapped in @addr_start
+ *
+ * @addr_start: virtual address to query
+ *
+ * As @addr_start may not be head, the number of pages nay not equal to
+ * folio_nr_pages().
+ *
+ * Return number of pages, 0 means no pages mapped.
+ */
+int vaddr_page_number(char *addr_start, uint64_t pagesize)
+{
+	char *addr;
+	uint64_t page_flags;
+	bool is_head = false, start_is_head = false;
+	int nr_pages = 0;
+
+	for (addr = addr_start; ; addr += pagesize) {
+		int status;
+
+		status = vaddr_pageflags_get(addr, &page_flags);
+		if (status < 0)
+			break;
+
+		/* skip non-present addr */
+		if (status == 1)
+			break;
+
+		nr_pages++;
+
+		/* this is not a thp */
+		if (!(page_flags & KPF_THP))
+			break;
+
+		/* one of head/tail must set */
+		if (!(page_flags & (KPF_COMPOUND_HEAD | KPF_COMPOUND_TAIL)))
+			break;
+
+		/* we meet a thp at least. */
+		is_head = page_flags & KPF_COMPOUND_HEAD;
+		if (addr == addr_start)
+			start_is_head = is_head;
+		else if (is_head) // stop if we meet a new head
+			break;
+	}
+
+	if (is_head)
+		nr_pages--;
+	return nr_pages;
+}
+
+/*
  * /proc/kpagecount -- pfn based file.
  *
  * Each pfn has an entry, maintain the mapcount.

@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <linux/userfaultfd.h>
 #include <errno.h>
+#include "vm_util.h"
 
 #define SYSFS_THP "/sys/kernel/mm/transparent_hugepage"
 
@@ -417,10 +418,14 @@ int memfd_uffd()
 
 	/* 4. trigger fault */
 	region[0] = 'A';
+	region[page_size] = 'B';
 	stop_handler = 1;
 	pthread_join(thr, NULL);
+	printf("nr_pages at @region is %d\n", vaddr_page_number(region, page_size));
+	printf("nr_pages at @region is %d\n", vaddr_page_number(region + page_size, page_size));
 
 	printf("content: %s\n", region);
+	printf("content: %s\n", region + page_size);
 
 	return 0;
 }
