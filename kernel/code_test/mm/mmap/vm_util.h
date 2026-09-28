@@ -39,6 +39,7 @@ void show_vma_anon_stat(char *prefix, void *addr);
 int pageflags_get(unsigned long pfn, uint64_t *flags);
 void is_addr_thp(char *prefix, char *addr);
 
+/* /proc/kpagecount */
 int pagemapcount_get(unsigned long pfn, uint64_t *mapcount);
 
 static inline int sz2ord(size_t size, size_t pagesize)
