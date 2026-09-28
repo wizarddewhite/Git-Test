@@ -334,23 +334,12 @@ int memfd_uffd(bool pre_fault)
 	char *region;
 	unsigned long nr_pages;
 	int uffd, memfd;
-	char buf[256];
 	pthread_t thr;
 
 	nr_pages = region_len / page_size;
 
 	printf("page size %zu, PMD %zu, region_len %zu (%lu pages)\n",
 	       page_size, pmd_size, region_len, nr_pages);
-	if (read_sysfs_cur(SYSFS_THP "/shmem_enabled", buf, sizeof(buf)) == 0) {
-		printf("shmem_enabled: %s\n", buf);
-		if (!strcmp(buf, "deny") || !strcmp(buf, "never")) {
-			printf("\n\tshmem_enabled should not be deny/never\n");
-			return -1;
-		}
-	} else {
-		printf("shmem_enabled not exist\n");
-		return -1;
-	}
 
 	/* 1. memfd */
 	memfd = memfd_create("uffd_test", MFD_CLOEXEC);
@@ -469,23 +458,12 @@ int uffd_faulted_memfd()
 	char *memfd_region, *uffd_region;
 	unsigned long nr_pages;
 	int uffd, memfd;
-	char buf[256];
 	pthread_t thr;
 
 	nr_pages = region_len / page_size;
 
 	printf("page size %zu, PMD %zu, region_len %zu (%lu pages)\n",
 	       page_size, pmd_size, region_len, nr_pages);
-	if (read_sysfs_cur(SYSFS_THP "/shmem_enabled", buf, sizeof(buf)) == 0) {
-		printf("shmem_enabled: %s\n", buf);
-		if (!strcmp(buf, "deny") || !strcmp(buf, "never")) {
-			printf("\n\tshmem_enabled should not be deny/never\n");
-			return -1;
-		}
-	} else {
-		printf("shmem_enabled not exist\n");
-		return -1;
-	}
 
 	/* 1. memfd */
 	memfd = memfd_create("uffd_test", MFD_CLOEXEC);
@@ -610,6 +588,8 @@ int uffd_faulted_memfd()
 
 int main()
 {
+	char buf[256];
+
 	if (geteuid() != 0) {
 		printf("Run it as root!\n");
 		exit(1);
@@ -619,6 +599,17 @@ int main()
 	pmd_size = read_sysfs_ul(SYSFS_THP "/hpage_pmd_size");
 	if (!pmd_size) {
 		printf("Reading PMD pagesize failed");
+		return -1;
+	}
+
+	if (read_sysfs_cur(SYSFS_THP "/shmem_enabled", buf, sizeof(buf)) == 0) {
+		printf("shmem_enabled: %s\n", buf);
+		if (!strcmp(buf, "deny") || !strcmp(buf, "never")) {
+			printf("\n\tshmem_enabled should not be deny/never\n");
+			return -1;
+		}
+	} else {
+		printf("shmem_enabled not exist\n");
 		return -1;
 	}
 
