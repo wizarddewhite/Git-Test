@@ -15,8 +15,6 @@
 #include <stdlib.h>
 #include "vm_util.h"
 
-#define PMD_SIZE_FILE_PATH "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size"
-#define KPAGECOUNT_FILE_PATH "/proc/kpagecount"
 #define MAX_LINE_LENGTH 500
 
 /*
@@ -37,7 +35,7 @@ uint64_t read_pmd_pagesize(void)
 	char buf[20];
 	ssize_t num_read;
 
-	fd = open(PMD_SIZE_FILE_PATH, O_RDONLY);
+	fd = open("/sys/kernel/mm/transparent_hugepage/hpage_pmd_size", O_RDONLY);
 	if (fd == -1)
 		return 0;
 
@@ -306,12 +304,22 @@ void is_addr_thp(char *prefix, char *addr)
 			prefix, (unsigned long)addr, pfn);
 }
 
+/*
+ * /proc/kpagecount -- pfn based file.
+ *
+ * Each pfn has an entry, maintain the mapcount.
+ *
+ * @pfn: the pfn to query
+ * @mapcount: pfn's mapcount
+ *
+ * Return 0 on success, -1 otherwise.
+ */
 int pagemapcount_get(unsigned long pfn, uint64_t *mapcount)
 {
 	size_t count;
 	int kpageflags_fd;
 
-	kpageflags_fd = open(KPAGECOUNT_FILE_PATH, O_RDONLY);
+	kpageflags_fd = open("/proc/kpagecount", O_RDONLY);
 	if (kpageflags_fd == -1) {
 		printf("read kpagecount: %s\n", strerror(errno));
 		return -1;
