@@ -238,6 +238,11 @@ uint64_t get_anon(void *addr)
 	return __get_range(addr, "Anonymous: ");
 }
 
+uint64_t get_shmem_pmd_mapped(void *addr)
+{
+	return __get_range(addr, "ShmemPmdMapped: ");
+}
+
 void show_vma_anon_stat(char *prefix, void *addr)
 {
 	printf("\t%s huge anon %lukb, anon %lukb\n", prefix,

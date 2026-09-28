@@ -460,6 +460,154 @@ int memfd_uffd(bool pre_fault)
 	return 0;
 }
 
+int uffd_faulted_memfd()
+{
+	struct uffdio_api api = { 0 };
+	struct uffdio_register reg = { 0 };
+	size_t region_len = 4UL << 20;
+	unsigned long start_pfn = -1UL;
+	char *memfd_region, *uffd_region;
+	unsigned long nr_pages;
+	int uffd, memfd;
+	char buf[256];
+	pthread_t thr;
+
+	nr_pages = region_len / page_size;
+
+	printf("page size %zu, PMD %zu, region_len %zu (%lu pages)\n",
+	       page_size, pmd_size, region_len, nr_pages);
+	if (read_sysfs_cur(SYSFS_THP "/shmem_enabled", buf, sizeof(buf)) == 0) {
+		printf("shmem_enabled: %s\n", buf);
+		if (!strcmp(buf, "deny") || !strcmp(buf, "never")) {
+			printf("\n\tshmem_enabled should not be deny/never\n");
+			return -1;
+		}
+	} else {
+		printf("shmem_enabled not exist\n");
+		return -1;
+	}
+
+	/* 1. memfd */
+	memfd = memfd_create("uffd_test", MFD_CLOEXEC);
+	if (memfd < 0) {
+		perror("memfd_create");
+		return -1;
+	}
+	if (ftruncate(memfd, region_len)) {
+		perror("ftruncate");
+		return -1;
+	}
+
+	/* 1.1. map with PMD aligned*/
+	{
+		void *res = mmap(NULL, region_len + pmd_size, PROT_NONE,
+				 MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+		if (res == MAP_FAILED) {
+			perror("mmap reserve");
+			return -1;
+		}
+		uintptr_t aligned = ((uintptr_t)res + pmd_size - 1) & ~(uintptr_t)(pmd_size - 1);
+		memfd_region = mmap((void *)aligned, region_len, PROT_READ | PROT_WRITE,
+			      MAP_SHARED | MAP_FIXED, memfd, 0);
+		if (memfd_region == MAP_FAILED) {
+			perror("mmap memfd");
+			return -1;
+		}
+	}
+	printf("map memfd at %p (PMD aligned)\n", memfd_region);
+
+	/* 1.2 fault it */
+	if (madvise(memfd_region, region_len, MADV_HUGEPAGE)) {
+		perror("madvise(MADV_HUGEPAGE)");
+		return -1;
+	}
+
+	for (char *p = memfd_region; p < memfd_region + region_len; p += page_size)
+		*p = 'p';
+
+	start_pfn = pagemap_get_pfn(memfd_region);
+	nr_pages = vaddr_page_number(memfd_region, page_size);
+	printf("page(%lx) mapped at @memfd_region is %s folio, %ld\n",
+			start_pfn, nr_pages > 1 ? "large":"base", nr_pages);
+	printf("ShmemPmdMapped %lu kB\n", get_shmem_pmd_mapped(memfd_region));
+
+	/* 2. userfaultfd */
+
+	/* 2.1 create region for uffd */
+	{
+		void *res = mmap(NULL, region_len + pmd_size, PROT_NONE,
+				 MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+		if (res == MAP_FAILED) {
+			perror("mmap reserve");
+			return -1;
+		}
+		uintptr_t aligned = ((uintptr_t)res + pmd_size - 1) & ~(uintptr_t)(pmd_size - 1);
+		uffd_region = mmap((void *)aligned, region_len, PROT_READ | PROT_WRITE,
+			      MAP_SHARED | MAP_FIXED, memfd, 0);
+		if (uffd_region == MAP_FAILED) {
+			perror("mmap memfd");
+			return -1;
+		}
+	}
+	printf("map uffd at %p (PMD aligned)\n", uffd_region);
+
+
+	/* 2.2 register uffd */
+	uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+	if (uffd < 0) {
+		perror("userfaultfd");
+		return -1;
+	}
+
+	api.api = UFFD_API;
+	api.features = UFFD_FEATURE_MISSING_SHMEM;
+	if (ioctl(uffd, UFFDIO_API, &api)) {
+		perror("UFFDIO_API");
+		return -1;
+	}
+	if (!(api.features & UFFD_FEATURE_MISSING_SHMEM)) {
+		fprintf(stderr, "MISSING_SHMEM not supported\n");
+		return -1;
+	}
+
+	reg.range.start = (unsigned long)uffd_region;
+	reg.range.len   = region_len;
+	reg.mode        = UFFDIO_REGISTER_MODE_MISSING;
+	if (ioctl(uffd, UFFDIO_REGISTER, &reg)) {
+		perror("UFFDIO_REGISTER");
+		fprintf(stderr, "  (EINVAL: VMA is not MISSING compatible?)\n");
+		return -1;
+	}
+	printf("\n=== uffd registered ===\n");
+	printf("available ioctl: COPY=%d ZEROPAGE=%d CONTINUE=%d WAKE=%d\n",
+	       !!(reg.ioctls & (1ULL << _UFFDIO_COPY)),
+	       !!(reg.ioctls & (1ULL << _UFFDIO_ZEROPAGE)),
+	       !!(reg.ioctls & (1ULL << _UFFDIO_CONTINUE)),
+	       !!(reg.ioctls & (1ULL << _UFFDIO_WAKE)));
+	printf("Note: CONTINUE=%d -- CONTINUE is meaningful under MINOR mode\n",
+	       !!(reg.ioctls & (1ULL << _UFFDIO_CONTINUE)));
+
+	/* 3. start uffd handler */
+	if (pthread_create(&thr, NULL, memfd_handler, &uffd)) {
+		perror("pthread_create");
+		return -1;
+	}
+
+	/* 4. trigger fault */
+	uffd_region[1] = 'A';
+	stop_handler = 1;
+	pthread_join(thr, NULL);
+	if (start_pfn != pagemap_get_pfn(uffd_region))
+		printf("region mapped to different pfn %lx\n", pagemap_get_pfn(uffd_region));
+	else
+		printf("region mapped to same pfn %lx\n", start_pfn);
+	printf("nr_pages at @uffd_region is %d\n", vaddr_page_number(uffd_region, page_size));
+
+	printf("content: %s\n", uffd_region);
+
+	return 0;
+}
+
 int main()
 {
 	if (geteuid() != 0) {
@@ -476,7 +624,8 @@ int main()
 
 	// anon_uffd();
 	// memfd_uffd(false);
-	memfd_uffd(true);
+	// memfd_uffd(true);
+	uffd_faulted_memfd();
 
 	return 0;
 }
