@@ -272,6 +272,28 @@ int pageflags_get(unsigned long pfn, uint64_t *flags)
 }
 
 /*
+ * get pageflags of a @vaddr
+ *
+ * @vaddr: virtual address to query
+ * @flags: page flag of the pfn mapped
+ */
+int vaddr_pageflags_get(char *vaddr, uint64_t *flags)
+{
+	unsigned long pfn;
+
+	pfn = pagemap_get_pfn(vaddr);
+
+	/* non-present PFN */
+	if (pfn == -1UL)
+		return 1;
+
+	if (pageflags_get(pfn, flags))
+		return -1;
+
+	return 0;
+}
+
+/*
  * Check if @addr is backed by THP.
  *
  * @prefix: for output
