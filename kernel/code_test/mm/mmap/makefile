@@ -8,7 +8,7 @@ all: $(PROGRAM)
 $(PROGRAM): vm_util.o
 
 %.o: %.c
-	gcc -c -o $@ $<
+	gcc -g -c -o $@ $<
 
 %: %.cpp
 	g++ -Wall -g $< -o $@ 
