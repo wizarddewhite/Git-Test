@@ -304,7 +304,7 @@ static void *memfd_handler(void *arg)
 		addr = msg.arg.pagefault.address & ~(unsigned long)(page_size - 1);
 
 
-			snprintf(src, page_size, " memfd uffd fault at %lu", addr);
+			snprintf(src, page_size, "  memfd uffd fault at %lu", addr);
 			copy.dst  = addr;
 			copy.src  = (unsigned long)src;
 			copy.len  = page_size;
@@ -320,11 +320,17 @@ static void *memfd_handler(void *arg)
 	return NULL;
 }
 
-int memfd_uffd()
+/*
+ * Use memfd as uffd register backend.
+ *
+ * @pre_fault: fault memfd before uffd registe
+ */
+int memfd_uffd(bool pre_fault)
 {
 	struct uffdio_api api = { 0 };
 	struct uffdio_register reg = { 0 };
 	size_t region_len = 4UL << 20;
+	unsigned long start_pfn = -1UL;
 	char *region;
 	unsigned long nr_pages;
 	int uffd, memfd;
@@ -375,6 +381,24 @@ int memfd_uffd()
 	}
 	printf("map memfd at %p (PMD aligned)\n", region);
 
+	/* 1.2 pre-fault it */
+	if (pre_fault) {
+		int pages;
+
+		if (madvise(region, region_len, MADV_HUGEPAGE)) {
+			perror("madvise(MADV_HUGEPAGE)");
+			return -1;
+		}
+
+		for (char *p = region; p < region + region_len; p += page_size)
+			*p = 'p';
+
+		start_pfn = pagemap_get_pfn(region);
+		pages = vaddr_page_number(region, page_size);
+		printf("page(%lx) mapped at @region is %s folio, %d\n",
+				start_pfn, pages > 1 ? "large":"base", pages);
+	}
+
 	/* 2. userfaultfd */
 	uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
 	if (uffd < 0) {
@@ -417,10 +441,16 @@ int memfd_uffd()
 	}
 
 	/* 4. trigger fault */
-	region[0] = 'A';
-	region[page_size] = 'B';
+	region[1] = 'A';
+	region[page_size + 1] = 'B';
 	stop_handler = 1;
 	pthread_join(thr, NULL);
+	if (pre_fault) {
+		if (start_pfn != pagemap_get_pfn(region))
+			printf("region mapped to different pfn %lx\n", pagemap_get_pfn(region));
+		else
+			printf("region mapped to same pfn %lx\n", start_pfn);
+	}
 	printf("nr_pages at @region is %d\n", vaddr_page_number(region, page_size));
 	printf("nr_pages at @region is %d\n", vaddr_page_number(region + page_size, page_size));
 
@@ -445,7 +475,8 @@ int main()
 	}
 
 	// anon_uffd();
-	memfd_uffd();
+	// memfd_uffd(false);
+	memfd_uffd(true);
 
 	return 0;
 }
