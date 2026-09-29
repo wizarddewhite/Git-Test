@@ -550,7 +550,7 @@ int uffd_faulted_memfd()
 
 	reg.range.start = (unsigned long)uffd_region;
 	reg.range.len   = region_len;
-	reg.mode        = UFFDIO_REGISTER_MODE_MISSING;
+	reg.mode        = UFFDIO_REGISTER_MODE_MISSING | UFFDIO_REGISTER_MODE_WP;
 	if (ioctl(uffd, UFFDIO_REGISTER, &reg)) {
 		perror("UFFDIO_REGISTER");
 		fprintf(stderr, "  (EINVAL: VMA is not MISSING compatible?)\n");
@@ -572,7 +572,8 @@ int uffd_faulted_memfd()
 	}
 
 	/* 4. trigger fault */
-	uffd_region[1] = 'A';
+	printf("content: %s\n", uffd_region);
+	// uffd_region[1] = 'A';
 	stop_handler = 1;
 	pthread_join(thr, NULL);
 	if (start_pfn != pagemap_get_pfn(uffd_region))
@@ -580,8 +581,6 @@ int uffd_faulted_memfd()
 	else
 		printf("region mapped to same pfn %lx\n", start_pfn);
 	printf("nr_pages at @uffd_region is %d\n", vaddr_page_number(uffd_region, page_size));
-
-	printf("content: %s\n", uffd_region);
 
 	return 0;
 }
