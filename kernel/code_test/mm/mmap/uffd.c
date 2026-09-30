@@ -558,14 +558,14 @@ int uffd_faulted_memfd()
 			return -1;
 		}
 		uintptr_t aligned = ((uintptr_t)res + pmd_size - 1) & ~(uintptr_t)(pmd_size - 1);
-		uffd_region = mmap((void *)aligned, region_len, PROT_READ | PROT_WRITE,
+		uffd_region = mmap((void *)(aligned + page_size), region_len, PROT_READ | PROT_WRITE,
 			      MAP_SHARED | MAP_FIXED, memfd, 0);
 		if (uffd_region == MAP_FAILED) {
 			perror("mmap memfd");
 			return -1;
 		}
 	}
-	printf("map uffd at %p (PMD aligned)\n", uffd_region);
+	printf("map uffd at %p (none-PMD aligned)\n", uffd_region);
 
 
 	/* 2.2 register uffd */
@@ -588,7 +588,8 @@ int uffd_faulted_memfd()
 
 	reg.range.start = (unsigned long)uffd_region;
 	reg.range.len   = region_len;
-	reg.mode        = UFFDIO_REGISTER_MODE_MISSING | UFFDIO_REGISTER_MODE_WP;
+	reg.mode        = UFFDIO_REGISTER_MODE_MISSING | UFFDIO_REGISTER_MODE_WP |
+				UFFDIO_REGISTER_MODE_WP;
 	if (ioctl(uffd, UFFDIO_REGISTER, &reg)) {
 		perror("UFFDIO_REGISTER");
 		fprintf(stderr, "  (EINVAL: VMA is not MISSING compatible?)\n");
