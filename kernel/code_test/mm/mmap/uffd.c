@@ -15,6 +15,7 @@
 #include "vm_util.h"
 
 #define SYSFS_THP "/sys/kernel/mm/transparent_hugepage"
+#define CG "/sys/fs/cgroup/ttu_parent/ttu/"
 
 static size_t page_size;
 static size_t pmd_size;
@@ -449,10 +450,46 @@ int memfd_uffd(bool pre_fault)
 	return 0;
 }
 
+static void write_memory_reclaim(const char *p, const char *v)
+{
+	int fd = open(p, O_WRONLY);
+	int ret;
+
+	if (fd < 0) {
+		fprintf(stderr, "  write %s fail: %s\n", p, strerror(errno));
+		return;
+	}
+	ret = write(fd, v, strlen(v));
+	close(fd);
+
+	if (ret < 0) {
+		if (errno == EAGAIN)
+			printf("partially reclaimed\n");
+		else if (errno == EINVAL)
+			printf("invalid format\n");
+		else
+			perror("write failed");
+	}
+}
+
+/*
+ * Prepare cgroup:
+ *
+ *  mkdir -p /sys/fs/cgroup/ttu_parent
+ *  echo "+memory" > /sys/fs/cgroup/ttu_parent/cgroup.subtree_control 2>/dev/null
+ *  mkdir -p /sys/fs/cgroup/ttu_parent/ttu
+ *  CG=/sys/fs/cgroup/ttu_parent/ttu
+ *
+ * Run test in cgroup:
+ *
+ *  sudo sh -c 'echo $$ > /sys/fs/cgroup/ttu_parent/ttu/cgroup.procs && exec ./uffd'
+ *
+ */
 int uffd_faulted_memfd()
 {
 	struct uffdio_api api = { 0 };
 	struct uffdio_register reg = { 0 };
+	char memory_reclaim[64] = "100M";
 	size_t region_len = 4UL << 20;
 	unsigned long start_pfn = -1UL;
 	char *memfd_region, *uffd_region;
@@ -500,14 +537,15 @@ int uffd_faulted_memfd()
 		return -1;
 	}
 
-	for (char *p = memfd_region; p < memfd_region + region_len; p += page_size)
-		*p = 'p';
+	for (char i = 'a', *p = memfd_region; p < memfd_region + region_len; p += page_size, i++)
+		*p = i;
 
 	start_pfn = pagemap_get_pfn(memfd_region);
 	nr_pages = vaddr_page_number(memfd_region, page_size);
 	printf("page(%lx) mapped at @memfd_region is %s folio, %ld\n",
 			start_pfn, nr_pages > 1 ? "large":"base", nr_pages);
 	printf("ShmemPmdMapped %lu kB\n", get_shmem_pmd_mapped(memfd_region));
+	munmap(memfd_region, region_len);
 
 	/* 2. userfaultfd */
 
@@ -573,6 +611,10 @@ int uffd_faulted_memfd()
 
 	/* 4. trigger fault */
 	printf("content: %s\n", uffd_region);
+	printf("content: %s\n", uffd_region + page_size * 1);
+	printf("content: %s\n", uffd_region + page_size * 2);
+	printf("content: %s\n", uffd_region + page_size * 3);
+	printf("content: %s\n", uffd_region + page_size * 4);
 	// uffd_region[1] = 'A';
 	stop_handler = 1;
 	pthread_join(thr, NULL);
@@ -581,6 +623,18 @@ int uffd_faulted_memfd()
 	else
 		printf("region mapped to same pfn %lx\n", start_pfn);
 	printf("nr_pages at @uffd_region is %d\n", vaddr_page_number(uffd_region, page_size));
+
+	/* inactivate + clear young */
+	if (madvise(uffd_region, region_len, MADV_COLD)) {
+		perror("madvise(MADV_COLD)");
+		return -1;
+	}
+
+	/* trigger reclaim */
+	printf("--- current before %lu\n", read_sysfs_ul(CG "memory.current"));
+	printf("        echo %s > " CG "memory.reclaim\n", memory_reclaim);
+	write_memory_reclaim(CG "memory.reclaim", memory_reclaim);
+	printf("--- current after %lu\n", read_sysfs_ul(CG "memory.current"));
 
 	return 0;
 }
