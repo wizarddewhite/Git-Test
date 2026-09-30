@@ -625,13 +625,22 @@ int uffd_faulted_memfd()
 		printf("region mapped to same pfn %lx\n", start_pfn);
 	printf("nr_pages at @uffd_region is %d\n", vaddr_page_number(uffd_region, page_size));
 
+	/* 5. protect the range */
+	struct uffdio_writeprotect wp = {
+		.range = {
+			.start = (unsigned long)uffd_region,
+			.len = page_size * 5,
+		},
+		.mode  = UFFDIO_WRITEPROTECT_MODE_WP,
+	};
+	ioctl(uffd, UFFDIO_WRITEPROTECT, &wp);
 	/* inactivate + clear young */
 	if (madvise(uffd_region, region_len, MADV_COLD)) {
 		perror("madvise(MADV_COLD)");
 		return -1;
 	}
 
-	/* trigger reclaim */
+	/* 6. trigger reclaim */
 	printf("--- current before %lu\n", read_sysfs_ul(CG "memory.current"));
 	printf("        echo %s > " CG "memory.reclaim\n", memory_reclaim);
 	write_memory_reclaim(CG "memory.reclaim", memory_reclaim);
