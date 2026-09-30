@@ -269,6 +269,7 @@ int pageflags_get(unsigned long pfn, uint64_t *flags)
 
 	count = pread(fd, flags, sizeof(*flags),
 		      pfn * sizeof(*flags));
+	close(fd);
 
 	if (count != sizeof(*flags))
 		return -1;
