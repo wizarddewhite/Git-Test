@@ -123,7 +123,7 @@ char *pn1;
 void *pages[2];
 int status[2];
 
-void prepare(bool do_thp, bool do_vmsplice)
+char* prepare(bool do_thp, bool do_vmsplice)
 {
 	int ret;
 	struct iovec iov;
@@ -166,12 +166,15 @@ void prepare(bool do_thp, bool do_vmsplice)
 	}
 
 	status[0] = status[1] = 1024;
+	return pn1;
 }
 
 void test_migrate(bool do_thp, bool do_vmsplice)
 {
+	char *page2;
 	int ret;
 	int nodes[2] = { 1, 1 };
+
 	pid_t pid = getpid();
 
 	prepare(do_thp, do_vmsplice);
@@ -181,25 +184,24 @@ void test_migrate(bool do_thp, bool do_vmsplice)
 	else
 		error_msg(ret, 1, status, "move 1 page");
 
-	prepare(do_thp, do_vmsplice);
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
 		printf(GREEN "Successfully move 2 pages, page 1 not faulted\n" RESET);
 	else
 		error_msg(ret, 2, status, "move 2 pages, page 1 not faulted");
 
-	prepare(do_thp, do_vmsplice);
+	page2 = prepare(do_thp, do_vmsplice);
 	/* fault in page 1 */
-	*pn1 = 1;
+	*page2 = 1;
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
 		printf(GREEN "Successfully move 2 page\n" RESET);
 	else
 		error_msg(ret, 2, status, "move 2 pages");
 
-	prepare(do_thp, do_vmsplice);
+	page2 = prepare(do_thp, do_vmsplice);
 	/* fault in page 1 */
-	*pn1 = 1;
+	*page2 = 1;
 	nodes[1] = 0;
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
