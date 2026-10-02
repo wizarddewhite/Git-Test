@@ -21,13 +21,14 @@
 void measure_pageout_time()
 {
 	while(1) {
+		unsigned long pfn;
 		volatile int *p = mmap(0, SIZE, PROT_READ | PROT_WRITE,
 					MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 		memset((void *)p, 1, SIZE);
-		printf("page allocated %lx\n", pagemap_get_pfn((char *)p));
+		printf("page allocated at %lx pfn %lx\n", (unsigned long)p, pagemap_get_pfn((char *)p));
 
-		madvise((void *)p, SIZE, MADV_FREE);
+		//madvise((void *)p, SIZE, MADV_FREE);
 		/* redirty after MADV_FREE */
 		memset((void *)p, 1, SIZE);
 
@@ -37,7 +38,11 @@ void measure_pageout_time()
 
 		double elapsed_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 		printf("Time taken by reclamation: %f seconds\n", elapsed_time);
-		printf("page out %lx\n", pagemap_get_pfn((char *)p));
+		pfn = pagemap_get_pfn((char *)p);
+		if (pfn == -1UL)
+			printf(GREEN "Successfully reclaim page at %lx\n" RESET, (unsigned long)p);
+		else
+			printf(RED "Failed to reclaim page at %lx\n" RESET, (unsigned long)p);
 
 		munmap((void *)p, SIZE);
 		sleep(2);
@@ -48,6 +53,7 @@ void verify_pageout()
 {
 	int pagesize;
 	int pagemap_fd;
+	unsigned long pfn;
 
 	pagemap_fd = open("/proc/self/pagemap", O_RDONLY);
 	if (pagemap_fd == -1) {
@@ -61,18 +67,28 @@ void verify_pageout()
 				MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 	memset((void *)p, 1, pagesize);
-	printf("page allocated %lx\n", pagemap_get_pfn((char *)p));
+	pfn = pagemap_get_pfn((char *)p);
+	printf("page allocated at %lx pfn %lx\n", (unsigned long)p, pfn);
 
 
 	madvise((void *)p, pagesize, MADV_PAGEOUT);
-	printf("page out %lx\n", pagemap_get_pfn((char *)p));
+	pfn = pagemap_get_pfn((char *)p);
+	if (pfn == -1UL)
+		printf(GREEN "Successfully reclaim page at %lx\n" RESET, (unsigned long)p);
+	else
+		printf(RED "Failed to reclaim page at %lx\n" RESET, (unsigned long)p);
 
 	munmap((void *)p, pagesize);
 }
 
 int main(int argc, char *argv[])
 {
-	// measure_pageout_time();
-	verify_pageout();
+	if (geteuid() != 0) {
+		printf("Run it as root!\n");
+		exit(1);
+	}
+
+	measure_pageout_time();
+	// verify_pageout();
 	return 0;
 }
