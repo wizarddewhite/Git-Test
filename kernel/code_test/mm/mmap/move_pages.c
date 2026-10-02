@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -14,16 +13,17 @@
 #include <sys/uio.h>
 #include "vm_util.h"
 
+size_t page_size;
+
 int move_to_different_node()
 {
-	size_t pagesize = getpagesize();
-	size_t mapsize = pagesize;
+	size_t mapsize = page_size;
 	void *pages[1];
 	int nodes[1], cur_node, node = -1;
 	int status[1];
 	int ret;
 
-	printf("System page size: %lx bytes\n", pagesize);
+	printf("System page size: %lx bytes\n", page_size);
 
 	// map a page region
 	char * region = mmap(
@@ -117,8 +117,6 @@ void error_exit(int ret, const char *msg)
         exit(1);
 }
 
-int page_size;
-
 bool do_vmsplice;
 bool do_thp;
 
@@ -195,9 +193,8 @@ void test_migrate()
 
 int move_and_check_status()
 {
+	/* Set memory affinity to node 0 */
         numa_run_on_node(0);
-        page_size = getpagesize();
-
         test_migrate();
 
         fprintf(stderr, "\nMake page 0 cannot be migrated:\n");
@@ -222,6 +219,8 @@ int main(void)
 		printf("Numa not available, Quit\n");
 		exit(-1);
 	}
+
+        page_size = getpagesize();
 
 	move_to_different_node();
 	// move_and_check_status();
