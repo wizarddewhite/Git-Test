@@ -12,6 +12,7 @@
 #include <numa.h>
 #include <fcntl.h>
 #include <sys/uio.h>
+#include "vm_util.h"
 
 int move_to_different_node()
 {
@@ -57,12 +58,11 @@ int move_to_different_node()
 		printf("Current numa node is : %d\n", cur_node);
 	}
 
-	printf("Max numa node: %d\n", numa_max_node());
 	// look for a numa node different from current one
 	for (node = 0; node <= numa_max_node(); node++) {
 		if (numa_bitmask_isbitset(numa_all_nodes_ptr, node) &&
 			node != status[0]) {
-			printf("Available numa node %d\n", node);
+			printf("Available target numa node %d\n", node);
 			break;
 		}
 	}
@@ -76,7 +76,11 @@ int move_to_different_node()
 	nodes[0] = node;
 	ret = move_pages(0, 1, (void **)&pages, nodes, status, MPOL_MF_MOVE);
 
-	printf("Page move result: %d, status is %d\n", ret, status[0]);
+	if (!ret) {
+		printf(GREEN "Page successfully moved to node %d\n" RESET, status[0]);
+	} else {
+		printf(RED "Page move failed %d\n" RESET, status[0]);
+	}
 
 	return 0;
 }
@@ -220,7 +224,7 @@ int move_and_check_status()
 int main(void)
 {
 	move_to_different_node();
-	move_and_check_status();
+	// move_and_check_status();
 
 	return 0;
 }
