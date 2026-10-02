@@ -119,7 +119,6 @@ void error_exit(int ret, const char *msg)
 
 static int pipe_fds[2];
 void *addr;
-char *pn;
 char *pn1;
 void *pages[2];
 int status[2];
@@ -128,6 +127,7 @@ void prepare(bool do_thp, bool do_vmsplice)
 {
 	int ret;
 	struct iovec iov;
+	char *pn;
 
 	if (addr) {
 		munmap(addr, MAP_SIZE);
