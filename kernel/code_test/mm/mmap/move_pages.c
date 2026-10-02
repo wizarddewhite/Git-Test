@@ -100,12 +100,12 @@ void error_msg(int ret, int nr, int *status, const char *msg)
 {
         int i;
 
-        fprintf(stderr, "Error: %s, ret : %d, error: %s\n",
+        fprintf(stderr, "Result of %s\n\tret : %d, error msg: %s\n",
                 msg, ret, strerror(errno));
 
         if (!nr)
                 return;
-        fprintf(stderr, "status: ");
+        fprintf(stderr, "\tstatus: ");
         for (i = 0; i < nr; i++)
                 fprintf(stderr, "%d ", status[i]);
         fprintf(stderr, "\n");
@@ -129,84 +129,105 @@ int status[2];
 
 void prepare()
 {
-        int ret;
-        struct iovec iov;
+	int ret;
+	struct iovec iov;
 
-        if (addr) {
-                munmap(addr, MAP_SIZE);
-                close(pipe_fds[0]);
-                close(pipe_fds[1]);
-        }
+	if (addr) {
+		munmap(addr, MAP_SIZE);
+		close(pipe_fds[0]);
+		close(pipe_fds[1]);
+	}
 
-        ret = pipe(pipe_fds);
-        ERR_EXIT_ON(ret, "pipe");
+	/* open a pipe */
+	ret = pipe(pipe_fds);
+	ERR_EXIT_ON(ret, "pipe");
 
-        addr = mmap(NULL, MAP_SIZE, PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        ERR_EXIT_ON(addr == MAP_FAILED, "mmap");
-        if (do_thp) {
-                ret = madvise(addr, MAP_SIZE, MADV_HUGEPAGE);
-                ERR_EXIT_ON(ret, "advise hugepage");
-        }
+	addr = mmap(NULL, MAP_SIZE, PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	ERR_EXIT_ON(addr == MAP_FAILED, "mmap");
+	printf("--- mmap range at %lx", (unsigned long)addr);
+	if (do_thp) {
+		ret = madvise(addr, MAP_SIZE, MADV_HUGEPAGE);
+		ERR_EXIT_ON(ret, "advise hugepage");
+	}
 
-        pn = (char *)(((unsigned long)addr + THP_SIZE) & ~THP_MASK);
-        pn1 = pn + THP_SIZE;
-        pages[0] = pn;
-        pages[1] = pn1;
-        *pn = 1;
+	/* align to 2M */
+	pn = (char *)(((unsigned long)addr + THP_SIZE) & ~THP_MASK);
+	pn1 = pn + THP_SIZE;
+	pages[0] = pn;
+	pages[1] = pn1;
+	/* fault in page 0 */
+	*pn = 1;
+	printf("    align addr to %lx\n", (unsigned long)pn);
 
-        if (do_vmsplice) {
-                iov.iov_base = pn;
-                iov.iov_len = page_size;
-                ret = vmsplice(pipe_fds[1], &iov, 1, 0);
-                ERR_EXIT_ON(ret < 0, "vmsplice");
-        }
+	if (do_vmsplice) {
+		iov.iov_base = pn;
+		iov.iov_len = page_size;
+		/* pin pn so migration fails */
+		ret = vmsplice(pipe_fds[1], &iov, 1, 0);
+		ERR_EXIT_ON(ret < 0, "vmsplice");
+	}
 
-        status[0] = status[1] = 1024;
+	status[0] = status[1] = 1024;
 }
 
 void test_migrate()
 {
-        int ret;
-        int nodes[2] = { 1, 1 };
-        pid_t pid = getpid();
+	int ret;
+	int nodes[2] = { 1, 1 };
+	pid_t pid = getpid();
 
-        prepare();
-        ret = move_pages(pid, 1, pages, nodes, status, MPOL_MF_MOVE_ALL);
-        error_msg(ret, 1, status, "move 1 page");
+	prepare();
+	ret = move_pages(pid, 1, pages, nodes, status, MPOL_MF_MOVE_ALL);
+	if (!ret)
+		printf(GREEN "Successfully move 1 page \n" RESET);
+	else
+		error_msg(ret, 1, status, "move 1 page");
 
-        prepare();
-        ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
-        error_msg(ret, 2, status, "move 2 pages, page 1 not mapped");
+	prepare();
+	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
+	if (!ret)
+		printf(GREEN "Successfully move 2 pages, page 1 not faulted\n" RESET);
+	else
+		error_msg(ret, 2, status, "move 2 pages, page 1 not faulted");
 
-        prepare();
-        *pn1 = 1;
-        ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
-        error_msg(ret, 2, status, "move 2 pages");
+	prepare();
+	/* fault in page 1 */
+	*pn1 = 1;
+	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
+	if (!ret)
+		printf(GREEN "Successfully move 2 page\n" RESET);
+	else
+		error_msg(ret, 2, status, "move 2 pages");
 
-        prepare();
-        *pn1 = 1;
-        nodes[1] = 0;
-        ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
-        error_msg(ret, 2, status, "move 2 pages, page 1 to node 0");
+	prepare();
+	/* fault in page 1 */
+	*pn1 = 1;
+	nodes[1] = 0;
+	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
+	if (!ret)
+		printf(GREEN "Successfully move 2 pages, page 1 to node 0\n" RESET);
+	else
+		error_msg(ret, 2, status, "move 2 pages, page 1 to node 0");
 }
 
 int move_and_check_status()
 {
 	/* Set memory affinity to node 0 */
         numa_run_on_node(0);
+        do_vmsplice = false;
         test_migrate();
 
-        fprintf(stderr, "\nMake page 0 cannot be migrated:\n");
+        printf("\nMake page 0 cannot be migrated:\n");
         do_vmsplice = true;
         test_migrate();
 
-        fprintf(stderr, "\nTest THP:\n");
+        printf("\nTest THP:\n");
         do_thp = true;
         do_vmsplice = false;
         test_migrate();
 
-        fprintf(stderr, "\nTHP: make page 0 cannot be migrated:\n");
+        printf("\nTHP: make page 0 cannot be migrated:\n");
         do_vmsplice = true;
         test_migrate();
 
@@ -227,8 +248,8 @@ int main(void)
 
         page_size = getpagesize();
 
-	move_to_different_node();
-	// move_and_check_status();
+	// move_to_different_node();
+	move_and_check_status();
 
 	return 0;
 }
