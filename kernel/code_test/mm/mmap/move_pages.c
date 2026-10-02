@@ -23,11 +23,6 @@ int move_to_different_node()
 	int status[1];
 	int ret;
 
-	if (numa_available() < 0) {
-		printf("Numa not available, Quit\n");
-		exit(-1);
-	}
-
 	printf("System page size: %lx bytes\n", pagesize);
 
 	// map a page region
@@ -223,6 +218,11 @@ int move_and_check_status()
 
 int main(void)
 {
+	if (numa_available() < 0) {
+		printf("Numa not available, Quit\n");
+		exit(-1);
+	}
+
 	move_to_different_node();
 	// move_and_check_status();
 
