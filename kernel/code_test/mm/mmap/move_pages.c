@@ -138,10 +138,6 @@ void prepare()
 		close(pipe_fds[1]);
 	}
 
-	/* open a pipe */
-	ret = pipe(pipe_fds);
-	ERR_EXIT_ON(ret, "pipe");
-
 	addr = mmap(NULL, MAP_SIZE, PROT_READ | PROT_WRITE,
 		    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	ERR_EXIT_ON(addr == MAP_FAILED, "mmap");
@@ -161,6 +157,10 @@ void prepare()
 	printf("    align addr to %lx\n", (unsigned long)pn);
 
 	if (do_vmsplice) {
+		/* open a pipe */
+		ret = pipe(pipe_fds);
+		ERR_EXIT_ON(ret, "pipe");
+
 		iov.iov_base = pn;
 		iov.iov_len = page_size;
 		/* pin pn so migration fails */
