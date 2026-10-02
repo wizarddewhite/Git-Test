@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#define GREEN   "\033[32m"
+#define RESET   "\033[0m"
+
 #define BIT_ULL(nr)                   (1ULL << (nr))
 #define PM_SOFT_DIRTY                 BIT_ULL(55)
 #define PM_MMAP_EXCLUSIVE             BIT_ULL(56)

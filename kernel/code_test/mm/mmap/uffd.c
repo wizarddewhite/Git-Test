@@ -21,9 +21,6 @@ static size_t page_size;
 static size_t pmd_size;
 static volatile int stop_handler;
 
-#define GREEN   "\033[32m"
-#define RESET   "\033[0m"
-
 static unsigned long read_sysfs_ul(const char *path)
 {
 	int fd = open(path, O_RDONLY);
