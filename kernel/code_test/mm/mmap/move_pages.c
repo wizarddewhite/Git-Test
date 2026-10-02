@@ -215,6 +215,11 @@ int move_and_check_status()
 
 int main(void)
 {
+	if (geteuid() != 0) {
+		printf("Run it as root!\n");
+		exit(1);
+	}
+
 	if (numa_available() < 0) {
 		printf("Numa not available, Quit\n");
 		exit(-1);
