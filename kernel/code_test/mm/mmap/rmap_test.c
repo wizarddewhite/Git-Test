@@ -8,6 +8,30 @@
  * # pstree -A -l -p root_pid | grep -o '[0-9]\+' | while read pid; do grep -H range /proc/$pid/maps || echo "not found"; done
  *
  * could show we do map/unmap region in some process as expect
+ *
+ * This program create a process tree:
+ *
+ *                 +-----------------+
+ *                 |                 |       num_process = 1
+ *                 +-----------------+
+ *                          |
+ *                          |
+ *                          v
+ *                 +-----------------+
+ *                 |                 |       num_process = 2
+ *                 +-----------------+       unmap_process wait the 2nd last process
+ *                          |
+ *                          |
+ *                          v
+ *                 +-----------------+
+ *                 |                 |       num_process = 3
+ *                 +-----------------+       chosen_process move pages till all are ready
+ *                          |
+ *                          |
+ *                          v
+ *                 +-----------------+
+ *                 |                 |       num_process = 4
+ *                 +-----------------+
  */
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -24,9 +48,13 @@
 
 #define SIZE 1*1024*1024  // 1 MB
 
+/* total number of process */
 #define TOTAL_PROCESS 4
+/* global process id: increase on each child */
 static int num_process;
+/* the process id to to work */
 static int chosen_process;
+/* the process id to unmap region */
 static int unmap_process = -1;
 
 struct sembuf sem_wait = {0, -1, 0};
@@ -271,8 +299,10 @@ int main(int argc, char *argv[])
 			} else if (pid == 0) {
 				++num_process;
 				printf("%d child %d of parent %d, %s\n", num_process, getpid(), getppid(), (char*)region);
+				/* child continue to fork */
 			} else {
 				break;
+				/* parent break ... */
 			}
 		}
 
