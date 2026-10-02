@@ -118,9 +118,9 @@ void error_exit(int ret, const char *msg)
 }
 
 void *pages[2];
-int status[2];
 
-char* prepare(bool do_thp, bool do_vmsplice, void** last_addr, int pipe_fds[2])
+char* prepare(bool do_thp, bool do_vmsplice, void** last_addr, int pipe_fds[2],
+		int status[2])
 {
 	int ret;
 	struct iovec iov;
@@ -173,27 +173,27 @@ void test_migrate(bool do_thp, bool do_vmsplice)
 {
 	char *page2;
 	int ret;
-	int pipe_fds[2];
+	int pipe_fds[2], status[2];
 	int nodes[2] = { 1, 1 };
 	void *addr = NULL;
 
 	pid_t pid = getpid();
 
-	prepare(do_thp, do_vmsplice, &addr, pipe_fds);
+	prepare(do_thp, do_vmsplice, &addr, pipe_fds, status);
 	ret = move_pages(pid, 1, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
 		printf(GREEN "Successfully move 1 page \n" RESET);
 	else
 		error_msg(ret, 1, status, "move 1 page");
 
-	prepare(do_thp, do_vmsplice, &addr, pipe_fds);
+	prepare(do_thp, do_vmsplice, &addr, pipe_fds, status);
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
 		printf(GREEN "Successfully move 2 pages, page 1 not faulted\n" RESET);
 	else
 		error_msg(ret, 2, status, "move 2 pages, page 1 not faulted");
 
-	page2 = prepare(do_thp, do_vmsplice, &addr, pipe_fds);
+	page2 = prepare(do_thp, do_vmsplice, &addr, pipe_fds, status);
 	/* fault in page 1 */
 	*page2 = 1;
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
@@ -202,7 +202,7 @@ void test_migrate(bool do_thp, bool do_vmsplice)
 	else
 		error_msg(ret, 2, status, "move 2 pages");
 
-	page2 = prepare(do_thp, do_vmsplice, &addr, pipe_fds);
+	page2 = prepare(do_thp, do_vmsplice, &addr, pipe_fds, status);
 	/* fault in page 1 */
 	*page2 = 1;
 	nodes[1] = 0;
