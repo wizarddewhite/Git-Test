@@ -117,9 +117,6 @@ void error_exit(int ret, const char *msg)
         exit(1);
 }
 
-bool do_vmsplice;
-bool do_thp;
-
 static int pipe_fds[2];
 void *addr;
 char *pn;
@@ -127,7 +124,7 @@ char *pn1;
 void *pages[2];
 int status[2];
 
-void prepare()
+void prepare(bool do_thp, bool do_vmsplice)
 {
 	int ret;
 	struct iovec iov;
@@ -171,27 +168,27 @@ void prepare()
 	status[0] = status[1] = 1024;
 }
 
-void test_migrate()
+void test_migrate(bool do_thp, bool do_vmsplice)
 {
 	int ret;
 	int nodes[2] = { 1, 1 };
 	pid_t pid = getpid();
 
-	prepare();
+	prepare(do_thp, do_vmsplice);
 	ret = move_pages(pid, 1, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
 		printf(GREEN "Successfully move 1 page \n" RESET);
 	else
 		error_msg(ret, 1, status, "move 1 page");
 
-	prepare();
+	prepare(do_thp, do_vmsplice);
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
 	if (!ret)
 		printf(GREEN "Successfully move 2 pages, page 1 not faulted\n" RESET);
 	else
 		error_msg(ret, 2, status, "move 2 pages, page 1 not faulted");
 
-	prepare();
+	prepare(do_thp, do_vmsplice);
 	/* fault in page 1 */
 	*pn1 = 1;
 	ret = move_pages(pid, 2, pages, nodes, status, MPOL_MF_MOVE_ALL);
@@ -200,7 +197,7 @@ void test_migrate()
 	else
 		error_msg(ret, 2, status, "move 2 pages");
 
-	prepare();
+	prepare(do_thp, do_vmsplice);
 	/* fault in page 1 */
 	*pn1 = 1;
 	nodes[1] = 0;
@@ -215,21 +212,17 @@ int move_and_check_status()
 {
 	/* Set memory affinity to node 0 */
         numa_run_on_node(0);
-        do_vmsplice = false;
-        test_migrate();
+
+        test_migrate(false, false);
 
         printf("\nMake page 0 cannot be migrated:\n");
-        do_vmsplice = true;
-        test_migrate();
+        test_migrate(false, true);
 
         printf("\nTest THP:\n");
-        do_thp = true;
-        do_vmsplice = false;
-        test_migrate();
+        test_migrate(true, false);
 
         printf("\nTHP: make page 0 cannot be migrated:\n");
-        do_vmsplice = true;
-        test_migrate();
+        test_migrate(true, true);
 
         return 0;
 }
