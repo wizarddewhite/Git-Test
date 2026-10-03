@@ -37,6 +37,7 @@ bool check_huge_anon(void *addr, int nr_hpages, uint64_t hpage_size);
 bool check_anon(void *addr, int nr_hpages, uint64_t page_size);
 uint64_t get_huge_anon(void *addr);
 uint64_t get_anon(void *addr);
+uint64_t get_private_hugetlb(void *addr);
 uint64_t get_shmem_pmd_mapped(void *addr);
 void show_vma_anon_stat(char *prefix, void *addr);
 

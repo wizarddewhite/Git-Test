@@ -238,6 +238,11 @@ uint64_t get_anon(void *addr)
 	return __get_range(addr, "Anonymous: ");
 }
 
+uint64_t get_private_hugetlb(void *addr)
+{
+	return __get_range(addr, "Private_Hugetlb: ");
+}
+
 uint64_t get_shmem_pmd_mapped(void *addr)
 {
 	return __get_range(addr, "ShmemPmdMapped: ");
