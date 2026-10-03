@@ -41,6 +41,9 @@ uint64_t get_private_hugetlb(void *addr);
 uint64_t get_shared_hugetlb(void *addr);
 uint64_t get_shmem_pmd_mapped(void *addr);
 void show_vma_anon_stat(char *prefix, void *addr);
+void dump_vma_smaps(const void *addr, const char *tag);
+void dump_vma_fields(const void *addr, const char *tag, char *const *fields);
+int get_smaps_field(const void *addr, const char *field, unsigned long *out);
 
 /* /proc/kpageflags */
 int pageflags_get(unsigned long pfn, uint64_t *flags);

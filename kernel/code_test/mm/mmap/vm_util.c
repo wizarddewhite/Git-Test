@@ -260,6 +260,191 @@ void show_vma_anon_stat(char *prefix, void *addr)
 }
 
 /*
+ * dump_vma_smaps() - print all vma info which contains addr in /proc/self/smaps
+ *
+ * addr : any address in a VMA
+ * tag  : could be NULL
+ *
+ */
+void dump_vma_smaps(const void *addr, const char *tag)
+{
+	const char *path = "/proc/self/smaps";
+	char line[1024];
+	FILE *fp;
+	unsigned long target = (unsigned long)addr;
+	unsigned long start = 0, end = 0;
+	int in_vma = 0;
+	int found = 0;
+
+	fp = fopen(path, "r");
+	if (!fp) {
+		perror("fopen " "/proc/self/smaps");
+		return;
+	}
+
+	printf("\n");
+	printf("################################################################\n");
+	if (tag)
+		printf("# smaps dump for addr %p  [%s]\n", addr, tag);
+	else
+		printf("# smaps dump for addr %p\n", addr);
+	printf("################################################################\n");
+
+	while (fgets(line, sizeof(line), fp)) {
+		unsigned long a, b;
+
+		/* start of a new vma */
+		if (sscanf(line, "%lx-%lx", &a, &b) == 2) {
+			if (in_vma) {
+				/* a new vma */
+				if (found)
+					break;
+				in_vma = 0;
+			}
+			if (a == 0 && b == 0)
+				continue;	/* skip exception case */
+
+			if (target >= a && target < b) {
+				in_vma = 1;
+				found = 1;
+				start = a;
+				end = b;
+				printf("\n");
+			}
+		}
+
+		if (in_vma)
+			fputs(line, stdout);
+	}
+
+	fclose(fp);
+
+	if (!found) {
+		printf("!! no VMA contains address %p\n", addr);
+		return;
+	}
+
+	printf("\n");
+	printf("[summary] vma range = %lx-%lx, size = %lu kB (%lu bytes)\n",
+	       start, end, (end - start) / 1024, end - start);
+}
+
+/*
+ * dump_vma_fields() - print specified fields in VMA
+ *
+ * addr : any address in a VMA
+ * fields  : array of fields ended with NULL, e.g.
+ *             const char *f[] = {"Size:", "KernelPageSize:",
+ *                                "Shared_Hugetlb:", "Private_Hugetlb:",
+ *                                "Rss:", "VmFlags:", NULL};
+ *
+ */
+void dump_vma_fields(const void *addr, const char *tag, char *const *fields)
+{
+	char line[1024];
+	FILE *fp;
+	unsigned long target = (unsigned long)addr;
+	int in_vma = 0, found = 0;
+	int i;
+
+	fp = fopen("/proc/self/smaps", "r");
+	if (!fp) {
+		perror("fopen /proc/self/smaps");
+		return;
+	}
+
+	printf("\n---- %s ----\n", tag ? tag : "vma fields");
+
+	while (fgets(line, sizeof(line), fp)) {
+		unsigned long a, b;
+		const char *p = line;
+
+		if (sscanf(line, "%lx-%lx", &a, &b) == 2) {
+			if (in_vma && found)
+				break;
+			in_vma = (target >= a && target < b);
+			if (in_vma)
+				found = 1;
+			continue;
+		}
+
+		if (!in_vma || !fields)
+			continue;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+
+		for (i = 0; fields[i]; i++) {
+			if (!strncmp(p, fields[i], strlen(fields[i]))) {
+				fputs(line, stdout);
+				break;
+			}
+		}
+	}
+
+	fclose(fp);
+	if (!found)
+		printf("!! no VMA contains address %p\n", addr);
+}
+
+/*
+ * get_smaps_field() - get one specified filed
+ *
+ * Return 0 on success, result is saved in @out. -1 on failure.
+ *
+ * E.g.
+ *     unsigned long v;
+ *     if (get_smaps_field(hp, "Private_Hugetlb:", &v) == 0)
+ *         printf("Private_Hugetlb = %lu kB\n", v);
+ */
+int get_smaps_field(const void *addr, const char *field,
+			   unsigned long *out)
+{
+	char line[1024];
+	FILE *fp;
+	unsigned long target = (unsigned long)addr;
+	int in_vma = 0, found = 0;
+	int ret = -1;
+
+	fp = fopen("/proc/self/smaps", "r");
+	if (!fp)
+		return -1;
+
+	while (fgets(line, sizeof(line), fp)) {
+		unsigned long a, b;
+		const char *p = line;
+		unsigned long v;
+
+		if (sscanf(line, "%lx-%lx", &a, &b) == 2) {
+			if (in_vma && found)
+				break;
+			in_vma = (target >= a && target < b);
+			if (in_vma)
+				found = 1;
+			continue;
+		}
+
+		if (!in_vma)
+			continue;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+
+		if (strncmp(p, field, strlen(field)))
+			continue;
+
+		p += strlen(field);
+		if (sscanf(p, "%lu", &v) == 1) {
+			*out = v;
+			ret = 0;
+		}
+		break;
+	}
+
+	fclose(fp);
+	return ret;
+}
+/*
  * /proc/kpageflags -- pfn based file.
  *
  * Each pfn has an entry, specifying page status, e.g. Dirty, LRU, Buddy,

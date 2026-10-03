@@ -55,6 +55,7 @@ void file_hugetlb()
 	int fd;
 	char *hp;
 	unsigned long mem_size;
+	pid_t pid;
 	char file_name[] = "/mnt/huge/demo";
 
 	fd = open(file_name, O_CREAT | O_RDWR, 0600);
@@ -92,6 +93,41 @@ void file_hugetlb()
 	else
 		printf(RED "hugetlb size is %lukb, but expect 204kb\n" RESET,
 			mem_size);
+
+	// dump_vma_smaps(hp, "test");
+	// fflush(stdout);
+
+	/* fork a child and check status */
+	pid = fork();
+
+	if (pid < 0) {
+		printf(RED "fork error\n" RESET);
+		goto mmap_error;
+	}
+
+	/* child will check Shared_Hugetlb */
+	if (pid == 0) {
+		/* fault it before check */
+		if (*hp != 'A') {
+			printf(RED "data corrupted\n" RESET);
+			return;
+		}
+
+		/* Shared_Hugetlb is counted since mapcount > 1 */
+		mem_size = get_shared_hugetlb(hp);
+		if (mem_size == 2048)
+			printf(GREEN "Child Shared %lukb\n" RESET, mem_size);
+		else
+			printf(RED "child hugetlb size is %lukb, but expect 204kb\n" RESET,
+				mem_size);
+
+		// dump_vma_smaps(hp, "in child");
+		// fflush(stdout);
+		return;
+	}
+
+	/* parent just wait... */
+	wait(NULL);
 
 mmap_error:
 	munmap(hp, pmd_pagesize);
