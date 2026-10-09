@@ -205,7 +205,10 @@ td.pct{font-weight:600}
     <h2>分位带与关键阈值 <small id="bandSub"></small></h2>
     <div class="chartbox"><canvas id="cBand" role="img" aria-label="PE 分布带状图与当前值位置">PE 分位带</canvas></div>
     <div class="note">
-      <b>怎么读：</b>分位带由区间内 PE 的历史分布切分。PE 落在低分位区（&lt;30%）通常对应相对便宜的估值区间，
+      <b>怎么读：</b>横轴是 <b>PE 值</b>，不是时间。每根条表示"历史上处于该分位段时，PE 的取值范围"——
+      条的长短是<b>取值范围的宽度</b>，不是时间占比。按分位定义，各段包含的交易日比例是固定的（30/20/20/20/10%）。
+      条越短，说明该 PE 区间内交易日越密集；条越长，说明越稀疏（如 90-100 分位段，十年里只有最贵的 10% 时间，
+      但 PE 从 30.6 一路散布到 39.3）。PE 落在低分位区（&lt;30%）通常对应相对便宜的估值区间，
       高分位区（&gt;70%）对应相对偏贵的估值区间。分位只衡量"相较于自身历史"的相对位置，不代表绝对便宜或贵，也不构成买卖信号。
     </div>
   </div>
@@ -395,24 +398,25 @@ function drawPct(d, w, seg){
 function drawBand(d, w){
   var now = w.latest_pe;
   var bands = [
-    {n:'0-30分位', lo:w.min, hi:w.p30, c:'#5DCAA5'},
-    {n:'30-50分位', lo:w.p30, hi:w.p50, c:'#97C459'},
-    {n:'50-70分位', lo:w.p50, hi:w.p70, c:'#EF9F27'},
-    {n:'70-90分位', lo:w.p70, hi:w.p90, c:'#F09595'},
-    {n:'90-100分位', lo:w.p90, hi:w.max, c:'#E24B4A'}
+    {n:'0-30分位', t:'30%交易日', lo:w.min, hi:w.p30, c:'#5DCAA5'},
+    {n:'30-50分位', t:'20%交易日', lo:w.p30, hi:w.p50, c:'#97C459'},
+    {n:'50-70分位', t:'20%交易日', lo:w.p50, hi:w.p70, c:'#EF9F27'},
+    {n:'70-90分位', t:'20%交易日', lo:w.p70, hi:w.p90, c:'#F09595'},
+    {n:'90-100分位', t:'10%交易日', lo:w.p90, hi:w.max, c:'#E24B4A'}
   ];
   var span = w.max - w.min;
   var lo = w.min - span*0.10, hi = w.max + span*0.10;
   if(CH.band) CH.band.destroy();
   CH.band = new Chart(document.getElementById('cBand'), {
     type:'bar',
-    data:{ labels:bands.map(function(b){return b.n;}),
+    data:{ labels:bands.map(function(b){return [b.n, '含 '+b.t];}),
       datasets:[{label:'分位区间', data:bands.map(function(b){return [b.lo,b.hi];}),
         backgroundColor:bands.map(function(b){return b.c;}), borderWidth:0, borderRadius:4, barPercentage:.62}]},
     options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', animation:{duration:350},
       plugins:{ legend:{display:false},
         tooltip:{callbacks:{label:function(c){var b=bands[c.dataIndex];
-          return b.lo.toFixed(2)+' ~ '+b.hi.toFixed(2);}}}},
+          return ['PE 取值范围 '+b.lo.toFixed(2)+' ~ '+b.hi.toFixed(2)+'（宽度 '+(b.hi-b.lo).toFixed(2)+'）',
+                  '该段固定含 '+b.t+'，与条长无关'];}}}},
       scales:{
         x:{ min:lo, max:hi, grid:{color:'#eef0f3'}, ticks:{color:'#6b7280',font:{size:11}},
             border:{color:'#e5e7eb'}, title:{display:true,text:d.name+' PE',color:'#6b7280',font:{size:11}}},
